@@ -287,7 +287,103 @@ export const ONLINE_TRIGGER_LOG_HEADERS = [
   "Failed",
 ] as const;
 
-export function formatOnlineTriggerRowTsv(row: OnlineTriggerLogRow): string {
+export type OnlineTriggerLogView = "monthly" | "weekly" | "daily" | "details";
+
+export function onlineTriggerLogHasTimeColumn(_view: OnlineTriggerLogView): boolean {
+  return true;
+}
+
+export function onlineTriggerLogHeadersForView(_view: OnlineTriggerLogView): string[] {
+  return [...ONLINE_TRIGGER_LOG_HEADERS];
+}
+
+function mixedField(values: string[]): string {
+  const uniq = [...new Set(values.map((v) => String(v || "—")))];
+  return uniq.length === 1 ? uniq[0]! : "—";
+}
+
+function isoWeekMeta(dateStr: string): { key: string; label: string } {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ""));
+  if (!m) return { key: dateStr, label: dateStr };
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const day = (d.getDay() + 6) % 7;
+  const start = new Date(d);
+  start.setDate(d.getDate() - day);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  const fmt = (x: Date) =>
+    `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`;
+  const thu = new Date(start);
+  thu.setDate(start.getDate() + 3);
+  const weekYear = thu.getFullYear();
+  const jan4 = new Date(weekYear, 0, 4);
+  const jan4Mon = new Date(jan4);
+  jan4Mon.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+  const week = 1 + Math.round((start.getTime() - jan4Mon.getTime()) / 604800000);
+  return {
+    key: `${weekYear}-W${String(week).padStart(2, "0")}`,
+    label: `${fmt(start)} → ${fmt(end)}`,
+  };
+}
+
+function collapseGroup(arr: OnlineTriggerLogRow[], id: string, dateLabel: string, timeLabel: string): OnlineTriggerLogRow {
+  const sorted = arr.slice().sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+  const first = sorted[0]!;
+  return {
+    id,
+    date: dateLabel,
+    time: timeLabel,
+    api: mixedField(sorted.map((x) => x.api)),
+    sentFrom: first.sentFrom,
+    voucherType: first.voucherType,
+    header: mixedField(sorted.map((x) => x.header)),
+    feature: mixedField(sorted.map((x) => x.feature)),
+    codePath: mixedField(sorted.map((x) => x.codePath)),
+    count: sorted.reduce((s, x) => s + x.count, 0),
+    success: sorted.reduce((s, x) => s + x.success, 0),
+    failed: sorted.reduce((s, x) => s + x.failed, 0),
+  };
+}
+
+/** Collapse by page (Sent from) + voucher type inside a date bucket. */
+export function groupOnlineTriggerLog(
+  list: OnlineTriggerLogRow[],
+  view: OnlineTriggerLogView
+): OnlineTriggerLogRow[] {
+  if (view === "details") return list;
+  const buckets = new Map<string, OnlineTriggerLogRow[]>();
+  for (const r of list) {
+    let period = r.date;
+    if (view === "monthly") period = String(r.date || "").slice(0, 7);
+    if (view === "weekly") period = isoWeekMeta(r.date).key;
+    const key = `${period}|${r.sentFrom}|${r.voucherType}`;
+    const arr = buckets.get(key) || [];
+    arr.push(r);
+    buckets.set(key, arr);
+  }
+  const out: OnlineTriggerLogRow[] = [];
+  for (const [key, arr] of buckets) {
+    const sorted = arr.slice().sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+    const first = sorted[0]!;
+    const last = sorted[sorted.length - 1]!;
+    let dateLabel = first.date;
+    let timeLabel = first.time === last.time ? first.time : `${first.time} → ${last.time}`;
+    if (view === "monthly") {
+      dateLabel = String(first.date || "").slice(0, 7);
+      timeLabel = "—";
+    } else if (view === "weekly") {
+      dateLabel = isoWeekMeta(first.date).label;
+      timeLabel = "—";
+    } else if (view === "daily") {
+      dateLabel = first.date;
+    }
+    out.push(collapseGroup(sorted, `grp-${key}`, dateLabel, timeLabel));
+  }
+  out.sort((a, b) => `${b.date} ${b.time} ${b.sentFrom}`.localeCompare(`${a.date} ${a.time} ${a.sentFrom}`));
+  return out;
+}
+
+export function formatOnlineTriggerRowTsv(row: OnlineTriggerLogRow, _view: OnlineTriggerLogView = "details"): string {
   return [
     row.date,
     row.time,
@@ -303,8 +399,11 @@ export function formatOnlineTriggerRowTsv(row: OnlineTriggerLogRow): string {
   ].join("\t");
 }
 
-export function formatOnlineTriggerLogTsv(list: OnlineTriggerLogRow[]): string {
-  return [ONLINE_TRIGGER_LOG_HEADERS.join("\t"), ...list.map(formatOnlineTriggerRowTsv)].join("\n");
+export function formatOnlineTriggerLogTsv(list: OnlineTriggerLogRow[], view: OnlineTriggerLogView = "details"): string {
+  return [
+    onlineTriggerLogHeadersForView(view).join("\t"),
+    ...list.map((row) => formatOnlineTriggerRowTsv(row, view)),
+  ].join("\n");
 }
 
 export async function copyTextToClipboard(text: string): Promise<boolean> {

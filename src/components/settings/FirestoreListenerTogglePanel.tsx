@@ -55,7 +55,7 @@ function ListenerRows({ items }: { items: FirestoreListenerDef[] }) {
   );
 }
 
-export function FirestoreListenerTogglePanel() {
+export function FirestoreListenerTogglePanel({ embedded }: { embedded?: boolean } = {}) {
   const [adminTab, setAdminTab] = useState<FirestoreListenerTab>(() =>
     typeof window === "undefined" ? "live" : adminSyncModeTab()
   );
@@ -79,7 +79,8 @@ export function FirestoreListenerTogglePanel() {
   const items = viewTab === "live" ? LIVE_FIRESTORE_LISTENERS : DELTA_FIRESTORE_LISTENERS;
 
   return (
-    <div className="space-y-3 rounded-md border p-3">
+    <div className={cn("space-y-3", !embedded && "rounded-md border p-3")}>
+      {embedded ? null : (
       <div>
         <h3 className="text-sm font-semibold">Firestore listeners</h3>
         <p className="text-xs text-muted-foreground">
@@ -87,6 +88,7 @@ export function FirestoreListenerTogglePanel() {
           see its list — it stays not in use until Admin switches mode.
         </p>
       </div>
+      )}
       <div className="flex gap-1 rounded-md bg-muted/60 p-1">
         {(["live", "delta"] as const).map((tab) => {
           const selected = viewTab === tab;
