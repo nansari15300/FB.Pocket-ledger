@@ -12,6 +12,10 @@ import { useDataSource } from "@/contexts/DataSourceContext";
 import { createLocalApiClient } from "@/lib/localApiClient";
 import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
 import {
+  FIRESTORE_LISTENER_TOGGLES_EVENT,
+  isLiveCollectionListenerEnabled,
+} from "@/lib/firestoreListenerToggles";
+import {
   BROWSER_DB_COLLECTION_BUMP,
   listCompanyDocsFromBrowserDb,
   type BrowserDbCollectionBumpDetail,
@@ -61,6 +65,12 @@ export function useCollectionFromSource<T = Record<string, unknown>>(
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const refetchRef = useRef<() => void>(() => {});
+  const [listenerToggleEpoch, setListenerToggleEpoch] = useState(0);
+  useEffect(() => {
+    const bump = () => setListenerToggleEpoch((n) => n + 1);
+    window.addEventListener(FIRESTORE_LISTENER_TOGGLES_EVENT, bump);
+    return () => window.removeEventListener(FIRESTORE_LISTENER_TOGGLES_EVENT, bump);
+  }, []);
 
   const fetchLocal = useMemo(() => {
     if (!companyId || !isLocalMode) return null;
@@ -139,6 +149,17 @@ export function useCollectionFromSource<T = Record<string, unknown>>(
         .catch(() => {});
     }
 
+    if (!isLiveCollectionListenerEnabled(collectionName)) {
+      listCompanyDocsFromBrowserDb(companyId, collectionName)
+        .then((cached) => {
+          applyBrowserMerge(cached);
+        })
+        .catch(() => {
+          setIsLoading(false);
+        });
+      return;
+    }
+
     const q = query(collection(firestore, `companies/${companyId}/${collectionName}`));
     const unsub = onSnapshot(
       q,
@@ -174,7 +195,7 @@ export function useCollectionFromSource<T = Record<string, unknown>>(
       }
     );
     return () => unsub();
-  }, [companyId, collectionName, isLocalMode, options?.orderByField]);
+  }, [companyId, collectionName, isLocalMode, options?.orderByField, listenerToggleEpoch]);
 
   // Static: `notifyBrowserDbCollectionUpdated` par list merge (jab yeh hook use hoga)
   useEffect(() => {

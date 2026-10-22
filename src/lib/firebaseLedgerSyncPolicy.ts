@@ -16,6 +16,7 @@ import {
 } from "@/lib/firebaseLedgerSyncMode";
 import { isFirebaseLedgerDataSyncEnabled } from "@/lib/firebaseLedgerDataSyncDisabled";
 import { readCachedGlobalSyncModeSettings } from "@/lib/globalSyncModeSettings";
+import { isFirestoreListenerEnabled } from "@/lib/firestoreListenerToggles";
 
 /** Where the effective mode came from — UI move to admin plans only needs this resolver. */
 export type FirebaseLedgerSyncPolicySource = "device_preference" | "plan_override" | "build_default";
@@ -98,5 +99,8 @@ export function shouldBindFirebaseLedgerCollectionLiveListeners(): boolean {
 
 /** Bind `_pl_change_log` + doc pulls. */
 export function shouldBindFirebaseLedgerChangeFeed(): boolean {
-  return resolveFirebaseLedgerSyncPolicy().changeFeedDeltaSyncAllowed;
+  return (
+    resolveFirebaseLedgerSyncPolicy().changeFeedDeltaSyncAllowed &&
+    isFirestoreListenerEnabled("delta.change_log")
+  );
 }

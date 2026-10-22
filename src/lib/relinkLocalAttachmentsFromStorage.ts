@@ -31,6 +31,7 @@ import {
   type CompanyStorageLayoutRow,
 } from "@/lib/firebaseStoragePaths";
 import { yieldToMain } from "@/lib/yieldToMain";
+import { withOnlineTriggerScope } from "@/lib/onlineTriggerLog";
 
 type LocalRefHit = {
   localId: string;
@@ -293,6 +294,17 @@ async function patchHttpsToFirestore(
  * Banner gayab / pending empty hone ke baad bhi chal sakta hai.
  */
 export async function relinkLocalAttachmentsFromFirebaseStorage(companyId: string): Promise<{
+  localRefs: number;
+  relinked: number;
+  missed: number;
+}> {
+  return withOnlineTriggerScope(
+    { feature: "heal", codePath: "relinkLocalAttachmentsFromStorage" },
+    () => relinkLocalAttachmentsFromFirebaseStorageWork(companyId)
+  );
+}
+
+async function relinkLocalAttachmentsFromFirebaseStorageWork(companyId: string): Promise<{
   localRefs: number;
   relinked: number;
   missed: number;

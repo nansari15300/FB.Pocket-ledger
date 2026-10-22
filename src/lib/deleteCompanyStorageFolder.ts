@@ -6,12 +6,16 @@
  */
 import { ref, list, deleteObject, type StorageReference } from "firebase/storage";
 import { storage } from "@/lib/firebase";
+import { withOnlineTriggerScope } from "@/lib/onlineTriggerLog";
 import {
   buildCompanyStorageWipePrefixes,
   buildVoucherStorageScanPrefixes,
 } from "@/lib/companyStorageWipePrefixes";
 
 async function deleteStorageTree(root: StorageReference): Promise<number> {
+  return withOnlineTriggerScope(
+    { feature: "storage-wipe", codePath: "deleteCompanyStorageFolder.deleteStorageTree" },
+    async () => {
   let deleted = 0;
 
   async function walk(r: StorageReference): Promise<void> {
@@ -38,6 +42,8 @@ async function deleteStorageTree(root: StorageReference): Promise<number> {
 
   await walk(root);
   return deleted;
+    }
+  );
 }
 
 export { buildCompanyStorageWipePrefixes, buildVoucherStorageScanPrefixes } from "@/lib/companyStorageWipePrefixes";
@@ -63,6 +69,14 @@ export async function deleteVoucherFirebaseStorageObjects(input: {
   const cid = String(input.companyId || "").trim();
   const vid = String(input.voucherId || "").trim();
   if (!cid || !vid) return 0;
+  return withOnlineTriggerScope(
+    {
+      feature: "storage-wipe",
+      codePath: "deleteCompanyStorageFolder.deleteVoucherFirebaseStorageObjects",
+      voucherType: input.voucherType || "—",
+      header: input.voucherId,
+    },
+    async () => {
   const prefixes = buildVoucherStorageScanPrefixes({
     companyId: cid,
     voucherType: input.voucherType,
@@ -76,6 +90,8 @@ export async function deleteVoucherFirebaseStorageObjects(input: {
     }
   }
   return deleted;
+    }
+  );
 }
 
 async function deleteStorageTreeMatchingVoucherId(
@@ -118,6 +134,13 @@ export async function wipeCompanyFirebaseStorageForRestore(input: {
   companyId: string;
   companyName?: string;
 }): Promise<{ deleted: number; prefixes: string[] }> {
+  return withOnlineTriggerScope(
+    {
+      feature: "storage-wipe",
+      codePath: "deleteCompanyStorageFolder.wipeCompanyFirebaseStorageForRestore",
+      header: input.companyName || input.companyId,
+    },
+    async () => {
   const prefixes = buildCompanyStorageWipePrefixes(input);
   let deleted = 0;
   for (const prefix of prefixes) {
@@ -128,4 +151,6 @@ export async function wipeCompanyFirebaseStorageForRestore(input: {
     }
   }
   return { deleted, prefixes };
+    }
+  );
 }

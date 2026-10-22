@@ -6,7 +6,7 @@ import { isEmbeddedDeviceLockShell } from "@/lib/embeddedDeviceLock";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Share2, Loader2, Hash, Palette, FileDigit, Zap, Building, ShieldAlert, Bell, Smartphone, ChevronLeft, PanelRight, CalendarRange, LockKeyhole, Cloud, Server, Link2 } from "lucide-react";
+import { Share2, Loader2, Hash, Palette, FileDigit, Zap, Building, ShieldAlert, Bell, Smartphone, ChevronLeft, PanelRight, CalendarRange, LockKeyhole, Cloud, Server, Link2, Activity } from "lucide-react";
 import { ManageShare } from "@/components/company/ManageShare";
 import usePermissions from "@/hooks/usePermissions";
 import { useCompany } from "@/hooks/useCompany";
@@ -37,6 +37,7 @@ import { LocalCloudSyncSettingsPage } from "@/components/settings/LocalCloudSync
 import { LocalAppServerSettings } from "@/components/settings/LocalAppServerSettings";
 import { MyRoleButton } from "@/components/settings/MyRoleButton";
 import { CheckForUpdateSettingsRow } from "@/components/settings/CheckForUpdateSettingsRow";
+import { OnlineTriggerLogSettings } from "@/components/settings/OnlineTriggerLogSettings";
 import { isLocalAppServerSettingsNavVisible } from "@/lib/localAppServerDevPreview";
 import { settingsViewHref } from "@/lib/appNavHref";
 import type { UserRole } from "@/hooks/usePermissions";
@@ -82,6 +83,7 @@ const settingsNavItems = [
     { id: "sharing", title: "Manage Sharing", icon: Share2, permission: "manage_users_roles" as const, href: null },
     // Device sync settings (synced devices management).
     { id: "devices", title: "Device sync", icon: Smartphone, permission: "configure_company_settings" as const, href: null },
+    { id: "online_trigger_log", title: "Log of online trigger", icon: Activity, permission: "configure_company_settings" as const, href: null },
     // EXE/APK: 6-digit PIN + optional biometric — nav mein sirf native shell par (neeche `shellLockEligible` filter).
     { id: "app_lock", title: "App Lock", icon: LockKeyhole, permission: "configure_company_settings" as const, href: null },
     { id: "voucher", title: "Voucher Settings", icon: FileDigit, permission: "configure_company_settings" as const, href: null },
@@ -556,6 +558,8 @@ function SettingsPageContent() {
                 ) : null;
             case "devices":
                 return can('configure_company_settings') ? <ManageDevices /> : null;
+            case "online_trigger_log":
+                return can("configure_company_settings") ? <OnlineTriggerLogSettings /> : null;
             case "local_cloud_sync":
                 return <LocalCloudSyncSettingsPage />;
             case "local_app_server":

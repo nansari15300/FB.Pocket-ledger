@@ -62,6 +62,7 @@ import { PlUiHealthBrakeGate } from "@/components/debug/PlUiHealthBrakeGate";
 import { ClientHealthGlobalBootstrap } from "@/components/debug/ClientHealthGlobalBootstrap";
 import { ClientHealthMonitorBootstrap } from "@/components/debug/ClientHealthMonitorBootstrap";
 import { ClientHealthMonitorSnapshotSync } from "@/components/debug/ClientHealthMonitorSnapshotSync";
+import { OnlineTriggerLogBootstrap } from "@/components/debug/OnlineTriggerLogBootstrap";
 
 /** Local-only app start: sql.js init pehle se — refresh par company turant SQLite se load. */
 function SqlitePrewarmBootstrap() {
@@ -127,6 +128,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <ThemeProvider>
         <AuthProvider>
             <ClientHealthGlobalBootstrap />
+            <OnlineTriggerLogBootstrap />
             <EmbeddedDeviceLockSessionProvider>
             <FirebaseErrorListener />
             {/* EXE/APK: PIN pehle — SQLite/sync baad me (`EmbeddedAppDeferredShell`) */}

@@ -38,6 +38,7 @@ import {
 import { FIREBASE_LEDGER_COMPANY_SYNC_PREFS_CHANGED_EVENT } from "@/lib/firebaseLedgerCompanySyncPrefs";
 import { isOnlineCompanyLedgerCloudSyncAllowed } from "@/lib/onlineCompanySelectorSyncPolicy";
 import { shouldBindFirebaseLedgerCollectionLiveListeners } from "@/lib/firebaseLedgerSyncPolicy";
+import { isLiveCollectionListenerEnabled } from "@/lib/firestoreListenerToggles";
 import {
   BROWSER_DB_COLLECTION_BUMP,
   listCompanyDocsFromBrowserDb,
@@ -1994,7 +1995,10 @@ export const VoucherProvider = ({
       /** Listener sirf active page collections par bind — route switch par cleanup + naya bind. */
       const stableVoucherCollection = allCollectionsToFetch.find((c) => c.path === "vouchers");
       const collectionsToFetch = allCollectionsToFetch.filter(
-        (c) => c.path !== "vouchers" && activeCollectionPaths.has(c.path)
+        (c) =>
+          c.path !== "vouchers" &&
+          activeCollectionPaths.has(c.path) &&
+          isLiveCollectionListenerEnabled(c.path)
       );
 
       /** Full-collection listener — web cloud par bhi poori voucher list (50-cap window hataya). */
@@ -2187,7 +2191,11 @@ export const VoucherProvider = ({
       };
 
       const stableVoucherKey = `${companyId}::${fsCompanyId}::${user?.uid || ""}::live-vouchers`;
-      if (stableVoucherCollection && activeCollectionPaths.has("vouchers")) {
+      if (
+        stableVoucherCollection &&
+        activeCollectionPaths.has("vouchers") &&
+        isLiveCollectionListenerEnabled("vouchers")
+      ) {
         if (stableLiveVoucherListenerRef.current?.key !== stableVoucherKey) {
           stableLiveVoucherListenerRef.current?.unsubscribe();
           stableLiveVoucherListenerRef.current = {
