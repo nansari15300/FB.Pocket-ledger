@@ -54,11 +54,29 @@ export function getShareEntryForEmail(company: CompanyUnlockRow, email: string |
   return company.sharedWith?.find((u: { email?: string }) => String(u.email || "").toLowerCase().trim() === e);
 }
 
+/**
+ * Password set? Plain text (Firebase copy) ya Pocket Ledger Server ka `hasPassword` marker
+ * (server sirf bcrypt hash rakhta hai, text nahi).
+ */
+export function shareEntryHasPassword(se: unknown): boolean {
+  if (!se || typeof se !== "object") return false;
+  const o = se as { password?: unknown; hasPassword?: unknown };
+  if (o.password != null && String(o.password).trim() !== "") return true;
+  return o.hasPassword === true;
+}
+
+/** Company root (Protect company) password set? — plain text ya server marker. */
+export function companyRootHasPassword(company: unknown): boolean {
+  if (!company || typeof company !== "object") return false;
+  const o = company as { password?: unknown; hasPassword?: unknown };
+  if (String(o.password ?? "").trim()) return true;
+  return o.hasPassword === true;
+}
+
 /** Online shared row par user-specific password (Manage Sharing / Company Profile) — Protect company ke alag. */
 export function onlineSharedHasPerUserPassword(company: CompanyUnlockRow, userEmail?: string | null): boolean {
   if (!isOnlineSharedCompany(company)) return false;
-  const se = getShareEntryForEmail(company, userEmail);
-  return !!(se && se.password != null && String(se.password).trim() !== "");
+  return shareEntryHasPassword(getShareEntryForEmail(company, userEmail));
 }
 
 /** Offline company me `localCompanyUsers` rows — bina Protect company password ke bhi login chahiye. */
@@ -85,14 +103,14 @@ export function localCompanyAppUserRequiresUnlock(
 
   if (isOwner) {
     if (userRow?.password?.trim()) return true;
-    if (String(row.password ?? "").trim()) return true;
+    if (companyRootHasPassword(row)) return true;
     return false;
   }
 
   if (userRow?.password?.trim()) return true;
   const se = getShareEntryForEmail(row, appUser?.email);
-  if (se?.password?.trim()) return true;
-  if (String(row.password ?? "").trim() && !userRow) return true;
+  if (shareEntryHasPassword(se)) return true;
+  if (companyRootHasPassword(row) && !userRow) return true;
   return false;
 }
 
@@ -121,10 +139,9 @@ export function companyDocRequiresUnlock(
     return localCompanyAppUserRequiresUnlock(doc, { uid: firebaseUid, email: userEmail, isOwner });
   }
 
-  if (String(row.password ?? "").trim()) return true;
+  if (companyRootHasPassword(row)) return true;
   if (offlineCompanyHasLocalLoginUsers(row)) return true;
-  const se = getShareEntryForEmail(row, userEmail);
-  return !!(se?.password && String(se.password).trim());
+  return shareEntryHasPassword(getShareEntryForEmail(row, userEmail));
 }
 
 /** Select se pehle dialog dikhana hai ya nahi (remembered session check async path me). */
@@ -143,13 +160,13 @@ export function shouldPromptCompanyUnlock(
     return true;
   }
   if (isOnlineSharedCompany(company)) {
-    return !!company.password || onlineSharedHasPerUserPassword(company, userEmail);
+    return companyRootHasPassword(company) || onlineSharedHasPerUserPassword(company, userEmail);
   }
   if (isOfflineCompanyStorage(company)) {
     return companyDocRequiresUnlock(company, userEmail, firebaseUid, company.isOwned);
   }
   const se = getShareEntryForEmail(company, userEmail || undefined);
-  return !!(se?.password || company.password);
+  return shareEntryHasPassword(se) || companyRootHasPassword(company);
 }
 
 /** List row slim ho to SQLite se local users check — unlock dialog ke liye. */
@@ -191,13 +208,13 @@ export function showCompanyUserNameField(company: CompanyUnlockRow, userEmail?: 
     return shouldPromptCompanyUnlock(company, userEmail, firebaseUid);
   }
   if (isOnlineSharedCompany(company)) {
-    return !!company.password || onlineSharedHasPerUserPassword(company, userEmail);
+    return companyRootHasPassword(company) || onlineSharedHasPerUserPassword(company, userEmail);
   }
   if (isOfflineCompanyStorage(company)) {
     return companyDocRequiresUnlock(company, userEmail, firebaseUid, company.isOwned);
   }
   const se = getShareEntryForEmail(company, userEmail || undefined);
-  return !!(se?.password && String((se as { name?: string }).name || "").trim());
+  return shareEntryHasPassword(se) && !!String((se as { name?: string }).name || "").trim();
 }
 
 /**
@@ -213,6 +230,14 @@ export function verifyCompanyUnlock(
   const se = getShareEntryForEmail(company, userEmail);
 
   const isOwner = company.isOwned === true;
+
+  // Server-only password (hash on Pocket Ledger Server, no text on this device): yahan check
+  // nahi ho sakta — `verifyCompanyUnlockAsync` server se check karta hai.
+  const rootPlain = String(company.password ?? "").trim() !== "";
+  const sePlain = !!se && se.password != null && String(se.password).trim() !== "";
+  if ((!rootPlain && companyRootHasPassword(company)) || (!sePlain && shareEntryHasPassword(se))) {
+    return { ok: false, message: SERVER_CHECK_UNAVAILABLE };
+  }
 
   // Owner: sirf root company password (shared user password alag)
   if (isOwner && company.password && !se?.password) {
@@ -294,6 +319,41 @@ export function verifyCompanyUnlock(
   }
 
   return { ok: true };
+}
+
+const SERVER_CHECK_UNAVAILABLE =
+  "Company password could not be checked: connect to Pocket Ledger Server and try again.";
+
+/**
+ * Unlock verify — Pocket Ledger Server company: password server pe (bcrypt hash) check hota hai;
+ * server pe password na ho ("none") to purana device check (`verifyCompanyUnlock`).
+ * Firebase company: seedha `verifyCompanyUnlock` (unchanged).
+ */
+export async function verifyCompanyUnlockAsync(
+  company: CompanyUnlockRow,
+  userEmail: string | undefined,
+  usernameInput: string,
+  passwordInput: string
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const id = String(company.id || "").trim();
+  let isPb = false;
+  try {
+    const { isPocketBaseCompanyId } = await import("@/lib/pocketbaseData/pbCompanyRegistry");
+    isPb = !!id && isPocketBaseCompanyId(id);
+  } catch {
+    isPb = false;
+  }
+  if (isPb) {
+    try {
+      const { pbCompanyUnlock } = await import("@/lib/pocketbaseData/pbSync");
+      const r = await pbCompanyUnlock(id, usernameInput.trim(), passwordInput);
+      if (r.status === "ok") return { ok: true };
+      if (r.status === "wrong" || r.status === "locked") return { ok: false, message: r.message };
+    } catch {
+      /* server check unavailable -> device check below */
+    }
+  }
+  return verifyCompanyUnlock(company, userEmail, usernameInput, passwordInput);
 }
 
 /** Bina password/local users — SQLite se seedha open; vouchers ke liye lightweight session. */

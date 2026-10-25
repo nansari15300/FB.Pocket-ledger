@@ -1,5 +1,6 @@
 "use client";
 
+import { voucherTypeDisplayText, voucherTypeSearchText } from "@/lib/voucherTypeDisplay";
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useFyScopedVouchers } from "@/hooks/useFyScopedVouchers";
 import { useDate } from "@/hooks/useDate";
@@ -82,7 +83,8 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import * as XLSX from "xlsx";
 import { RunningBalanceFullChart } from "@/components/reports/RunningBalanceFullChart";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 
@@ -140,8 +142,8 @@ export default function DesktopStaffStatementPage() {
       : "staff"
   );
   const [listSearchTerm, setListSearchTerm] = useState("");
-  const [staffListQuickFilter, setStaffListQuickFilter] = useState<EntityListQuickFilter>("default");
-  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [staffListQuickFilter, setStaffListQuickFilter] = useState<EntityListQuickFilter>("latest");
+  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("latest");
   const fetchedUidsRef = useRef<Set<string>>(new Set());
 
   const pageTitle = selectedGroup ? "Staff Group Statement" : "Staff Statement";
@@ -381,7 +383,7 @@ export default function DesktopStaffStatementPage() {
     return list.filter((t: any) => {
       const vno = (t.voucherNumber || "").toLowerCase();
       const narr = (t.narration || "").toLowerCase();
-      const type = (typeof t.type === "string" ? t.type.replace(/_/g, " ") : "").toLowerCase();
+      const type = voucherTypeSearchText(t.type);
       const amount = String(t.debit ?? t.credit ?? t.total ?? "").toLowerCase();
       return vno.includes(q) || narr.includes(q) || type.includes(q) || amount.includes(q);
     });
@@ -498,7 +500,7 @@ export default function DesktopStaffStatementPage() {
         "Date (BS)": formatDateBS(d),
         "Date (AD)": formatDate(d),
         "Voucher No.": t.voucherNumber,
-        Type: t.type.replace(/_/g, " "),
+        Type: voucherTypeDisplayText(t.type),
         Narration: t.narration || "",
         Debit: t.debit,
         Credit: t.credit,

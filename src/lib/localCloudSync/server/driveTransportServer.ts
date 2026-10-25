@@ -3,6 +3,7 @@ import "server-only";
 import { Readable } from "node:stream";
 import { google } from "googleapis";
 import { createGoogleOAuth2Client } from "@/lib/server/googleOAuthCredentials";
+import { ensureHostingConfig } from "@/lib/server/hostingConfig";
 import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
 import type { CloudSyncManifest, LocalCloudSyncOperation } from "@/lib/localCloudSync/types";
 import type { DriveSharedCompanyListItem } from "@/lib/localCloudSync/types";
@@ -60,6 +61,7 @@ async function looksLikePocketLedgerCompanyFolder(
 }
 
 async function loadDriveTokens(uid: string): Promise<DriveTokens> {
+  await ensureHostingConfig(); // oauthClient() below needs the client id / secret
   if (!isFirebaseAdminConfigured()) {
     throw new Error("Firebase Admin not configured for Drive sync");
   }

@@ -35,7 +35,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
 import { firestore, storage } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, query, where } from "firebase/firestore";
+import { getDoc, onSnapshot, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { format, startOfDay } from "date-fns";
 import { ScrollArea } from "../ui/scroll-area";
@@ -469,6 +470,7 @@ export function CreatePaymentOutForm({
   /* OCR (local, generic adapter): first attachment -> validated autofill; Auto Post saves UNAPPROVED. */
   const ocr = useVoucherOcr({
     adapter: ocrAdapters.paymentOut(),
+    currentVoucherType: defaultTab === "direct_expense" ? "direct_expense" : "payment_out",
     form: form as never,
     files,
     setFiles: setFiles as never,
@@ -1652,6 +1654,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
             ? parseFloat(String(formAmount).replace(/,/g, '')) || 0
             : Number(formAmount || 0);
 
+      const plT0 = performance.now();
       const attachResult = await resolveVoucherAttachmentsBeforeSave({
         companyId,
         company,
@@ -1734,6 +1737,11 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       const previousAllocationsForSync: Allocation[] = initialAllocationsRef.current.map((a) => ({ voucherId: a.voucherId, amount: Number(a.amount) || 0 }));
       // Save se pehle snapshot — outbox flush / 409 mirror purani fileUrls form me wapas na laaye.
       savedFileUrlsSnapshotRef.current = fileUrls.filter((u) => Boolean(String(u).trim()));
+      console.info("[PL-DEBUG-SAVE] PaymentOut before saveVoucher", {
+        id: idArgForFirestore, formFiles: files.length, fileUrls: fileUrls.length, fileUrlKinds: fileUrls.map((u) => String(u).slice(0, 12)),
+      });
+      console.info("[PL-DEBUG-SAVE] step=resolveAttachmentsBeforeSave", Math.round(performance.now() - plT0), "ms");
+      const plT1 = performance.now();
       const savedDoc = await saveVoucher(
         companyId,
         user.uid,
@@ -1743,6 +1751,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
         preGeneratedVoucherId ? { preGeneratedVoucherId } : undefined
       );
 
+      console.info("[PL-DEBUG-SAVE] step=saveVoucher", Math.round(performance.now() - plT1), "ms");
       if (savedDoc && savedDoc.id) {
           markCopiedDraftPersisted();
           setSavedVoucherId(savedDoc.id);
@@ -1797,6 +1806,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
               storageFolder: String(voucherType),
               previousUrls: initialFilesRef.current,
             });
+            console.info("[PL-DEBUG-SAVE] PaymentOut after finalize", { id: docId, sent: fileUrls.length, persisted: persistedUrls.length });
             savedFileUrlsSnapshotRef.current = [...persistedUrls];
             setFiles(persistedUrls);
             initialFilesRef.current = [...persistedUrls];
@@ -1851,7 +1861,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                   { key: "toAccountId", label: "To account" },
                 ]
               );
-              await sendTransactionAlert(companyId, company, {
+              void sendTransactionAlert(companyId, company, {
                 kind: "edited",
                 voucherId: vid,
                 voucherNumber: data.voucherNumber,
@@ -1862,7 +1872,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                 changes: changes.length > 0 ? changes : undefined,
               });
             } else if (isAmountOverOneLakh(cleanAmount)) {
-              await sendTransactionAlert(companyId, company, {
+              void sendTransactionAlert(companyId, company, {
                 kind: "large_amount",
                 voucherId: vid,
                 voucherNumber: data.voucherNumber,
@@ -3701,7 +3711,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                         <div className="pt-2 border-t flex flex-wrap gap-2 items-center">
                           <Button type="button" onClick={() => setIsLinkPaymentInDialogOpen(true)} className={cn("w-fit", BTN_SAVE_CLASS)}>
                             <Link2 className="h-4 w-4 mr-2" />
-                            Link Pay In
+                            Link Receipt
                           </Button>
                           <Button type="button" variant="ghost" size="sm" className="h-8 gap-1.5 text-muted-foreground hover:text-foreground" onClick={() => setLinkSectionInfoOpen(true)} aria-label="Link section information">
                             <Info className="h-4 w-4 shrink-0" />
@@ -3783,7 +3793,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                       <div className="pt-2 border-t flex flex-wrap gap-2 items-center">
                         <Button type="button" onClick={() => setIsLinkPaymentInDialogOpen(true)} className={cn("w-fit", BTN_SAVE_CLASS)}>
                           <Link2 className="h-4 w-4 mr-2" />
-                          Link Pay In
+                          Link Receipt
                         </Button>
                         <Button type="button" variant="ghost" size="sm" className="h-8 gap-1.5 text-muted-foreground hover:text-foreground" onClick={() => setLinkSectionInfoOpen(true)} aria-label="Link section information">
                           <Info className="h-4 w-4 shrink-0" />
@@ -4233,6 +4243,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
         entityName={voucher?.voucherNumber || "this payment out"}
         onMoveToBin={handleDelete}
         onDeletePermanently={handlePermanentDelete}
+        localOnlyCheck={{ companyId, collectionName: "vouchers", docId: savedVoucherId }}
         busy={isLoading}
       />
     </>

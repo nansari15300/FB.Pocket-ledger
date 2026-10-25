@@ -1,6 +1,7 @@
 "use client";
 
-import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
+import { getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 
 const CONFIG_PATH = "config/recycleBin";

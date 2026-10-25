@@ -1,5 +1,6 @@
 "use client";
 
+import { voucherTypeDisplayText, voucherTypeSearchText } from "@/lib/voucherTypeDisplay";
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useFyScopedVouchers } from "@/hooks/useFyScopedVouchers";
 import { useDate } from "@/hooks/useDate";
@@ -66,7 +67,8 @@ import {
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { PermissionButton } from "@/components/permission";
@@ -145,8 +147,8 @@ export default function DesktopItemStatementPage() {
       : "items"
   );
   const [listSearchTerm, setListSearchTerm] = useState("");
-  const [itemListQuickFilter, setItemListQuickFilter] = useState<EntityListQuickFilter>("default");
-  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [itemListQuickFilter, setItemListQuickFilter] = useState<EntityListQuickFilter>("latest");
+  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("latest");
 
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<ItemGroup | null>(null);
@@ -425,7 +427,7 @@ export default function DesktopItemStatementPage() {
     return list.filter((t: any) => {
       const vno = (t.voucherNumber || "").toLowerCase();
       const narr = (t.narration || "").toLowerCase();
-      const type = (typeof t.type === "string" ? t.type.replace(/_/g, " ") : "").toLowerCase();
+      const type = voucherTypeSearchText(t.type);
       const amount = String(t.debit ?? t.credit ?? t.total ?? "").toLowerCase();
       return vno.includes(q) || narr.includes(q) || type.includes(q) || amount.includes(q);
     });
@@ -565,7 +567,7 @@ export default function DesktopItemStatementPage() {
         "Date (BS)": formatDateBS(d),
         "Date (AD)": format(d, 'MMM-dd-yyyy'),
         "Voucher No.": t.voucherNumber,
-        Type: t.type?.replace(/_/g, " "),
+        Type: voucherTypeDisplayText(t.type),
         Narration: t.narration || "",
         Debit: t.debit,
         Credit: t.credit,

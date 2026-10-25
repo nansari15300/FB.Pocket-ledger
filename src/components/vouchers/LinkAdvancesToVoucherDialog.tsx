@@ -13,7 +13,8 @@ import { useVouchers } from "@/hooks/useVouchers";
 import { useAdvancesForSale, useAdvancesForPurchase } from "@/hooks/useAdvancesForVoucher";
 import { useCompany } from "@/hooks/useCompany";
 import { useDate } from "@/hooks/useDate";
-import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore";
+import { doc, updateDoc, Timestamp } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
 import {
@@ -708,7 +709,7 @@ export function LinkAdvancesToVoucherDialog({
     const next: Record<string, number> = {};
     for (const a of allocations) next[a.voucherId] = a.amount;
     setLinkedAmounts(next);
-    toast.success(mode === "sale" ? "Amount allocated to payment ins (oldest first)." : "Amount allocated to payment outs (oldest first).");
+    toast.success(mode === "sale" ? "Amount allocated to receipts (oldest first)." : "Amount allocated to payment outs (oldest first).");
   };
 
   const handleReset = () => {
@@ -933,7 +934,7 @@ export function LinkAdvancesToVoucherDialog({
                       const linked = linkedAmounts[row.id] ?? 0;
                       const allocatedToOthers = (row as { allocatedToOthers?: number }).allocatedToOthers ?? 0;
                       const otherLinked = allocatedToOthers;
-                      const rowType = row.id === OPENING_BALANCE_VOUCHER_ID || row.type === "opening_balance" ? "Opening Balance" : row.type === "payment_in" || row.type === "direct_income" ? "payment in" : row.type === "payment_out" || row.type === "direct_expense" ? "payment out" : row.type === "purchase" || row.type === "purchase_service" ? "purchase" : row.type === "sale" || row.type === "sale_service" ? "sale" : row.type;
+                      const rowType = row.id === OPENING_BALANCE_VOUCHER_ID || row.type === "opening_balance" ? "Opening Balance" : row.type === "payment_in" || row.type === "direct_income" ? "receipt" : row.type === "payment_out" || row.type === "direct_expense" ? "payment out" : row.type === "purchase" || row.type === "purchase_service" ? "purchase" : row.type === "sale" || row.type === "sale_service" ? "sale" : row.type;
                       const isOBRow = row.id === OPENING_BALANCE_VOUCHER_ID;
                       // Cap by linkable amount (remaining), not full amount — OB row bhi linkable se cap hona chahiye.
                       const rowMax = row.remaining;

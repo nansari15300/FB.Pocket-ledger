@@ -98,8 +98,8 @@ export function bankLedgerTxnColumnLabels(
 export const BANK_LEDGER_DRCR_PERSPECTIVE_INFO = {
   title: "Company vs Bank Dr/Cr",
   body: [
-    "Bank mode (default): Cash-book / bank-statement style for this account. Payment Out posts as Credit (Cr), Payment In as Debit (Dr). The balance Dr/Cr follows this Bank view.",
-    "Company mode: Treat the bank/cash account like a party. Payment Out posts as Debit (Dr), Payment In as Credit (Cr). The balance Dr/Cr follows this Company view.",
+    "Bank mode (default): Cash-book / bank-statement style for this account. Payment Out posts as Credit (Cr), Receipt as Debit (Dr). The balance Dr/Cr follows this Bank view.",
+    "Company mode: Treat the bank/cash account like a party. Payment Out posts as Debit (Dr), Receipt as Credit (Cr). The balance Dr/Cr follows this Company view.",
     "Today In / Today Out still mean money in and money out. Only the Debit/Credit columns and the Dr/Cr balance label change with the switch.",
     "This switch is only for Bank/Cash statement, spend-wise, and day peek ledgers — not for Party or Staff ledgers.",
   ].join("\n\n"),

@@ -12,6 +12,7 @@
  * - Writes: local SQLite + outbox (`localVoucherOutbox`) → Firestore flush when online (`writeEntity` static path).
  */
 
+import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { doc, getDoc, Timestamp } from "firebase/firestore";
 import { firestore } from "@/lib/firebase";
 import { clearBrowserDbCache, getBrowserDbForCompanyId } from "@/lib/localSqlite";
@@ -107,6 +108,8 @@ async function shouldPersistCompanyDocToBrowserDb(
   if (shouldMirrorToBrowserDb()) return true;
   const cid = String(companyId || "").trim();
   if (!cid) return false;
+  // Pocket Ledger Server (PocketBase) companies: SQLite is the local copy the UI reads and the outbox pushes from.
+  if (isPocketBaseCompanyId(cid)) return true;
   try {
     const row = await getLocalCompanyById(cid, { includeDeleted: true });
     // `writeEntity` local-first se align — strategy SQLite-first ho to persist skip mat karo
@@ -966,9 +969,10 @@ async function commitCompanyDocOnRenderer(
 
   // IndexedDB flush debounced (~250ms) from stmt.run — UI ko full DB export par mat roko.
   if (shouldNotify) {
-    // User-visible writes flush immediately; silent mirror batches use the SQLite wrapper's debounce.
-    void import("@/lib/localSqlite").then(({ flushPendingBrowserDbSave }) => {
-      flushPendingBrowserDbSave().catch(() => undefined);
+    // Was: immediate flushPendingBrowserDbSave() per user-visible write = full sql.js export each time
+    // (multi-second main-thread LONGTASKs per save on web). Now coalesced debounced persist; pagehide flushes.
+    void import("@/lib/localSqlite").then(({ scheduleBrowserDbPersistAfterWrite }) => {
+      scheduleBrowserDbPersistAfterWrite();
     });
   }
 
@@ -1289,6 +1293,18 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
       pendingBillWiseOutboxById = new Map();
     }
   }
+  // Unsynced local edit wins in EVERY mirror path (listener bake, pulls, prefetch): a doc with a sync_outbox row
+  // (pending/failed/paused, e.g. quota hold) must never be overwritten by a stale server copy.
+  let unsyncedOutboxIds: Set<string> = new Set();
+  let unsyncedOutboxPayloads: Map<string, Record<string, unknown>> = new Map();
+  try {
+    const { readPendingOutboxPayloadsForCompany } = await import("@/lib/localVoucherOutbox");
+    unsyncedOutboxPayloads = await readPendingOutboxPayloadsForCompany(companyId, collectionName);
+    unsyncedOutboxIds = new Set(unsyncedOutboxPayloads.keys());
+  } catch {
+    unsyncedOutboxIds = new Set();
+    unsyncedOutboxPayloads = new Map();
+  }
   for (const row of docs) {
     const rec = row as { id?: string };
     const id = rec?.id as string | undefined;
@@ -1303,6 +1319,23 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
       continue;
     }
     incomingIds.add(id);
+    if (unsyncedOutboxIds.has(id)) {
+      const pending = unsyncedOutboxPayloads.get(id);
+      if (pending && Object.keys(pending).length > 1) {
+        try {
+          const existing = await getCompanyDocFromBrowserDb(companyId, collectionName, id, { sqliteOnly: true });
+          const existingMs = existing ? mirrorDocEditTimeMs(existing) : 0;
+          const pendingMs = mirrorDocEditTimeMs(pending);
+          if (!existing || pendingMs >= existingMs) {
+            await upsertCompanyDocInBrowserDb(companyId, collectionName, id, pending, { notify: false });
+          }
+        } catch {
+          /* keep skip */
+        }
+      }
+      skipped += 1;
+      continue;
+    }
     let payload = { ...(row as object), id } as Record<string, unknown>;
     if (options?.mergePreferNewer) {
       try {
@@ -1527,7 +1560,9 @@ export async function mirrorCompanyDocToBrowserDb(
       );
     }
     // Server snapshot = trusted read path; voucher plan gate yahan nahi (flush already paid-gated upstream where needed).
-    await upsertCompanyDocInBrowserDb(companyId, collectionName, docId, stampLocalMirrorBackedByFirestore(payload), {
+    // Unacknowledged SDK write (quota/offline) => keep unstamped: not confirmed by server.
+    const mirrorRow = snap.metadata.hasPendingWrites ? payload : stampLocalMirrorBackedByFirestore(payload);
+    await upsertCompanyDocInBrowserDb(companyId, collectionName, docId, mirrorRow, {
       notify: false,
       skipPlanMutationGate: true,
     });

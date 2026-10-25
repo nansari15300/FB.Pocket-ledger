@@ -14,7 +14,7 @@ import {
 } from "@/lib/driveAuthClient";
 import { markDriveOAuthReturnGrace } from "@/lib/driveOAuthReturnGrace";
 import {
-  getFirebaseAuthUserForApi,
+  getDriveApiUser,
   isLocalSyntheticAuthUid,
 } from "@/lib/firebaseAuthForApi";
 import { useAuth } from "@/hooks/useAuth";
@@ -152,7 +152,7 @@ export function JoinSharedLocalCompanyPanel({
       return;
     }
     try {
-      const firebaseUser = await getFirebaseAuthUserForApi();
+      const firebaseUser = await getDriveApiUser();
       if (companyId) markDriveOAuthReturnGrace(companyId);
       const { url } = await getGoogleDriveAuthUrl({
         returnPath: resolveDriveOAuthReturnPath(returnPath),

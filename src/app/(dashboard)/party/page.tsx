@@ -53,7 +53,8 @@ import type { Party, Group } from "@/components/party/types";
 import { useResponsiveListLayout } from "@/hooks/useResponsiveListLayout";
 import { ResponsiveMasterDetail } from "@/components/layout/ResponsiveMasterDetail";
 import { LoadingSpinner } from "@/components/layout/LoadingSpinner";
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, query, where } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { applyPaymentBillWiseLinkAllocations } from "@/lib/voucherActionsClient";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -317,8 +318,8 @@ function PartyPageContent() {
   useRegisterMasterDetailHardwareBack("party", onBackToList);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [partyListQuickFilter, setPartyListQuickFilter] = useState<EntityListQuickFilter>("default");
-  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [partyListQuickFilter, setPartyListQuickFilter] = useState<EntityListQuickFilter>("latest");
+  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("latest");
   /** Party list: sirf un jinke paas pending approval (count box click toggle) */
   const {
     showOnlyEntities: showOnlyPartiesWithPendingApproval,

@@ -597,6 +597,7 @@ export function DaybookReport({
                         <CardDescription>All transactions for the selected date.</CardDescription>
                     </div>
                     <div className="flex items-center gap-2">
+                            {/* Mobile: summary collapsed => show button yahan (Daily Summary header hidden hota hai) */}                             {isMobile && dashboardEmbedded && daybookTopCollapsed ? (                                 <Button type="button" variant="outline" size="sm" data-pl-daybook-top-toggle-mobile="" aria-label="Show Daybook summary" title="Show summary" aria-expanded={false} onClick={toggleDaybookTopCollapsed} className="h-9 min-h-9 max-h-9 shrink-0 px-2.5">                                     <ChevronDown className="h-[18px] w-[18px]" />                                 </Button>                             ) : null}
                         {isMobile && daybookRowsPerPage !== 'all' && (
                             <Button 
                                 variant="outline" 
@@ -619,20 +620,23 @@ export function DaybookReport({
                         <CardHeader className={cn("pb-2 pt-4 space-y-3", isMobile ? "px-2" : "px-4")}>
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div className="min-w-0">
-                                    <CardTitle className="text-sm flex items-center gap-2"><Info className="h-4 w-4 shrink-0" />Daily Summary</CardTitle>
+                                    <div className="flex min-w-0 items-center justify-between gap-2">                                     <CardTitle className="text-sm flex items-center gap-2"><Info className="h-4 w-4 shrink-0" />Daily Summary</CardTitle>                                     {/* Mobile: Daily Summary hide (same state/key as PC toolbar toggle) - title row ke right */}                                     {isMobile && dashboardEmbedded ? (                                       <Button type="button" variant="outline" size="sm" data-pl-daybook-top-toggle-mobile="" aria-label="Hide Daybook summary" title="Hide summary" aria-expanded={!daybookTopCollapsed} onClick={toggleDaybookTopCollapsed} className="h-8 min-h-8 max-h-8 shrink-0 px-2">                                         <ChevronUp className="h-[18px] w-[18px]" />                                       </Button>                                     ) : null}                                     </div>
                                     {/* PC: account search yahi (pehle user dropdown tha); user filter neeche transaction row me */}
                                     <CardDescription className="text-blue-700">Only showing bank and cash summary.</CardDescription>
                                 </div>
                                 {/* Mobile: User filter; PC: account search — Daily Summary header right */}
                                 {isMobile ? (
                                 <div className="flex w-full flex-col gap-1 sm:w-[min(100%,220px)] shrink-0">
-                                    <span className="text-xs font-medium text-blue-900">User</span>
+                                    {/* Mobile: User dropdown (baki jagah, shrink) + account search (right) ek hi row me */}
+                                    <div className="flex w-full min-w-0 items-center gap-1" data-pl-daybook-mobile-user-search-row="">
+                                    <div className="min-w-0 flex-1">
                                     <Select
                                         value={daybookUserFilter ?? "__all__"}
                                         onValueChange={(v) => setDaybookUserFilter(v === "__all__" ? null : v)}
                                     >
                                         <SelectTrigger
                                             data-pl-toolbar-field=""
+                                            aria-label="User"
                                             className={cn(daybookToolbarSelectTriggerCn, "w-full")}
                                         >
                                             <SelectValue placeholder="All users" />
@@ -646,6 +650,25 @@ export function DaybookReport({
                                             ))}
                                         </SelectContent>
                                     </Select>
+                                    </div>
+                                    {/* Mobile: account search - Recent Search jaisa white; width min(50vw, 2.5in), User row me right side */}
+                                        <div className="relative h-[38px] w-[50vw] max-w-[240px] shrink-0">
+                                            <Search className="pointer-events-none absolute left-2 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                                            <Input
+                                                id="daybook-account-search-mobile"
+                                                type="search"
+                                                enterKeyHint="search"
+                                                listChrome
+                                                listChromeSearch
+                                                value={daybookSummaryAccountSearch}
+                                                onChange={(e) => setDaybookSummaryAccountSearch(e.target.value)}
+                                                placeholder="Search"
+                                                className="h-[38px] min-h-[38px] max-h-[38px] w-full bg-white py-1 pl-8 pr-2 text-sm dark:bg-white"
+                                                autoComplete="off"
+                                                aria-label="Search account"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                                 ) : (
                                 <div className="relative w-full sm:w-[min(100%,220px)] shrink-0">
@@ -1064,18 +1087,21 @@ export function DaybookReport({
                     </div>
                 </div>
               )}
-              {/* Floating day stepper (same as the account day popup) - PC dashboard Daybook; mobile keeps its swipe strip arrows. */}
-              {dashboardEmbedded && !isMobile ? (
+              {/* Floating day stepper (same as the account day popup) - PC dashboard Daybook (list ke bottom); mobile dashboard: footer ribbon ke upar center (portal). */}
+              {dashboardEmbedded && (!isMobile || footerPortalTarget) ? (
+                (() => {
+                /* Mobile dashboard: same stepper portaled into fixed footer, footer chevron ki row me (welcome ke 2px upar), center. */
+                const daybookDayStepper = (
                 <div
                   data-pl-day-stepper-float=""
-                  className="pointer-events-none absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 print:hidden"
+                  className={cn("pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center print:hidden", isMobile ? "bottom-[calc(100%+2px)] z-[45] gap-[40px]" : "bottom-3 z-30 gap-2")}
                 >
                   <button
                     type="button"
                     aria-label="Previous day"
                     title="Previous day"
                     onClick={() => shiftDaybookDateBy(-1)}
-                    className={cn(chromeProPillCn, "pointer-events-auto h-8 w-10 rounded-full px-0 inline-flex items-center justify-center shadow-lg disabled:opacity-40 disabled:pointer-events-none")}
+                    className={cn(chromeProPillCn, "pointer-events-auto rounded-full px-0 inline-flex items-center justify-center shadow-lg disabled:opacity-40 disabled:pointer-events-none", isMobile ? "h-[var(--pl-mobile-txn-footer-row-h,2.625rem)] min-h-[var(--pl-mobile-txn-footer-row-h,2.625rem)] w-[calc(var(--pl-mobile-txn-footer-row-h,2.625rem)*1.5)]" : "h-8 w-10")}
                   >
                     <ChevronLeft className="h-[18px] w-[18px]" />
                   </button>
@@ -1085,16 +1111,21 @@ export function DaybookReport({
                     title="Next day"
                     disabled={!daybookDate || startOfDay(daybookDate).getTime() >= startOfDay(new Date()).getTime()}
                     onClick={() => shiftDaybookDateBy(1)}
-                    className={cn(chromeProPillCn, "pointer-events-auto h-8 w-10 rounded-full px-0 inline-flex items-center justify-center shadow-lg disabled:opacity-40 disabled:pointer-events-none")}
+                    className={cn(chromeProPillCn, "pointer-events-auto rounded-full px-0 inline-flex items-center justify-center shadow-lg disabled:opacity-40 disabled:pointer-events-none", isMobile ? "h-[var(--pl-mobile-txn-footer-row-h,2.625rem)] min-h-[var(--pl-mobile-txn-footer-row-h,2.625rem)] w-[calc(var(--pl-mobile-txn-footer-row-h,2.625rem)*1.5)]" : "h-8 w-10")}
                   >
                     <ChevronRight className="h-[18px] w-[18px]" />
                   </button>
                 </div>
+                );
+                return isMobile && footerPortalTarget ? createPortal(daybookDayStepper, footerPortalTarget) : daybookDayStepper;
+                })()
               ) : null}
               {dashboardEmbedded ? (
                 isMobile ? (
+                  (() => {
+                  const daybookMobilePager = (
                   <MobileTransactionsPager
-                    className="px-2 pt-2"
+                    className={footerPortalTarget ? "px-0 pt-0" : "px-2 pt-2"}
                     currentPage={daybookSafePage}
                     totalItems={daybookListTotal}
                     rowsPerPage={daybookPageSize}
@@ -1108,6 +1139,17 @@ export function DaybookReport({
                     trimSummary
                     includeAllOption={false}
                   />
+                  );
+                  /* Mobile dashboard: pager fixed footer me portal (welcome ke neeche, tabs ke upar); scroll area me duplicate nahi. */
+                  return footerPortalTarget
+                    ? createPortal(
+                        <div data-pl-daybook-mobile-footer-pager="" className="w-full min-w-0 print:hidden">
+                          {daybookMobilePager}
+                        </div>,
+                        footerPortalTarget,
+                      )
+                    : daybookMobilePager;
+                  })()
                 ) : footerPortalTarget ? (
                   createPortal(
                   <div data-pl-daybook-ledger-footer="" className="w-full min-w-0 shrink-0 overflow-hidden print:hidden">
@@ -1178,39 +1220,7 @@ export function DaybookReport({
                   footerPortalTarget
                   )
                 ) : null
-              ) : null}            {/* Mobile: txn list ke niche ← → swipe strip; desktop dashboard uses Good Afternoon ribbon. */}
-            {isMobile ? (
-            <div className="relative shrink-0 flex h-10 items-center print:hidden">
-                <button
-                    type="button"
-                    data-pl-daybook-date-swipe=""
-                    aria-label="Previous day"
-                    className={cn(
-                        "absolute left-0 flex h-10 items-center justify-center rounded-r-md text-muted-foreground/35 hover:text-muted-foreground/70 hover:bg-muted/25 transition-colors",
-                        isMobile ? "w-12" : "h-9 w-9"
-                    )}
-                    onClick={() => shiftDaybookDateBy(-1)}
-                    onTouchStart={isMobile ? handleDaybookTouchStart : undefined}
-                    onTouchEnd={isMobile ? handleDaybookTouchEnd : undefined}
-                >
-                    <ChevronLeft className={cn(isMobile ? "h-7 w-7" : "h-8 w-8")} strokeWidth={1.5} />
-                </button>
-                <button
-                    type="button"
-                    data-pl-daybook-date-swipe=""
-                    aria-label="Next day"
-                    className={cn(
-                        "absolute right-0 flex h-10 items-center justify-center rounded-l-md text-muted-foreground/35 hover:text-muted-foreground/70 hover:bg-muted/25 transition-colors",
-                        isMobile ? "w-12" : "h-9 w-9"
-                    )}
-                    onClick={() => shiftDaybookDateBy(1)}
-                    onTouchStart={isMobile ? handleDaybookTouchStart : undefined}
-                    onTouchEnd={isMobile ? handleDaybookTouchEnd : undefined}
-                >
-                    <ChevronRight className={cn(isMobile ? "h-7 w-7" : "h-8 w-8")} strokeWidth={1.5} />
-                </button>
-            </div>
-            ) : null}
+              ) : null}
             </CardContent>
         </Card>
         {isMobile && showSwipeDateIntro && isPanelVisible ? (

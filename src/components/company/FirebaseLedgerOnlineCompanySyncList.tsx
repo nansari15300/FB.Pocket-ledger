@@ -22,6 +22,10 @@ import { requestAttachmentUiRefresh } from "@/lib/attachmentLoadReady";
 import { notifyBrowserDbCollectionUpdated } from "@/lib/localCompanyDocMirror";
 import { COMPANY_LOCAL_MIRROR_SUBCOLLECTIONS } from "@/lib/firestoreToLocalCompanyPull";
 import { isSharedOnlineCompany } from "@/lib/companyStorageKind";
+import {
+  filterFirebaseCompaniesForServerSession,
+  isServerOnlyLoginSession,
+} from "@/lib/pocketbaseData/serverSessionCompanyScope";
 
 type Props = {
   companies: Company[];
@@ -52,7 +56,7 @@ function draftsFromCompanies(companies: Company[]): DraftMap {
 }
 
 export function FirebaseLedgerOnlineCompanySyncList({
-  companies,
+  companies: companiesProp,
   compact = false,
   fillHeight = false,
   leadingActions,
@@ -60,6 +64,9 @@ export function FirebaseLedgerOnlineCompanySyncList({
   onSelectCompany,
   onLogoutCompany,
 }: Props) {
+  /** Server-only login: Firebase rows never reach this list (defensive - callers filter too). */
+  const serverOnlyLogin = isServerOnlyLoginSession();
+  const companies = useMemo(() => filterFirebaseCompaniesForServerSession(companiesProp), [companiesProp]);
   const { toast } = useToast();
   const [prefsTick, setPrefsTick] = useState(0);
   const [syncEnabled, setSyncEnabled] = useState(() => isFirebaseLedgerDataSyncEnabled());
@@ -121,6 +128,14 @@ export function FirebaseLedgerOnlineCompanySyncList({
       return id && !seen.has(id);
     });
   }, [companies, myCompanies, sharedCompanies]);
+
+  if (serverOnlyLogin && companies.length === 0) {
+    return (
+      <p className="px-2 py-3 text-xs text-muted-foreground">
+        No online companies yet. In this session online companies come from the Pocket Ledger Server only.
+      </p>
+    );
+  }
 
   if (!syncEnabled && companies.length === 0) {
     return (

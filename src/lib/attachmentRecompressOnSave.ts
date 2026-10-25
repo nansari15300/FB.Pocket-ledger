@@ -279,6 +279,18 @@ async function propagateReusedHttpsRecompressOrReturnFile(params: {
   const cid = String(params.companyId || "").trim();
   const fromUrl = String(params.fromUrl || "").trim();
   if (!cid || !/^https?:\/\//i.test(fromUrl)) return params.compressed;
+  // Global local-first: no inline Storage upload / registry reads on save. Return the compressed File; it is
+  // staged as local: pending with replacesUrl=fromUrl, and the background upload swaps the URL everywhere and
+  // deletes the old object only when nothing references it.
+  try {
+    const { apkEmbeddedSqliteFirstWritesPreferred } = await import("@/lib/apkOnlineFirestoreWritePolicy");
+    if (apkEmbeddedSqliteFirstWritesPreferred()) {
+      markRecompressReplacementSourceUrl(params.compressed, fromUrl);
+      return params.compressed;
+    }
+  } catch {
+    /* continue legacy path */
+  }
 
   const {
     countAttachmentUsageInCompany,
@@ -317,6 +329,23 @@ async function propagateReusedHttpsRecompressOrReturnFile(params: {
   }
 }
 
+/**
+ * Phase 2 hotfix: compressed File that replaces an already-uploaded HTTPS attachment (edit-time recompress
+ * whose immediate re-upload failed). Staging code reads this so the pending upload later swaps the old URL
+ * everywhere and deletes the old Storage object only when nothing references it (same rule as
+ * rewriteCompanyHttpsAttachmentUrlEverywhere).
+ */
+const recompressReplacementSourceUrl = new WeakMap<Blob, string>();
+
+export function getRecompressReplacementSourceUrl(file: Blob | null | undefined): string | undefined {
+  if (!file) return undefined;
+  return recompressReplacementSourceUrl.get(file);
+}
+
+export function markRecompressReplacementSourceUrl(file: Blob, fromUrl: string): void {
+  if (file && /^https?:\/\//i.test(String(fromUrl || ""))) recompressReplacementSourceUrl.set(file, fromUrl);
+}
+
 type SaveCompressJob =
   | { index: number; kind: "file"; file: File }
   | { index: number; kind: "url"; url: string; blob: Blob; srcFile: File };
@@ -347,6 +376,23 @@ export async function recompressOversizedImageAttachmentsOnSave(
   // Add-time compress (Payment Out jaisa): sirf File/PDF under cap — save par dubara download/compress mat karo.
   if (!hasOversizedImageFile && !hasImageUrl) return items;
 
+  let skipExistingUrlRecompress = false;
+  try {
+    const { apkEmbeddedSqliteFirstWritesPreferred } = await import("@/lib/apkOnlineFirestoreWritePolicy");
+    skipExistingUrlRecompress = apkEmbeddedSqliteFirstWritesPreferred();
+  } catch {
+    /* ignore */
+  }
+  try {
+    const { isServerQuotaHoldActive } = await import("@/lib/serverQuotaHold");
+    if (isServerQuotaHoldActive()) skipExistingUrlRecompress = true;
+  } catch {
+    /* ignore */
+  }
+  // Existing HTTPS: Storage download/recompress quota pe 4–5 min chipak jata hai, file size wahi rehti.
+  // Local-first / quota: sirf naye oversized File jobs; toast mat dikhao.
+  if (skipExistingUrlRecompress && !hasOversizedImageFile) return items;
+
   const passthrough = new Map<number, File | string>();
   const jobs: SaveCompressJob[] = [];
 
@@ -362,7 +408,12 @@ export async function recompressOversizedImageAttachmentsOnSave(
     const url = String(item || "").trim();
     if (!url || !looksLikeImageAttachmentUrl(url)) {
       passthrough.set(index, item);
+      return;
     }
+    // Local-first save path: do NOT download every existing image URL (Storage https / local: blob) just to
+    // check its size - that cost ~2 s per save (and hangs on Storage quota). New files are compressed at
+    // add-time; existing refs are kept as-is.
+    if (skipExistingUrlRecompress) passthrough.set(index, item);
   });
 
   const urlIndexes = items
@@ -446,15 +497,15 @@ export async function recompressOversizedImageAttachmentsOnSave(
 
         if (compressed.size < beforeBytes) {
           throwIfAttachmentCompressionAborted(signal);
-          results.set(
-            job.index,
-            await propagateReusedHttpsRecompressOrReturnFile({
-              companyId: opts?.companyId,
-              fromUrl: job.url,
-              compressed,
-              silent: opts?.silent,
-            })
-          );
+          const next = await propagateReusedHttpsRecompressOrReturnFile({
+            companyId: opts?.companyId,
+            fromUrl: job.url,
+            compressed,
+            silent: opts?.silent,
+          });
+          // Upload failed / per-voucher re-upload: remember which HTTPS URL this File replaces.
+          if (next instanceof Blob) markRecompressReplacementSourceUrl(next, job.url);
+          results.set(job.index, next);
         } else {
           results.set(job.index, job.url);
         }

@@ -1,6 +1,7 @@
 "use client";
 
-import { doc, getDoc, setDoc, getDocs, collection, collectionGroup, deleteDoc, serverTimestamp, query, orderBy, where, writeBatch } from "firebase/firestore";
+import { doc, setDoc, collection, collectionGroup, deleteDoc, serverTimestamp, query, orderBy, where, writeBatch } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import { resolveDeviceSlotForCompanyWrite } from "@/lib/deviceSlotForUserDevices";

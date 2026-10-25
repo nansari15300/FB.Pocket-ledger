@@ -74,7 +74,7 @@ export function LoanAccountGroupList({
   const { formatCurrency } = useDate();
   const { animatePresenceMode, rowMotionProps, markListScrolling, isRowAnimationEnabled, layoutHoldMs } =
     useMasterListRowMotion();
-  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("latest");
   const quickFilter = quickFilterProp ?? internalQuickFilter;
   const setQuickFilter = onQuickFilterChange ?? setInternalQuickFilter;
 

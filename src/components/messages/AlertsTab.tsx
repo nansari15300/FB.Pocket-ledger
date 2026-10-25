@@ -7,7 +7,6 @@ import { useCompany } from "@/hooks/useCompany";
 import {
   collection,
   query,
-  onSnapshot,
   orderBy,
   doc,
   updateDoc,
@@ -15,6 +14,7 @@ import {
   where,
   deleteDoc,
 } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useEffect, useState } from "react";
 import {
@@ -51,14 +51,6 @@ import {
   localServerShareAlertGatePath,
 } from "@/lib/plServerShareInvite";
 import { LocalServerShareAlertConnectPanel } from "@/components/messages/LocalServerShareAlertConnectPanel";
-import {
-  IC_REVERSE_REQUESTS_CHANGED,
-  readInterCompanyReverseInbox,
-} from "@/lib/interCompany/interCompanyReverseRequests";
-import {
-  interCompanyReverseToLocalAlertNotification,
-  markInterCompanyReverseAlertReadLocal,
-} from "@/lib/interCompany/interCompanyReverseRequestAlert";
 import {
   formatInterCompanySystemJoinAlertMessage,
   interCompanySystemJoinAlertVisibleForCompany,
@@ -202,13 +194,7 @@ export function AlertsTab({
         const rid = String((n as { interCompanyRequestId?: string }).interCompanyRequestId || "").trim();
         if (rid) firestoreReqIds.add(rid);
       });
-      if (companyId && kindFilter !== "auto_only") {
-        for (const req of readInterCompanyReverseInbox(companyId)) {
-          if (req.status !== "pending" || firestoreReqIds.has(req.id)) continue;
-          const localN = interCompanyReverseToLocalAlertNotification(req, companyId) as Notification;
-          mergedById.set(localN.id, localN);
-        }
-      }
+      // IC reverse-request feature removed (local reverse inbox no longer merged).
 
       const sorted = Array.from(mergedById.values())
         // User request: normal "new transaction added" alerts hide; big amount alerts still visible.
@@ -326,18 +312,8 @@ export function AlertsTab({
     return () => unsubscribers.forEach((unsub) => unsub());
   }, [user, authLoading, recipientIds, isCompanyOwner, companyId, kindFilter, icReverseTick]);
 
-  useEffect(() => {
-    const onIc = () => setIcReverseTick((n) => n + 1);
-    window.addEventListener(IC_REVERSE_REQUESTS_CHANGED, onIc);
-    return () => window.removeEventListener(IC_REVERSE_REQUESTS_CHANGED, onIc);
-  }, []);
 
   const handleMarkAsRead = async (id: string) => {
-    if (id.startsWith("local-ic-rev-") && companyId) {
-      markInterCompanyReverseAlertReadLocal(companyId, id.replace("local-ic-rev-", ""));
-      setIcReverseTick((n) => n + 1);
-      return;
-    }
     try {
       await updateDoc(doc(firestore, "admin_notifications", id), { isRead: true });
     } catch (error) {
@@ -348,14 +324,6 @@ export function AlertsTab({
   const handleMarkAllAsRead = async () => {
     const unread = notifications.filter((n) => !n.isRead);
     if (unread.length === 0) return;
-
-    const localUnread = unread.filter((n) => n.id.startsWith("local-ic-rev-"));
-    if (companyId) {
-      for (const n of localUnread) {
-        markInterCompanyReverseAlertReadLocal(companyId, n.id.replace("local-ic-rev-", ""));
-      }
-      if (localUnread.length) setIcReverseTick((t) => t + 1);
-    }
 
     const firestoreUnread = unread.filter((n) => !n.id.startsWith("local-ic-rev-"));
     if (firestoreUnread.length === 0) return;
@@ -390,14 +358,6 @@ export function AlertsTab({
           const toDelete = notifications.filter(
             (n) => !user?.uid || (n as any).recipientUserId === user.uid
           );
-          if (companyId) {
-            for (const n of toDelete) {
-              if (n.id.startsWith("local-ic-rev-")) {
-                markInterCompanyReverseAlertReadLocal(companyId, n.id.replace("local-ic-rev-", ""));
-              }
-            }
-            setIcReverseTick((t) => t + 1);
-          }
           const firestoreOnly = toDelete.filter((n) => !n.id.startsWith("local-ic-rev-"));
           for (let i = 0; i < firestoreOnly.length; i += BATCH_SIZE) {
             const chunk = firestoreOnly.slice(i, i + BATCH_SIZE);

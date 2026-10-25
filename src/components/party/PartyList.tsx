@@ -23,6 +23,9 @@ import { EntityListQuickFilterBar,
 } from "@/components/entity/EntityListQuickFilterBar";
 import { usePrewarmVisibleAttachments } from "@/hooks/usePrewarmVisibleAttachments";
 import { useCompany } from "@/hooks/useCompany";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
+import { shouldHideEntityListSettledRow } from "@/lib/filterMasterEntityListRows";
 import { highlightQueryInText } from "@/lib/highlightQueryInText";
 import { MasterAliasSearchHint } from "@/components/entity/MasterAliasSearchHint";
 import { getInterCompanyPartyListTitleLines, isInterCompanyPartyListAccount } from "@/lib/interCompany/interCompanyCounterpartyPartyName";
@@ -86,10 +89,14 @@ function IcCompanyChildRows({
   renderRowShell,
   icCompanyRowProps,
 }: IcCompanyChildRowsProps) {
-  const sortedMembers = useMemo(
-    () => sortIcMemberParties(members, quickFilter),
-    [members, quickFilter]
-  );
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled } = useEntityListHideSettled();
+  const sortedMembers = useMemo(() => {
+    const visible = members.filter(
+      (member) => !shouldHideEntityListSettledRow(member.balance, hideSettled, quickFilter)
+    );
+    return sortIcMemberParties(visible, quickFilter, lastVoucherMsById);
+  }, [members, quickFilter, lastVoucherMsById, hideSettled]);
   const sortedOrderKey = useMemo(
     () => masterListOrderKey(sortedMembers.map((member) => member.id)),
     [sortedMembers]
@@ -178,8 +185,10 @@ export const PartyList = React.memo(({
 }) => {
   const { formatCurrency } = useDate();
   const { company } = useCompany();
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled, setHideSettled } = useEntityListHideSettled();
   const { animatePresenceMode, rowMotionProps, markListScrolling, isRowAnimationEnabled, layoutHoldMs } = useMasterListRowMotion();
-  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("latest");
   const quickFilter = quickFilterProp ?? internalQuickFilter;
   const setQuickFilter = onQuickFilterChange ?? setInternalQuickFilter;
   const highlightSearch = searchTerm.trim();
@@ -199,15 +208,16 @@ export const PartyList = React.memo(({
       // Footer quick filters: list short/filter from same control on mobile + desktop.
       if (quickFilter === "dr") return bal > 0;
       if (quickFilter === "cr") return bal < 0;
+      if (shouldHideEntityListSettledRow(bal, hideSettled, quickFilter)) return false;
       if (quickFilter === "settled") return isSettled(bal);
       if (quickFilter === "non_settled") return !isSettled(bal);
       return true;
     };
     const pinned = topPartyId ? list.filter((p) => p.id === topPartyId && filterFn(p)) : [];
     const rest = topPartyId ? list.filter((p) => p.id !== topPartyId) : list;
-    const filteredRest = sortPartyListRows(rest.filter(filterFn), quickFilter);
+    const filteredRest = sortPartyListRows(rest.filter(filterFn), quickFilter, lastVoucherMsById);
     return [...pinned, ...filteredRest];
-  }, [parties, searchTerm, topPartyId, quickFilter]);
+  }, [parties, searchTerm, topPartyId, quickFilter, lastVoucherMsById, hideSettled]);
 
   const visiblePartyAttachmentUrls = useMemo(
     () =>
@@ -561,7 +571,12 @@ export const PartyList = React.memo(({
           </ul>
         </ScrollArea>
         {!hideQuickFilterBar ? (
-          <EntityListQuickFilterBar active={quickFilter} onChange={setQuickFilter} />
+          <EntityListQuickFilterBar
+            active={quickFilter}
+            onChange={setQuickFilter}
+            hideSettled={hideSettled}
+            onHideSettledChange={setHideSettled}
+          />
         ) : null}
       </div>
     </TooltipProvider>

@@ -5,7 +5,8 @@
  * `companies/{id}.customUnits` so "+ Add unit" persists and dropdowns stay deduped (case-insensitive).
  */
 
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { updateCompanyDocRoot } from "@/lib/companyDocsClient";
 import { getLocalCompanyById, upsertLocalCompany, type LocalCompanyDoc } from "@/lib/localCompanyStore";

@@ -34,7 +34,8 @@ import { collectInterCompanyIdsForPendingApproval } from "@/lib/interCompany/int
 import { useResponsiveListLayout } from "@/hooks/useResponsiveListLayout";
 import { ResponsiveMasterDetail } from "@/components/layout/ResponsiveMasterDetail";
 import { LoadingSpinner } from "@/components/layout/LoadingSpinner";
-import { doc, getDoc, collection, query, getDocs, where, updateDoc } from "firebase/firestore";
+import { doc, collection, query, where, updateDoc } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useMasterDetailQueryNav } from "@/hooks/useMasterDetailQueryNav";
 import { useRegisterMasterDetailHardwareBack } from "@/hooks/useRegisterMasterDetailHardwareBack";
@@ -92,6 +93,9 @@ import {
   sumExpenseGroupSystemBranchBalancesFromForest,
 } from "@/lib/expenseGroupTree";
 import { isSystemParentGroup } from "@/lib/system-groups";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
+import { stampLastVoucherMsOnGroupForest } from "@/lib/masterListLastVoucherMs";
 import { toast as sonnerToast } from "sonner";
 import {
   filterAndSortMasterEntityListRows,
@@ -113,6 +117,8 @@ function IncomeExpensePageContent() {
   const { company, companyId, effectiveNotificationSettings } = useCompany();
   const { formatCurrency } = useDate();
   const { vouchers, loading: vouchersLoading, processedExpenseAccounts, processedExpenseGroups: initialProcessedExpenseGroups, userNames: vouchersUserNames } = useVouchers();
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled } = useEntityListHideSettled();
   const { can } = usePermissions();
   const showApproveOnList =
     can("approve_transactions") &&
@@ -191,8 +197,8 @@ function IncomeExpensePageContent() {
   useRegisterMasterDetailHardwareBack("incomes", onBackToList);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [accountListQuickFilter, setAccountListQuickFilter] = useState<EntityListQuickFilter>("default");
-  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [accountListQuickFilter, setAccountListQuickFilter] = useState<EntityListQuickFilter>("latest");
+  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("latest");
   const {
     showOnlyEntities: showOnlyExpenseAccountsWithPendingApproval,
     setShowOnlyEntities: setShowOnlyExpenseAccountsWithPendingApproval,
@@ -759,14 +765,22 @@ function IncomeExpensePageContent() {
       forest,
       searchTerm,
       groupListQuickFilter,
+      expenseGroupMembersByGroupId,
+      hideSettled
+    );
+    const stamped = stampLastVoucherMsOnGroupForest(
+      filtered,
+      lastVoucherMsById,
       expenseGroupMembersByGroupId
     );
-    return sortExpenseGroupTreeNodes(filtered, groupListQuickFilter);
+    return sortExpenseGroupTreeNodes(filtered, groupListQuickFilter, stamped);
   }, [
     expenseGroupsForList,
     searchTerm,
     groupListQuickFilter,
     expenseGroupMembersByGroupId,
+    lastVoucherMsById,
+    hideSettled,
   ]);
 
   const filteredExpenseGroupListCount = useMemo(
@@ -782,7 +796,8 @@ function IncomeExpensePageContent() {
       const visible = filterAndSortMasterEntityListRows(
         expenseAccountsForList,
         searchTerm,
-        accountListQuickFilter
+        accountListQuickFilter,
+        { lastVoucherMsById, hideSettled }
       );
       return sumExpenseGroupSystemBranchBalancesFromAccounts(visible, processedExpenseGroups);
     }
@@ -794,6 +809,8 @@ function IncomeExpensePageContent() {
     searchTerm,
     accountListQuickFilter,
     processedExpenseGroups,
+    lastVoucherMsById,
+    hideSettled,
   ]);
 
   const incomesListFooterSummary = useMemo(() => {

@@ -1,7 +1,8 @@
 "use client";
 
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { firestore } from "@/lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
+import { firestore, isFirestoreBlockedForServerSession } from "@/lib/firebase";
 import type { Entitlements, PlanId } from "@/config/plans";
 import { isUnlimitedEntitlementCap } from "@/config/plans";
 import { getPlanFromPlans } from "@/hooks/useLivePlans";
@@ -61,6 +62,8 @@ function writeLocalUsage(ownerUid: string, month: string, usage: AttachmentUsage
 /** Firestore `users/{uid}.attachmentUsageMonthly` — online sync; offline par localStorage. */
 async function readFirestoreUsage(ownerUid: string, month: string): Promise<AttachmentUsageMonth | null> {
   if (!ownerUid || typeof navigator !== "undefined" && !navigator.onLine) return null;
+  // Pocket Ledger Server login: Firestore unused - local counters only.
+  if (isFirestoreBlockedForServerSession()) return null;
   try {
     const snap = await getDoc(doc(firestore, "users", ownerUid));
     if (!snap.exists()) return null;
@@ -81,6 +84,8 @@ async function readFirestoreUsage(ownerUid: string, month: string): Promise<Atta
 
 async function writeFirestoreUsage(ownerUid: string, month: string, usage: AttachmentUsageMonth): Promise<void> {
   if (!ownerUid || typeof navigator !== "undefined" && !navigator.onLine) return;
+  // Pocket Ledger Server login: a Firestore write would never resolve (network off).
+  if (isFirestoreBlockedForServerSession()) return;
   try {
     await setDoc(
       doc(firestore, "users", ownerUid),

@@ -5,6 +5,12 @@ import { isCloudBackedCompanyShape } from "@/lib/offlineFullWarmSync";
 import { isOfflineCompanyStorage, isCloudLinkedCompanyStorage } from "@/lib/companyUnlockGate";
 import { isDeviceLocalCompany, isServerGateCompany } from "@/lib/companyStorageKind";
 import {
+  ONLINE_DATA_SERVER_POCKETBASE_ID,
+  readCachedOnlineDataServerSettings,
+  resolveOnlineDataBackend,
+  type OnlineDataServerSettings,
+} from "@/lib/onlineDataServer";
+import {
   DATA_SOURCE_MODE_STORAGE_KEY,
   type DataSourceMode,
 } from "@/lib/dataSourceModeDefaults";
@@ -363,12 +369,25 @@ export function activeGateAllowsCompanyCreate(gate: GateRecord): boolean {
   return isDeviceGate(gate) || isOnlineGate(gate);
 }
 
-export function activeGateCreateHint(gate: GateRecord): string {
+/**
+ * Where new Online companies go: the SuperAdmin-selected online data server (same seam as
+ * CreateCompanyForm). Settings omitted = local cache.
+ */
+export function onlineGateServerLabel(settings?: OnlineDataServerSettings | null): string {
+  const { effective } = resolveOnlineDataBackend(settings, "gate hint");
+  if (effective.id === ONLINE_DATA_SERVER_POCKETBASE_ID) {
+    const url = (settings ?? readCachedOnlineDataServerSettings()).pocketbaseUrl;
+    return url ? `${effective.name} (${url})` : effective.name;
+  }
+  return `your online account (${effective.name})`;
+}
+
+export function activeGateCreateHint(gate: GateRecord, onlineSettings?: OnlineDataServerSettings | null): string {
   if (isDeviceGate(gate)) {
     return "New companies save on this device (local SQLite). Drive sync uses the same company ID.";
   }
   if (isOnlineGate(gate)) {
-    return "New companies save to your online account (Firebase).";
+    return `New companies save to ${onlineGateServerLabel(onlineSettings)}.`;
   }
   if (isLocalServerGate(gate)) {
     return "Connect to the server to work — create companies on the server PC, or switch to Device / Online gate.";

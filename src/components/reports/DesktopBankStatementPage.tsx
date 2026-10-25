@@ -1,5 +1,6 @@
 "use client";
 
+import { voucherTypeDisplayText, voucherTypeSearchText } from "@/lib/voucherTypeDisplay";
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useFyScopedVouchers } from "@/hooks/useFyScopedVouchers";
 import { useDate } from "@/hooks/useDate";
@@ -74,7 +75,8 @@ import {
 import { Input } from "@/components/ui/input";
 import * as XLSX from "xlsx";
 import { RunningBalanceFullChart } from "@/components/reports/RunningBalanceFullChart";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { Card } from "@/components/ui/card";
@@ -180,8 +182,8 @@ export default function DesktopBankStatementPage() {
       : "accounts"
   );
   const [listSearchTerm, setListSearchTerm] = useState("");
-  const [accountListQuickFilter, setAccountListQuickFilter] = useState<EntityListQuickFilter>("default");
-  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [accountListQuickFilter, setAccountListQuickFilter] = useState<EntityListQuickFilter>("latest");
+  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("latest");
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<AccountGroup | null>(null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
@@ -407,7 +409,7 @@ export default function DesktopBankStatementPage() {
     return list.filter((t: any) => {
       const vno = (t.voucherNumber || "").toLowerCase();
       const narr = (t.narration || "").toLowerCase();
-      const type = (typeof t.type === "string" ? t.type.replace(/_/g, " ") : "").toLowerCase();
+      const type = voucherTypeSearchText(t.type);
       const amount = String(t.debit ?? t.credit ?? t.total ?? "").toLowerCase();
       return vno.includes(q) || narr.includes(q) || type.includes(q) || amount.includes(q);
     });
@@ -442,7 +444,7 @@ export default function DesktopBankStatementPage() {
       if ((t as any)._spendWiseSpacer) return true;
       const vno = (t.voucherNumber || "").toLowerCase();
       const narr = (t.narration || "").toLowerCase();
-      const type = (typeof t.type === "string" ? t.type.replace(/_/g, " ") : "").toLowerCase();
+      const type = voucherTypeSearchText(t.type);
       const amount = String(t.debit ?? t.credit ?? t.total ?? "").toLowerCase();
       return vno.includes(q) || narr.includes(q) || type.includes(q) || amount.includes(q);
     });
@@ -678,7 +680,7 @@ export default function DesktopBankStatementPage() {
         "Date (BS)": formatDateBS(d),
         "Date (AD)": formatDate(d),
         "Voucher No.": t.voucherNumber,
-        Type: typeof t.type === "string" ? t.type.replace(/_/g, " ") : String(t.type ?? ""),
+        Type: voucherTypeDisplayText(t.type),
         Narration: t.narration || "",
         Debit: t.debit,
         Credit: t.credit,

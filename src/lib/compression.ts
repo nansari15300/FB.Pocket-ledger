@@ -1,6 +1,6 @@
 "use client";
 
-import { throwIfAttachmentCompressionAborted } from "@/lib/attachmentCompressionUi";
+import { throwIfAttachmentCompressionAborted, isAttachmentCompressionCancelledError } from "@/lib/attachmentCompressionUi";
 import { importPdfJsDist } from "@/lib/importPdfJsDist";
 import {
   ensurePdfJsWorker,
@@ -231,6 +231,45 @@ async function fitJpegToTargetBand(
   return bestInBand ?? bestUnderCap;
 }
 
+/**
+ * Android WebView / Capacitor pickers often hand over a File with EMPTY `type` (content:// uri). Every image path
+ * gated on `type.startsWith("image/")` then returned the original untouched (progress still went to 100%).
+ * Infer the MIME from the extension so the real compress path runs.
+ */
+const EXT_IMAGE_MIME: Record<string, string> = {
+  jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp",
+  bmp: "image/bmp", heic: "image/heic", heif: "image/heif", avif: "image/avif", tif: "image/tiff", tiff: "image/tiff",
+};
+export function withInferredImageMime(file: File): File {
+  const t = String(file.type || "").toLowerCase();
+  if (t && t !== "application/octet-stream") return file;
+  const ext = (/\.([a-z0-9]+)$/i.exec(file.name || "")?.[1] || "").toLowerCase();
+  const mime = EXT_IMAGE_MIME[ext];
+  if (!mime) return file;
+  try {
+    return new File([file], file.name || `image.${ext}`, { type: mime, lastModified: file.lastModified });
+  } catch {
+    return file;
+  }
+}
+
+/** Never let a WebView decode/encode callback that never fires hang the save. */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`[compression] ${label} timed out after ${ms} ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
+
 export async function compressFile(
   file: File,
   options?: {
@@ -242,6 +281,7 @@ export async function compressFile(
   }
 ): Promise<File> {
   throwIfAttachmentCompressionAborted(options?.signal);
+  file = withInferredImageMime(file);
   const report = (pct: number) => options?.onProgress?.(Math.min(100, Math.max(0, Math.round(pct))));
   const MAX_KB = options?.maxKB ?? MAX_KB_DEFAULT;
   const minKbOpt = options?.minKB ?? imageSoftMinKbForMax(MAX_KB);
@@ -266,7 +306,7 @@ export async function compressFile(
 
   try {
     throwIfAttachmentCompressionAborted(options?.signal);
-    const { source, width: srcW, height: srcH } = await decodeImageForCanvas(file);
+    const { source, width: srcW, height: srcH } = await withTimeout(decodeImageForCanvas(file), 20_000, "decode");
     if (source instanceof ImageBitmap) {
       imageBitmapToClose = source;
     }
@@ -422,7 +462,7 @@ async function decodeImageForCanvas(
 ): Promise<{ source: CanvasImageSource; width: number; height: number }> {
   if (typeof createImageBitmap !== "undefined") {
     try {
-      let bm = await createImageBitmap(file);
+      let bm = await withTimeout(createImageBitmap(file), 15_000, "createImageBitmap");
       const w = bm.width;
       const h = bm.height;
       const maxDim = Math.max(w, h);
@@ -456,6 +496,12 @@ function loadImageWithImageElement(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
+    const timer = setTimeout(() => {
+      URL.revokeObjectURL(url);
+      reject(new Error("[compression] image element load timed out"));
+    }, 20_000);
+    img.addEventListener("load", () => clearTimeout(timer));
+    img.addEventListener("error", () => clearTimeout(timer));
 
     img.onload = () => {
       URL.revokeObjectURL(url);
@@ -475,15 +521,36 @@ function canvasToBlob(
   type: string,
   quality: number
 ): Promise<Blob> {
+  // Android WebView: toBlob can return null or never call back (memory pressure) -> toDataURL fallback + timeout.
+  const viaDataUrl = (): Blob | null => {
+    try {
+      const dataUrl = canvas.toDataURL(type, quality);
+      const comma = dataUrl.indexOf(",");
+      if (comma < 0) return null;
+      const bin = atob(dataUrl.slice(comma + 1));
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes.length ? new Blob([bytes], { type }) : null;
+    } catch {
+      return null;
+    }
+  };
   return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (b) => {
-        if (!b) return reject(new Error("Failed to compress image."));
-        resolve(b);
-      },
-      type,
-      quality
-    );
+    let done = false;
+    const finish = (b: Blob | null) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      const out = b ?? viaDataUrl();
+      if (!out) return reject(new Error("Failed to compress image."));
+      resolve(out);
+    };
+    const timer = setTimeout(() => finish(null), 12_000);
+    try {
+      canvas.toBlob((b) => finish(b), type, quality);
+    } catch {
+      finish(null);
+    }
   });
 }
 
@@ -700,8 +767,35 @@ export async function compressVoucherAttachment(
   maxBytes: number,
   options?: { minKB?: number; onProgress?: (pct: number) => void; signal?: AbortSignal }
 ): Promise<File> {
+  file = withInferredImageMime(file);
   const t = (file.type || "").toLowerCase();
   if (t.startsWith("image/")) {
+    const original = file;
+    try {
+      return await withTimeout(compressVoucherImageInner(file, maxBytes, options), 60_000, "image compress");
+    } catch (e) {
+      if (isAttachmentCompressionCancelledError(e)) throw e;
+      console.warn("[compression] image compress failed/timed out - keeping original", e);
+      return original;
+    }
+  }
+  if (t === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+    try {
+      return await withTimeout(compressPdfForAttachment(file, maxBytes), 90_000, "pdf compress");
+    } catch (e) {
+      console.warn("[compression] pdf compress failed/timed out - keeping original", e);
+      return file;
+    }
+  }
+  return file;
+}
+
+async function compressVoucherImageInner(
+  file: File,
+  maxBytes: number,
+  options?: { minKB?: number; onProgress?: (pct: number) => void; signal?: AbortSignal }
+): Promise<File> {
+  {
     const maxKB = Math.max(24, Math.floor(maxBytes / 1024));
     const minKB =
       options?.minKB != null && Number.isFinite(options.minKB) && options.minKB > 0
@@ -726,8 +820,4 @@ export async function compressVoucherAttachment(
     }
     return out;
   }
-  if (t === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-    return compressPdfForAttachment(file, maxBytes);
-  }
-  return file;
 }

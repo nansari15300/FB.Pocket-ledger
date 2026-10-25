@@ -1,5 +1,6 @@
 "use client";
 
+import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
 import { STAFF_ENTITY_LABEL, STAFF_ENTITY_SEARCH_PLACEHOLDER } from "@/lib/staffEntityDisplayName";
 
@@ -8,7 +9,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useForm, type FieldErrors } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { addDoc, collection, serverTimestamp, doc, getDoc, updateDoc, deleteDoc, query, onSnapshot, where, getDocs } from "firebase/firestore";
+import { addDoc, collection, serverTimestamp, doc, updateDoc, deleteDoc, query, where } from "firebase/firestore";
+import { getDoc, onSnapshot, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore, storage } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
@@ -618,7 +620,7 @@ export function CreateNoteForm({
 
         if (toUpload.length > 0) {
           const totalNewBytes = toUpload.reduce((s, f) => s + (f.size || 0), 0);
-          const limitCheck = await checkStorageLimit(companyId, company?.planId, { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes }, company?.storageOption);
+          const limitCheck = await checkStorageLimitSafe(companyId, company?.planId, { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes }, company?.storageOption);
           if (!limitCheck.allowed) {
             sonnerToast.error("Storage limit reached", { id: toastId, description: limitCheck.message });
             setIsLoading(false);
@@ -647,14 +649,16 @@ export function CreateNoteForm({
               }
             }
           } else {
-            for (const file of toUpload) {
-              const url = await uploadVoucherAttachmentFileToFirebase({
+            {
+              const up = await uploadVoucherFilesOrStageLocalPending({
                 companyId,
-                voucherType: "note",
-                file,
+                storageFolder: "note",
+                existingFileUrls: fileUrls,
+                files: toUpload,
+                existingVoucherId: voucher?.id ?? null,
               });
-              fileUrls.push(url);
-              await incrementCompanyStorage(companyId, { attachmentsBytes: file.size, storageBytes: file.size });
+              fileUrls = up.fileUrls;
+              if (up.preGeneratedVoucherId) preGeneratedVoucherId = up.preGeneratedVoucherId;
             }
           }
         }
@@ -1358,6 +1362,7 @@ export function CreateNoteForm({
       entityName={voucher?.voucherNumber || "this note"}
       onMoveToBin={handleDelete}
       onDeletePermanently={handlePermanentDelete}
+      localOnlyCheck={{ companyId, collectionName: "vouchers", docId: savedVoucherId }}
       busy={isLoading}
     />
     </>

@@ -1,8 +1,9 @@
 "use client";
 
+import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { openDB } from "./offlineDb";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { doc, getDoc, setDoc, type DocumentReference } from "firebase/firestore";
+import { doc, getDoc, getDocFromCache, getDocFromServer, setDoc, type DocumentReference } from "firebase/firestore";
 import { storage } from "@/lib/firebase";
 import { firestore } from "@/lib/firebase";
 import { writeEntity } from "@/lib/writeGateway";
@@ -213,6 +214,38 @@ function firstDriveFileRef(fieldValue: unknown): string | null {
   return null;
 }
 
+/**
+ * Mirror-verify backoff: a pending blob whose HTTPS mirror can't be verified was re-tried every sync cycle
+ * (Firestore read + SQLite write + console.warn each time). Exponential backoff per localId: 1m .. 30m.
+ */
+const mirrorVerifyBackoff = new Map<string, { fails: number; nextAt: number }>();
+function mirrorVerifyBackedOff(localId: string): boolean {
+  const b = mirrorVerifyBackoff.get(localId);
+  return !!b && Date.now() < b.nextAt;
+}
+function noteMirrorVerifyFail(localId: string): number {
+  const prev = mirrorVerifyBackoff.get(localId);
+  const fails = (prev?.fails ?? 0) + 1;
+  const delay = Math.min(30 * 60_000, 60_000 * 2 ** (fails - 1));
+  mirrorVerifyBackoff.set(localId, { fails, nextAt: Date.now() + delay });
+  return delay;
+}
+
+async function pendingStorageHoldActive(): Promise<boolean> {
+  try {
+    const { isServerQuotaHoldActive } = await import("@/lib/serverQuotaHold");
+    return isServerQuotaHoldActive();
+  } catch {
+    return false;
+  }
+}
+
+function isStorageQuotaError(e: unknown): boolean {
+  const code = String((e as { code?: string })?.code || "");
+  const msg = e instanceof Error ? e.message : String(e);
+  return /quota-exceeded|resource-exhausted|quota/i.test(`${code} ${msg}`);
+}
+
 /** SQLite mirror ready â†’ tab hi pending bytes hatao (HTTPS load hone ke baad). */
 async function removePendingFileAfterMirrorReady(
   localId: string,
@@ -222,13 +255,16 @@ async function removePendingFileAfterMirrorReady(
 ): Promise<boolean> {
   const mirrored = await mirrorUploadedFileUrlToLocalSqlite(docPath, field, localId, httpsUrl);
   if (!mirrored) {
+    const retryMs = noteMirrorVerifyFail(localId);
     console.warn("[localPendingFiles] kept local blob â€” SQLite HTTPS mirror not verified yet", {
       localId,
       docPath,
       field,
+      retryInSec: Math.round(retryMs / 1000),
     });
     return false;
   }
+  mirrorVerifyBackoff.delete(localId);
   await removePendingFile(localId);
   return true;
 }
@@ -319,6 +355,50 @@ async function readCompanyDocForPendingSync(
  * Pending patch se pehle target doc â€” recycle-bin (`isDeleted`) par bhi read;
  * doc bilkul nahi mila to queue row hatao taaki Drive sync "Document not found" par na atke.
  */
+/**
+ * Delete-safety: `local:{id}` abhi kisi copy (SQLite local+authoritative cid, Firestore cache incl. pending SDK write)
+ * me hai ya read fail hua => true (bytes KEEP). Sirf confirmed "kahin nahi" par false.
+ */
+async function pendingLocalRefStillReferenced(
+  docPath: string,
+  localId: string,
+  opts?: { requireServerMissing?: boolean }
+): Promise<boolean> {
+  const m = /^companies\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(String(docPath || "").trim());
+  if (!m) return true;
+  const [, companyId, coll, did] = m;
+  const needle = `${LOCAL_FILE_PREFIX}${localId}`;
+  try {
+    const cids = new Set<string>([companyId!]);
+    try {
+      cids.add(await resolveAuthoritativeFirestoreCompanyId(companyId!));
+    } catch {
+      /* ignore */
+    }
+    for (const cid of cids) {
+      if (!cid) continue;
+      const row = await getCompanyDocFromBrowserDb(cid, coll!, did!, { includeDeleted: true });
+      if (row && JSON.stringify(row).includes(needle)) return true;
+      try {
+        const cached = await getDocFromCache(doc(firestore, `companies/${cid}/${coll}`, did!));
+        if (cached.exists() && (cached.metadata.hasPendingWrites || JSON.stringify(cached.data()).includes(needle))) {
+          return true;
+        }
+      } catch {
+        /* not in cache */
+      }
+      if (opts?.requireServerMissing) {
+        const srv = await getDocFromServer(doc(firestore, `companies/${cid}/${coll}`, did!));
+        if (srv.exists()) return true;
+      }
+    }
+    return false;
+  } catch (e) {
+    console.warn("[localPendingFiles] ref check failed - pending blob KEPT", { docPath, localId, e });
+    return true;
+  }
+}
+
 async function resolvePendingTargetDocOrRemoveOrphan(
   docPath: string,
   localId: string
@@ -370,6 +450,13 @@ async function resolvePendingTargetDocOrRemoveOrphan(
         localId,
         phase: restoreJob?.phase || null,
         dataUploaded: restoreJob?.dataUploaded ?? null,
+      });
+      return null;
+    }
+    if (await pendingLocalRefStillReferenced(docPath, localId, { requireServerMissing: true })) {
+      console.warn("[localPendingFiles] orphan delete skipped - doc unconfirmed / local: still referenced (blob kept)", {
+        docPath,
+        localId,
       });
       return null;
     }
@@ -812,10 +899,13 @@ export type PendingFilePayload = {
   fileName?: string;
   createdAt?: number;
   /** Backup restore: SQLite index missing ho to fail â€” silent skip mat karo. */
-  requireSqliteIndex?: boolean;
+  requireSqliteIndex?: boolean;  /** Phase 2 hotfix: this file replaces an existing HTTPS URL (edit-time recompress). After upload + patch,
+   * swap old→new everywhere and delete the old Storage object only when no place still uses it. */
+  replacesUrl?: string;
 };
 
 type PendingFileMeta = {
+  replacesUrl?: string;
   docPath: string;
   field: string;
   arrayIndex?: number;
@@ -972,6 +1062,7 @@ function parsePendingMeta(metaJson: string | null): PendingFileMeta | null {
           : undefined,
       storagePathPrefix: String(parsed.storagePathPrefix),
       fileName: parsed.fileName ? String(parsed.fileName) : undefined,
+      replacesUrl: parsed.replacesUrl ? String(parsed.replacesUrl) : undefined,
       createdAt:
         typeof parsed.createdAt === "number" && Number.isFinite(parsed.createdAt)
           ? parsed.createdAt
@@ -1157,6 +1248,9 @@ export async function uploadPendingLocalFileRef(
 ): Promise<string> {
   if (isFirebaseLedgerDataSyncDisabled()) return localFileRef;
   if (!isLocalFileRef(localFileRef)) return localFileRef;
+  if (await pendingStorageHoldActive()) {
+    throw new Error("Server quota pause is active: attachment upload postponed (kept local).");
+  }
   const localId = localFileRef.slice(LOCAL_FILE_PREFIX.length);
   if (!localId) return localFileRef;
   const item = preloaded ?? (await getPendingFileById(localId));
@@ -1234,7 +1328,10 @@ async function seedPendingAttachmentPreviewUi(
     try {
       const { rememberHoverBlobUrl } = await import("@/lib/attachmentHoverBlobCache");
       rememberHoverBlobUrl(localRef, url);
-      rememberHoverBlobUrl(`${localRef}::cell-thumb`, url);
+      // `::cell-thumb` = <img> thumb only. PDF/other blobs: ledger/FilePreview build a raster themselves.
+      if (String(blob.type || "").toLowerCase().startsWith("image/")) {
+        rememberHoverBlobUrl(`${localRef}::cell-thumb`, url);
+      }
     } catch {
       /* preview optional */
     }
@@ -1283,6 +1380,7 @@ export async function putPendingFile(
       arrayIndex: normalizedPayload.arrayIndex,
       storagePathPrefix: normalizedPayload.storagePathPrefix,
       fileName: normalizedPayload.fileName,
+      replacesUrl: normalizedPayload.replacesUrl,
       createdAt,
     };
     await upsertAttachmentFileRef(
@@ -1440,6 +1538,7 @@ export async function getPendingFiles(): Promise<PendingFilePayload[]> {
         arrayIndex: meta.arrayIndex,
         storagePathPrefix: meta.storagePathPrefix,
         fileName: meta.fileName,
+        replacesUrl: meta.replacesUrl,
         createdAt: meta.createdAt,
       });
     }
@@ -1456,6 +1555,7 @@ export async function getPendingFiles(): Promise<PendingFilePayload[]> {
 }
 
 export async function removePendingFile(id: string): Promise<void> {
+  console.warn("[localPendingFiles] removePendingFile", id, new Error("caller").stack?.split("\n").slice(2, 5).join(" | "));
   if (localPendingFilesForensicEnabled()) {
     console.warn("[FORENSIC_PENDING_REMOVE]", {
       phase: "removePendingFile_start",
@@ -1502,19 +1602,30 @@ export async function syncOnePendingFile(
   options?: { forceUploadPendingBlob?: boolean }
 ): Promise<{ success: boolean; uploaded?: boolean; error?: string }> {
   try {
-    const preData = await resolvePendingTargetDocOrRemoveOrphan(item.docPath, item.id);
-    if (!preData) {
-      return { success: true, uploaded: false };
-    }
-
     const pendingCompanyId = resolvePendingPayloadCompanyId(item);
     const registryCompanyId =
       (pendingCompanyId ? await resolveRegistryCompanyIdForPendingItem(item) : null) ?? pendingCompanyId;
+    // Pocket Ledger Server (PocketBase) company: the outbox push uploads its files (never Firebase Storage).
+    if (registryCompanyId && isPocketBaseCompanyId(registryCompanyId)) {
+      return { success: false, uploaded: false, error: "Pocket Ledger Server company: file uploads with its data sync." };
+    }
     const driveSync = registryCompanyId
       ? (await resolvePendingAttachmentCloudSyncProvider(registryCompanyId)) === "google_drive"
       : false;
     if (!driveSync && isFirebaseLedgerDataSyncDisabled()) {
       return { success: false, uploaded: false, error: "Cloud data sync is off: attachment upload skipped." };
+    }
+    if (!driveSync && !options?.forceUploadPendingBlob && (await pendingStorageHoldActive())) {
+      // Quota pause: no Firestore read, no Storage getDownloadURL/uploadBytes. Blob stays local.
+      return { success: false, uploaded: false, error: "Server quota pause is active: attachment kept local." };
+    }
+    if (mirrorVerifyBackedOff(item.id)) {
+      return { success: false, uploaded: false, error: "Attachment mirror verify backing off; will retry later." };
+    }
+    // Quota hold ke BAAD orphan check - pehle chalta tha to quota me doc read miss = blob delete.
+    const preData = await resolvePendingTargetDocOrRemoveOrphan(item.docPath, item.id);
+    if (!preData) {
+      return { success: true, uploaded: false };
     }
     const keepOffFirebase = registryCompanyId
       ? await shouldKeepAttachmentsOffFirebase(registryCompanyId)
@@ -1555,6 +1666,13 @@ export async function syncOnePendingFile(
     if (!localStillHasPendingRef) {
       const hasBlob = Boolean(item.blob && item.blob.size > 0);
       if (!options?.forceUploadPendingBlob || !hasBlob) {
+        if (await pendingLocalRefStillReferenced(item.docPath, item.id)) {
+          console.warn("[localPendingFiles] no-ref delete skipped - local: still in SQLite/Firestore cache (blob kept)", {
+            docPath: item.docPath,
+            localId: item.id,
+          });
+          return { success: false, uploaded: false, error: "Pending ref still referenced; kept." };
+        }
         // User ne attachment hata diya / doc se local: clear — orphan pending blob drop.
         try {
           await removePendingFile(item.id);
@@ -1678,6 +1796,15 @@ export async function syncOnePendingFile(
         break;
       } catch (e) {
         lastUploadError = e;
+        if (isStorageQuotaError(e)) {
+          try {
+            const { startServerQuotaHold } = await import("@/lib/serverQuotaHold");
+            startServerQuotaHold();
+          } catch {
+            /* ignore */
+          }
+          throw e;
+        }
         const code = String((e as { code?: string })?.code || "");
         const msg = e instanceof Error ? e.message : String(e);
         const permission =
@@ -1750,6 +1877,26 @@ export async function syncOnePendingFile(
       /* ignore */
     }
 
+    // Phase 2 hotfix: 'replace old URL' kind (edit-time recompress whose re-upload failed earlier).
+    if (item.replacesUrl && /^https?:\/\//i.test(item.replacesUrl) && item.replacesUrl !== url) {
+      try {
+        const swapCompanyId = registryCompanyId || pendingCompanyId;
+        if (swapCompanyId) {
+          const { rewriteCompanyHttpsAttachmentUrlEverywhere } = await import(
+            "@/lib/rewriteCompanyHttpsAttachmentUrl"
+          );
+          // Same rule as rewriteCompanyHttpsAttachmentUrl.ts: deletes old bytes only when remainingOldUsage === 0.
+          await rewriteCompanyHttpsAttachmentUrlEverywhere({
+            companyId: swapCompanyId,
+            fromUrl: item.replacesUrl,
+            toUrl: url,
+          });
+        }
+      } catch (e) {
+        console.warn("[localPendingFiles] replace-old-url swap failed (old file kept)", item.id, e);
+      }
+    }
+
     if (localPendingFilesForensicEnabled()) {
       console.warn("[FORENSIC_PENDING_SYNC_ONE]", {
         phase: "syncOnePendingFile",
@@ -1793,6 +1940,11 @@ export async function syncPendingFiles(options?: {
   if (isFirebaseLedgerDataSyncDisabled()) {
     return { synced: 0, uploaded: 0, failed: 0 };
   }
+  // Phase 2 hotfix: quota / billing pause — keep files pending, retry after the hold ends.
+  {
+    const { isServerQuotaHoldActive } = await import("@/lib/serverQuotaHold");
+    if (isServerQuotaHoldActive()) return { synced: 0, uploaded: 0, failed: 0 };
+  }
   const allPending = await getPendingFiles();
   const onlyRefs = options?.onlyLocalRefs?.length ? new Set(options.onlyLocalRefs) : null;
   const pending = onlyRefs ? allPending.filter((item) => onlyRefs.has(LOCAL_FILE_PREFIX + String(item.id))) : allPending;
@@ -1811,6 +1963,14 @@ export async function syncPendingFiles(options?: {
     else {
       failed++;
       if (!lastError && result.error) lastError = result.error;
+      if (result.error) {
+        try {
+          const { reportOnlineTriggerQuotaExceeded } = await import("@/lib/onlineTriggerLog");
+          reportOnlineTriggerQuotaExceeded(result.error);
+        } catch {
+          /* ignore */
+        }
+      }
     }
   };
   if (onlyRefs) {

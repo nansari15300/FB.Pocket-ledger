@@ -6,19 +6,17 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   collection,
   query,
-  onSnapshot,
   orderBy,
   doc,
   updateDoc,
   writeBatch,
   where,
-  getDocs,
   addDoc,
   serverTimestamp,
-  getDoc,
   deleteDoc,
   setDoc,
 } from "firebase/firestore";
+import { onSnapshot, getDocs, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { getSuperAdminEmails } from "@/lib/superAdminEmails";
 import { PRESENCE_ONLINE_THRESHOLD_MS } from "@/lib/presenceConstants";
@@ -36,11 +34,6 @@ import { useCompany } from "@/hooks/useCompany";
 import { useVouchers } from "@/hooks/useVouchers";
 import { toast } from "sonner";
 import { isSuppressibleNewTransactionAlert } from "@/lib/transactionAlerts";
-import {
-  IC_REVERSE_REQUESTS_CHANGED,
-  readInterCompanyReverseInbox,
-} from "@/lib/interCompany/interCompanyReverseRequests";
-import { isInterCompanyReverseAlertReadLocal } from "@/lib/interCompany/interCompanyReverseRequestAlert";
 import { IC_ALERTS_CHANGED } from "@/lib/interCompany/interCompanyAlerts";
 import { interCompanySystemJoinAlertVisibleForCompany } from "@/lib/interCompany/interCompanySystemJoinRequest";
 import { AlertsTab } from '@/components/messages/AlertsTab';
@@ -465,15 +458,7 @@ export default function MessagesPage() {
       Object.values(unreadIcSystemJoinsByRecipient).forEach((set) => {
         set.forEach((id) => regular.add(id));
       });
-      const icLocalOnly =
-        companyId && company?.isOwned === true
-          ? readInterCompanyReverseInbox(companyId).filter(
-              (r) =>
-                r.status === "pending" &&
-                !firestoreIcReqIds.has(r.id) &&
-                !isInterCompanyReverseAlertReadLocal(companyId, r.id)
-            ).length
-          : 0;
+      const icLocalOnly = 0; // IC reverse-request feature removed
       setUnreadAlerts(regular.size + icLocalOnly);
       setUnreadAutoAlerts(auto.size);
     };
@@ -518,12 +503,10 @@ export default function MessagesPage() {
       unsubscribers.push(unsubIcSystemJoin);
     });
 
-    window.addEventListener(IC_REVERSE_REQUESTS_CHANGED, recompute);
     window.addEventListener(IC_ALERTS_CHANGED, recompute);
 
     return () => {
       unsubscribers.forEach((unsub) => unsub());
-      window.removeEventListener(IC_REVERSE_REQUESTS_CHANGED, recompute);
       window.removeEventListener(IC_ALERTS_CHANGED, recompute);
     };
   }, [myUserIds, company?.isOwned, companyId]);

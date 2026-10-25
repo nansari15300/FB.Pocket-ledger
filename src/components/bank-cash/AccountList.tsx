@@ -28,9 +28,15 @@ import {
 } from "@/components/entity/EntityListQuickFilterBar";
 import { usePrewarmVisibleAttachments } from "@/hooks/usePrewarmVisibleAttachments";
 import { useCompany } from "@/hooks/useCompany";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
 import { highlightQueryInText } from "@/lib/highlightQueryInText";
 import { MasterAliasSearchHint } from "@/components/entity/MasterAliasSearchHint";
-import { masterEntityTextMatchesSearch } from "@/lib/filterMasterEntityListRows";
+import {
+  compareEntityListQuickFilterSort,
+  masterEntityTextMatchesSearch,
+  shouldHideEntityListSettledRow,
+} from "@/lib/filterMasterEntityListRows";
 import { useBankLedgerDrCrPerspective } from "@/hooks/useBankLedgerDrCrPerspective";
 import { flipLedgerSignedBalance } from "@/lib/bankLedgerDrCrPerspective";
 
@@ -59,9 +65,11 @@ export function AccountList({
 }) {
   const { formatCurrency } = useDate();
   const { company } = useCompany();
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled, setHideSettled } = useEntityListHideSettled();
   const { can } = usePermissions();
   const { perspective: bankDrCrPerspective } = useBankLedgerDrCrPerspective();
-  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("latest");
   const quickFilter = quickFilterProp ?? internalQuickFilter;
   const setQuickFilter = onQuickFilterChange ?? setInternalQuickFilter;
   const { animatePresenceMode, rowMotionProps, markListScrolling, isRowAnimationEnabled, layoutHoldMs } = useMasterListRowMotion();
@@ -74,16 +82,6 @@ export function AccountList({
   const highlightSearch = searchTerm.trim();
 
   const filteredAndSortedAccounts = useMemo(() => {
-      const toDateMs = (raw: unknown): number => {
-        if (!raw) return 0;
-        if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? 0 : raw.getTime();
-        if (typeof (raw as { toDate?: () => Date }).toDate === "function") {
-          const d = (raw as { toDate: () => Date }).toDate();
-          return Number.isNaN(d.getTime()) ? 0 : d.getTime();
-        }
-        const d = new Date(raw as any);
-        return Number.isNaN(d.getTime()) ? 0 : d.getTime();
-      };
       const isSettled = (bal: number) => Math.abs(Number(bal || 0)) < 1e-6;
       return accounts
         .filter(account => {
@@ -94,18 +92,21 @@ export function AccountList({
             // Footer quick filters: list short/filter from same control on mobile + desktop.
             if (quickFilter === "dr") return bal > 0;
             if (quickFilter === "cr") return bal < 0;
+            if (shouldHideEntityListSettledRow(bal, hideSettled, quickFilter)) return false;
             if (quickFilter === "settled") return isSettled(bal);
             if (quickFilter === "non_settled") return !isSettled(bal);
             return true;
         })
-        .sort((a, b) => {
-          if (quickFilter === "name") {
-            return bankAccountDisplayName(a).localeCompare(bankAccountDisplayName(b));
-          }
-          if (quickFilter === "date") return toDateMs(b.openingBalanceDate) - toDateMs(a.openingBalanceDate);
-          return Math.abs(Number(b.balance || 0)) - Math.abs(Number(a.balance || 0));
-        });
-  }, [accounts, searchTerm, canViewSpecialAccount, quickFilter]);
+        .sort((a, b) =>
+          compareEntityListQuickFilterSort(
+            a,
+            b,
+            quickFilter,
+            (row) => bankAccountDisplayName(row),
+            lastVoucherMsById
+          )
+        );
+  }, [accounts, searchTerm, canViewSpecialAccount, quickFilter, lastVoucherMsById, hideSettled]);
 
   const visibleAccountAttachmentUrls = useMemo(
     () =>
@@ -254,7 +255,12 @@ export function AccountList({
         </ul>
       </ScrollArea>
       {!hideQuickFilterBar ? (
-        <EntityListQuickFilterBar active={quickFilter} onChange={setQuickFilter} />
+        <EntityListQuickFilterBar
+          active={quickFilter}
+          onChange={setQuickFilter}
+          hideSettled={hideSettled}
+          onHideSettledChange={setHideSettled}
+        />
       ) : null}
     </div>
   );

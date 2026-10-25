@@ -3,7 +3,8 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { createGoogleOAuth2Client, resolveGoogleOAuthRedirectUri } from "@/lib/server/googleOAuthCredentials";
-import { saveGoogleDriveTokensForUser } from "@/lib/localCloudSync/server/driveOAuthServer";
+import { ensureHostingConfig } from "@/lib/server/hostingConfig";
+import { saveGoogleDriveTokensForUser, verifyDriveOAuthState } from "@/lib/localCloudSync/server/driveOAuthServer";
 import {
   isLocalGoogleDriveSyncDisabled,
   LOCAL_GOOGLE_DRIVE_SYNC_DISABLED_MESSAGE,
@@ -34,6 +35,7 @@ function redirectToReturnPath(returnPath: string, baseUrl: string, params: Recor
 }
 
 export async function GET(req: NextRequest) {
+  await ensureHostingConfig(); // panel "Hosting settings" values (env vars still win)
   const url = req.nextUrl;
 
   const code = url.searchParams.get("code");
@@ -48,7 +50,9 @@ export async function GET(req: NextRequest) {
   const encodedState = state || "";
   const decoded: DecodedState | null = state ? safeBase64JsonDecode(state) : null;
 
-  if (decoded?.returnPath) returnPath = decoded.returnPath;
+  const stateOk = verifyDriveOAuthState(decoded);
+  // Unsigned / expired state: never follow its return address.
+  if (stateOk && decoded?.returnPath) returnPath = decoded.returnPath;
 
   if (isLocalGoogleDriveSyncDisabled()) {
     return redirectToReturnPath(returnPath, baseUrl, { error: LOCAL_GOOGLE_DRIVE_SYNC_DISABLED_MESSAGE }, encodedState);
@@ -65,6 +69,10 @@ export async function GET(req: NextRequest) {
   const uid = decoded?.uid;
   if (!uid) {
     return redirectToReturnPath(returnPath, baseUrl, { error: "missing_uid_in_state" }, encodedState);
+  }
+  // Only a state this server signed (Drive connect started by this uid, not older than 30 min).
+  if (!stateOk) {
+    return redirectToReturnPath("/company", baseUrl, { error: "invalid_oauth_state" }, "");
   }
 
   try {

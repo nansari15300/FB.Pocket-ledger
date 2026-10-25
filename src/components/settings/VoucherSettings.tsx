@@ -97,7 +97,7 @@ const prefixLabels: Record<keyof VoucherPrefixValues, string> = {
     sale_service: "Sale Invoice (Services)",
     purchase: "Purchase Bill (Items)",
     purchase_service: "Purchase Bill (Services)",
-    payment_in: "Payment In (Receipt)",
+    payment_in: "Receipt",
     payment_out: "Payment Out",
     contra: "Contra Entry",
     direct_income: "Direct Income",
@@ -592,7 +592,7 @@ export function VoucherSettings() {
                         render={({ field }: any) => (
                           <FormItem className="flex flex-row items-center justify-between">
                             <div>
-                              <FormLabel>Link for spend wise on opposite voucher (Payment In, Contra in, Direct Income)</FormLabel>
+                              <FormLabel>Link for spend wise on opposite voucher (Receipt, Contra in, Direct Income)</FormLabel>
                               <FormDescription>
                                 Off: linking is inactive for users (saved per-role toggles stay stored). On: linking active per role vouchers below.
                               </FormDescription>
@@ -611,9 +611,9 @@ export function VoucherSettings() {
                     <Card className={cn("p-4", VS_CARD_BORDER)}>
                     {/* Nested role grid — left rail bhi same ledger line weight. */}
                     <div className={cn("space-y-4 pl-4", VS_BORDER_L)}>
-                      <p className="text-sm font-medium">Require Payment In link (role + voucher type)</p>
+                      <p className="text-sm font-medium">Require Receipt link (role + voucher type)</p>
                       <FormDescription className="!mt-0">
-                        When ON, that role must link to Payment In to save. When OFF, they can save without linking. Set per voucher: Payment Out, Contra, Direct Expense.
+                        When ON, that role must link to a Receipt to save. When OFF, they can save without linking. Set per voucher: Payment Out, Contra, Direct Expense.
                       </FormDescription>
                       {/* Master OFF: stored matrix form me rakho, Switch UI pe OFF dikhao (sirf disabled nahi lagna chahiye "ON"); master ON ⇒ asli checkbox */}
                       {ROLES_WITH_VOUCHER_CREATE.map((role) => {

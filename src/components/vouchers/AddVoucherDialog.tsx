@@ -34,7 +34,8 @@ import { nestedVoucherAlertShell } from "@/lib/dialogShellChrome";
 import { plHang, plHangEnsureLongTaskObserver, plHangStart } from "@/lib/plHangDiag";
 import { startOfDay } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { collection, doc, getDoc, deleteDoc, getDocs, onSnapshot, query, serverTimestamp, where, Timestamp } from "firebase/firestore";
+import { collection, doc, deleteDoc, query, serverTimestamp, where, Timestamp } from "firebase/firestore";
+import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore, storage } from "@/lib/firebase"; // storage आयात गरियो
 import { ref, deleteObject } from "firebase/storage"; // storage डिलिट गर्न आवश्यक
 
@@ -250,6 +251,7 @@ type VoucherType = "sale" | "purchase" | "payment_in" | "payment_out" | "inter_c
 const VOUCHER_TAB_LABELS: Partial<Record<VoucherType, string>> = {
   inter_company: "Inter Company",
   adjustment: "Adjustment",
+  payment_in: "Receipt",
 };
 function voucherTabLabel(key: VoucherType): string {
   return VOUCHER_TAB_LABELS[key] ?? key.replace(/_/g, " ");
@@ -1420,7 +1422,7 @@ function VoucherDialogContent({
             </Select>
             ) : null}
             {/* Mobile: date selector — desktop par sirf purple ribbon (tab strip duplicate hata diya). */}
-            <VoucherOcrHeaderToggles className="ml-auto max-w-[45vw] overflow-x-auto" />
+            {!isEditing ? <VoucherOcrHeaderToggles className="ml-auto max-w-[45vw] overflow-x-auto" /> : null}
             <VoucherDialogDateSystemSwitcher />
           </div>
         ) : (
@@ -2904,7 +2906,21 @@ export function AddVoucherDialog(props: any) {
 
     void (async () => {
       try {
-        await approveVoucherWithHistory(cid, voucherId, user.uid, approverName);
+        // Safety cap: background approve hang must not leave "Approving..." spinning forever.
+        let approveTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            approveVoucherWithHistory(cid, voucherId, user.uid, approverName),
+            new Promise<never>((_, rej) => {
+              approveTimer = setTimeout(
+                () => rej(new Error("Approve is taking too long. It may still finish - refresh to check.")),
+                60_000
+              );
+            }),
+          ]);
+        } finally {
+          if (approveTimer) clearTimeout(approveTimer);
+        }
         try {
           if (typeof window !== "undefined") writeSelectedCompanyId(cid);
         } catch {
@@ -4382,25 +4398,26 @@ export function AddVoucherDialog(props: any) {
           >
             <div className="flex flex-col justify-center px-3 py-2 md:px-4 md:py-2">
               {showLinkEditLockBanner ? (
-                // 3-equal wing grid: beechna ribbon header ke geometric center rahe — company dropdown width se shift na ho.
-                // Company to Company badge center me mat rakho (edit-lock banner se ribbon ke niche chala jata tha) — BS ke left.
-                <div className="grid min-h-[2.75rem] w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-3">
-                  <div className="flex min-w-0 shrink flex-row flex-wrap items-center gap-x-2 gap-y-0 justify-self-start self-center pr-2">
+                // 1st: remaining slot ke beech (center). Slot se lamba ho to left se H-scroll — right chrome clip nahi.
+                <div className="flex min-h-[2.75rem] w-full min-w-0 items-center gap-x-2">
+                  <div className="flex min-w-0 shrink flex-row flex-wrap items-center gap-x-2 gap-y-0 pr-1">
                     <DialogTitle className="m-0 font-bold font-headline text-inherit text-xl leading-tight">
                       {voucherDialogTitle}
                     </DialogTitle>
                     {copiedDraftHeaderBadge}
+                    {!voucherForDialogChrome?.id ? <VoucherOcrHeaderToggles className="ml-3 min-w-0 max-w-[40vw] overflow-x-auto [scrollbar-width:thin]" /> : null}
                   </div>
-                  <div
-                    className="justify-self-center self-center shrink-0 rounded-full border border-gray-300/80 bg-gray-200 px-2 py-1.5 md:px-3 md:py-2 inline-flex w-fit max-w-[min(52vw,560px)]"
-                  >
-                    <p className="font-semibold text-center text-[#ff0000] m-0 leading-snug text-sm whitespace-nowrap">
-                      Voucher Edit disabled — To convert or edit, unlink linked transactions first.
-                    </p>
+                  <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:thin]">
+                    <div className="flex w-max min-w-full justify-center">
+                      <div className="inline-flex w-max rounded-full border border-gray-300/80 bg-gray-200 px-2 py-1.5 md:px-3 md:py-2">
+                        <p className="m-0 whitespace-nowrap text-center text-sm font-semibold leading-snug text-[#ff0000]">
+                          Voucher Edit disabled — To convert or edit, unlink linked transactions first.
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex shrink-0 flex-row items-center justify-end justify-self-end self-center gap-[10px]">
+                  <div className="flex shrink-0 flex-row items-center justify-end gap-[10px]">
                     {interCompanyPayModeHeaderBadge}
-                    <VoucherOcrHeaderToggles />
                     <VoucherDialogDateSystemSwitcher />
                     {interCompanyRibbonCompanyReadOnly ? (
                       <span
@@ -4432,10 +4449,10 @@ export function AddVoucherDialog(props: any) {
                       {voucherDialogTitle}
                     </DialogTitle>
                     {copiedDraftHeaderBadge}
+                    {!voucherForDialogChrome?.id ? <VoucherOcrHeaderToggles className="ml-3 min-w-0 max-w-[40vw] overflow-x-auto [scrollbar-width:thin]" /> : null}
                   </div>
                   <div className="ml-auto flex shrink-0 items-center gap-[10px]">
                     {interCompanyPayModeHeaderBadge}
-                    <VoucherOcrHeaderToggles />
                     <VoucherDialogDateSystemSwitcher />
                     {interCompanyRibbonCompanyReadOnly ? (
                       <span
@@ -4493,8 +4510,8 @@ export function AddVoucherDialog(props: any) {
               <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-1.5">
                 {interCompanyPayModeHeaderBadge}
                 {showLinkEditLockBanner && (
-                  <div className="min-w-0 max-w-[min(100%,14rem)] rounded-full border border-gray-300/80 bg-gray-200 px-2 py-1.5">
-                    <p className="m-0 text-center text-[10px] font-semibold leading-snug text-[#ff0000]">
+                  <div className="min-w-0 max-w-[min(100%,14rem)] overflow-x-auto overflow-y-hidden rounded-full border border-gray-300/80 bg-gray-200 px-2 py-1.5 [scrollbar-width:thin]">
+                    <p className="m-0 whitespace-nowrap text-center text-[10px] font-semibold leading-snug text-[#ff0000]">
                       To Edit Unlink Linked trxn 1st
                     </p>
                   </div>

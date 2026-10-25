@@ -8,6 +8,7 @@ import { disableNetwork, enableNetwork } from "firebase/firestore";
 import {
   firestore,
   firestoreNetworkDisabledByApi,
+  isFirestoreBlockedForServerSession,
   markFirestoreNetworkDisabledByApi,
   queueFirestoreNetworkOp,
   settleAfterFirestoreNetworkEnabled,
@@ -19,6 +20,8 @@ let adminShellMountDepth = 0;
 /** AdminShell mount: Firestore server reachable (global features, plans, users, etc.). */
 export async function enterAdminFirestoreOnline(): Promise<void> {
   adminShellMountDepth += 1;
+  // Pocket Ledger Server login: Firestore stays off for the whole session.
+  if (isFirestoreBlockedForServerSession()) return;
   if (adminShellMountDepth === 1) {
     await queueFirestoreNetworkOp(async () => {
       try {
@@ -39,6 +42,7 @@ export async function enterAdminFirestoreOnline(): Promise<void> {
 export async function leaveAdminFirestoreOnline(): Promise<void> {
   adminShellMountDepth = Math.max(0, adminShellMountDepth - 1);
   if (adminShellMountDepth > 0) return;
+  if (isFirestoreBlockedForServerSession()) return;
   if (!isLocalOnlyMode()) return;
   await queueFirestoreNetworkOp(async () => {
     try {

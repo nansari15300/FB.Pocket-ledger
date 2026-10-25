@@ -5,19 +5,17 @@ import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { PRESENCE_ONLINE_THRESHOLD_MS } from "@/lib/presenceConstants";
 import {
   doc,
-  onSnapshot,
-  updateDoc,
   arrayRemove,
-  getDoc,
   collection,
   query,
   where,
-  getDocs,
   serverTimestamp,
 } from "firebase/firestore";
+import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { useDeviceLimitContext } from "@/contexts/DeviceLimitContext";
 import { countAccountScopedDevicesForUser } from "@/lib/accountScopedDeviceCount";
 import { firestore } from "@/lib/firebase";
+import { updateCompanyRootFirestore } from "@/lib/writeGateway/companyRootFirestore";
 import { useCompany } from "@/hooks/useCompany";
 import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
@@ -680,7 +678,7 @@ export function ManageShare() {
           console.log("Permission schema mismatch or missing. Resetting to default.");
           currentConfig = initialPermissionConfig;
           try {
-            await updateDoc(companyRef, { permissionConfig: currentConfig });
+            await updateCompanyRootFirestore(companyRef.id, { permissionConfig: currentConfig });
           } catch (error: any) {
             const isNotFoundError = error?.code === "not-found" || error?.message?.includes("No document to update");
             if (isNotFoundError) {
@@ -1258,7 +1256,7 @@ const handleDateLimitChange = (action: 'entry' | 'edit' | 'delete', value: numbe
       }
 
       const companyRef = doc(firestore, "companies", companyId);
-      await updateDoc(companyRef, { permissionConfig: configToSave });
+      await updateCompanyRootFirestore(companyRef.id, { permissionConfig: configToSave });
       const bankUsageOk = await flushPendingSpecialAccountBankUsage();
       void triggerSync();
       toast({
@@ -1350,7 +1348,7 @@ const handleDateLimitChange = (action: 'entry' | 'edit' | 'delete', value: numbe
         u.email === email ? { ...u, role: normalizedRole } : u
       );
 
-      await updateDoc(companyRef, { sharedWith: updatedSharedWith, updatedAt: serverTimestamp() });
+      await updateCompanyRootFirestore(companyRef.id, { sharedWith: updatedSharedWith, updatedAt: serverTimestamp() });
       const emailKey = normalizeEmail(email);
       setOptimisticUserRoles((prev) => ({ ...prev, [emailKey]: normalizedRole }));
       setFirestoreShareRow((prev) =>
@@ -1399,7 +1397,7 @@ const handleDateLimitChange = (action: 'entry' | 'edit' | 'delete', value: numbe
         u.email === email ? { ...u, name: newName } : u
       );
 
-      await updateDoc(companyRef, { sharedWith: updatedSharedWith });
+      await updateCompanyRootFirestore(companyRef.id, { sharedWith: updatedSharedWith });
       toast({ title: "Success", description: `Name for ${email} has been updated.` });
     } catch (error: any) {
       console.error("Error updating name:", error);
@@ -1436,7 +1434,7 @@ const handleDateLimitChange = (action: 'entry' | 'edit' | 'delete', value: numbe
         u.email === userToEdit.email ? { ...u, password: newPassword } : u
       );
 
-      await updateDoc(companyRef, { sharedWith: updatedSharedWith });
+      await updateCompanyRootFirestore(companyRef.id, { sharedWith: updatedSharedWith });
       toast({ title: "Success", description: `Password for ${userToEdit.email} has been updated.` });
     } catch (error: any) {
       console.error("Error updating password:", error);
@@ -1504,7 +1502,7 @@ const handleDateLimitChange = (action: 'entry' | 'edit' | 'delete', value: numbe
             fullUserObject.email;
 
           const emailLowerRemove = normalizeEmail(userToRemove.email);
-          await updateDoc(companyRef, { 
+          await updateCompanyRootFirestore(companyRef.id, { 
               sharedWith: arrayRemove(fullUserObject),
               sharedWithEmails: arrayRemove(emailForArrayRemove),
               sharedWithEmailsLower: arrayRemove(emailLowerRemove),

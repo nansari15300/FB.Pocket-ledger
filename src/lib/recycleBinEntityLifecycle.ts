@@ -10,14 +10,12 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDoc,
-  getDocs,
-  onSnapshot,
   query,
   serverTimestamp,
   updateDoc,
   where,
 } from "firebase/firestore";
+import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore, auth } from "@/lib/firebase";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { isEmbeddedOfflinePreloadClient } from "@/lib/isEmbeddedOfflinePreloadClient";
@@ -288,6 +286,12 @@ export async function softDeleteCompanySubdocToRecycleBin(
     await softDeleteVoucherMoveToRecycleBin(cid, id, deletedByUid);
     return { ok: true, docId: id };
   }
+  {
+    const { tryHardDeleteNeverSyncedDoc } = await import("@/lib/localOnlyHardDelete");
+    const hd = await tryHardDeleteNeverSyncedDoc(cid, collectionName, id);
+    if (hd === "cancelled") return { ok: false, error: "Delete cancelled" };
+    if (hd === "hard") return { ok: true, docId: id };
+  }
   const patch = {
     isDeleted: true,
     deletedAt: recycleBinDeletedAt(),
@@ -555,6 +559,12 @@ export async function permanentDeleteCompanySubdocFromRecycleBin(
   const cid = String(companyId || "").trim();
   const id = String(docId || "").trim();
   if (!cid || !id) throw new Error("Missing company or document id");
+
+  // Delete dialog said 'only on this device' => local-only hard delete, no Firestore/Storage calls.
+  {
+    const { tryLocalOnlyHardDeleteFromDialogIntent } = await import("@/lib/localOnlyHardDelete");
+    if (await tryLocalOnlyHardDeleteFromDialogIntent(cid, collectionPath, id)) return;
+  }
 
   // Pending outbox upsert/flush pehle hatao — warna permanent delete ke baad soft-deleted
   // voucher recycle bin me wapas aa jata hai (INTENT flush / pull race).

@@ -153,6 +153,7 @@ html[data-pl-app-ui-zoom-shell="android-zoom"] .min-h-dvh {
   }
   .pl-ledger-header-avatar > button[data-pl-mobile-header-avatar] img,
   .pl-ledger-header-avatar > span:not([class*="avatar-pen"]) img {
+    border-radius: 0 !important;
     object-fit: cover !important;
     object-position: center !important;
   }
@@ -825,26 +826,26 @@ body {
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 220 38% 97%; /* server panel --bg #f4f6fa */
     /* App chrome: nav sidebar, sticky header, mobile dashboard tabs — main scroll (cards) se halka alag */
-    --app-chrome: 214 32% 96%;
-    --foreground: 222.2 84% 4.9%;
+    --app-chrome: 0 0% 100%; /* panel topbar = --surface */
+    --foreground: 218 31% 15%; /* panel --text #1b2433 */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 218 31% 15%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 218 31% 15%;
     --primary: 22 96% 54%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted-foreground: 217 14% 41%; /* panel --text-2 #5b6678 */
     --accent: 142 76% 36%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
+    --border: 218 26% 92%; /* panel --border #e4e8ef */
+    --input: 218 26% 92%;
     --ring: 22 96% 54%;
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
@@ -852,8 +853,12 @@ body {
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
+    /* Server panel (pb_public style.css) 3D card: --radius 14px + --shadow / --shadow-hover */
+    --pl-card-radius: 14px;
+    --pl-card-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 2px 8px rgba(16, 24, 40, 0.05);
+    --pl-card-shadow-hover: 0 4px 10px rgba(16, 24, 40, 0.07), 0 10px 24px rgba(16, 24, 40, 0.08);
     --sidebar-background: var(--app-chrome);
-    --sidebar-foreground: 222.2 84% 4.9%;
+    --sidebar-foreground: 218 31% 15%;
     --sidebar-primary: 22 96% 54%;
     --sidebar-primary-foreground: 210 40% 98%;
     --sidebar-accent: 210 20% 88%;
@@ -1020,68 +1025,71 @@ body {
 
   /* Pro: light gray page shell (ujla) + dashboard ribbons + black borders */
   .theme-pro {
-    --background: 220 14% 98.5%;
-    --app-chrome: 220 14% 97%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 220 14% 99.5%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 220 14% 99.5%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --background: 220 38% 97%; /* server panel --bg #f4f6fa */
+    --app-chrome: 0 0% 100%; /* panel topbar = --surface #fff */
+    --foreground: 218 31% 15%; /* panel --text #1b2433 */
+    --card: 0 0% 100%; /* panel --surface #fff */
+    --card-foreground: 218 31% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 218 31% 15%;
     --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 40%;
+    --muted-foreground: 217 14% 41%; /* panel --text-2 #5b6678 */
     --border: 0 0% 0%;
     --input: 0 0% 0%;
   /* Pro: dim slate-blue — bright #3b82f6 buttons/tabs se softer */
-    --pl-pro-blue: 215 28% 44%;
-    --pl-pro-blue-hover: 215 28% 38%;
-    --ring: 215 28% 44%;
+    --pl-pro-blue: 218 85% 43%; /* panel --accent #1055c9 */
+    --pl-pro-blue-hover: 218 86% 35%; /* panel --accent-hover #0d47a8 */
+    --ring: 218 85% 43%;
     --sidebar-background: var(--app-chrome);
-    --sidebar-foreground: 222.2 84% 4.9%;
-    --sidebar-primary: 215 28% 44%;
+    --sidebar-foreground: 218 31% 15%;
+    --sidebar-primary: 218 85% 43%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 14% 94%;
-    --sidebar-accent-foreground: 222.2 84% 4.9%;
+    --sidebar-accent: 218 70% 95%; /* panel --accent-soft #e8effb */
+    --sidebar-accent-foreground: 218 31% 15%;
     --sidebar-border: 0 0% 0%;
-    --sidebar-ring: 215 28% 44%;
+    --sidebar-ring: 218 85% 43%;
     --header-bg: var(--app-chrome);
-    --list-page-bg: 220 14% 98.5%;
-    --details-header-bg: 220 14% 98.5%;
+    --list-page-bg: 220 38% 97%;
+    --details-header-bg: 220 38% 97%;
     --table-header-bg: 220 14% 94%;
     --table-header-fg: 0 0% 0%;
     --row-odd-bg: 220 14% 99.5%;
     --row-even-bg: 220 14% 97%;
   }
-  .primary-pro { --primary: 215 28% 44%; --primary-foreground: 0 0% 100%; --ring: 215 28% 44%; }
+  .primary-pro { --primary: 218 85% 43%; --primary-foreground: 0 0% 100%; --ring: 218 85% 43%; } /* panel --accent #1055c9 */
 
   .dark {
-    --background: 220 13% 10%;
-    --foreground: 210 20% 88%;
-    --card: 220 13% 18%;
-    --card-foreground: 210 20% 88%;
+    --background: 217 30% 8%; /* panel dark --bg #0f141c */
+    --foreground: 217 35% 93%; /* panel dark --text #e6ebf3 */
+    --card: 217 28% 13%; /* panel dark --surface #171e29 */
+    --card-foreground: 217 35% 93%;
     --popover: var(--background);
-    --popover-foreground: 210 20% 88%;
-    --primary: 22 96% 54%;
-    --primary-foreground: 220 13% 10%;
-    --secondary: 220 13% 25%;
+    --popover-foreground: 217 35% 93%;
+    --primary: 218 85% 62%; /* panel dark --accent #4d8af0 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 27% 15%; /* panel dark --surface-2 #1c2431 */
     --secondary-foreground: 0 0% 98%;
-    --muted: 220 13% 25%;
-    --muted-foreground: 210 20% 65%;
+    --muted: 217 27% 15%;
+    --muted-foreground: 217 17% 70%; /* panel dark --text-2 #a6b0c0 */
     --accent: 142 76% 36%;
     --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 220 13% 25%;
-    --input: 220 13% 25%;
-    --ring: 22 96% 54%;
-    --app-chrome: 220 13% 14%;
+    --border: 218 26% 21%; /* panel dark --border #273142 */
+    --input: 218 26% 21%;
+    --ring: 218 85% 62%;
+    --app-chrome: 217 28% 13%;
     --sidebar-background: var(--app-chrome);
-    --sidebar-foreground: 210 20% 88%;
-    --sidebar-primary: 22 96% 54%;
+    --sidebar-foreground: 217 35% 93%;
+    --sidebar-primary: 218 85% 62%;
     --sidebar-primary-foreground: 210 40% 98%;
-    --sidebar-accent: 220 13% 25%;
+    --sidebar-accent: 219 44% 19%; /* panel dark --accent-soft #1b2a45 */
     --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 220 13% 25%;
-    --sidebar-ring: 22 96% 54%;
+    --sidebar-border: 218 26% 21%;
+    --sidebar-ring: 218 85% 62%;
+    /* Server panel dark --shadow / --shadow-hover (3D cards) */
+    --pl-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.25);
+    --pl-card-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.35), 0 10px 24px rgba(0, 0, 0, 0.3);
   }
 }
 
@@ -2974,13 +2982,13 @@ button.day_selected.is-today.has-transactions {
   
   /* Table borders - common in financial apps like transaction tables */
   /* 4K ma lines dherai moto chahiyeko - pure black thick lines */
-  table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]),
-  table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]) td,
-  table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]) th,
-  table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]) tr,
-  table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]) thead th,
-  table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]) tbody td,
-  table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]) tfoot td {
+  table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]):not([data-pl-online-trigger-log-inner]),
+  table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]):not([data-pl-online-trigger-log-inner]) td,
+  table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]):not([data-pl-online-trigger-log-inner]) th,
+  table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]):not([data-pl-online-trigger-log-inner]) tr,
+  table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]):not([data-pl-online-trigger-log-inner]) thead th,
+  table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]):not([data-pl-online-trigger-log-inner]) tbody td,
+  table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]):not([data-pl-online-trigger-log-inner]) tfoot td {
     border-width: 3px !important;
     border-color: #000000 !important;
   }
@@ -3305,7 +3313,7 @@ button.day_selected.is-today.has-transactions {
   
   /* Tailwind border utilities - double thickness (except border-0) */
   /* 4K ma sabai borders moto ra pure black */
-  .border:not(.border-0):not([data-tds-verify-badge]):not([data-pl-list-row]):not([data-pl-footer-drcr-balance-card]):not([data-pl-header-preview-switch]):not([data-pl-mlc-search-input]):not([data-pl-mobile-header-avatar-no-photo]):not([data-pl-mobile-header-avatar]):not(.pl-master-list-group-icon):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-manage-share-avatar]):not([data-pl-toolbar-field]),
+  .border:not(.border-0):not([data-tds-verify-badge]):not([data-pl-list-row]):not([data-pl-footer-drcr-balance-card]):not([data-pl-header-preview-switch]):not([data-pl-mlc-search-input]):not([data-pl-mobile-header-avatar-no-photo]):not([data-pl-mobile-header-avatar]):not(.pl-master-list-group-icon):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-manage-share-avatar]):not([data-pl-toolbar-field]):not([data-pl-online-trigger-table]):not([data-pl-online-trigger-log]),
   .border-t:not(.border-0):not([data-pl-list-row]):not([data-pl-footer-drcr-balance-card]):not([data-pl-header-preview-switch]):not([data-pl-mlc-search-input]):not([data-pl-mobile-header-avatar-no-photo]):not([data-pl-mobile-header-avatar]):not(.pl-master-list-group-icon):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-mobile-ledger-action-footer]):not([data-pl-mobile-txn-pager]):not([data-pl-mobile-txn-pager-strip]):not(.pl-mobile-txn-pager-host),
   .border-r:not(.border-0):not([data-pl-list-row]):not([data-pl-footer-drcr-balance-card]):not([data-pl-header-preview-switch]):not([data-pl-mlc-search-input]):not(.pl-master-list-group-icon):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]),
   .border-b:not(.border-0):not([data-pl-list-row]):not([data-pl-footer-drcr-balance-card]):not([data-pl-header-preview-switch]):not([data-pl-mlc-search-input]):not(.pl-master-list-group-icon):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-mobile-txn-toolbar-row]):not([data-pl-mobile-txn-toolbar-below-pager]),
@@ -5502,17 +5510,17 @@ body.theme-pro .pl-settings-list-shell {
 
 /* ========== Pro theme: light gray shell (ujla) + colorful containers ========== */
 body.theme-pro {
-  background: hsl(220 14% 98.5%) !important;
+  background: hsl(var(--background)) !important;
 }
 body.theme-pro header {
-  background: hsl(220 14% 97%) !important;
+  background: hsl(var(--app-chrome)) !important;
 }
 body.theme-pro header.border-b {
-  background: hsl(220 14% 97%) !important;
+  background: hsl(var(--app-chrome)) !important;
 }
 /* Containers ke baahar: page shell light gray (andar wale Card/ribbon apna color rakhen) */
 body.theme-pro main {
-  background-color: hsl(220 14% 98.5%) !important;
+  background-color: hsl(var(--background)) !important;
   background-image: none !important;
 }
 body.theme-pro main > div > div.border-b:first-of-type:not(.pl-ledger-header-ribbon-wrap):not([data-pl-mobile-detail-merged-header]),
@@ -5521,7 +5529,7 @@ body.theme-pro main > div.grid.min-h-0,
 body.theme-pro main > div > main,
 body.theme-pro main > div > main > .overflow-y-auto,
 body.theme-pro [data-pl-main-sidebar] {
-  background-color: hsl(220 14% 98.5%) !important;
+  background-color: hsl(var(--background)) !important;
   background-image: none !important;
 }
 /* Party / report detail ribbon — pill blue (theme-pro gray shell se alag) */
@@ -5538,7 +5546,7 @@ body.theme-pro .pl-settings-list-shell {
 /* Pro: saare main forms — gray field + black border (Company Profile jaisa) */
 body.theme-pro main input:not([type="checkbox"]):not([type="radio"]):not([data-pl-mlc-search-input]):not([placeholder="Search transactions"]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]),
 body.theme-pro main textarea:not(.pl-company-profile-field):not([data-pl-manage-share-field]),
-body.theme-pro main select:not(.pl-company-profile-field):not([data-pl-manage-share-field]),
+body.theme-pro main select:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-online-trigger-page-size]),
 body.theme-pro main button[role="combobox"]:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-mobile-txn-pager-select]),
 body.theme-pro main button[data-theme-detail="date-range"]:not(.pl-chrome-btn-drop):not(.pl-company-profile-field) {
   border-color: #000 !important;
@@ -5937,7 +5945,7 @@ body.theme-pro [data-pl-main-sidebar] .pl-chrome-tone-emerald {
 /* Pro + Company Profile: outer shell gray; inner pink/green zones apni class se */
 body.theme-pro [data-pl-company-profile-chrome].rounded-lg.border.bg-card {
   /* Outer shell light gray; andar pink/green zones apni class se colorful */
-  background: hsl(220 14% 98.5%) !important;
+  background: hsl(var(--background)) !important;
   background-image: none !important;
 }
 body.theme-pro [data-pl-company-profile-chrome] .pl-chrome-tone-pink {
@@ -7103,10 +7111,10 @@ body.theme-pro [data-theme-table="transactions"]:not([data-pl-txn-table-tone="gr
 }
 
 /* Reconciliation matched pair — dono side green (detail: file end par stripe override ke baad) */
-body[class*="theme-"] main .rounded-lg.border:not([data-pl-list-row]):not(.pl-dashboard-tone-card):not([data-pl-footer-drcr-balance-card]):not([data-pl-mlc-search-input]):not([data-pl-mobile-transaction-card]):not([data-pl-company-profile-chrome]):not(.pl-company-profile-bordered-panel):not([data-pl-mobile-header-avatar-no-photo]):not([data-pl-mobile-header-avatar]),
-body[class*="theme-"] main .rounded-md.border:not([data-tds-verify-badge]):not([data-pl-list-row]):not(.pl-dashboard-tone-card):not([data-pl-footer-drcr-balance-card]):not([data-pl-mlc-search-input]):not([data-pl-ledger-txn-search]):not([data-pl-mobile-txn-pager-select]):not(.pl-mlc-pending-badge):not([data-pl-mobile-transaction-card]):not([data-pl-company-profile-chrome]):not(.pl-company-profile-bordered-panel):not([data-pl-mobile-header-avatar-no-photo]):not([data-pl-mobile-header-avatar]),
-body[class*="theme-"] main .rounded-lg.border.bg-card:not([data-pl-list-row]):not(.pl-dashboard-tone-card):not([data-pl-mobile-transaction-card]):not([data-pl-company-profile-chrome]):not(.pl-company-profile-bordered-panel),
-body[class*="theme-"] main .rounded-lg.border.bg-card.shadow-sm:not([data-pl-list-row]):not(.pl-dashboard-tone-card):not([data-pl-mobile-transaction-card]):not([data-pl-company-profile-chrome]):not(.pl-company-profile-bordered-panel),
+body[class*="theme-"] main .rounded-lg.border:not([data-pl-list-row]):not(.pl-dashboard-tone-card):not([data-pl-footer-drcr-balance-card]):not([data-pl-mlc-search-input]):not([data-pl-mobile-transaction-card]):not([data-pl-company-profile-chrome]):not(.pl-company-profile-bordered-panel):not([data-pl-mobile-header-avatar-no-photo]):not([data-pl-mobile-header-avatar]):not([data-pl-online-trigger-log]),
+body[class*="theme-"] main .rounded-md.border:not([data-tds-verify-badge]):not([data-pl-list-row]):not(.pl-dashboard-tone-card):not([data-pl-footer-drcr-balance-card]):not([data-pl-mlc-search-input]):not([data-pl-ledger-txn-search]):not([data-pl-mobile-txn-pager-select]):not([data-pl-online-trigger-view-btn]):not([data-pl-online-trigger-view-menu]):not([data-pl-copied]):not(.pl-mlc-pending-badge):not([data-pl-mobile-transaction-card]):not([data-pl-company-profile-chrome]):not(.pl-company-profile-bordered-panel):not([data-pl-mobile-header-avatar-no-photo]):not([data-pl-mobile-header-avatar]):not([data-pl-online-trigger-table]):not([data-pl-online-trigger-page-size]),
+body[class*="theme-"] main .rounded-lg.border.bg-card:not([data-pl-list-row]):not(.pl-dashboard-tone-card):not([data-pl-mobile-transaction-card]):not([data-pl-company-profile-chrome]):not(.pl-company-profile-bordered-panel):not([data-pl-online-trigger-log]),
+body[class*="theme-"] main .rounded-lg.border.bg-card.shadow-sm:not([data-pl-list-row]):not(.pl-dashboard-tone-card):not([data-pl-mobile-transaction-card]):not([data-pl-company-profile-chrome]):not(.pl-company-profile-bordered-panel):not([data-pl-online-trigger-log]),
 body[class*="theme-"] [data-pl-main-sidebar] .rounded-md.border:not([data-pl-sidebar-brand-icon]):not(.pl-chrome-btn-drop),
 body[class*="theme-"] [data-pl-main-sidebar] .rounded-lg.border:not([data-pl-sidebar-brand-icon]):not(.pl-chrome-btn-drop),
 body[class*="theme-"] header .rounded-lg.border:not([data-pl-header-preview-switch]),
@@ -7264,10 +7272,10 @@ body.theme-pro footer button[data-pl-footer-fresh-info].pl-chrome-btn-drop {
     0 1px 2px rgba(15, 23, 42, 0.06) !important;
 }
 
-body[class*="theme-"] main table:not([data-pl-manage-sharing-users-table]):not([data-pl-manage-sharing-limits-table]):not(.pl-special-account-usage-table),
-body[class*="theme-"] main table:not([data-pl-manage-sharing-users-table]):not([data-pl-manage-sharing-limits-table]):not(.pl-special-account-usage-table) th,
-body[class*="theme-"] main table:not([data-pl-manage-sharing-users-table]):not([data-pl-manage-sharing-limits-table]):not(.pl-special-account-usage-table) td,
-body[class*="theme-"] main table:not([data-pl-manage-sharing-users-table]):not([data-pl-manage-sharing-limits-table]):not(.pl-special-account-usage-table) tr,
+body[class*="theme-"] main table:not([data-pl-manage-sharing-users-table]):not([data-pl-manage-sharing-limits-table]):not(.pl-special-account-usage-table):not([data-pl-online-trigger-log-inner]),
+body[class*="theme-"] main table:not([data-pl-manage-sharing-users-table]):not([data-pl-manage-sharing-limits-table]):not(.pl-special-account-usage-table):not([data-pl-online-trigger-log-inner]) th,
+body[class*="theme-"] main table:not([data-pl-manage-sharing-users-table]):not([data-pl-manage-sharing-limits-table]):not(.pl-special-account-usage-table):not([data-pl-online-trigger-log-inner]) td,
+body[class*="theme-"] main table:not([data-pl-manage-sharing-users-table]):not([data-pl-manage-sharing-limits-table]):not(.pl-special-account-usage-table):not([data-pl-online-trigger-log-inner]) tr,
 body[class*="theme-"] [data-theme-table="transactions"] table,
 body[class*="theme-"] [data-theme-table="transactions"] table th,
 body[class*="theme-"] [data-theme-table="transactions"] table td {
@@ -7394,7 +7402,7 @@ body[class*="theme-"] main hr {
 
 body[class*="theme-"] main input:not([type="checkbox"]):not([type="radio"]):not([data-pl-mlc-search-input]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]),
 body[class*="theme-"] main textarea:not(.pl-company-profile-field):not([data-pl-manage-share-field]),
-body[class*="theme-"] main select:not(.pl-company-profile-field):not([data-pl-manage-share-field]),
+body[class*="theme-"] main select:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-online-trigger-page-size]),
 body[class*="theme-"] main button[role="combobox"]:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-mobile-txn-pager-select]),
 body[class*="theme-"] main button[data-theme-detail="date-range"]:not(.pl-company-profile-field):not([data-pl-manage-share-field]) {
   border-width: 1px !important;
@@ -7524,7 +7532,7 @@ body.theme-pure-white main [class*="pl-chrome-tone-"] {
 }
 body.theme-pure-white main input:not([type="checkbox"]):not([type="radio"]):not([data-pl-mlc-search-input]),
 body.theme-pure-white main textarea,
-body.theme-pure-white main select,
+body.theme-pure-white main select:not([data-pl-online-trigger-page-size]),
 body.theme-pure-white main button[role="combobox"],
 body.theme-pure-white main button[data-theme-detail="date-range"] {
   background-color: #ffffff !important;
@@ -7566,7 +7574,7 @@ body:not(.theme-pro):not(.theme-pure-white) main .pl-chrome-card.app-chrome-top-
 }
 body:not(.theme-pro):not(.theme-pure-white) main .rounded-lg.border.bg-card:not([data-pl-mobile-transaction-card]),
 body:not(.theme-pro):not(.theme-pure-white) main .rounded-lg.border.bg-card.shadow-sm:not([data-pl-mobile-transaction-card]),
-body:not(.theme-pro):not(.theme-pure-white) main .rounded-md.border,
+body:not(.theme-pro):not(.theme-pure-white) main .rounded-md.border:not([data-pl-online-trigger-view-btn]):not([data-pl-online-trigger-view-menu]),
 body:not(.theme-pro):not(.theme-pure-white) main [class*="pl-dashboard-ribbon-"],
 body:not(.theme-pro):not(.theme-pure-white) main [class*="pl-chrome-tone-"],
 body:not(.theme-pro):not(.theme-pure-white).theme-colorfull main {
@@ -7575,7 +7583,7 @@ body:not(.theme-pro):not(.theme-pure-white).theme-colorfull main {
 }
 body:not(.theme-pro):not(.theme-pure-white) main input:not([type="checkbox"]):not([type="radio"]):not([data-pl-mlc-search-input]):not([placeholder="Search transactions"]),
 body:not(.theme-pro):not(.theme-pure-white) main textarea,
-body:not(.theme-pro):not(.theme-pure-white) main select,
+body:not(.theme-pro):not(.theme-pure-white) main select:not([data-pl-online-trigger-page-size]),
 body:not(.theme-pro):not(.theme-pure-white) main button[role="combobox"],
 body:not(.theme-pro):not(.theme-pure-white) main button[data-theme-detail="date-range"] {
   background-color: hsl(var(--muted) / 0.85) !important;
@@ -10567,7 +10575,13 @@ body.theme-pro main input[placeholder="Search transactions" i].rounded-md.border
 body:not(.theme-pro):not(.theme-pure-white) main input[placeholder="Search transactions" i].rounded-md.border,
 body[class*="theme-"] main input[placeholder="Search notes" i].rounded-md.border,
 body[class*="theme-"] main input[placeholder="Search account" i].rounded-md.border,
-body[class*="theme-"] main input[placeholder="search transactions"].rounded-md.border {
+body[class*="theme-"] main input[placeholder="search transactions"].rounded-md.border,
+body[class*="theme-"] main [data-pl-online-trigger-view] [data-pl-online-trigger-view-btn],
+body.theme-pro main [data-pl-online-trigger-view] [data-pl-online-trigger-view-btn],
+body:not(.theme-pro):not(.theme-pure-white) main [data-pl-online-trigger-view] [data-pl-online-trigger-view-btn],
+body[class*="theme-"] main [data-pl-online-trigger-view] [data-pl-online-trigger-view-menu],
+body.theme-pro main [data-pl-online-trigger-view] [data-pl-online-trigger-view-menu],
+body:not(.theme-pro):not(.theme-pure-white) main [data-pl-online-trigger-view] [data-pl-online-trigger-view-menu] {
   border-width: 1px !important;
   border-style: solid !important;
   border-color: rgb(147 197 253) !important;
@@ -10586,13 +10600,129 @@ body[class*="theme-"] main input[placeholder="Search notes" i].rounded-md.border
 body[class*="theme-"] main input[placeholder="Search account" i].rounded-md.border:focus,
 body[class*="theme-"] main input[placeholder="Search account" i].rounded-md.border:focus-visible,
 body[class*="theme-"] main input[placeholder="search transactions"].rounded-md.border:focus,
-body[class*="theme-"] main input[placeholder="search transactions"].rounded-md.border:focus-visible {
+body[class*="theme-"] main input[placeholder="search transactions"].rounded-md.border:focus-visible,
+body[class*="theme-"] main [data-pl-online-trigger-view] [data-pl-online-trigger-view-btn]:focus,
+body[class*="theme-"] main [data-pl-online-trigger-view] [data-pl-online-trigger-view-btn]:focus-visible,
+body.theme-pro main [data-pl-online-trigger-view] [data-pl-online-trigger-view-btn]:focus,
+body.theme-pro main [data-pl-online-trigger-view] [data-pl-online-trigger-view-btn]:focus-visible {
   outline: none !important;
   --tw-ring-shadow: 0 0 #0000 !important;
   --tw-ring-offset-shadow: 0 0 #0000 !important;
   border-color: rgb(96 165 250) !important;
   background-color: #fff !important;
   background-image: none !important;
+}
+/* Online trigger Daily list — white + blue, Windows native navy select nahi. Theme global nahi. */
+body[class*="theme-"] main [data-pl-online-trigger-view] [data-pl-online-trigger-view-option],
+body.theme-pro main [data-pl-online-trigger-view] [data-pl-online-trigger-view-option],
+body:not(.theme-pro):not(.theme-pure-white) main [data-pl-online-trigger-view] [data-pl-online-trigger-view-option] {
+  background-color: #fff !important;
+  background-image: none !important;
+  color: rgb(15 23 42) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+body[class*="theme-"] main [data-pl-online-trigger-view] [data-pl-online-trigger-view-option]:hover,
+body.theme-pro main [data-pl-online-trigger-view] [data-pl-online-trigger-view-option]:hover,
+body:not(.theme-pro):not(.theme-pure-white) main [data-pl-online-trigger-view] [data-pl-online-trigger-view-option]:hover,
+body[class*="theme-"] main [data-pl-online-trigger-view] [data-pl-online-trigger-view-option][data-selected],
+body.theme-pro main [data-pl-online-trigger-view] [data-pl-online-trigger-view-option][data-selected],
+body:not(.theme-pro):not(.theme-pure-white) main [data-pl-online-trigger-view] [data-pl-online-trigger-view-option][data-selected] {
+  background-color: rgb(239 246 255) !important;
+  color: rgb(29 78 216) !important;
+}
+/* Log Copy all — click pe green border. Sirf is button, default theme global nahi. */
+body[class*="theme-"] main button[data-pl-online-trigger-copy-all][data-pl-copied],
+body.theme-pro main button[data-pl-online-trigger-copy-all][data-pl-copied],
+body:not(.theme-pro):not(.theme-pure-white) main button[data-pl-online-trigger-copy-all][data-pl-copied] {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: rgb(34 197 94) !important;
+}
+/* Online trigger log — sirf table ka 1px frame (wrap container border nahi). H-lines dim black. Theme #000 se bahar. */
+html body[class*="theme-"] main [data-pl-online-trigger-log],
+html body.theme-pro main [data-pl-online-trigger-log],
+html body.theme-pure-white main [data-pl-online-trigger-log],
+html body:not(.theme-pro):not(.theme-pure-white) main [data-pl-online-trigger-log] {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: rgb(167 243 208) !important;
+}
+html body[class*="theme-"] main [data-pl-online-trigger-table],
+html body.theme-pro main [data-pl-online-trigger-table],
+html body.theme-pure-white main [data-pl-online-trigger-table],
+html body:not(.theme-pro):not(.theme-pure-white) main [data-pl-online-trigger-table] {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+html body[class*="theme-"] main [data-pl-online-trigger-log-inner],
+html body.theme-pro main [data-pl-online-trigger-log-inner],
+html body.theme-pure-white main [data-pl-online-trigger-log-inner] {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: rgb(120 120 120) !important;
+}
+html body[class*="theme-"] main [data-pl-online-trigger-table] table,
+html body.theme-pro main [data-pl-online-trigger-table] table,
+html body.theme-pure-white main [data-pl-online-trigger-table] table {
+  border: 0 !important;
+  border-collapse: collapse !important;
+}
+html body[class*="theme-"] main [data-pl-online-trigger-table] th,
+html body.theme-pro main [data-pl-online-trigger-table] th,
+html body.theme-pure-white main [data-pl-online-trigger-table] th,
+html body:not(.theme-pro):not(.theme-pure-white) main [data-pl-online-trigger-table] th,
+html body[class*="theme-"] main [data-pl-online-trigger-table] td,
+html body.theme-pro main [data-pl-online-trigger-table] td,
+html body.theme-pure-white main [data-pl-online-trigger-table] td,
+html body:not(.theme-pro):not(.theme-pure-white) main [data-pl-online-trigger-table] td,
+html body[class*="theme-"] main [data-pl-online-trigger-table] tr,
+html body.theme-pro main [data-pl-online-trigger-table] tr,
+html body.theme-pure-white main [data-pl-online-trigger-table] tr,
+html body[class*="theme-"] main table[data-pl-online-trigger-log-inner] th,
+html body[class*="theme-"] main table[data-pl-online-trigger-log-inner] td,
+html body[class*="theme-"] main table[data-pl-online-trigger-log-inner] tr {
+  border-left: 0 !important;
+  border-right: 0 !important;
+  border-bottom: 0 !important;
+  border-top-width: 1px !important;
+  border-top-style: solid !important;
+  border-top-color: rgb(170 170 170) !important;
+}
+html body[class*="theme-"] main [data-pl-online-trigger-table] thead th,
+html body.theme-pro main [data-pl-online-trigger-table] thead th,
+html body.theme-pure-white main [data-pl-online-trigger-table] thead th,
+html body[class*="theme-"] main table[data-pl-online-trigger-log-inner] thead th {
+  border-top: 0 !important;
+}
+html body[class*="theme-"] main [data-pl-online-trigger-total-row] td,
+html body.theme-pro main [data-pl-online-trigger-total-row] td,
+html body.theme-pure-white main [data-pl-online-trigger-total-row] td {
+  background-color: rgb(243 244 246) !important;
+  border-top-color: rgb(120 120 120) !important;
+  font-size: 0.875rem !important;
+  font-weight: 700 !important;
+}
+body[class*="theme-"] main select[data-pl-online-trigger-page-size],
+body.theme-pro main select[data-pl-online-trigger-page-size],
+body:not(.theme-pro):not(.theme-pure-white) main select[data-pl-online-trigger-page-size] {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: rgb(147 197 253) !important;
+  background-color: #fff !important;
+  background-image: none !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06) !important;
+  color: rgb(15 23 42) !important;
+}
+body[class*="theme-"] main select[data-pl-online-trigger-page-size]:focus,
+body[class*="theme-"] main select[data-pl-online-trigger-page-size]:focus-visible,
+body.theme-pro main select[data-pl-online-trigger-page-size]:focus,
+body.theme-pro main select[data-pl-online-trigger-page-size]:focus-visible {
+  outline: none !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  border-color: rgb(96 165 250) !important;
+  background-color: #fff !important;
 }
 /* Mobile txn pager rows/page — theme black combobox border se bahar */
 body[class*="theme-"] main button[data-pl-mobile-txn-pager-select][role="combobox"],
@@ -13432,3 +13562,74 @@ body main [data-pl-backup-restore] input.pl-backup-control-emerald[type="file"] 
 /* Radix ScrollArea thumb (src/components/ui/scroll-area.tsx) */
 .pl-uniform-scroll-thumb { background-color: var(--pl-sb-thumb) !important; border: 0 !important; }
 .pl-uniform-scroll-thumb:hover { background-color: var(--pl-sb-thumb-hover) !important; }
+
+/* Dashboard mobile Recent footer (DashboardPageContentImpl data-pl-recent-mobile-footer):
+   shared pager host ka reserved margin-bottom (ledger action footer ke liye) yahan gap banata tha - sirf is footer me 0. */
+html body [data-pl-recent-mobile-footer] .pl-mobile-txn-pager-host,
+html[data-pl-app-mobile-ui="1"] body [data-pl-recent-mobile-footer] .pl-mobile-txn-pager-host,
+html body [data-pl-daybook-mobile-footer] .pl-mobile-txn-pager-host,
+html[data-pl-app-mobile-ui="1"] body [data-pl-daybook-mobile-footer] .pl-mobile-txn-pager-host {
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+/* Search + Unapproved: 38px (32px +20%), dono barabar */
+html body [data-pl-recent-mobile-footer] [data-pl-recent-mobile-search-row] input[type="search"],
+html body [data-pl-recent-mobile-footer] [data-pl-recent-mobile-unapproved] {
+  height: 38px !important;
+  min-height: 38px !important;
+  max-height: 38px !important;
+}
+
+/* ========== Server panel look: 3D cards (pb_public style.css .card / .stat / .panel) ==========
+ * Card component adds `pl-card-3d`. Rules only apply while the card still has `rounded-lg` / `shadow-sm`
+ * (if a caller passes its own rounded-* / shadow-*, tailwind-merge drops those and the caller wins).
+ * Shadows + transform only - no blur/backdrop-filter (low-end PC). Border stays 1px.
+ */
+.pl-card-3d.rounded-lg {
+  border-radius: var(--pl-card-radius);
+}
+.pl-card-3d.rounded-lg > .rounded-t-lg:first-child {
+  border-top-left-radius: calc(var(--pl-card-radius) - 1px);
+  border-top-right-radius: calc(var(--pl-card-radius) - 1px);
+}
+.pl-card-3d.rounded-lg > .rounded-b-lg:last-child {
+  border-bottom-left-radius: calc(var(--pl-card-radius) - 1px);
+  border-bottom-right-radius: calc(var(--pl-card-radius) - 1px);
+}
+.pl-card-3d.shadow-sm {
+  box-shadow: var(--pl-card-shadow);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.pl-card-3d.shadow-sm:hover {
+  box-shadow: var(--pl-card-shadow-hover);
+}
+/* Panel `.stat:hover` lift - only clickable cards (big container cards just get the hover shadow, like panel `.panel`) */
+.pl-card-3d.shadow-sm:is(.cursor-pointer, a, button, [role="button"], .pl-dashboard-tone-card):hover {
+  transform: translateY(-2px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pl-card-3d.shadow-sm {
+    transition: none;
+  }
+  .pl-card-3d.shadow-sm:is(.cursor-pointer, a, button, [role="button"], .pl-dashboard-tone-card):hover {
+    transform: none;
+  }
+}
+
+/* ---- Mobile / APK (touch screens): no hover lift, lighter card shadows on small widths ---- */
+@media (hover: none) {
+  .pl-card-3d.shadow-sm,
+  .pl-card-3d.shadow-sm:hover,
+  .pl-card-3d.shadow-sm:is(.cursor-pointer, a, button, [role="button"], .pl-dashboard-tone-card):hover {
+    transform: none;
+    box-shadow: var(--pl-card-shadow);
+    transition: none;
+  }
+}
+@media (max-width: 640px) {
+  html body,
+  html body.theme-pro {
+    --pl-card-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 4px rgba(16, 24, 40, 0.05);
+    --pl-card-shadow-hover: 0 2px 6px rgba(16, 24, 40, 0.07);
+  }
+}

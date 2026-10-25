@@ -14,7 +14,7 @@ import { setCloudSyncCursor } from "@/lib/localCloudSync/queue";
 import type { CloudSyncManifest } from "@/lib/localCloudSync/types";
 import { readCloudSyncConfigFromCompany } from "@/lib/localCloudSync/companyConfig";
 import { postDriveJsonViaClient } from "@/lib/localCloudSync/driveApiClient";
-import { getFirebaseAuthUserForApi, hasRealFirebaseAuthSession } from "@/lib/firebaseAuthForApi";
+import { getDriveApiUser, hasDriveApiAuthSession } from "@/lib/firebaseAuthForApi";
 import { warnLocalCloudSync } from "@/lib/localCloudSync/logger";
 import type { LocalCompanyDoc } from "@/lib/localCompanyStore";
 import {
@@ -36,7 +36,7 @@ async function isOwnerDeviceForDriveRepair(row: LocalCompanyDoc | null | undefin
   const ownerEmail = String(row.ownerEmail || "").trim().toLowerCase();
   if (!ownerEmail) return true;
   try {
-    const user = await getFirebaseAuthUserForApi();
+    const user = await getDriveApiUser();
     const email = String(user.email || "").trim().toLowerCase();
     return !email || email === ownerEmail;
   } catch {
@@ -373,7 +373,7 @@ export async function runManualDriveAttachmentRehydrate(companyId: string): Prom
     return { ...empty, error: "cloud sync disabled" };
   }
 
-  if (!hasRealFirebaseAuthSession()) {
+  if (!hasDriveApiAuthSession()) {
     return { ...empty, error: "Sign in to Google Drive first" };
   }
 

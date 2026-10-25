@@ -1,4 +1,5 @@
 "use client";
+import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
 import { isPlaceholderNoneTax } from "@/lib/salePurchaseLineColumnLabels";
 import { shouldMoveVoucherConvertSourceToBin } from "@/lib/voucherEditConvert";
@@ -107,15 +108,13 @@ import {
   collection,
   query,
   where,
-  getDocs,
-  getDoc,
   addDoc,
   serverTimestamp,
   doc,
   updateDoc,
-  onSnapshot,
   Timestamp,
 } from "firebase/firestore";
+import { getDocs, getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 import type { Party } from "@/components/party/types";
@@ -1864,7 +1863,7 @@ async function processAndSave(data: SalaryFormValues, saveAndNew: boolean = fals
       if (!isLocalMode && newFiles.length > 0) {
         // Storage quota check sirf online upload flow me chale; local-first me skip.
         const totalNewBytes = newFiles.reduce((s, f) => s + (f.size || 0), 0);
-        const limitCheck = await checkStorageLimit(companyId, company?.planId, { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes }, company?.storageOption);
+        const limitCheck = await checkStorageLimitSafe(companyId, company?.planId, { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes }, company?.storageOption);
         if (!limitCheck.allowed) {
           sonnerToast.error("Storage limit reached", { id: toastId, description: limitCheck.message });
           setIsLoading(false);
@@ -1879,7 +1878,7 @@ async function processAndSave(data: SalaryFormValues, saveAndNew: boolean = fals
       if (await shouldStageNewVoucherFilesAsLocalPending(companyId)) {
         if (newFiles.length > 0) {
           const totalNewBytes = newFiles.reduce((s, f) => s + (f.size || 0), 0);
-          const limitCheck = await checkStorageLimit(companyId, company?.planId, { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes }, company?.storageOption);
+          const limitCheck = await checkStorageLimitSafe(companyId, company?.planId, { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes }, company?.storageOption);
           if (!limitCheck.allowed) {
             sonnerToast.error("Storage limit reached", { id: toastId, description: limitCheck.message });
             setIsLoading(false);
@@ -1914,18 +1913,15 @@ async function processAndSave(data: SalaryFormValues, saveAndNew: boolean = fals
           allFileUrls = [...existingUrls];
         }
       } else {
-        const newUrls = await Promise.all(
-          newFiles.map(async (file) => {
-            const url = await uploadVoucherAttachmentFileToFirebase({
-              companyId,
-              voucherType: "salary",
-              file,
-            });
-            await incrementCompanyStorage(companyId, { attachmentsBytes: file.size, storageBytes: file.size });
-            return url;
-          })
-        );
-        allFileUrls = [...existingUrls, ...newUrls];
+        const up = await uploadVoucherFilesOrStageLocalPending({
+          companyId,
+          storageFolder: "salary",
+          existingFileUrls: [...existingUrls],
+          files: newFiles,
+          existingVoucherId: isEditingAndConverting && voucher?.id ? null : idArgForFirestore ?? null,
+        });
+        allFileUrls = up.fileUrls;
+        if (up.preGeneratedVoucherId) preGeneratedVoucherId = up.preGeneratedVoucherId;
       }
 
       let submissionData: any = {
@@ -3561,6 +3557,7 @@ async function processAndSave(data: SalaryFormValues, saveAndNew: boolean = fals
         entityName={voucher?.voucherNumber || "this salary voucher"}
         onMoveToBin={handleDelete}
         onDeletePermanently={handlePermanentDelete}
+        localOnlyCheck={{ companyId, collectionName: "vouchers", docId: savedVoucherId }}
         busy={isLoading}
       />
     </>

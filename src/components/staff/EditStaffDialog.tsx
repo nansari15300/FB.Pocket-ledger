@@ -1,12 +1,14 @@
 "use client";
 
+import { checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Trash2, CalendarIcon } from "lucide-react";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
-import { doc, updateDoc, serverTimestamp, onSnapshot, query, collection } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp, query, collection } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { checkStorageLimit, incrementCompanyStorage } from "@/lib/storageUsageClient";
 import {
   uploadEntityAvatarAndDocumentsRemote,
@@ -373,7 +375,7 @@ export function EditStaffDialog({
           (prepared.avatar instanceof File ? prepared.avatar.size : 0) +
           newDocFiles.reduce((s, f) => s + f.size, 0);
         if (totalBytes > 0 && companyId) {
-          const limitCheck = await checkStorageLimit(
+          const limitCheck = await checkStorageLimitSafe(
             companyId,
             company?.planId,
             { attachmentsBytes: totalBytes, storageBytes: totalBytes },
@@ -578,6 +580,22 @@ export function EditStaffDialog({
     }
     setIsLoading(true);
     try {
+        {
+          // Never-synced local doc => permanent local delete (no Firestore / recycle bin).
+          const { tryHardDeleteNeverSyncedDoc } = await import("@/lib/localOnlyHardDelete");
+          const hd = await tryHardDeleteNeverSyncedDoc(companyId, "staff", staff.id);
+          if (hd === "cancelled") {
+            setIsDeleteDialogOpen(false);
+            return;
+          }
+          if (hd === "hard") {
+            toast({ title: "Deleted", description: "Not synced yet - permanently removed from this device." });
+            onStaffDeleted();
+            setDialogOpen(false);
+            setIsDeleteDialogOpen(false);
+            return;
+          }
+        }
         if (localSqlMirror) {
           const fromDb = await getCompanyDocFromBrowserDb(companyId, "staff", staff.id);
           const base: Record<string, unknown> = fromDb ?? {
@@ -1102,6 +1120,7 @@ export function EditStaffDialog({
         entityName={staff.name}
         onMoveToBin={handleDelete}
         onDeletePermanently={handlePermanentDelete}
+        localOnlyCheck={{ companyId, collectionName: "staff", docId: staff.id }}
         busy={isLoading}
         moveToBinDisabled={apkOfflineViewOnly}
         permanentDeleteDisabled={apkOfflineViewOnly}

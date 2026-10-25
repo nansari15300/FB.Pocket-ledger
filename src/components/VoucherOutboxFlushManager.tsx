@@ -3,15 +3,27 @@
 /**
  * Local-first / embedded: flush pending `sync_outbox` rows to Firestore when the network is up, on focus, or on an interval (~8s).
  * Must also run on Capacitor with Firebase UI mode — previously the manager returned early when `isLocalOnlyMode` was false.
+ * Pocket Ledger Server (PocketBase) companies: the same flush pushes their rows to the server, and a
+ * throttled pull (~30s, change-log driven) brings other devices' changes into SQLite.
  */
 
 import { useEffect } from "react";
 import { flushVoucherOutbox } from "@/lib/localVoucherOutbox";
+import { SERVER_QUOTA_HOLD_END_EVENT } from "@/lib/serverQuotaHold";
 import { isPlServerThinStaffClient } from "@/lib/plServerThinStaffClient";
 import {
   FIREBASE_LEDGER_DATA_SYNC_CHANGED_EVENT,
   isFirebaseLedgerDataSyncDisabled,
 } from "@/lib/firebaseLedgerDataSyncDisabled";
+import { listPocketBaseCompanyIds } from "@/lib/pocketbaseData/pbCompanyRegistry";
+
+/** PocketBase pull after a flush - module loaded only when this device has PocketBase companies. */
+function pullPocketBaseCompaniesInBackground(): void {
+  if (!listPocketBaseCompanyIds().length) return;
+  void import("@/lib/pocketbaseData/pbSync")
+    .then((m) => m.pullAllPocketBaseCompaniesThrottled(30_000))
+    .catch(() => {});
+}
 
 export function VoucherOutboxFlushManager() {
   useEffect(() => {
@@ -39,6 +51,7 @@ export function VoucherOutboxFlushManager() {
           } else {
             failRetryMs = 2_000;
           }
+          pullPocketBaseCompaniesInBackground();
         })
         .catch(() => {});
     };
@@ -71,6 +84,9 @@ export function VoucherOutboxFlushManager() {
       const disabled = Boolean((event as CustomEvent<{ disabled?: boolean }>).detail?.disabled);
       if (!disabled) scheduleFlush(0);
     };
+    /** Quota pause ended (or cleared manually): resume sending the queued outbox. */
+    const onQuotaHoldEnd = () => scheduleFlush(500);
+    window.addEventListener(SERVER_QUOTA_HOLD_END_EVENT, onQuotaHoldEnd);
     window.addEventListener("online", onOnline);
     window.addEventListener("focus", onVisibleOrFocus);
     window.addEventListener(FIREBASE_LEDGER_DATA_SYNC_CHANGED_EVENT, onDataSyncChanged);
@@ -81,6 +97,7 @@ export function VoucherOutboxFlushManager() {
     return () => {
       if (onlineTimer != null) clearTimeout(onlineTimer);
       pendingFlushTimers.forEach((t) => clearTimeout(t));
+      window.removeEventListener(SERVER_QUOTA_HOLD_END_EVENT, onQuotaHoldEnd);
       window.removeEventListener("online", onOnline);
       window.removeEventListener("focus", onVisibleOrFocus);
       window.removeEventListener(FIREBASE_LEDGER_DATA_SYNC_CHANGED_EVENT, onDataSyncChanged);

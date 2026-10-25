@@ -5,7 +5,9 @@ import { signOut } from "firebase/auth";
 import { CloudOff, Download, Loader2, LogOut, RefreshCw, ShieldCheck, TrendingUp } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { auth } from "@/lib/firebase";
+import { auth, clearPocketBaseAppSessionOnLogout } from "@/lib/firebase";
+import { isPocketBaseSessionUser } from "@/lib/pocketbaseData/pbAppSession";
+import { isServerOnlyLoginSession } from "@/lib/pocketbaseData/serverSessionCompanyScope";
 import { webAppBasePath } from "@/lib/webAppBasePath";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
@@ -112,6 +114,16 @@ export function WebAppOnlineAccessGate({ children }: { children: React.ReactNode
 
     void (async () => {
       try {
+        // Pocket Ledger Server login (pl_users): the account is created by the server admin,
+        // and the server decides which companies it can open.
+        // Also when a stale Firebase user is still being signed out on this page load: no
+        // `/api/auth/web-access` (firebase-admin Firestore read) and no shared-company Firestore pull.
+        if (isServerOnlyLoginSession() || (isPocketBaseSessionUser(user) && !auth.currentUser)) {
+          setAllowed(true);
+          allowedRef.current = true;
+          setDenyDetail(null);
+          return;
+        }
         const tokenUser = auth.currentUser;
         if (!tokenUser) {
           if (!cancelled && !allowedRef.current) setAllowed(false);
@@ -284,7 +296,7 @@ export function WebAppOnlineAccessGate({ children }: { children: React.ReactNode
         <Button
           variant="link"
           className="mt-5 h-auto px-0 text-muted-foreground"
-          onClick={() => void signOut(auth)}
+          onClick={() => void clearPocketBaseAppSessionOnLogout().then(() => signOut(auth))}
         >
           <LogOut className="mr-2 h-4 w-4" />
           Sign out and use another account

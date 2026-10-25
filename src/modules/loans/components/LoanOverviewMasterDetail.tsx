@@ -76,8 +76,8 @@ export function LoanOverviewMasterDetail({
   } = useVouchers();
   const [searchTerm, setSearchTerm] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-  const [accountListQuickFilter, setAccountListQuickFilter] = useState<EntityListQuickFilter>("default");
-  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [accountListQuickFilter, setAccountListQuickFilter] = useState<EntityListQuickFilter>("latest");
+  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("latest");
   const [groupMemberFilterId, setGroupMemberFilterId] = useState<string | null>(null);
 
   const loanAccounts = useMemo(

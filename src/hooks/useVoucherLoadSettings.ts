@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import {
   DEFAULT_VOUCHER_LOAD_SETTINGS,

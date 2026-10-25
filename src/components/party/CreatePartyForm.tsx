@@ -7,7 +7,8 @@ import { Loader2, PlusCircle, Upload, Trash2, FileText, CalendarIcon, Eye, EyeOf
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
-import { collection, doc, serverTimestamp, onSnapshot, query, setDoc, Timestamp } from "firebase/firestore";
+import { collection, doc, serverTimestamp, query, setDoc, Timestamp } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import {
   stageEntityAvatarAndDocuments,
   syncEntityAttachmentsAfterSave,

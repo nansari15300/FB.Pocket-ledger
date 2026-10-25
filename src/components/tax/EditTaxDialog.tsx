@@ -1,13 +1,15 @@
 
 "use client";
 
+import { checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Trash2, CalendarIcon } from "lucide-react";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useLiveEntityDocAttachments } from "@/hooks/useLiveEntityDocAttachments";
 import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
-import { doc, updateDoc, serverTimestamp, Timestamp, onSnapshot, query, collection } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp, Timestamp, query, collection } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import {
   uploadEntityAvatarAndDocumentsRemote,
   syncEntityAttachmentsAfterSave,
@@ -318,7 +320,7 @@ export function EditTaxDialog({ tax, allTaxes, onTaxUpdated, onTaxDeleted, child
           (prepared.avatar instanceof File ? prepared.avatar.size : 0) +
           newDocFiles.reduce((s, f) => s + f.size, 0);
         if (totalBytes > 0 && companyId) {
-          const limitCheck = await checkStorageLimit(
+          const limitCheck = await checkStorageLimitSafe(
             companyId,
             company?.planId,
             { attachmentsBytes: totalBytes, storageBytes: totalBytes },
@@ -501,6 +503,22 @@ export function EditTaxDialog({ tax, allTaxes, onTaxUpdated, onTaxDeleted, child
     }
     setIsLoading(true);
     try {
+        {
+          // Never-synced local doc => permanent local delete (no Firestore / recycle bin).
+          const { tryHardDeleteNeverSyncedDoc } = await import("@/lib/localOnlyHardDelete");
+          const hd = await tryHardDeleteNeverSyncedDoc(companyId, "taxes", tax.id);
+          if (hd === "cancelled") {
+            setIsDeleteDialogOpen(false);
+            return;
+          }
+          if (hd === "hard") {
+            toast({ title: "Deleted", description: "Not synced yet - permanently removed from this device." });
+            onTaxDeleted(tax.id);
+            setIsOpen(false);
+            setIsDeleteDialogOpen(false);
+            return;
+          }
+        }
         if (localSqlMirror) {
           // Local mode me delete ko recycle-bin flag ke saath local DB + outbox me queue karo.
           const localDoc = {
@@ -887,6 +905,7 @@ export function EditTaxDialog({ tax, allTaxes, onTaxUpdated, onTaxDeleted, child
         entityName={tax.name}
         onMoveToBin={handleDelete}
         onDeletePermanently={handlePermanentDelete}
+        localOnlyCheck={{ companyId, collectionName: "taxes", docId: tax.id }}
         busy={isLoading}
         moveToBinDisabled={apkOfflineViewOnly}
         permanentDeleteDisabled={apkOfflineViewOnly}

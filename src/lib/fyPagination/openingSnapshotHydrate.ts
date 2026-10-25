@@ -1,10 +1,12 @@
 "use client";
 
 import { endOfDay, startOfDay } from "date-fns";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import type { Context } from "@/components/vouchers/TransactionsTable";
 import { getTransactionAmounts } from "@/hooks/use-transactions";
 import { isCloudLinkedCompanyStorage } from "@/lib/companyUnlockGate";
+import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import type { CompanyStorageRow } from "@/lib/companyStorageKind";
 import { firestore } from "@/lib/firebase";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
@@ -59,6 +61,7 @@ async function fetchFyBalanceSnapshotFromFirestore(
   expectedBeforeMs?: number
 ): Promise<FyBalanceSnapshot | null> {
   if (!fsCompanyId || !periodKey) return null;
+  if (isPocketBaseCompanyId(fsCompanyId)) return null;
   try {
     const path = fySnapshotDocPath(fsCompanyId, periodKind, periodKey);
     const snap = await getDoc(doc(firestore, path));

@@ -2,7 +2,8 @@
  * Shared helper to get effective voucher history settings (company + plan).
  * Used by both client (voucherActionsClient) and server (voucher-actions, actions).
  */
-import { doc, getDoc, getDocFromServer } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc, getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { getPlan, type PlanId } from "@/config/plans";
 import { isLocalOnlyMode } from "@/lib/localMode";

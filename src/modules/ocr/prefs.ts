@@ -2,9 +2,15 @@
 /** Device-local OCR toggles (Add Voucher header). */
 import { useSyncExternalStore } from "react";
 
-export type OcrPrefs = { enabled: boolean; autoPost: boolean; overwriteEdited: boolean };
+export type OcrPrefs = { enabled: boolean; autoPost: boolean; overwriteEdited: boolean; /** Auto Post countdown (seconds) before saving. */ autoPostSeconds: number; /** Auto voucher-type change countdown on/off + seconds. */ autoSwitchVoucher: boolean; autoSwitchSeconds: number };
+export const AUTO_POST_SECONDS_MIN = 1;
+export const AUTO_POST_SECONDS_MAX = 60;
+export function clampAutoPostSeconds(v: unknown): number {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? Math.min(AUTO_POST_SECONDS_MAX, Math.max(AUTO_POST_SECONDS_MIN, n)) : 10;
+}
 const KEY = "pl.ocr.prefs.v1";
-const DEFAULTS: OcrPrefs = { enabled: true, autoPost: false, overwriteEdited: false };
+const DEFAULTS: OcrPrefs = { enabled: true, autoPost: false, overwriteEdited: false, autoPostSeconds: 10, autoSwitchVoucher: true, autoSwitchSeconds: 10 };
 const subs = new Set<() => void>();
 let cache: OcrPrefs | null = null;
 

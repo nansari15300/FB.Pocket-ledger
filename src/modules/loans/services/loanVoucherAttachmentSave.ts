@@ -1,5 +1,6 @@
 "use client";
 
+import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { prepareVoucherAttachmentsForSave } from "@/lib/attachmentRecompressOnSave";
 import {
   normalizeFormFileUrlsForSave,
@@ -35,7 +36,7 @@ export async function prepareLoanJournalAttachments(params: {
   if (newFiles.length === 0) return { fileUrls, preGeneratedVoucherId };
 
   const totalNewBytes = newFiles.reduce((sum, f) => sum + (f.size || 0), 0);
-  const limitCheck = await checkStorageLimit(
+  const limitCheck = await checkStorageLimitSafe(
     params.companyId,
     params.companyPlanId ?? undefined,
     { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes },
@@ -69,17 +70,16 @@ export async function prepareLoanJournalAttachments(params: {
     return { fileUrls, preGeneratedVoucherId };
   }
 
-  for (const file of newFiles) {
-    const url = await uploadVoucherAttachmentFileToFirebase({
+  {
+    const up = await uploadVoucherFilesOrStageLocalPending({
       companyId: params.companyId,
-      voucherType: "journal",
-      file,
+      storageFolder: "journal",
+      existingFileUrls: fileUrls,
+      files: newFiles,
+      existingVoucherId: params.existingVoucherId ?? null,
     });
-    fileUrls.push(url);
-    await incrementCompanyStorage(params.companyId, {
-      attachmentsBytes: file.size,
-      storageBytes: file.size,
-    });
+    fileUrls = up.fileUrls;
+    if (up.preGeneratedVoucherId) preGeneratedVoucherId = up.preGeneratedVoucherId;
   }
   return { fileUrls, preGeneratedVoucherId };
 }

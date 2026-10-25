@@ -13,13 +13,16 @@ import { PayeeList, filterPayeeListRows } from "@/components/payee/PayeeList";
 import type { UnifiedPayee } from "@/components/payee/PayeeList";
 import type { EntityListQuickFilter } from "@/components/entity/EntityListQuickFilterBar";
 import { useVouchers } from "@/hooks/useVouchers";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
 import { useDate } from "@/hooks/useDate";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { PermissionButton } from "@/components/permission";
 import { useRouter } from "next/navigation";
 import { Users } from "lucide-react";
 import type { DateRange } from "@/components/ui/ad-calendar";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 
 import { PartyDetails } from "@/components/party/PartyDetails";
@@ -36,11 +39,13 @@ export default function PaymentOutPage() {
     const router = useRouter();
     const { formatCurrency } = useDate();
     const { vouchers: allVouchers, loading: vouchersLoading, processedParties, processedStaff, processedTaxes, expenseAccounts: unprocessedExpenseAccounts } = useVouchers();
+    const lastVoucherMsById = useLastVoucherMsByEntityId();
+    const { hideSettled } = useEntityListHideSettled();
     
     const [loading, setLoading] = useState(true);
     const [selectedPayee, setSelectedPayee] = useState<UnifiedPayee | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
-    const [listQuickFilter, setListQuickFilter] = useState<EntityListQuickFilter>("default");
+    const [listQuickFilter, setListQuickFilter] = useState<EntityListQuickFilter>("latest");
     const [showAllCompanyVouchers, setShowAllCompanyVouchers] = useState(false);
     const [isVoucherOpen, setIsVoucherOpen] = useState(false);
     const [defaultTab, setDefaultTab] = useState<'payment_out' | 'direct_expense'>('payment_out');
@@ -146,8 +151,8 @@ export default function PaymentOutPage() {
     // ==================================
 
     const filteredPayees = useMemo(() => {
-        return filterPayeeListRows(payeesWithPayments, searchTerm, listQuickFilter);
-    }, [payeesWithPayments, searchTerm, listQuickFilter]);
+        return filterPayeeListRows(payeesWithPayments, searchTerm, listQuickFilter, lastVoucherMsById, hideSettled);
+    }, [payeesWithPayments, searchTerm, listQuickFilter, lastVoucherMsById, hideSettled]);
     
     const payeeTransactions = useMemo(() => {
         if (!selectedPayee) return [];

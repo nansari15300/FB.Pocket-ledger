@@ -2,7 +2,7 @@
 
 import { resolveDriveHostedApiUrl } from "@/lib/driveHostedApiOrigin";
 import { readDriveOAuthConnectedMarker, markDriveOAuthConnected } from "@/lib/driveOAuthConnectedMarker";
-import { getFirebaseAuthUserForApi, getFirebaseIdTokenForApi } from "@/lib/firebaseAuthForApi";
+import { getDriveApiUser, getDriveApiIdToken } from "@/lib/firebaseAuthForApi";
 import { hostedApiFetch } from "@/lib/hostedApiFetch";
 import { postDriveJsonViaClient } from "@/lib/localCloudSync/driveApiClient";
 import {
@@ -21,7 +21,7 @@ export type DriveAuthClientState = {
 /** Browser — hosted API se OAuth URL (static/APK: pocket-ledger.com; dev localhost UI: pocket-ledger.com). */
 export async function getGoogleDriveAuthUrl(state: DriveAuthClientState): Promise<{ url: string }> {
   if (isLocalGoogleDriveSyncDisabled()) throw new Error(LOCAL_GOOGLE_DRIVE_SYNC_DISABLED_MESSAGE);
-  const { token } = await getFirebaseIdTokenForApi();
+  const { token } = await getDriveApiIdToken();
   const apiUrl = resolveDriveHostedApiUrl("/api/auth/google/drive-auth-url");
   const res = await hostedApiFetch(apiUrl, {
     method: "POST",
@@ -45,7 +45,7 @@ export async function getGoogleDriveAuthUrl(state: DriveAuthClientState): Promis
 /** Drive unlink — hosted API (static/APK) ya same-origin dev; client Firestore delete mat karo. */
 export async function disconnectGoogleDrive(): Promise<void> {
   if (isLocalGoogleDriveSyncDisabled()) throw new Error(LOCAL_GOOGLE_DRIVE_SYNC_DISABLED_MESSAGE);
-  const { token } = await getFirebaseIdTokenForApi();
+  const { token } = await getDriveApiIdToken();
   const res = await hostedApiFetch(resolveDriveHostedApiUrl("/api/auth/google/drive-disconnect"), {
     method: "POST",
     headers: {
@@ -68,7 +68,7 @@ async function probeGoogleDriveConnectionViaApi(): Promise<GoogleDriveConnection
     "/api/local-cloud-sync/drive/list-shared-companies",
     {}
   );
-  const user = await getFirebaseAuthUserForApi();
+  const user = await getDriveApiUser();
   const email = String(user.email || "").trim() || null;
   markDriveOAuthConnected(email);
   return { connected: true, email };
@@ -79,7 +79,7 @@ export async function fetchGoogleDriveConnectionStatus(): Promise<GoogleDriveCon
   if (isLocalGoogleDriveSyncDisabled()) {
     return { connected: false, email: null };
   }
-  const { token, user } = await getFirebaseIdTokenForApi();
+  const { token, user } = await getDriveApiIdToken();
   const fallbackEmail = String(user.email || "").trim() || null;
 
   try {

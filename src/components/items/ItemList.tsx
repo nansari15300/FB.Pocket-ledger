@@ -19,6 +19,8 @@ import {
   type EntityListQuickFilter,
 } from "@/components/entity/EntityListQuickFilterBar";
 import { filterAndSortMasterEntityListRows } from "@/lib/filterMasterEntityListRows"
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
 import { masterListShellCn, masterListRowUnselectedCn, MASTER_LIST_ITEM_AVATAR_CN, MASTER_LIST_AVATAR_FALLBACK_CN } from "@/lib/masterListChrome";
 import { EntityFileAttachmentHover } from "@/components/entity/EntityFileAttachmentHover";
 import { trimEntityFileUrlForPreview } from "@/lib/trimEntityFileUrlForPreview";
@@ -83,9 +85,13 @@ function getItemRowDisplayMetrics(
 
 type ItemListFilterRow = {
   item: Item;
+  id: string;
   name?: string;
   balance: number;
   openingBalanceDate?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  lastEditedAt?: unknown;
   metrics: ReturnType<typeof getItemRowDisplayMetrics>;
 };
 
@@ -104,12 +110,19 @@ export function ItemList({
 }: ItemListProps) {
   const { formatCurrency } = useDate();
   const { company } = useCompany();
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled, setHideSettled } = useEntityListHideSettled();
   const { animatePresenceMode, rowMotionProps, markListScrolling, isRowAnimationEnabled, layoutHoldMs } = useMasterListRowMotion();
-  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("latest");
   const quickFilter = quickFilterProp ?? internalQuickFilter;
   const setQuickFilter = onQuickFilterChange ?? setInternalQuickFilter;
   const quickFilterFooter = !hideQuickFilterBar ? (
-    <EntityListQuickFilterBar active={quickFilter} onChange={setQuickFilter} />
+    <EntityListQuickFilterBar
+      active={quickFilter}
+      onChange={setQuickFilter}
+      hideSettled={hideSettled}
+      onHideSettledChange={setHideSettled}
+    />
   ) : null;
   const highlightSearch = searchTerm.trim();
 
@@ -118,17 +131,24 @@ export function ItemList({
       const metrics = getItemRowDisplayMetrics(item, stockView, itemDisplayUnits, formatCurrency);
       return {
         item,
+        id: item.id,
         name: item.name,
         balance: metrics.displayValue,
         openingBalanceDate: item.openingBalanceDate,
+        createdAt: (item as { createdAt?: unknown }).createdAt,
+        updatedAt: (item as { updatedAt?: unknown }).updatedAt,
+        lastEditedAt: (item as { lastEditedAt?: unknown }).lastEditedAt,
         metrics,
       };
     });
   }, [items, stockView, itemDisplayUnits, formatCurrency]);
 
   const filteredAndSortedRows = useMemo(() => {
-    return filterAndSortMasterEntityListRows(enrichedRows, searchTerm, quickFilter) as ItemListFilterRow[];
-  }, [enrichedRows, searchTerm, quickFilter]);
+    return filterAndSortMasterEntityListRows(enrichedRows, searchTerm, quickFilter, {
+      lastVoucherMsById,
+      hideSettled,
+    }) as ItemListFilterRow[];
+  }, [enrichedRows, searchTerm, quickFilter, lastVoucherMsById, hideSettled]);
 
   const visibleItemAttachmentUrls = useMemo(
     () =>

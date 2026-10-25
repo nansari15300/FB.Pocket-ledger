@@ -5,7 +5,7 @@ import type { User } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter, usePathname } from "next/navigation";
 import React, { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { auth, firestore } from "@/lib/firebase";
+import { auth, firestore, isFirestoreBlockedForServerSession } from "@/lib/firebase";
 import { slugify } from "@/lib/slugify";
 import { getCountryByIP } from "@/lib/getCountryByIP";
 import { doc, onSnapshot, serverTimestamp, collection, query, where, getDocs, getDoc } from "firebase/firestore";
@@ -27,11 +27,20 @@ import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import { isElectronEnvironment } from "@/hooks/use-mobile";
 import { clearEmbeddedSessionUnlock } from "@/lib/embeddedDeviceLock";
+import { isRecoveryRoutePath } from "@/lib/recovery/recoveryMode";
 import { writeAccountPlanLocalCache } from "@/lib/accountPlanLocalCache";
 import { applyAccountCanonicalPlanToAllLocalCompanies } from "@/lib/applyAccountCanonicalPlanToLocalCompanies";
 import { writeCurrentAppAccountIdentity } from "@/lib/appAccountIdentity";
 import { clearSelectedCompanyId } from "@/lib/selectedCompanyStorage";
 import { clearPermissionRoleCache } from "@/lib/permissionRoleCache";
+import {
+  buildPocketBaseSessionUser,
+  isPocketBaseAppSessionActive,
+  isPocketBaseAppSessionMarked,
+  isPocketBaseSessionUser,
+  PB_APP_SESSION_EVENTS,
+  readPocketBaseAppProfile,
+} from "@/lib/pocketbaseData/pbAppSession";
 
 /** PWA offline: `await getDoc`/`getDocs` indefinitely hang sakta hai — pehle `onSnapshot` laga ke UI unblock (Firestore persistence + yaz fire-and-forget). */
 async function firebaseReadWithDeadline<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
@@ -123,6 +132,49 @@ function tryApplyRememberedLocalCompanyAuth(
   return true;
 }
 
+/**
+ * Pocket Ledger Server login (`pl_users` email + password, no Firebase session) -> Firebase-shaped
+ * user (`providerId: "pocketbase"`, no Firebase ID token). A Firebase session always wins.
+ */
+function tryApplyPocketBaseAppSession(
+  setUser: React.Dispatch<React.SetStateAction<User | null>>,
+  setCustomUser: React.Dispatch<React.SetStateAction<AppUser | null>>,
+  setLoading: React.Dispatch<React.SetStateAction<boolean>>,
+  pbSessionRef: React.MutableRefObject<boolean>,
+): boolean {
+  if (typeof window === "undefined") return false;
+  if (!isPocketBaseAppSessionActive()) return false;
+  const profile = readPocketBaseAppProfile();
+  if (!profile) return false;
+  const sessionUser = buildPocketBaseSessionUser(profile);
+  const identity = writeCurrentAppAccountIdentity(profile.email || sessionUser.uid);
+  if (identity.changed) {
+    clearPermissionRoleCache();
+    clearAllLocalAuthSessions();
+    clearSelectedCompanyId();
+  }
+  pbSessionRef.current = true;
+  const role = (profile.appRole || "User") as Role;
+  const displayName = sessionUser.displayName || profile.email.split("@")[0] || "User";
+  setUser((prev) => (prev && isPocketBaseSessionUser(prev) && prev.uid === sessionUser.uid ? prev : sessionUser));
+  setCustomUser((prev) =>
+    prev && prev.uid === sessionUser.uid && prev.role === role && prev.email === profile.email
+      ? prev
+      : {
+          id: sessionUser.uid,
+          uid: sessionUser.uid,
+          userDocId: sessionUser.uid,
+          displayName,
+          email: profile.email,
+          role,
+          companyId: null,
+          isActive: true,
+        }
+  );
+  setLoading(false);
+  return true;
+}
+
 /** Static/APK/EXE: persisted Firebase session se turant UI — online par bhi network user-doc ka wait mat karo. */
 function isEmbeddedFastAuthShell(): boolean {
   if (typeof window === "undefined") return false;
@@ -184,9 +236,15 @@ export const AuthProvider = ({ children, skipRedirects = false }: AuthProviderPr
   const pendingNullAuthTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** APK/EXE fast-start: local remembered unlock se temporary user banta hai; Firebase aaye to replace ho jayega. */
   const fastLocalAuthRef = useRef(false);
+  /** Signed in with the Pocket Ledger Server login only (no Firebase session). */
+  const pbSessionRef = useRef(false);
 
   // `useEffect` se pehle paint: login/dashboard pe spinner flash kam — remembered local company turant hydrate.
   useLayoutEffect(() => {
+    // Server login (no Firebase session): paint the account straight away.
+    if (!auth.currentUser && tryApplyPocketBaseAppSession(setUser, setCustomUser, setLoading, pbSessionRef)) {
+      return;
+    }
     // Embedded runtime: app access ke liye real account login enforce karo (local synthetic session sirf web fallback ke liye).
     if (
       canUseLocalSyntheticAuthFallback() &&
@@ -195,7 +253,7 @@ export const AuthProvider = ({ children, skipRedirects = false }: AuthProviderPr
       return;
     }
     // IndexedDB Firebase session: observer se pehle turant paint — hosted `/app/party` cold open par gate "Opening sign in" par na atake.
-    if (auth.currentUser) {
+    if (auth.currentUser && !(isFirestoreBlockedForServerSession() && isPocketBaseAppSessionMarked())) {
       applyEmbeddedFastAuthSession(auth.currentUser, setUser, setCustomUser, setLoading);
     }
   }, []);
@@ -212,6 +270,7 @@ export const AuthProvider = ({ children, skipRedirects = false }: AuthProviderPr
     const finalizeSignedOut = () => {
       clearPendingNullAuthTimer();
       fastLocalAuthRef.current = false;
+      pbSessionRef.current = false;
       // EXE/APK device-lock: agla open dubara PIN/biometric maange — Firebase session alag clear hoti hai.
       clearEmbeddedSessionUnlock();
       clearPermissionRoleCache();
@@ -226,6 +285,7 @@ export const AuthProvider = ({ children, skipRedirects = false }: AuthProviderPr
 
     const bootstrapUserSession = (firebaseUser: User) => {
       fastLocalAuthRef.current = false;
+      pbSessionRef.current = false;
       const identity = writeCurrentAppAccountIdentity(firebaseUser.email || firebaseUser.uid);
       if (identity.changed) {
         clearPermissionRoleCache();
@@ -618,9 +678,9 @@ export const AuthProvider = ({ children, skipRedirects = false }: AuthProviderPr
     const NULL_AUTH_DEBOUNCE_MS = 500;
     /** Hosted web: kabhi `onAuthStateChanged` late — signed-out ko unblock; signed-in ko currentUser se paint. */
     const authBootTimeout = window.setTimeout(() => {
-      if (fastLocalAuthRef.current) return;
+      if (fastLocalAuthRef.current || pbSessionRef.current) return;
       const cu = auth.currentUser;
-      if (cu) {
+      if (cu && !(isFirestoreBlockedForServerSession() && isPocketBaseAppSessionMarked())) {
         applyEmbeddedFastAuthSession(cu, setUser, setCustomUser, setLoading);
         return;
       }
@@ -646,9 +706,12 @@ export const AuthProvider = ({ children, skipRedirects = false }: AuthProviderPr
           pendingNullAuthTimerRef.current = setTimeout(() => {
             pendingNullAuthTimerRef.current = null;
             const cu = auth.currentUser;
-            if (cu) {
+            if (cu && !(isFirestoreBlockedForServerSession() && isPocketBaseAppSessionMarked())) {
               setUser(cu);
               bootstrapUserSession(cu);
+              return;
+            }
+            if (tryApplyPocketBaseAppSession(setUser, setCustomUser, setLoading, pbSessionRef)) {
               return;
             }
             if (
@@ -662,6 +725,10 @@ export const AuthProvider = ({ children, skipRedirects = false }: AuthProviderPr
           }, NULL_AUTH_DEBOUNCE_MS);
           return;
         }
+        // Server-only login page: a Firebase user here is a stale IndexedDB restore (firebase.ts signs it
+        // out) or a fresh Firebase sign-in (page reloads). Never bootstrap it - that would read plans /
+        // web access through Firebase with its ID token.
+        if (isFirestoreBlockedForServerSession() && isPocketBaseAppSessionMarked()) return;
         setUser(firebaseUser);
         bootstrapUserSession(firebaseUser);
       },
@@ -669,7 +736,7 @@ export const AuthProvider = ({ children, skipRedirects = false }: AuthProviderPr
         const code = err && typeof err === "object" && "code" in err ? String((err as { code?: string }).code) : "";
         if (code === "auth/network-request-failed") {
           const cu = auth.currentUser;
-          if (cu) {
+          if (cu && !(isFirestoreBlockedForServerSession() && isPocketBaseAppSessionMarked())) {
             setUser(cu);
             bootstrapUserSession(cu);
             return;
@@ -680,7 +747,21 @@ export const AuthProvider = ({ children, skipRedirects = false }: AuthProviderPr
       }
     );
 
+    /** Server login / logout (this tab or another tab). */
+    const onPocketBaseSessionChanged = () => {
+      if (auth.currentUser) return;
+      if (tryApplyPocketBaseAppSession(setUser, setCustomUser, setLoading, pbSessionRef)) return;
+      if (pbSessionRef.current) finalizeSignedOut();
+    };
+    const onStorage = (ev: StorageEvent) => {
+      if (ev.key === "pl_pb_data_auth_v1" || ev.key === "pl_app_session_kind_v1") onPocketBaseSessionChanged();
+    };
+    for (const name of PB_APP_SESSION_EVENTS) window.addEventListener(name, onPocketBaseSessionChanged);
+    window.addEventListener("storage", onStorage);
+
     return () => {
+      for (const name of PB_APP_SESSION_EVENTS) window.removeEventListener(name, onPocketBaseSessionChanged);
+      window.removeEventListener("storage", onStorage);
       window.clearTimeout(authBootTimeout);
       clearPendingNullAuthTimer();
       unsubscribe();
@@ -695,7 +776,9 @@ export const AuthProvider = ({ children, skipRedirects = false }: AuthProviderPr
     if (skipRedirects || loading) return;
 
     const isAuthPage = pathname === "/";
-    const isPublicPage = isAuthPage;
+    // Recovery mode page: no app/Firebase session there (it has its own marker check), so sending it
+    // to "/" made the recovery gate send it straight back = endless /recovery <-> / loop.
+    const isPublicPage = isAuthPage || isRecoveryRoutePath(pathname);
     if (!user && !isPublicPage) {
       /** IndexedDB hydrate: observer kabhi turant `null` bharta hai jab `auth.currentUser` already set hai — "/" pe bhagna + phir "/" se `/company` = 3× SPA jump / "auto refresh" jaisa lagta hai */
       if (auth.currentUser) return;

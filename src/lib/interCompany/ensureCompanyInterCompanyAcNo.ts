@@ -1,7 +1,8 @@
 /**
  * Purani companies par missing interCompanyAccountNo backfill (Firestore + local mirror).
  */
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import {
   generateUniqueInterCompanyAccountNo,

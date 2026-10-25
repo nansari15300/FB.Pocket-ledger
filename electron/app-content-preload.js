@@ -77,6 +77,7 @@ contextBridge.exposeInMainWorld("plElectronAttachments", {
   readFile: (args) => ipcRenderer.invoke("pl-attachment-read", args),
   deleteFile: (relativePath) => ipcRenderer.invoke("pl-attachment-delete", relativePath),
   exists: (relativePath) => ipcRenderer.invoke("pl-attachment-exists", relativePath),
+  statSizes: (relativePaths) => ipcRenderer.invoke("pl-attachment-stat-sizes", relativePaths),
 });
 
 /** EXE: Google sign-in system browser (Chrome/Edge) — saved account one-tap. */

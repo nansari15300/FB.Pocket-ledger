@@ -14,7 +14,17 @@ export const LOCAL_MIRROR_META_SERVER_CONFIRMED_KEY = "__mirrorBackedByFirestore
 export const PL_CLIENT_OFFLINE_FIRST_PERSIST_MS = "__plOfflineFirstPersistMs" as const;
 
 /** Firestore se aaya hua row SQLite mirror me — server orphan purge ke liye pehchan. */
+/**
+ * Transient marker set by snapshot readers when `doc.metadata.hasPendingWrites` (SDK latency-compensated local write,
+ * not yet acknowledged by the server). Such rows must NOT be stamped as server-backed. Never persisted.
+ */
+export const PL_SDK_PENDING_WRITE_KEY = "__plSdkPendingWrite" as const;
+
 export function stampLocalMirrorBackedByFirestore<T extends Record<string, unknown>>(row: T): T {
+  if (row && (row as Record<string, unknown>)[PL_SDK_PENDING_WRITE_KEY] === true) {
+    const { [PL_SDK_PENDING_WRITE_KEY]: _p, ...rest } = row as Record<string, unknown>;
+    return rest as T;
+  }
   return { ...row, [LOCAL_MIRROR_META_SERVER_CONFIRMED_KEY]: true } as T;
 }
 

@@ -135,10 +135,25 @@ export async function beginVoucherSaveLoadingOrBlock(
   companyId: string,
   loadingMessage: string
 ): Promise<string | number | null> {
+  try {
+    const { noteUserInitiatedServerAction } = await import("@/lib/quotaAdminNotice");
+    noteUserInitiatedServerAction();
+  } catch {
+    /* ignore */
+  }
   const cid = String(companyId || "").trim();
   if (cid) {
-    const { getPlServerStaffSaveBlockedMessage } = await import("@/lib/plServerStaffOfflinePolicy");
-    const blocked = await getPlServerStaffSaveBlockedMessage(cid);
+    let blocked: string | null | undefined = null;
+    try {
+      const { getPlServerStaffSaveBlockedMessage } = await import("@/lib/plServerStaffOfflinePolicy");
+      // Never let the staff-reachability probe hang the Save button before the toast even shows.
+      blocked = await Promise.race([
+        getPlServerStaffSaveBlockedMessage(cid),
+        new Promise<null>((res) => setTimeout(() => res(null), 4_000)),
+      ]);
+    } catch {
+      blocked = null;
+    }
     if (blocked) {
       sonnerToast.error("Cannot save", { description: blocked });
       return null;
@@ -147,12 +162,32 @@ export async function beginVoucherSaveLoadingOrBlock(
   // Compress "100%" + links spinner + save — ek hi loading row; multi-stack mat chhodo.
   dismissAttachmentCompressionProgressToast();
   sonnerToast.dismiss(VOUCHER_LINK_SAVE_TOAST_ID);
+  armVoucherSaveToastWatchdog();
   return sonnerToast.loading(loadingMessage, {
     id: VOUCHER_SAVE_LOADING_TOAST_ID,
     position: VOUCHER_SONNER_TOAST_POSITION,
     duration: Infinity,
     classNames: { toast: VOUCHER_SONNER_TOAST_CN },
   });
+}
+
+/**
+ * Last-resort watchdog: every form replaces the loading toast (same id) with success/error in try/catch,
+ * but an early return or a hung await would leave "Saving..." spinning forever. After 150 s we replace it.
+ * Generation counter: a newer save re-arms; harmless if the id already became a short success/error toast.
+ */
+export const VOUCHER_SAVE_TOAST_WATCHDOG_MS = 150_000;
+let voucherSaveWatchdogGen = 0;
+let voucherSaveWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
+function armVoucherSaveToastWatchdog(): void {
+  const gen = ++voucherSaveWatchdogGen;
+  if (voucherSaveWatchdogTimer) clearTimeout(voucherSaveWatchdogTimer);
+  voucherSaveWatchdogTimer = setTimeout(() => {
+    voucherSaveWatchdogTimer = null;
+    if (gen !== voucherSaveWatchdogGen) return;
+    console.warn("[PL-DEBUG-SAVE] save toast watchdog fired (150 s) - dismissing stuck loading toasts");
+    dismissAllVoucherProgressLoadingToasts();
+  }, VOUCHER_SAVE_TOAST_WATCHDOG_MS);
 }
 
 /** Authoritative / staff write errors — generic "Failed to save" ki jagah seedha message. */

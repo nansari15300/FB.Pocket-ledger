@@ -1,5 +1,6 @@
 "use client";
 
+import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -50,7 +51,8 @@ import {
 import { sendTransactionAlert, isAmountOverOneLakh, getChangedFieldLabels } from "@/lib/transactionAlerts";
 import { assertCan, assertCanPerformBackdated, assertCanEdit, PermissionDeniedError } from "@/lib/permissions/enforcePermission";
 import { firestore } from "@/lib/firebase";
-import { collection, query, where, getDocs, onSnapshot, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, serverTimestamp } from "firebase/firestore";
+import { getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { hasPaymentLinks } from "@/lib/payment-allocation-utils";
 import BsDatePicker from "@/components/ui/BsDatePicker";
 import { Calendar } from "@/components/ui/calendar";
@@ -554,7 +556,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       let preGeneratedVoucherId: string | undefined;
       if (newFilesToUpload.length > 0) {
         const totalNewBytes = newFilesToUpload.reduce((s, f) => s + (f.size || 0), 0);
-        const limitCheck = await checkStorageLimit(companyId, company?.planId, { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes }, company?.storageOption);
+        const limitCheck = await checkStorageLimitSafe(companyId, company?.planId, { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes }, company?.storageOption);
         if (!limitCheck.allowed) {
           toast({ variant: "destructive", title: "Storage limit reached", description: limitCheck.message });
           setIsLoading(false);
@@ -587,16 +589,15 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
             }
           }
         } else {
-          const filePromises = newFilesToUpload.map(async (file) => {
-            const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
-            const { storage } = await import("@/lib/firebase");
-            const fileRef = ref(storage, `companies/${companyId}/vouchers/production/${Date.now()}_${file.name}`);
-            await uploadBytes(fileRef, file);
-            await incrementCompanyStorage(companyId, { attachmentsBytes: file.size, storageBytes: file.size });
-            return getDownloadURL(fileRef);
+          const up = await uploadVoucherFilesOrStageLocalPending({
+            companyId,
+            storageFolder: "production",
+            existingFileUrls,
+            files: newFilesToUpload,
+            existingVoucherId: isEditingAndConverting && voucher?.id ? null : (isEditing ? voucher.id : null),
           });
-          const newFileUrls = await Promise.all(filePromises);
-          existingFileUrls.push(...newFileUrls);
+          existingFileUrls.splice(0, existingFileUrls.length, ...up.fileUrls);
+          if (up.preGeneratedVoucherId) preGeneratedVoucherId = up.preGeneratedVoucherId;
         }
       }
 
@@ -1452,6 +1453,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       entityName={voucher?.productionNumber || form.watch("productionNumber") || "this production order"}
       onMoveToBin={handleDelete}
       onDeletePermanently={handlePermanentDelete}
+      localOnlyCheck={{ companyId, collectionName: "vouchers", docId: voucher?.id }}
       busy={isLoading}
     />
     </>

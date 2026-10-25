@@ -6,9 +6,6 @@ import {
   deleteDoc,
   deleteField,
   doc,
-  getDoc,
-  getDocs,
-  onSnapshot,
   query,
   serverTimestamp,
   setDoc,
@@ -16,6 +13,7 @@ import {
   where,
   type Unsubscribe,
 } from "firebase/firestore";
+import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { getPlServerSharedCompanies } from "@/lib/plServerAccessContext";
 import { getCompanyDocFromBrowserDb } from "@/lib/localCompanyDocMirror";

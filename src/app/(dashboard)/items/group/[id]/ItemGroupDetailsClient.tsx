@@ -7,7 +7,8 @@ import { useState, useEffect, useCallback } from 'react';
 import type { DateRange } from "@/components/ui/ad-calendar";
 import { useRouter } from 'next/navigation';
 import { LoadingSpinner } from '@/components/layout/LoadingSpinner';
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 
 export function ItemGroupDetailsClient() {

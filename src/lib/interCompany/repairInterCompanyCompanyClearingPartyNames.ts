@@ -3,7 +3,8 @@
  * + peer entity meta (party list me company naam niche).
  */
 
-import { collection, doc, getDocs, updateDoc } from "firebase/firestore";
+import { collection, doc, updateDoc } from "firebase/firestore";
+import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import {
   formatInterCompanyAccountClearingPartyName,

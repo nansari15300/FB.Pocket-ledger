@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 import { verifyBearerUid } from "@/lib/localCloudSync/server/apiAuth";
 import { buildGoogleDriveAuthUrl, type DriveOAuthState } from "@/lib/localCloudSync/server/driveOAuthServer";
 import { driveHostedApiJson, driveHostedApiOptions } from "@/lib/server/driveHostedApiCors";
+import { ensureHostingConfig } from "@/lib/server/hostingConfig";
 
 /** APK/static localhost — CORS preflight (production middleware deploy se pehle bhi chale). */
 export async function OPTIONS(req: NextRequest) {
@@ -25,6 +26,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    await ensureHostingConfig(); // panel "Hosting settings" values (env vars still win)
     const url = buildGoogleDriveAuthUrl({
       returnPath,
       uid,

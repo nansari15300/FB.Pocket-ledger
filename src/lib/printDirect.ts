@@ -1,6 +1,7 @@
 
 "use client";
 
+import { voucherTypeDisplayText } from "@/lib/voucherTypeDisplay";
 import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
 import { format as formatDateFns } from "date-fns";
@@ -135,7 +136,7 @@ function printLedgerTypeLabel(row: any): string {
   if (pill) return pill;
   const type = String(row?.type || "");
   if (type === FY_OPENING_ROW_TYPE) return "fy opening";
-  return type.replace(/_/g, " ");
+  return voucherTypeDisplayText(type);
 }
 
 function pushFyOpeningPrintRowAfterPartition(
@@ -803,7 +804,7 @@ function buildAccountConfirmationDocDefinition(p: PrintPayload): TDocumentDefini
     activityRow("Sales Return", summary.salesReturn),
     activityRow("Purchase Turnover", summary.purchases),
     activityRow("Purchase Return", summary.purchaseReturn),
-    activityRow("Payment In / Out", summary.payments),
+    activityRow("Receipt / Payment Out", summary.payments),
     activityRow("TDS Deducted", { exVatDr: 0, exVatCr: 0, vatDr: 0, vatCr: 0, totalDr: 0, totalCr: summary.tdsDeducted }),
   ];
   const totalActivity = ["Total", { exVatDr: 0, exVatCr: 0, vatDr: 0, vatCr: 0, totalDr: 0, totalCr: 0 }] as [string, any];
@@ -2868,7 +2869,7 @@ const buildTableRow = (row: any, nextRow: any | undefined, p: PrintPayload, form
       const dateCells: TableCell[] = p.dateSystem === 'Both'
         ? [{ text: formatDateBS(validDate), fontSize: 9, noWrap: true }, { text: formatDate(validDate), fontSize: 9, noWrap: true }]
         : [{ text: p.dateSystem === 'AD' ? formatDate(validDate) : formatDateBS(validDate), fontSize: 9, noWrap: true }];
-      const typeText = (row.type || '').replace(/_/g, ' ');
+      const typeText = voucherTypeDisplayText(row.type || '');
       const voucherNo = row.voucherNumber || row.id || '';
       const partyName = row.partyName || '';
       const debit = Number(row.debit) || 0;
@@ -3045,7 +3046,7 @@ const buildTableRow = (row: any, nextRow: any | undefined, p: PrintPayload, form
       const isContraTransaction = row.type === 'contra';
 
       if (isAllVouchersView && (isJournalTransaction || isContraTransaction)) {
-        statusContent = { text: row.type.replace(/_/g, ' '), fontSize: 9, alignment: 'left' as const };
+        statusContent = { text: voucherTypeDisplayText(row.type), fontSize: 9, alignment: 'left' as const };
       } else {
         const isOverdueDisplay = row.isOverdue || overdueDays > 0;
         // Keep bill-wise status text in print aligned with table logic for staff/group rows.

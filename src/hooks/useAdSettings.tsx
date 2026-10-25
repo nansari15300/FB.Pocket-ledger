@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { DEFAULT_AD_SETTINGS, normalizeAdSettings, type AdSettings } from "@/lib/adSettings";
 import { readCachedAdSettings, writeCachedAdSettings } from "@/lib/ads/adSettingsCache";

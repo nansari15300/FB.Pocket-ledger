@@ -4,8 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { onBillingApiUser } from "@/lib/firebaseAuthForApi";
 import { getBillingApiUrl } from "@/lib/billingApiOrigin";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,7 +36,7 @@ function AddonEsewaInner() {
 
     onceRef.current = false;
     setDetail(null);
-    const unsub = onAuthStateChanged(auth, async (user) => {
+    const unsub = onBillingApiUser(async (user) => {
       if (!user || onceRef.current) return;
       onceRef.current = true;
       setState("working");

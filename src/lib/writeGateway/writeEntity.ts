@@ -38,6 +38,7 @@ import { isPureLocalLedgerCompany, companyRowUsesSqliteLedgerWrites } from "@/li
 import { isFirebaseLedgerDataSyncDisabled } from "@/lib/firebaseLedgerDataSyncDisabled";
 import { companyStrategyUsesSqliteFirstLedgerWrites } from "@/lib/staticAttachmentDisplayUrl";
 import { isOnlineCompanyLedgerCloudSyncAllowed } from "@/lib/onlineCompanySelectorSyncPolicy";
+import { isPocketBaseCompany, isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 
 export type WriteEntityOperation = "create" | "update" | "delete";
 
@@ -66,11 +67,15 @@ async function resolveFirestoreCompanyId(localCompanyId: string): Promise<string
 
 /** Local-first: SQLite UPSERT + sync_outbox — local / PL Server / Online Firebase. */
 async function shouldWriteLocalLedgerFirst(localCompanyId: string): Promise<boolean> {
+  // Pocket Ledger Server (PocketBase) company: always SQLite + outbox; the outbox flush pushes to PocketBase.
+  if (isPocketBaseCompanyId(localCompanyId)) return true;
   if (isFirebaseLedgerDataSyncDisabled()) return true;
-  if (shouldForceFirestoreWritesOnStaticOrApk()) return false;
   const reg = await getLocalCompanyById(localCompanyId, { includeDeleted: true });
+  if (reg && isPocketBaseCompany(localCompanyId, reg)) return true;
+  if (shouldForceFirestoreWritesOnStaticOrApk()) return false;
   if (!isOnlineCompanyLedgerCloudSyncAllowed(localCompanyId, reg as Company | null)) return true;
-  if (apkEmbeddedSqliteFirstWritesPreferred()) return !!reg;
+  // Global local-first (web = EXE): SQLite + outbox even when the company registry row is not mirrored yet.
+  if (apkEmbeddedSqliteFirstWritesPreferred()) return true;
   if (reg && companyStrategyUsesSqliteFirstLedgerWrites(reg)) return true;
   if (isStaticAppBuild() && reg) return companyRowUsesSqliteLedgerWrites(reg);
   if (reg && companyRowUsesSqliteLedgerWrites(reg)) return true;

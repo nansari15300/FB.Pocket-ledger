@@ -2,15 +2,14 @@
 
 import {
   doc,
-  getDoc,
   query,
   where,
-  getDocs,
   Timestamp,
   collection,
   serverTimestamp,
 } from "firebase/firestore";
-import { addDoc, setDoc, updateDoc, runTransaction } from "@/lib/writeGateway/firestoreMutationsInternal";
+import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
+import { addDoc, getDoc, setDoc, updateDoc, runTransaction } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { auth, firestore, storage, firestoreNetworkDisabledByApi } from "@/lib/firebase";
 import { ref as storageRef, deleteObject } from "firebase/storage";
 import { moveFilesToVoucherDateClient } from "@/lib/storageClient";
@@ -102,7 +101,7 @@ import {
   rewriteRemoteVoucherAttachmentsForOfflineCompany,
   voucherNewAttachmentsAlwaysStageAsLocalPending,
 } from "@/lib/voucherLocalAttachmentUpload";
-import { scheduleBrowserDbPersistAfterWrite } from "@/lib/localSqlite";
+import { scheduleBrowserDbPersistAfterWrite, flushPendingBrowserDbSave } from "@/lib/localSqlite";
 import { parseAttachmentHoldClipboardText } from "@/lib/attachmentHoldClipboard";
 import {
   dispatchVoucherLivePatch,
@@ -191,6 +190,42 @@ async function allowLocalFirestoreFailureQueue(companyId: string): Promise<boole
   if (await shouldUseLocalVoucherPipeline(companyId)) return true;
   if (await apkCloudCompanyUsesSqliteFirstWrites(companyId)) return true;
   return !isCapacitorNativeApp() && (isLocalOnlyMode() || isStaticAppBuild());
+}
+
+/**
+ * Online (direct Firestore) save path: quota/billing failures (Firestore or Storage hydrate of local: files) or an
+ * active serverQuotaHold must fall back to local SQLite + outbox instead of throwing away the user's edit.
+ */
+async function isServerQuotaOrBillingSaveFailure(e: unknown): Promise<boolean> {
+  try {
+    if ((e as { __serverQuotaHold?: boolean })?.__serverQuotaHold === true) return true;
+    const { isOutboxQuotaOrBillingError } = await import("@/lib/localVoucherOutbox");
+    if (isOutboxQuotaOrBillingError(e)) {
+      try {
+        const { startServerQuotaHold } = await import("@/lib/serverQuotaHold");
+        startServerQuotaHold();
+      } catch {
+        /* ignore */
+      }
+      return true;
+    }
+    const { isServerQuotaHoldActive } = await import("@/lib/serverQuotaHold");
+    return isServerQuotaHoldActive();
+  } catch {
+    return false;
+  }
+}
+
+async function throwIfServerQuotaHoldActiveForDirectWrite(): Promise<void> {
+  try {
+    const { isServerQuotaHoldActive } = await import("@/lib/serverQuotaHold");
+    if (!isServerQuotaHoldActive()) return;
+  } catch {
+    return;
+  }
+  const err = new Error("Server quota hold active - saving locally") as Error & { __serverQuotaHold?: boolean };
+  err.__serverQuotaHold = true;
+  throw err;
 }
 
 async function shouldUseLocalVoucherPipeline(companyId: string): Promise<boolean> {
@@ -817,6 +852,11 @@ export async function patchVoucherFields(
     const localRow = await getCompanyDocFromBrowserDb(companyId, "vouchers", voucherId).catch(() => null);
     const onServer = await firestoreCompanyDocExists(companyId, "vouchers", voucherId);
     if (!localRow && !onServer) return;
+    // Never-synced local voucher => permanent local delete (no Firestore / recycle bin).
+    const { tryHardDeleteNeverSyncedDoc } = await import("@/lib/localOnlyHardDelete");
+    const hd = await tryHardDeleteNeverSyncedDoc(companyId, "vouchers", voucherId);
+    if (hd === "cancelled") throw new Error("Delete cancelled");
+    if (hd === "hard") return;
   }
   const sqliteFirst =
     options?.forceSqliteFirst === true || (await shouldUseLocalVoucherPipeline(companyId));
@@ -884,7 +924,7 @@ export async function patchVoucherFields(
       }
       const { scheduleBrowserDbPersistAfterWrite, flushPendingBrowserDbSave } = await import("@/lib/localSqlite");
       scheduleBrowserDbPersistAfterWrite();
-      await flushPendingBrowserDbSave().catch(() => undefined);
+      void flushPendingBrowserDbSave();
     }
     await flushOrQueuePlServerVoucherAttachmentsAfterLocalSave(companyId, payload);
 
@@ -965,6 +1005,13 @@ export async function softDeleteVoucherMoveToRecycleBin(
   deletedByUid: string,
   options?: { forceSqliteFirst?: boolean }
 ): Promise<void> {
+  {
+    // Never-synced local voucher => permanent local delete; no recycle alert / history.
+    const { tryHardDeleteNeverSyncedDoc } = await import("@/lib/localOnlyHardDelete");
+    const hd = await tryHardDeleteNeverSyncedDoc(companyId, "vouchers", voucherId);
+    if (hd === "cancelled") throw new Error("Delete cancelled");
+    if (hd === "hard") return;
+  }
   const reg = await getLocalCompanyById(companyId, { includeDeleted: true });
   const fsCompanyId = String((reg as { authoritativeCompanyId?: string } | null)?.authoritativeCompanyId || companyId).trim();
   const sqliteFirst =
@@ -1234,6 +1281,7 @@ async function saveVoucherOfflineLocalCreate(
   void flushOrQueuePlServerVoucherAttachmentsAfterLocalSave(companyId, payload);
   await enqueueVoucherOutbox(companyId, "create", newId, payload);
   scheduleBrowserDbPersistAfterWrite();
+  void flushPendingBrowserDbSave();
   dispatchSavedVoucherAttachmentUrls(companyId, newId, payload);
   // Online company: background flush so other devices get `_pl_change_log` without re-save.
   if (
@@ -1288,12 +1336,106 @@ async function resolveVoucherSnapshotForLocalWrite(
   return null;
 }
 
+type InterCompanyDeferredTargetDoc = {
+  companyId?: string;
+  sourceCompanyId?: string;
+  sourceVoucherId?: string;
+  userId?: string;
+  payload?: Record<string, unknown>;
+  share?: {
+    sourceOwnFileUrls?: string[];
+    shareSourceToTarget?: boolean;
+    targetOwnFileUrls?: string[];
+    shareTargetToSource?: boolean;
+  };
+};
+
+const icDeferredTargetInFlight = new Map<string, Promise<string | null>>();
+
+/**
+ * IC redesign: the other company's copy is created only when the source is approved. Save-only stored the
+ * target payload on the source (interCompanyDeferredTarget). Create it via saveVoucher (local-first: offline =>
+ * SQLite + outbox), then link source -> target and clear the deferred payload. Idempotent per source voucher.
+ */
+async function materializeInterCompanyDeferredTarget(sourceVoucher: Record<string, unknown>): Promise<string | null> {
+  const d = sourceVoucher.interCompanyDeferredTarget as InterCompanyDeferredTargetDoc | null | undefined;
+  const targetCompanyId = String(d?.companyId || "").trim();
+  const sourceCompanyId = String(d?.sourceCompanyId || "").trim();
+  const sourceVoucherId = String(d?.sourceVoucherId || sourceVoucher.id || "").trim();
+  if (!d || !targetCompanyId || !sourceCompanyId || !sourceVoucherId || !d.payload) return null;
+  const key = `${sourceCompanyId}/${sourceVoucherId}`;
+  const inflight = icDeferredTargetInFlight.get(key);
+  if (inflight) return inflight;
+  const run = (async (): Promise<string | null> => {
+    // Another tab/call may already have created it.
+    const latest = await resolveVoucherSnapshotForLocalWrite(sourceCompanyId, sourceVoucherId).catch(() => null);
+    const latestRow = (latest?.voucher ?? null) as Record<string, unknown> | null;
+    const latestLink = latestRow ? readInterCompanyLink(latestRow) : null;
+    if (latestLink?.peerVoucherId) return String(latestLink.peerVoucherId);
+    const latestDeferred = (latestRow?.interCompanyDeferredTarget ?? d) as InterCompanyDeferredTargetDoc;
+    const payload: Record<string, unknown> = {
+      ...(latestDeferred.payload || d.payload || {}),
+      isApproved: false,
+      interCompanySourceApproved: true,
+    };
+    const userId = String(latestDeferred.userId || d.userId || sourceVoucher.lastEditedBy || sourceVoucher.createdBy || "").trim();
+    const saved = await saveVoucher(targetCompanyId, userId, payload as never, null);
+    const targetId = String(saved?.id || "").trim();
+    if (!targetId) return null;
+    const srcLink = readInterCompanyLink(latestRow || sourceVoucher);
+    await patchVoucherFields(sourceCompanyId, sourceVoucherId, {
+      interCompanyLink: { ...(srcLink || {}), peerVoucherId: targetId },
+      interCompanyDeferredTarget: null,
+    });
+    dispatchVoucherLivePatch(sourceCompanyId, sourceVoucherId, {
+      id: sourceVoucherId,
+      interCompanyLink: { ...(srcLink || {}), peerVoucherId: targetId },
+      interCompanyDeferredTarget: null,
+    });
+    const share = latestDeferred.share || d.share;
+    if (share) {
+      void (async () => {
+        try {
+          const { reconcileAndPatchInterCompanyAttachmentSharing } = await import(
+            "@/lib/interCompany/interCompanySharedAttachments"
+          );
+          await reconcileAndPatchInterCompanyAttachmentSharing({
+            sourceCompanyId,
+            sourceVoucherId,
+            sourceOwnFileUrls: share.sourceOwnFileUrls ?? [],
+            shareSourceToTarget: share.shareSourceToTarget === true,
+            targetCompanyId,
+            targetVoucherId: targetId,
+            targetOwnFileUrls: share.targetOwnFileUrls ?? [],
+            shareTargetToSource: share.shareTargetToSource === true,
+          } as never);
+        } catch (err) {
+          console.warn("[IC] deferred target attachment share:", err);
+        }
+      })();
+    }
+    return targetId;
+  })();
+  icDeferredTargetInFlight.set(key, run);
+  try {
+    return await run;
+  } finally {
+    icDeferredTargetInFlight.delete(key);
+  }
+}
+
 /** Source IC approve — target copy par visibility flag taaki target ledger me tab dikhe. */
 async function syncInterCompanySourceApprovedToPeerTarget(
   sourceVoucher: Record<string, unknown>
 ): Promise<void> {
   if (interCompanyVoucherViewerSide(sourceVoucher) !== "source") return;
-  const link = readInterCompanyLink(sourceVoucher);
+  const link0 = readInterCompanyLink(sourceVoucher);
+  let link = link0;
+  if (link0?.peerCompanyId && !link0?.peerVoucherId) {
+    // IC redesign: target copy was deferred at Save-only - create it now (first approve).
+    const createdId = await materializeInterCompanyDeferredTarget(sourceVoucher);
+    if (createdId) link = { ...link0, peerVoucherId: createdId };
+  }
   if (!link?.peerCompanyId || !link?.peerVoucherId) return;
   await patchVoucherFields(link.peerCompanyId, link.peerVoucherId, {
     interCompanySourceApproved: true,
@@ -1493,10 +1635,16 @@ export async function saveVoucher(
     deleteUndefinedTopLevelFields(cleanVoucherData as Record<string, unknown>);
   }
   const sqliteFirst = sqliteFirstEarly;
+  console.info("[PL-DEBUG-SAVE] saveVoucher branch", {
+    companyId, voucherId: voucherId ?? null, sqliteFirst,
+    fileUrls: Array.isArray((cleanVoucherData as Record<string, unknown>).fileUrls) ? ((cleanVoucherData as Record<string, unknown>).fileUrls as unknown[]).length : null,
+  });
 
   let voucherEditAttachmentCtx: { baselineUrls: string[]; remoteUrls: string[] } | null = null;
   if (voucherId) {
+    const plTc = performance.now();
     voucherEditAttachmentCtx = await readVoucherEditAttachmentContext(companyId, voucherId);
+    console.info("[PL-DEBUG-SAVE] step=readVoucherEditAttachmentContext", Math.round(performance.now() - plTc), "ms");
   }
 
   const scheduleVoucherAttachmentCleanupIfNeeded = (
@@ -1702,7 +1850,11 @@ export async function saveVoucher(
       mergedLocal.approvedByUserName = null;
       mergedLocal.approvedAt = null;
     }
-    mergedLocal = { ...mergedLocal, id: voucherId! };
+    mergedLocal = {
+      ...mergedLocal,
+      id: voucherId!,
+      [PL_CLIENT_OFFLINE_FIRST_PERSIST_MS]: Date.now(),
+    };
     coerceVoucherDocumentDate(mergedLocal);
     // Party rule: bytes bridge pe pehle, phir voucher JSON sync.
     await flushPlServerAttachmentsBeforeLocalSave(writeCompanyIdLocal, mergedLocal, {
@@ -1713,6 +1865,7 @@ export async function saveVoucher(
     void flushOrQueuePlServerVoucherAttachmentsAfterLocalSave(writeCompanyIdLocal, mergedLocal);
     await enqueueVoucherOutbox(writeCompanyIdLocal, "update", voucherId!, mergedLocal);
     scheduleBrowserDbPersistAfterWrite();
+    void flushPendingBrowserDbSave();
     dispatchSavedVoucherAttachmentUrls(writeCompanyIdLocal, voucherId!, mergedLocal, {
       previousUrls: voucherEditAttachmentCtx?.baselineUrls,
     });
@@ -1873,8 +2026,13 @@ export async function saveVoucher(
     return { id: newId };
     } catch (e) {
       if (isVoucherLimitError(e)) throw e;
-      if (!isLikelyOfflineFirestoreError(e)) throw e;
-      if (!(await allowLocalFirestoreFailureQueue(companyId))) throw e;
+      // Quota/billing (e.g. Storage/Firestore 402, resource-exhausted) or quota hold: never drop the save -
+      // persist locally + outbox (outbox respects serverQuotaHold), local: files upload later.
+      const quotaFallback = await isServerQuotaOrBillingSaveFailure(e);
+      if (!quotaFallback) {
+        if (!isLikelyOfflineFirestoreError(e)) throw e;
+        if (!(await allowLocalFirestoreFailureQueue(companyId))) throw e;
+      }
       return saveVoucherOfflineLocalCreate(
         companyId,
         userId,
@@ -2020,6 +2178,7 @@ export async function saveVoucher(
   else if (shouldResetApproval) fireUpdate.approvedAt = null;
 
   try {
+    await throwIfServerQuotaHoldActiveForDirectWrite();
     const awaitHydrateUpdate = shouldAwaitBlockingHydrateForFirestorePayload(fireUpdate as Record<string, unknown>);
     const fireUpdateHydrated = awaitHydrateUpdate
       ? await voucherPayloadHydrateLocalFilesForFirestore(fsIdForEdit, fireUpdate as Record<string, unknown>)
@@ -2043,7 +2202,10 @@ export async function saveVoucher(
       return { id: voucherId! };
     }
     // Static/hybrid: offline queue; APK Firebase company par allowLocalFirestoreFailureQueue false ho to throw
-    const queueLocalStale = isLikelyOfflineFirestoreError(e) && (await allowLocalFirestoreFailureQueue(companyId));
+    const queueLocalStale =
+      (isLikelyOfflineFirestoreError(e) && (await allowLocalFirestoreFailureQueue(companyId))) ||
+      (await isServerQuotaOrBillingSaveFailure(e));
+    console.info("[PL-DEBUG-SAVE] direct update failed", { voucherId, queueLocalStale, error: String((e as Error)?.message || e) });
     if (!queueLocalStale) throw e;
     const { id: _oldId, ...oldRest } = oldData as Record<string, unknown>;
     const forLocal = removeUndefined({

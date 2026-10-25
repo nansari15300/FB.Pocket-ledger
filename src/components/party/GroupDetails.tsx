@@ -1,6 +1,7 @@
 
 "use client";
 
+import { voucherTypeDisplayText } from "@/lib/voucherTypeDisplay";
 import * as React from "react";
 import { toast } from "sonner";
 import { openPrintDirect, companyFiscalFieldsForPrint } from "@/lib/printDirect";
@@ -175,7 +176,8 @@ import { MasterLedgerDateRangePresetRow } from "@/components/ui/MasterLedgerDate
 import type { BSDate } from "@/lib/bs-date";
 import { Badge } from "../ui/badge";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { doc, getDoc, query, collection, getDocs, where } from "firebase/firestore";
+import { doc, query, collection, where } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { batchFetchUserDisplayNamesFromFirestore } from "@/lib/batchFetchUserDisplayNames";
 import { firestore } from "@/lib/firebase";
 import { applyPaymentBillWiseLinkAllocations } from "@/lib/voucherActionsClient";
@@ -1359,7 +1361,7 @@ export function GroupDetails({
             <p className="font-semibold text-xs">
               {transaction.voucherNumber} -{" "}
               {transaction.type
-                ? transaction.type.replace(/_/g, " ")
+                ? voucherTypeDisplayText(transaction.type)
                 : "N/A"}
             </p>
             <p className="text-xs text-muted-foreground">

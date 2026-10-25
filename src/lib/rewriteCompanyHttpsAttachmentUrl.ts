@@ -73,8 +73,11 @@ function buildAttachmentFieldPatch(
 ): Record<string, unknown> | null {
   const patch: Record<string, unknown> = {};
   let any = false;
-  for (const field of ATTACHMENT_SCAN_FIELDS) {
-    if (!Object.prototype.hasOwnProperty.call(row, field)) continue;
+  void ATTACHMENT_SCAN_FIELDS;
+  // Same field set as the strict usage scan (companyAttachmentRegistry): every field except history/id,
+  // so IC interCompanyOwnFileUrls, loan docs, templates etc. are swapped too.
+  for (const field of Object.keys(row)) {
+    if (field === "history" || field === "id") continue;
     const r = replaceAttachmentRefInValue(row[field], fromUrl, toUrl);
     if (r.changed) {
       patch[field] = r.next;
@@ -167,6 +170,8 @@ export async function rewriteCompanyHttpsAttachmentUrlEverywhere(params: {
   const places = await listAttachmentUsagePlacesInCompany(companyId, fromUrl);
   let rewrittenPlaces = 0;
   for (const place of places) {
+    // IC peer-company places are counted (blocks delete) but not rewritten from this company.
+    if (place.placeKey.startsWith("peer:")) continue;
     const slash = place.placeKey.indexOf("/");
     if (slash <= 0) continue;
     const collectionName = place.placeKey.slice(0, slash);

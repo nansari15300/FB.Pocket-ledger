@@ -307,10 +307,10 @@ export function LinkPaymentInToPaymentOutDialog({
       >
         <DialogHeader className="shrink-0 space-y-0.5">
           <p className="text-xs text-muted-foreground leading-tight">Link for spend wise</p>
-          <DialogTitle className="leading-tight">{displayOnly ? `Current voucher ${displayOnlyVariant === 'out' ? 'payment out' : 'in voucher'}${accountName ? ` from ${accountName}` : ""}` : `Select Payment In / Direct Income / Contra (in)${accountName ? ` from ${accountName}` : ""}`}</DialogTitle>
+          <DialogTitle className="leading-tight">{displayOnly ? `Current voucher ${displayOnlyVariant === 'out' ? 'payment out' : 'in voucher'}${accountName ? ` from ${accountName}` : ""}` : `Select Receipt / Direct Income / Contra (in)${accountName ? ` from ${accountName}` : ""}`}</DialogTitle>
           {!displayOnly && (
           <p className="text-sm text-muted-foreground hidden md:block">
-            Tick which Payment In, Direct Income or Contra (in) vouchers this payment is spending from. Amount will be linked from selected vouchers.
+            Tick which Receipt, Direct Income or Contra (in) vouchers this payment is spending from. Amount will be linked from selected vouchers.
           </p>
           )}
           {!displayOnly && requiredAmount > 0 && (
@@ -364,14 +364,14 @@ export function LinkPaymentInToPaymentOutDialog({
           </p>
         )}
         {currentVoucherSummary && !displayOnly && (
-          <p className="text-sm text-muted-foreground shrink-0 -mt-0.5 hidden md:block">Payment In / Direct Income / Contra (in) of this account (only linkable or already selected)</p>
+          <p className="text-sm text-muted-foreground shrink-0 -mt-0.5 hidden md:block">Receipt / Direct Income / Contra (in) of this account (only linkable or already selected)</p>
         )}
         {/* Single scroll container: horizontal + vertical so mobile shows full table; thin dim scrollbar */}
         <div className="min-h-0 border rounded-md overflow-x-auto">
           {displayList.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">
               {paymentInListFiltered.length === 0
-                ? (filterToVoucherId ? "Current voucher not found for this account." : "No Payment In, Direct Income or Contra (in) found for this account.")
+                ? (filterToVoucherId ? "Current voucher not found for this account." : "No Receipt, Direct Income or Contra (in) found for this account.")
                 : "No linkable amount remaining."}
             </p>
           ) : (

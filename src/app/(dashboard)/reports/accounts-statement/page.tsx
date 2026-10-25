@@ -1,4 +1,5 @@
 "use client";
+import { voucherTypeDisplayText, voucherTypeSearchText } from "@/lib/voucherTypeDisplay";
 import { STAFF_ENTITY_LABEL, STAFF_ENTITY_TYPE_KEY, STAFF_ENTITY_SEARCH_PLACEHOLDER, STAFF_ENTITY_ADD_BUTTON, staffEntityDisplayLabel } from "@/lib/staffEntityDisplayName";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,7 +59,8 @@ import { ResizeWidthHandle, useResizablePixelWidth } from "@/components/layout/R
 import { mlc, mlcListChromeRootData } from "@/lib/mobileListChrome";
 import { asCalendarRange, type DateRange } from "@/components/ui/ad-calendar";
 import { format } from "date-fns";
-import { doc, getDoc, query, collection, getDocs, where } from "firebase/firestore";
+import { doc, query, collection, where } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
 import {
@@ -1728,7 +1730,7 @@ function AccountsStatementPageContent({ onPartySelectionChange, mode = "account"
     return reportDisplayTransactions.filter((t: any) => {
       const vno = (t.voucherNumber || "").toLowerCase();
       const narr = (t.narration || "").toLowerCase();
-      const type = (typeof t.type === "string" ? t.type.replace(/_/g, " ") : "").toLowerCase();
+      const type = voucherTypeSearchText(t.type);
       const amount = String(t.debit ?? t.credit ?? t.total ?? "").toLowerCase();
       return vno.includes(q) || narr.includes(q) || type.includes(q) || amount.includes(q);
     });
@@ -1887,7 +1889,7 @@ function AccountsStatementPageContent({ onPartySelectionChange, mode = "account"
         "Date (BS)": formatDateBS(d),
         "Date (AD)": formatDate(d),
         "Voucher No.": t.voucherNumber,
-        Type: t.type.replace(/_/g, " "),
+        Type: voucherTypeDisplayText(t.type),
         Narration: t.narration || "",
         Debit: t.debit,
         Credit: t.credit,

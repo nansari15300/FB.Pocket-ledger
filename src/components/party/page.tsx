@@ -38,7 +38,8 @@ import {
 import { useResponsiveListLayout } from "@/hooks/useResponsiveListLayout";
 import { ResponsiveMasterDetail } from "@/components/layout/ResponsiveMasterDetail";
 import { LoadingSpinner } from "@/components/layout/LoadingSpinner";
-import { doc, getDoc, collection, query, getDocs, where } from "firebase/firestore";
+import { doc, collection, query, where } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { DateRange } from "@/components/ui/ad-calendar";

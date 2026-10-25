@@ -59,6 +59,9 @@ import {
   useGroupListAccountMove,
   type GroupListMemberMoveProps,
 } from "@/hooks/useGroupListAccountMove";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
+import { stampLastVoucherMsOnGroupForest } from "@/lib/masterListLastVoucherMs";
 import { GroupListAccountMoveOverlay } from "@/components/entity/GroupListAccountMoveOverlay";
 
 export type MasterGroupMemberRowContext = {
@@ -228,6 +231,8 @@ function MasterGroupTreeNodeRow<G extends MasterGroupListRow, M>({
   siblingOrderKey,
   disableOuterMotion = false,
 }: MasterGroupTreeNodeRowProps<G, M>) {
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled } = useEntityListHideSettled();
   const rowLayoutKey = siblingOrderKey ?? displayOrderKey;
   const rowShellClassName = cn(
     depth > 0 ? GROUP_LIST_CHILD_INDENT_CLASS : undefined,
@@ -249,11 +254,22 @@ function MasterGroupTreeNodeRow<G extends MasterGroupListRow, M>({
   const group = node.group;
   const members = groupMembersByGroupId[group.id] ?? [];
   const highlightQuery = searchTerm.trim();
-  const displayMembers = groupListMembersForDisplay(members, quickFilter, searchTerm);
-  const sortedChildNodes = useMemo(
-    () => sortMasterGroupTreeNodes(node.children, quickFilter),
-    [node.children, quickFilter]
+  const displayMembers = groupListMembersForDisplay(
+    members,
+    quickFilter,
+    searchTerm,
+    undefined,
+    lastVoucherMsById,
+    hideSettled
   );
+  const sortedChildNodes = useMemo(() => {
+    const stamped = stampLastVoucherMsOnGroupForest(
+      node.children,
+      lastVoucherMsById,
+      groupMembersByGroupId
+    );
+    return sortMasterGroupTreeNodes(node.children, quickFilter, stamped);
+  }, [node.children, quickFilter, lastVoucherMsById, groupMembersByGroupId]);
   const childGroupsListKey = useMemo(
     () => `${quickFilter}|${masterListOrderKey(sortedChildNodes.map((n) => n.group.id))}`,
     [quickFilter, sortedChildNodes]
@@ -549,17 +565,26 @@ function MasterGroupSystemBranchRow<G extends MasterGroupListRow, M>({
   const branchLabel = branch.name;
   const branchLayoutKey = masterGroupBranchListExpandKey(config, branch.id);
   const branchRowLayoutKey = siblingOrderKey ?? branchLayoutKey;
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled } = useEntityListHideSettled();
   const highlightQuery = (rest.searchTerm || "").trim();
   const branchDirectMembers = rest.groupMembersByGroupId[branch.id] ?? [];
   const displayBranchDirectMembers = groupListMembersForDisplay(
     branchDirectMembers,
     quickFilter,
-    rest.searchTerm || ""
+    rest.searchTerm || "",
+    undefined,
+    lastVoucherMsById,
+    hideSettled
   );
-  const sortedBranchForest = useMemo(
-    () => sortMasterGroupTreeNodes(branchForest, quickFilter),
-    [branchForest, quickFilter]
-  );
+  const sortedBranchForest = useMemo(() => {
+    const stamped = stampLastVoucherMsOnGroupForest(
+      branchForest,
+      lastVoucherMsById,
+      rest.groupMembersByGroupId
+    );
+    return sortMasterGroupTreeNodes(branchForest, quickFilter, stamped);
+  }, [branchForest, quickFilter, lastVoucherMsById, rest.groupMembersByGroupId]);
   const branchGroupsListKey = useMemo(
     () =>
       `${quickFilter}|${masterListOrderKey(sortedBranchForest.map((n) => n.group.id))}`,
@@ -815,6 +840,7 @@ export function MasterGroupNestedListBody<G extends MasterGroupListRow, M>({
   branchInsetById,
   ...rest
 }: MasterGroupNestedListBodyProps<G, M>) {
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
   const [expandedIds, setExpandedIds] = useState(() =>
     defaultMasterGroupListExpandedIds(config)
   );
@@ -837,10 +863,16 @@ export function MasterGroupNestedListBody<G extends MasterGroupListRow, M>({
     const split = splitMasterGroupForestByBranch(forest, config, rest.allGroups);
     const out: Record<string, MasterGroupTreeNode<G>[]> = {};
     for (const branch of config.branches) {
-      out[branch.id] = sortMasterGroupTreeNodes(split[branch.id] ?? [], rest.quickFilter);
+      const branchNodes = split[branch.id] ?? [];
+      const stamped = stampLastVoucherMsOnGroupForest(
+        branchNodes,
+        lastVoucherMsById,
+        rest.groupMembersByGroupId
+      );
+      out[branch.id] = sortMasterGroupTreeNodes(branchNodes, rest.quickFilter, stamped);
     }
     return out;
-  }, [forest, config, rest.allGroups, rest.quickFilter]);
+  }, [forest, config, rest.allGroups, rest.quickFilter, lastVoucherMsById, rest.groupMembersByGroupId]);
   const searchActive = Boolean((rest.searchTerm || "").trim());
 
   useEffect(() => {
@@ -1072,8 +1104,8 @@ export function MasterGroupNestedListBody<G extends MasterGroupListRow, M>({
         balance: sumMasterGroupForestBalance(branchForest) + directBalance,
       };
     });
-    return sortMasterGroupListBranches(rows, config, rest.quickFilter);
-  }, [config, branchForests, rest.groupMembersByGroupId, rest.quickFilter]);
+    return sortMasterGroupListBranches(rows, config, rest.quickFilter, lastVoucherMsById);
+  }, [config, branchForests, rest.groupMembersByGroupId, rest.quickFilter, lastVoucherMsById]);
 
   const systemBranchesListKey = useMemo(
     () =>

@@ -1,6 +1,7 @@
 "use client";
 
-import { collection, getDocs, query } from "firebase/firestore";
+import { collection, query } from "firebase/firestore";
+import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { writeEntity } from "@/lib/writeGateway";

@@ -4,7 +4,7 @@ import { getLocalCompanyById, removeLocalCompanyById, upsertLocalCompany, type L
 import { readCloudSyncConfigFromCompany } from "@/lib/localCloudSync/companyConfig";
 import { postDriveJsonViaClient } from "@/lib/localCloudSync/driveApiClient";
 import { logLocalCloudSync, warnLocalCloudSync } from "@/lib/localCloudSync/logger";
-import { getFirebaseAuthUserForApi, hasRealFirebaseAuthSession } from "@/lib/firebaseAuthForApi";
+import { getDriveApiUser, hasDriveApiAuthSession } from "@/lib/firebaseAuthForApi";
 import {
   clearCloudSyncHistoricalBackfillDone,
   unsyncCloudSyncOutboxForCompany,
@@ -38,7 +38,7 @@ async function isOwnerDeviceForDriveRepair(row: LocalCompanyDoc | null | undefin
   const ownerEmail = String(row.ownerEmail || "").trim().toLowerCase();
   if (!ownerEmail) return true;
   try {
-    const user = await getFirebaseAuthUserForApi();
+    const user = await getDriveApiUser();
     const email = String(user.email || "").trim().toLowerCase();
     return !email || email === ownerEmail;
   } catch {
@@ -119,7 +119,7 @@ async function scheduleDriveFolderRepair(companyId: string, reg: LocalCompanyDoc
 export async function applyDriveFolderRepair(companyId: string): Promise<boolean> {
   const cid = String(companyId || "").trim();
   if (!cid) return false;
-  if (!hasRealFirebaseAuthSession()) return false;
+  if (!hasDriveApiAuthSession()) return false;
 
   const reg = await getLocalCompanyById(cid, { includeDeleted: true });
   if (!reg) return false;
@@ -179,7 +179,7 @@ export async function confirmDriveFolderRepairNow(companyId: string): Promise<bo
 export async function processDriveFolderRepairGate(companyId: string): Promise<DriveFolderRepairGateResult> {
   const cid = String(companyId || "").trim();
   if (!cid) return { action: "ok" };
-  if (!hasRealFirebaseAuthSession()) return { action: "ok" };
+  if (!hasDriveApiAuthSession()) return { action: "ok" };
 
   const reg = await getLocalCompanyById(cid, { includeDeleted: true });
   if (!reg) return { action: "ok" };

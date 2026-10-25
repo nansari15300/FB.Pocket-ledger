@@ -5,7 +5,6 @@ import { motion } from "framer-motion";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardWelcomeClockLine } from "@/components/dashboard/DashboardWelcomeClockLine";
 import { proDashboardRibbonClass } from "@/lib/proTheme";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const DAYBOOK_SHIFT_DATE_EVENT = "pl-daybook-shift-date";
@@ -65,26 +64,6 @@ export function DashboardWelcomeFooterBanner({
         </div>
       ) : null}
       <CardHeader className="relative p-0 text-center space-y-0">
-        {showDaybookDateNav ? (
-          <>
-            <button
-              type="button"
-              aria-label="Previous day"
-              className="absolute left-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-              onClick={() => dispatchDaybookDateShift(-1)}
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-            <button
-              type="button"
-              aria-label="Next day"
-              className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-              onClick={() => dispatchDaybookDateShift(1)}
-            >
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          </>
-        ) : null}
         {newYearInfo?.isNewYear ? (
           <div className="flex flex-col items-center justify-center py-0.5">
             <motion.div

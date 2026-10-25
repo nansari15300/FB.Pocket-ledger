@@ -1,6 +1,7 @@
 
 "use client";
 
+import { voucherTypeDisplayText } from "@/lib/voucherTypeDisplay";
 import { useShowAllTdsCards } from "@/lib/useShowAllTdsCards";
 import * as React from "react";
 import { openPrintDirect, getPdfBlob, companyFiscalFieldsForPrint } from "@/lib/printDirect";
@@ -176,7 +177,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { applyPaymentBillWiseLinkAllocations } from "@/lib/voucherActionsClient";
 import { useTransactions } from "@/hooks/use-transactions";
@@ -1305,7 +1307,7 @@ export function StaffDetails({
         "Voucher No.": (t as { voucherNumber?: string }).voucherNumber,
         Type:
           typeof (t as { type?: string }).type === "string"
-            ? ((t as { type: string }).type || "").replace(/_/g, " ")
+            ? voucherTypeDisplayText((t as { type: string }).type)
             : String((t as { type?: unknown }).type ?? ""),
         Narration: String((t as { narration?: string }).narration || ""),
         Debit: Number((t as { debit?: number }).debit) || 0,

@@ -10,11 +10,14 @@ import { PayeeList, filterPayeeListRows } from "@/components/payee/PayeeList";
 import type { UnifiedPayee } from "@/components/payee/PayeeList";
 import type { EntityListQuickFilter } from "@/components/entity/EntityListQuickFilterBar";
 import { useFyScopedVouchers } from "@/hooks/useFyScopedVouchers";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
 import { useDate } from "@/hooks/useDate";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { PermissionButton } from "@/components/permission";
 import type { DateRange } from "@/components/ui/ad-calendar";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSearchParams } from "next/navigation";
@@ -27,6 +30,8 @@ export function PaymentInReportDetail() {
   const isMobile = useIsMobile();
   const searchParams = useSearchParams();
   const { formatCurrency, formatCurrencyForPrint } = useDate();
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled } = useEntityListHideSettled();
   const {
     vouchers: allVouchers,
     loading: vouchersLoading,
@@ -39,7 +44,7 @@ export function PaymentInReportDetail() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState("");
-  const [listQuickFilter, setListQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [listQuickFilter, setListQuickFilter] = useState<EntityListQuickFilter>("latest");
   const [showAllCompanyVouchers, setShowAllCompanyVouchers] = useState(false);
   const [isVoucherOpen, setIsVoucherOpen] = useState(false);
   const [defaultTab, setDefaultTab] = useState<"payment_in" | "direct_income">("payment_in");
@@ -51,14 +56,14 @@ export function PaymentInReportDetail() {
   // List/register title vs all-vouchers aggregate label (header me duplicate na ho).
   const reportRegisterTitle = useMemo(() => {
     if (voucherScope === "directIncomeOnly") return "Direct Income";
-    if (voucherScope === "paymentInOnly") return "Payment In";
-    return "Payment In";
+    if (voucherScope === "paymentInOnly") return "Receipt";
+    return "Receipt";
   }, [voucherScope]);
 
   const reportAllVouchersTitle = useMemo(() => {
     if (voucherScope === "directIncomeOnly") return "All Direct Income";
-    if (voucherScope === "paymentInOnly") return "All Payment In";
-    return "All Payment In";
+    if (voucherScope === "paymentInOnly") return "All Receipts";
+    return "All Receipts";
   }, [voucherScope]);
 
   const paymentInVouchers = useMemo(() => {
@@ -167,8 +172,8 @@ export function PaymentInReportDetail() {
   const currentTransactions = showAllCompanyVouchers ? paymentInVouchers : payeeTransactions;
 
   const filteredPayees = useMemo(
-    () => filterPayeeListRows(payeesWithReceipts, searchTerm, listQuickFilter),
-    [payeesWithReceipts, searchTerm, listQuickFilter]
+    () => filterPayeeListRows(payeesWithReceipts, searchTerm, listQuickFilter, lastVoucherMsById, hideSettled),
+    [payeesWithReceipts, searchTerm, listQuickFilter, lastVoucherMsById, hideSettled]
   );
 
   const REPORT_MEMORY_KEY = "reportPaymentInState";
@@ -268,7 +273,7 @@ export function PaymentInReportDetail() {
           actionSlot={
             <div className="grid grid-cols-2 gap-2">
               <PermissionButton permission="create_records" className="w-full" onClick={() => openVoucherDialog("payment_in")}>
-                <PlusCircle className="mr-2 h-4 w-4" /> Payment In
+                <PlusCircle className="mr-2 h-4 w-4" /> Receipt
               </PermissionButton>
               <PermissionButton permission="create_records" className="w-full" variant="outline" onClick={() => openVoucherDialog("direct_income")}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Direct Income
@@ -368,7 +373,7 @@ export function PaymentInReportDetail() {
                   <CardContent>
                     {payeesWithReceipts.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
-                        No receipts recorded yet. Record a payment in to see payees here.
+                        No receipts recorded yet. Record a receipt to see payees here.
                       </p>
                     ) : null}
                   </CardContent>

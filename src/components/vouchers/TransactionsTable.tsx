@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  sharedUserCanApproveInterCompanyVoucher,
+  sharedUserCanEditInterCompanyVoucher,
+} from "@/lib/interCompany/interCompanyVoucherAccess";
 import * as React from "react";
 import { columnFieldValuesHaystack, drCrChipKey, drCrColumnFilterResult, drCrOppositeKey, tdsBadgeHighlightQuery } from "@/lib/transactionColumnHeaderFilter";
 import {
@@ -4061,7 +4065,13 @@ export function TransactionsTable({
         t.type === "note"
           ? (String(t.title || "").trim() || String(t.narration || "").trim() || "—")
           : (String(t.narration || "").trim() || "—");
-      const icViewOnly = isInterCompanyVoucherEditDeleteBlocked(t as Record<string, unknown>);
+      const icRowLinked = !!String((t as any)?.interCompanyLink?.linkId || "").trim();
+      const icViewOnly =
+        isInterCompanyVoucherEditDeleteBlocked(t as Record<string, unknown>) ||
+        (icRowLinked && !sharedUserCanEditInterCompanyVoucher(company, can));
+      const canApproveCardRow = icRowLinked
+        ? sharedUserCanApproveInterCompanyVoucher(company, can)
+        : can("approve_transactions");
       const isPendingApproval = highlightPendingApproval && (t as any).isApproved !== true; // mobile card — theme stripe N/A
       const isPeerPendingChange =
         String((t as any).type || "") === "inter_company" &&
@@ -4200,7 +4210,7 @@ export function TransactionsTable({
                         {isStatementChecked ? "Unmark as checked" : "Mark as checked"}
                       </DropdownMenuItem>
                     ) : null}
-                    {isPendingApproval ? (
+                    {isPendingApproval && canApproveCardRow ? (
                       <DropdownMenuItem
                         onClick={() => effectiveOnApproveVoucher?.(t)}
                         className="flex items-center gap-2"
@@ -4210,7 +4220,7 @@ export function TransactionsTable({
                       </DropdownMenuItem>
                     ) : null}
                     {!isPendingApproval &&
-                    can("approve_transactions") &&
+                    canApproveCardRow &&
                     (t as any).isApproved === true &&
                     t?.type !== FISCAL_YEAR_PARTITION_ROW_TYPE &&
                     t?.type !== FY_OPENING_ROW_TYPE ? (

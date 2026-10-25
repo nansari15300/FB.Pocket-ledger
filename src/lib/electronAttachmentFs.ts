@@ -16,7 +16,30 @@ type PlElectronAttachmentsApi = {
   }) => Promise<{ ok?: boolean; base64?: string; error?: string }>;
   deleteFile: (relativePath: string) => Promise<{ ok?: boolean; error?: string }>;
   exists: (relativePath: string) => Promise<{ ok?: boolean; exists?: boolean; error?: string }>;
+  /** Batch fs.stat size (no read); null = missing. Needs EXE restart after main/preload update. */
+  statSizes?: (relativePaths: string[]) => Promise<{ ok?: boolean; sizes?: (number | null)[]; error?: string }>;
 };
+
+/** EXE: real on-disk sizes for data-folder paths (batched, chunks of 200). Missing / old EXE -> empty map. */
+export async function electronStatAttachmentSizes(relativePaths: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const api = electronAttachmentsApi();
+  if (!api?.statSizes || relativePaths.length === 0) return out;
+  for (let i = 0; i < relativePaths.length; i += 200) {
+    const chunk = relativePaths.slice(i, i + 200);
+    try {
+      const resp = await api.statSizes(chunk);
+      if (resp?.ok !== true || !Array.isArray(resp.sizes)) continue;
+      chunk.forEach((p, k) => {
+        const s = resp.sizes![k];
+        if (typeof s === "number" && s >= 0) out.set(p, s);
+      });
+    } catch {
+      /* fallback: stored size */
+    }
+  }
+  return out;
+}
 
 function electronAttachmentsApi(): PlElectronAttachmentsApi | null {
   if (typeof window === "undefined" || !isElectronDesktopApp()) return null;

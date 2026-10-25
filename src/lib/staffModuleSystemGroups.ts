@@ -5,7 +5,8 @@ import { enqueueCompanyDocOutbox } from "@/lib/localVoucherOutbox";
 import { LOAN_LIABILITY_GROUP_ID } from "@/modules/loans/constants/loanConstants";
 import { STAFF_SYSTEM_GROUP_ID } from "@/lib/staffSystemGroups";
 import { writeEntity } from "@/lib/writeGateway";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 
 export type StaffModuleSystemGroupSeed = {

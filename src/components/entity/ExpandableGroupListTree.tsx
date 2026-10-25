@@ -8,6 +8,8 @@ import { GroupListMemberMotionList } from "@/components/entity/GroupListMemberMo
 
 import type { GroupListSelectOptions, GroupListSortableMember } from "@/lib/groupListExpand";
 import { GROUP_LIST_CHILD_INDENT_CLASS, filterGroupListMembersByQuickFilter, sortGroupListMembers } from "@/lib/groupListExpand";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
 
 type ExpandableGroupListTreeProps<T extends GroupListSortableMember & { id: string }> = {
   members: T[];
@@ -48,6 +50,8 @@ export function ExpandableGroupListTree<T extends GroupListSortableMember & { id
   expanded: expandedProp,
   onExpandedChange,
 }: ExpandableGroupListTreeProps<T>) {
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled } = useEntityListHideSettled();
   const [internalExpanded, setInternalExpanded] = useState(false);
   const isControlled = onExpandedChange != null;
   const expanded = isControlled ? Boolean(expandedProp) : internalExpanded;
@@ -63,9 +67,9 @@ export function ExpandableGroupListTree<T extends GroupListSortableMember & { id
   }, [expanded, isControlled, onExpandedChange]);
 
   const sortedMembers = useMemo(() => {
-    const filtered = filterGroupListMembersByQuickFilter(members, quickFilter);
-    return sortGroupListMembers(filtered, quickFilter, memberSortName);
-  }, [members, quickFilter, memberSortName]);
+    const filtered = filterGroupListMembersByQuickFilter(members, quickFilter, hideSettled);
+    return sortGroupListMembers(filtered, quickFilter, memberSortName, lastVoucherMsById);
+  }, [members, quickFilter, memberSortName, lastVoucherMsById, hideSettled]);
 
   const expandControl = hasMembers ? (
     <MasterListChromeChevronToggle

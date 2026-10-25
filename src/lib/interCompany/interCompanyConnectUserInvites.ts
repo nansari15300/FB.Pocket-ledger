@@ -11,9 +11,6 @@ import {
   deleteDoc,
   deleteField,
   doc,
-  getDoc,
-  getDocs,
-  onSnapshot,
   query,
   serverTimestamp,
   setDoc,
@@ -22,6 +19,7 @@ import {
   type DocumentReference,
   type Unsubscribe,
 } from "firebase/firestore";
+import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import type {
   InterCompanyConnectMasterVisibility,

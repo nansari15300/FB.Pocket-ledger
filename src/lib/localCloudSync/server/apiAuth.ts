@@ -7,6 +7,7 @@ import {
   isLocalGoogleDriveSyncDisabled,
   LOCAL_GOOGLE_DRIVE_SYNC_DISABLED_MESSAGE,
 } from "@/lib/localCloudSync/driveSyncDisabled";
+import { PB_BEARER_PREFIX, verifyPocketBaseBearer } from "@/lib/localCloudSync/server/pbBearerAuth";
 
 export async function verifyBearerUid(
   req: NextRequest
@@ -21,6 +22,8 @@ export async function verifyBearerUid(
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
   if (!token) return { error: "Missing Authorization Bearer token", status: 401 };
   getAdminDb();
+  // Pocket Ledger Server login (no Firebase session): Drive works with its own Google authorization.
+  if (token.startsWith(PB_BEARER_PREFIX)) return verifyPocketBaseBearer(token);
   try {
     const decoded = await admin.auth().verifyIdToken(token);
     return { uid: decoded.uid, email: decoded.email ?? null };

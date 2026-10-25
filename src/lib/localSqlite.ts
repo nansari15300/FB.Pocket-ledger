@@ -520,6 +520,42 @@ function normalizeSqlParam(value: unknown): unknown {
   return value;
 }
 
+/**
+ * sql.js keeps the whole DB in memory; persisting = db.export() (synchronous, whole file) + IndexedDB put.
+ * On a fully mirrored online company that export is multi-MB and blocks the main thread for seconds, so it
+ * must never run per write. Trailing debounce (coalesces a save's burst of writes) with a max wait, run in
+ * idle time. pagehide flush (below) still persists on tab close.
+ */
+const PERSIST_DEBOUNCE_MS = 5000;
+const PERSIST_MAX_WAIT_MS = 30_000;
+function armDebouncedPersist(
+  cur: { pendingSaveTimer: ReturnType<typeof setTimeout> | null },
+  run: () => Promise<void>
+): void {
+  const c = cur as { pendingSaveTimer: ReturnType<typeof setTimeout> | null; persistFirstArmAt?: number };
+  const now = Date.now();
+  if (!c.persistFirstArmAt) c.persistFirstArmAt = now;
+  if (c.pendingSaveTimer) clearTimeout(c.pendingSaveTimer);
+  const wait = Math.max(0, Math.min(PERSIST_DEBOUNCE_MS, c.persistFirstArmAt + PERSIST_MAX_WAIT_MS - now));
+  c.pendingSaveTimer = setTimeout(() => {
+    c.pendingSaveTimer = null;
+    c.persistFirstArmAt = 0;
+    const go = () => {
+      const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
+      void run()
+        .catch(() => undefined)
+        .finally(() => {
+          const t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
+          console.info("[PL-DEBUG-SAVE] t=db-persist(export+idb)", Math.round(t1 - t0), "ms");
+        });
+    };
+    const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
+      .requestIdleCallback;
+    if (typeof ric === "function") ric(go, { timeout: 3000 });
+    else go();
+  }, wait);
+}
+
 function wrapDb(
   db: SqlJsDatabase,
   ns: SqliteStorageNamespace,
@@ -533,11 +569,7 @@ function wrapDb(
     if (isServerDataBridgeRenderer()) return;
     const cur = cachedByNs[ns];
     if (!cur) return;
-    if (cur.pendingSaveTimer) return;
-    cur.pendingSaveTimer = setTimeout(() => {
-      cur.pendingSaveTimer = null;
-      onSave().catch(() => {});
-    }, 1500);
+    armDebouncedPersist(cur, onSave);
   };
   return {
     raw: db,
@@ -1138,11 +1170,9 @@ export function scheduleBrowserDbPersistAfterWrite(): void {
   if (isServerDataBridgeRenderer()) return;
   for (const ns of SQLITE_STORAGE_NAMESPACES) {
     const cur = cachedByNs[ns];
-    if (!cur?.pendingSaveFn || cur.pendingSaveTimer != null) continue;
-    cur.pendingSaveTimer = setTimeout(() => {
-      cur.pendingSaveTimer = null;
-      void cur.pendingSaveFn?.().catch(() => undefined);
-    }, 1500);
+    if (!cur?.pendingSaveFn) continue;
+    const fn = cur.pendingSaveFn;
+    armDebouncedPersist(cur, () => fn());
   }
 }
 

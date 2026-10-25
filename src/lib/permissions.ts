@@ -58,6 +58,8 @@ export type Permission =
   | "create_inter_company_voucher"
   /** Shared user — saved Inter Company voucher edit. */
   | "edit_inter_company_voucher"
+  /** IC voucher Approve (clearing/master row 3-dot + edit mode), either side. Separate from approve_transactions. */
+  | "approve_inter_company_voucher"
   /** Header Share for Reconciliation — naya share bhejna */
   | "share_for_reconciliation"
   /** Shared list se apna account link karna (receiver) */
@@ -119,7 +121,7 @@ export const PermissionGroups: PermissionGroup[] = [
         title: "Dashboard Summaries",
         permissions: [
             { key: "view_receivable_payable_summary", label: "View Receivable/Payable Summary" },
-            { key: "view_payment_in_out_summary", label: "View Payment In/Out Summary" },
+            { key: "view_payment_in_out_summary", label: "View Receipt / Payment Out Summary" },
             { key: "view_entity_counts_summary", label: "View Entity Counts" },
             { key: "view_voucher_type_summaries", label: "View Voucher Type Summaries" },
             { key: "view_bank_cash_summary", label: "View Bank/Cash Summary" },
@@ -169,6 +171,7 @@ export const PermissionGroups: PermissionGroup[] = [
             { key: "inter_company_write", label: "Manage Inter Company joins & groups" },
             { key: "create_inter_company_voucher", label: "Add IC voucher" },
             { key: "edit_inter_company_voucher", label: "Edit IC voucher" },
+            { key: "approve_inter_company_voucher", label: "Approve IC voucher" },
         ],
     },
     {

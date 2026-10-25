@@ -10,7 +10,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Bell, MailOpen, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { collection, query, where, onSnapshot, doc, updateDoc, writeBatch, deleteDoc } from "firebase/firestore";
+import { collection, query, where, doc, updateDoc, writeBatch, deleteDoc } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useCompany } from "@/hooks/useCompany";
 import { useEffect, useState } from "react";

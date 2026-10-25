@@ -1,6 +1,7 @@
 "use client";
 import { firestore as db } from "@/lib/firebase";
-import { collection, doc, getDocs, getDoc, query, where, type Firestore } from "firebase/firestore";
+import { collection, doc, query, where, type Firestore } from "firebase/firestore";
+import { getDocs, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import type { Role } from "@/utils/rbac";
 import { updateCompanyRootFirestore } from "@/lib/writeGateway/companyRootFirestore";
 import { updateUsersDocAwait } from "@/lib/writeGateway/systemUserFirestore";

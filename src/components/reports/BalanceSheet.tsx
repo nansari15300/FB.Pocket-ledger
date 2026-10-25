@@ -37,7 +37,8 @@ import {
   NESTED_LEDGER_POPUP_CONTENT_CN,
   NESTED_LEDGER_POPUP_OVERLAY_CN,
 } from "@/lib/nestedLedgerMasterEditPresentation";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useCompany } from "@/hooks/useCompany";
 import { useBalanceSheetLedgerLiveRevision } from "@/hooks/useBalanceSheetLedgerLiveRevision";

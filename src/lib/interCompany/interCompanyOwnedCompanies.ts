@@ -1,7 +1,8 @@
 /**
  * User ki owned companies — View com / system UI (Firestore ownerId / ownerEmail).
  */
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, query, where } from "firebase/firestore";
+import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 
 export async function resolveOwnedCompaniesForUser(

@@ -27,7 +27,7 @@ export const statCardData = [
     isCredit: false,
   },
   {
-    title: 'Payment In',
+    title: 'Receipt',
     icon: ArrowRight,
     type: 'payment_in',
     link: '/payment-in',

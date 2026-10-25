@@ -166,6 +166,20 @@ export function getAttachmentFormatLabelFromHints(
  * Jab `Blob.type` khali ya `octet-stream` ho (IndexedDB local save) — pehle bytes se PDF / chitra sniff.
  * `blob:` object URLs par `getAttachmentFormatLabel` "FILE" deta hai; preview PDF branch tak pohchna zaroori hai.
  */
+/** `blob:` URL that is NOT an image (e.g. raw PDF seeded under a thumb key) - never use as <img> thumb. */
+export async function isNonImageBlobObjectUrl(url: string | null | undefined): Promise<boolean> {
+  const u = String(url || "").trim();
+  if (!/^blob:/i.test(u)) return false;
+  try {
+    const b = await fetch(u).then((r) => (r.ok ? r.blob() : null));
+    if (!b?.size) return false;
+    if (String(b.type || "").toLowerCase().startsWith("image/")) return false;
+    return (await sniffBlobKindForPreview(b)) !== "image";
+  } catch {
+    return false;
+  }
+}
+
 export async function sniffBlobKindForPreview(blob: Blob): Promise<"pdf" | "image" | "other"> {
   const mime = String(blob.type || "").toLowerCase();
   if (mime === "application/pdf" || mime.includes("pdf")) return "pdf";

@@ -4,7 +4,8 @@
 import { Suspense, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Search, Pencil } from "lucide-react";
 import { EditStaffDialog } from "@/components/staff/EditStaffDialog";
@@ -161,8 +162,8 @@ function StaffPageContent() {
   useRegisterMasterDetailHardwareBack("staff", onBackToList);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [staffListQuickFilter, setStaffListQuickFilter] = useState<EntityListQuickFilter>("default");
-  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [staffListQuickFilter, setStaffListQuickFilter] = useState<EntityListQuickFilter>("latest");
+  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("latest");
   const {
     showOnlyEntities: showOnlyStaffWithPendingApproval,
     setShowOnlyEntities: setShowOnlyStaffWithPendingApproval,

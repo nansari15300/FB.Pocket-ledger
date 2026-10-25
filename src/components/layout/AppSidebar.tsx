@@ -38,11 +38,6 @@ import { pruneRememberedLoginEmailIfDisabled } from "@/lib/loginRememberEmail";
 import React, { useEffect, useState, useCallback, useMemo, startTransition } from 'react';
 import { doc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
 import { isSuppressibleNewTransactionAlert } from "@/lib/transactionAlerts";
-import {
-  IC_REVERSE_REQUESTS_CHANGED,
-  readInterCompanyReverseInbox,
-} from "@/lib/interCompany/interCompanyReverseRequests";
-import { isInterCompanyReverseAlertReadLocal } from "@/lib/interCompany/interCompanyReverseRequestAlert";
 import { IC_ALERTS_CHANGED } from "@/lib/interCompany/interCompanyAlerts";
 import { interCompanySystemJoinAlertVisibleForCompany } from "@/lib/interCompany/interCompanySystemJoinRequest";
 import { usePendingInterCompanySystemJoinCount } from "@/lib/interCompany/usePendingInterCompanySystemJoinCount";
@@ -67,6 +62,8 @@ import usePermissions from "@/hooks/usePermissions";
 import { useCompany } from "@/hooks/useCompany";
 import { useVouchers } from "@/hooks/useVouchers";
 import { firestore, auth, signOutWithFirestoreTeardown } from "@/lib/firebase";
+import { isPocketBaseSessionUser } from "@/lib/pocketbaseData/pbAppSession";
+import { isServerOnlyLoginSession } from "@/lib/pocketbaseData/serverSessionCompanyScope";
 import { useEmbeddedLogout } from "@/contexts/EmbeddedLogoutContext";
 import type { Permission } from "@/lib/permissions";
 import { Button } from "../ui/button";
@@ -402,15 +399,7 @@ export function AppSidebar() {
       Object.values(unreadIcSystemJoinsByRecipient).forEach((set) => {
         set.forEach((id) => regular.add(id));
       });
-      const icLocalOnly =
-        cid && company?.isOwned === true
-          ? readInterCompanyReverseInbox(cid).filter(
-              (r) =>
-                r.status === "pending" &&
-                !firestoreIcReqIds.has(r.id) &&
-                !isInterCompanyReverseAlertReadLocal(cid, r.id)
-            ).length
-          : 0;
+      const icLocalOnly = 0; // IC reverse-request feature removed
       setUnreadAlerts(regular.size + icLocalOnly);
     };
     const cid = companyId?.trim() || "";
@@ -953,7 +942,23 @@ export function AppSidebar() {
             <div className="mt-auto flex shrink-0 flex-col gap-0.5">
               <div className="pl-chrome-card app-chrome-top-ribbon pl-chrome-tone-amber w-full shrink-0 p-2">
                 {isOpen ? (
-                  <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Account</p>
+                  <>
+                    <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Account</p>
+                    {user ? (
+                      <p
+                        data-pl-login-kind={isServerOnlyLoginSession() || isPocketBaseSessionUser(user) ? "pocketbase" : "firebase"}
+                        title="Which login this session uses"
+                        className={cn(
+                          "mx-1 mb-1 rounded-md border-[1px] px-1.5 py-0.5 text-[10px] font-semibold",
+                          isServerOnlyLoginSession() || isPocketBaseSessionUser(user)
+                            ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                            : "border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                        )}
+                      >
+                        Signed in: {isServerOnlyLoginSession() || isPocketBaseSessionUser(user) ? "Pocket Ledger Server" : "Firebase"}
+                      </p>
+                    ) : null}
+                  </>
                 ) : null}
                 <SidebarMenu className="gap-0.5 py-1">{visibleBottomMenuItems.map(renderBottomNavRow)}</SidebarMenu>
               </div>

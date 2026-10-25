@@ -1,6 +1,7 @@
 "use client";
 
-import { doc, getDoc, updateDoc, collection, getCountFromServer } from "firebase/firestore";
+import { doc, updateDoc, collection } from "firebase/firestore";
+import { getDoc, getCountFromServer } from "@/lib/pocketbaseData/pbReadSeam";
 import { increment } from "firebase/firestore";
 import { firestore } from "@/lib/firebase";
 import {

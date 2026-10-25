@@ -157,7 +157,7 @@ export const LEDGER_HEADER_AVATAR_BOX_CN = "h-[3.5rem] w-[3.5rem] shrink-0";
 export const LEDGER_HEADER_AVATAR_TRIGGER_CN = cn("inline-flex", LEDGER_HEADER_AVATAR_BOX_CN);
 export const LEDGER_HEADER_AVATAR_IMAGE_CN = cn(
   LEDGER_HEADER_AVATAR_BOX_CN,
-  "rounded-lg text-lg flex-shrink-0 [&_img]:object-cover"
+  "rounded-lg overflow-hidden text-lg flex-shrink-0 [&_img]:object-cover [&_img]:rounded-none"
 );
 export const LEDGER_HEADER_AVATAR_ICON_TILE_CN = cn(
   LEDGER_HEADER_AVATAR_BOX_CN,

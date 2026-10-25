@@ -1,6 +1,7 @@
 "use client";
 
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import type { Company } from "@/hooks/useCompany";
 import type { PermissionConfig } from "@/hooks/usePermissions";

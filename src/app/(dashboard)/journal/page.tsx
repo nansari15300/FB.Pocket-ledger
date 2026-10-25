@@ -17,7 +17,8 @@ import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { PermissionButton } from "@/components/permission";
 import type { DateRange } from "@/components/ui/ad-calendar";
 import { useRouter } from "next/navigation";
-import { doc, getDoc, collection, query, getDocs, where } from "firebase/firestore";
+import { doc, collection, query, where } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 
 // ✅ Custom Hook Import

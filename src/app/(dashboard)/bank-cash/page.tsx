@@ -39,7 +39,8 @@ import { resolveMasterListSelection } from "@/lib/masterEntityLiveUpdate";
 import type { Account, AccountGroup } from "@/components/bank-cash/types";
 import { ResponsiveMasterDetail } from "@/components/layout/ResponsiveMasterDetail";
 import { LoadingSpinner } from "@/components/layout/LoadingSpinner";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { bankAccountDisplayName } from "@/lib/bankAccountDisplayName";
 import { userCanViewSpecialAccountBalance, userIsSpecialAccountOwner } from "@/lib/specialAccountUsage";
@@ -161,8 +162,8 @@ function BankCashPageContent() {
   useRegisterMasterDetailHardwareBack("bank-cash", onBackToList);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [accountListQuickFilter, setAccountListQuickFilter] = useState<EntityListQuickFilter>("default");
-  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [accountListQuickFilter, setAccountListQuickFilter] = useState<EntityListQuickFilter>("latest");
+  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("latest");
   /** Accounts tab: pink count click → sirf jinke paas pending approval */
   const {
     showOnlyEntities: showOnlyAccountsWithPendingApproval,

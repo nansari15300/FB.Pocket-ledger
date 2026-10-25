@@ -22,7 +22,7 @@ const INTRO = {
     accountBody: [
       "Under Account to Account payment, the amount is treated as a deposit into the target company’s selected account.",
       "Because the money is posted as a deposit in that account’s ledger, the target account balance increases.",
-      "On the target company, the voucher is posted in the normal Payment In manner, using standard Debit / Credit on the destination account.",
+      "On the target company, the voucher is posted in the normal Receipt manner, using standard Debit / Credit on the destination account.",
     ],
     companyTitle: "Company to Company",
     companyBody: [
@@ -39,7 +39,7 @@ const INTRO = {
     accountBody: [
       "Account to Account भुगतान में राशि लक्ष्य कंपनी के चुने हुए खाते में जमा मानी जाती है।",
       "क्योंकि पैसा लक्ष्य खाते के खाते में जमा (deposit) होता है, लक्ष्य खाते का शेष बढ़ता है।",
-      "लक्ष्य कंपनी पर वाउचर सामान्य Payment In की रीति से प्रविष्ट होता है, और गंतव्य खाते पर सामान्य डेबिट / क्रेडिट लागू होता है।",
+      "लक्ष्य कंपनी पर वाउचर सामान्य Receipt की रीति से प्रविष्ट होता है, और गंतव्य खाते पर सामान्य डेबिट / क्रेडिट लागू होता है।",
     ],
     companyTitle: "कंपनी से कंपनी (Company to Company)",
     companyBody: [
@@ -56,7 +56,7 @@ const INTRO = {
     accountBody: [
       "Account to Account भुक्तानीमा रकम लक्षित कम्पनीको चयनित खातामा जम्मा (deposit) मानिन्छ।",
       "किनकि पैसा लक्षित खाताको खातामा जम्मा हुन्छ, लक्षित खाताको मौज्दात बढ्छ।",
-      "लक्षित कम्पनीमा भाउचर सामान्य Payment In तरिकाले प्रविष्टि हुन्छ, र गन्तव्य खातामा सामान्य डेबिट / क्रेडिट लागू हुन्छ।",
+      "लक्षित कम्पनीमा भाउचर सामान्य Receipt तरिकाले प्रविष्टि हुन्छ, र गन्तव्य खातामा सामान्य डेबिट / क्रेडिट लागू हुन्छ।",
     ],
     companyTitle: "कम्पनीबाट कम्पनी (Company to Company)",
     companyBody: [

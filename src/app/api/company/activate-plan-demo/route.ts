@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
-import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
+import { isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
+import { isServerBillingBearer, resolveBillingCallerFromToken } from "@/lib/server/billingCaller";
 import { normalizePlanIdForClient, PLAN_TIER_ORDER, type PlanId } from "@/config/plans";
 import { readOnlineDemoOfferFromPlansDoc } from "@/lib/mergeAppSettingsPlans";
 
@@ -8,18 +9,18 @@ const MS_PER_DAY = 86_400_000;
 
 export async function POST(req: NextRequest) {
   try {
-    if (!isFirebaseAdminConfigured()) {
-      return NextResponse.json({ error: "online_demo_unavailable" }, { status: 503 });
-    }
     const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() || "";
     if (!token) return NextResponse.json({ error: "missing_token" }, { status: 401 });
-
-    let caller: admin.auth.DecodedIdToken;
-    try {
-      caller = await admin.auth().verifyIdToken(token);
-    } catch {
-      return NextResponse.json({ error: "invalid_token" }, { status: 401 });
+    // Firebase token -> Firestore (unchanged); `plpb.` server login -> Pocket Ledger Server store.
+    if (!isServerBillingBearer(token) && !isFirebaseAdminConfigured()) {
+      return NextResponse.json({ error: "online_demo_unavailable" }, { status: 503 });
     }
+    const billingCaller = await resolveBillingCallerFromToken(token);
+    if (!billingCaller.ok) {
+      const code = billingCaller.status === 401 ? "invalid_token" : billingCaller.status === 503 ? "online_demo_unavailable" : billingCaller.error;
+      return NextResponse.json({ error: code }, { status: billingCaller.status });
+    }
+    const caller = billingCaller.decoded;
 
     const body = (await req.json().catch(() => ({}))) as { companyId?: unknown; planId?: unknown };
     const companyId = typeof body.companyId === "string" ? body.companyId.trim() : "";
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "companyId_required" }, { status: 400 });
     }
 
-    const db = getAdminDb();
+    const db = billingCaller.db;
     const [companySnap, plansSnap] = await Promise.all([
       db.collection("companies").doc(companyId).get(),
       db.doc("app_settings/plans").get(),

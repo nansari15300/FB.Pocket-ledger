@@ -1,6 +1,7 @@
 
 "use client";
 
+import { voucherTypeDisplayText, voucherTypeSearchText } from "@/lib/voucherTypeDisplay";
 import * as React from "react";
 import { openPrintDirect } from "@/lib/printDirect";
 import { applyLedgerPageToPrintPayload } from "@/lib/ledgerPagePrint";
@@ -119,7 +120,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Checkbox } from "../ui/checkbox";
 import { useTransactions } from "@/hooks/use-transactions";
@@ -512,7 +514,7 @@ export function AccountDetails({
         "Voucher No.": (t as { voucherNumber?: string }).voucherNumber,
         Type:
           typeof (t as { type?: string }).type === "string"
-            ? ((t as { type: string }).type || "").replace(/_/g, " ")
+            ? voucherTypeDisplayText((t as { type: string }).type)
             : String((t as { type?: unknown }).type ?? ""),
         Narration: String((t as { narration?: string }).narration || ""),
         Debit: Number((t as { debit?: number }).debit) || 0,
@@ -575,7 +577,7 @@ export function AccountDetails({
       const debitCreditAmount = t.debit > 0 ? t.debit : t.credit;
       return (
         t.voucherNumber?.toLowerCase().includes(lowerCaseSearch) ||
-        t.type.replace(/_/g, " ").toLowerCase().includes(lowerCaseSearch) ||
+        voucherTypeSearchText(t.type).includes(lowerCaseSearch) ||
         t.narration?.toLowerCase().includes(lowerCaseSearch) ||
         formatDate(d).toLowerCase().includes(lowerCaseSearch) ||
         formatDateBS(d).toLowerCase().includes(lowerCaseSearch) ||
@@ -643,7 +645,7 @@ export function AccountDetails({
       <Card className="p-2 m-2 mb-0 rounded-lg shadow-sm border overflow-hidden" onClick={() => handleEditVoucher(transaction)}>
             <div className="flex justify-between items-start">
                 <div>
-                    <p className="font-semibold text-xs">{transaction.voucherNumber} - {transaction.type ? transaction.type.replace(/_/g, ' ') : 'N/A'}</p>
+                    <p className="font-semibold text-xs">{transaction.voucherNumber} - {transaction.type ? voucherTypeDisplayText(transaction.type) : 'N/A'}</p>
                     <p className="text-xs text-muted-foreground">{transaction.narration || "No narration"}</p>
                 </div>
                 <div className="text-right flex flex-col items-end gap-1">

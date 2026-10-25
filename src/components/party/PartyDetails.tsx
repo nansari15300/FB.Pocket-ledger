@@ -2,6 +2,7 @@
 
 "use client";
 
+import { voucherTypeDisplayText } from "@/lib/voucherTypeDisplay";
 import { useShowAllTdsCards } from "@/lib/useShowAllTdsCards";
 import * as React from "react";
 import { toast } from "sonner";
@@ -115,7 +116,8 @@ import {
   TableFooter,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { doc, getDoc, query, collection, getDocs, where } from "firebase/firestore";
+import { doc, query, collection, where } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { batchFetchUserDisplayNamesFromFirestore } from "@/lib/batchFetchUserDisplayNames";
 import { firestore } from "@/lib/firebase";
 import { applyPaymentBillWiseLinkAllocations } from "@/lib/voucherActionsClient";
@@ -1570,7 +1572,7 @@ export function PartyDetails({
         "Voucher No.": (t as { voucherNumber?: string }).voucherNumber,
         Type:
           typeof (t as { type?: string }).type === "string"
-            ? ((t as { type: string }).type || "").replace(/_/g, " ")
+            ? voucherTypeDisplayText((t as { type: string }).type)
             : String((t as { type?: unknown }).type ?? ""),
         Narration: String((t as { narration?: string }).narration || ""),
         Debit: Number((t as { debit?: number }).debit) || 0,
@@ -1609,7 +1611,7 @@ export function PartyDetails({
     if (mobileReportStickyTitle) return mobileReportStickyTitle;
     if (context === "sale") return "Sales";
     if (context === "purchase") return "Purchases";
-    if (context === "payment-in") return "Payment In";
+    if (context === "payment-in") return "Receipt";
     if (context === "payment-out") return "Payment Out";
     return "Report";
   }, [mobileReportStickyTitle, context]);

@@ -1,5 +1,6 @@
 "use client";
 
+import { voucherTypeDisplayText } from "@/lib/voucherTypeDisplay";
 import * as React from "react";
 import { TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -97,7 +98,21 @@ import {
   type FiscalPartitionColumnLayout,
 } from "@/components/vouchers/FiscalPartitionClosingSummaryBlock";
 import type { FiscalPartitionClosingSummary } from "@/lib/fiscalPartitionClosingSummary";
-import { getAttachmentFormatLabel } from "@/lib/attachmentFormatLabel";
+import { getAttachmentFormatLabel, getAttachmentFormatLabelFromHints } from "@/lib/attachmentFormatLabel";
+import { getLocalFileRefMetaSync, isLocalFileRef } from "@/lib/localPendingFiles";
+
+/**
+ * Single-attachment double-click open: "pdf" (URL ext or local: meta hints), "unknown" (local: without
+ * hints - openAttachmentInApp sniffs), null = no direct open (images keep the portal behaviour).
+ */
+function txnAttachmentOpenKind(url: string): "pdf" | "unknown" | null {
+  if (getAttachmentFormatLabel(url) === "PDF") return "pdf";
+  if (!isLocalFileRef(url)) return null;
+  const meta = getLocalFileRefMetaSync(url);
+  const lbl = getAttachmentFormatLabelFromHints(meta?.fileName ?? null, meta?.contentType ?? null);
+  if (lbl === "PDF") return "pdf";
+  return lbl ? null : "unknown";
+}
 import { openAttachmentInApp } from "@/lib/openAttachmentInApp";
 import { companyRequiresLocalAttachmentUrlsOnly } from "@/lib/staticAttachmentDisplayUrl";
 import { getVoucherAttachmentUrlsForUi, voucherAttachmentUiOptionsForCompany } from "@/lib/voucherAttachmentNormalize";
@@ -125,6 +140,10 @@ import {
   shouldShowAutoRecurringSwitchInLedgerUserCell,
 } from "@/lib/ledgerUserColumnDisplay";
 import { isInterCompanyVoucherEditDeleteBlocked } from "@/lib/interCompany/interCompanyVoucherHydrate";
+import {
+  sharedUserCanApproveInterCompanyVoucher,
+  sharedUserCanEditInterCompanyVoucher,
+} from "@/lib/interCompany/interCompanyVoucherAccess";
 
 /**
  * Ledger row Dr/Cr/Balance: kabhi Firestore/legacy `debit`/`credit` object ho — table me `[object Object]` na aaye.
@@ -331,11 +350,11 @@ export function OpeningBalanceFileCellContent({
       ? { companyId: company.id, voucherId: "", clientFileUrls: urls }
       : undefined;
   const singlePdfOpen =
-    urls.length === 1 && getAttachmentFormatLabel(urls[0]!) === "PDF"
+    urls.length === 1 && txnAttachmentOpenKind(urls[0]!) !== null
       ? (e: React.MouseEvent<HTMLDivElement>) => {
           e.stopPropagation();
           void openAttachmentInApp(urls[0]!, {
-            kind: "pdf",
+            kind: txnAttachmentOpenKind(urls[0]!) === "pdf" ? "pdf" : undefined,
             localLedgerOnly,
             serverFallback: serverFb,
             gateCompany: company,
@@ -387,11 +406,11 @@ export function MobileTransactionFilePreview({
       : undefined;
   const portalPreviewUrls = showAll ? urls : [urls[0]!];
   const singlePdfOpen =
-    !showAll && urls.length === 1 && getAttachmentFormatLabel(urls[0]!) === "PDF"
+    !showAll && urls.length === 1 && txnAttachmentOpenKind(urls[0]!) !== null
       ? (e: React.MouseEvent<HTMLDivElement>) => {
           e.stopPropagation();
           void openAttachmentInApp(urls[0]!, {
-            kind: "pdf",
+            kind: txnAttachmentOpenKind(urls[0]!) === "pdf" ? "pdf" : undefined,
             localLedgerOnly,
             serverFallback,
             gateCompany: company,
@@ -538,7 +557,7 @@ export const getDisplayType = (t: any, opts?: GetDisplayTypeOpts) => {
     if (t.type === "purchase" || t.type === "purchase_service") return "TDS Purchase";
     return "TDS sale";
   }
-  return t.type.replace(/_/g, " ");
+  return voucherTypeDisplayText(t.type);
 };
 
 /** Type column header filter haystack — display label + raw type + common shortcuts (e.g. ic → Inter Company). */
@@ -800,7 +819,7 @@ export const getOppositeAccountLabel = (
     if (partyInTx) {
       if (t.type === "sale") return getName(t.salesAccountId || "sales_account") || "Sales Account";
       if (t.type === "purchase") return getName(t.purchaseAccountId || "purchase_account") || "Purchase Account";
-      if (t.type === "payment_in") return getName(t.accountId) || "Payment In";
+      if (t.type === "payment_in") return getName(t.accountId) || "Receipt";
       if (t.type === "payment_out") return getName(t.accountId) || getName(t.fromAccountId) || "Payment Out";
       if (t.type === "direct_income") return getName(t.accountId) || "Direct Income";
       if (t.type === "direct_expense") return getName(t.fromAccountId) || getName(t.accountId) || "Direct Expense";
@@ -993,7 +1012,7 @@ export const getOppositeAccountLabel = (
       names[t.incomeAccountId] ||
       t.payeeName ||
       getName(t.accountId) ||
-      "Payment In"
+      "Receipt"
     );
   }
   if (t.type === "payment_out") {
@@ -1734,11 +1753,19 @@ export const TransactionRow = React.memo(
         isMobileView,
         forceDateOnMobile: true,
       });
-    const { effectiveNotificationSettings } = useCompany();
+    const { effectiveNotificationSettings, company: icAccessCompany } = useCompany();
     const { user, customUser } = useAuth();
     const currentUserUid = user?.uid ?? null;
     const currentUserDisplayName = customUser?.displayName || user?.displayName || user?.email || null;
     const { can, canDeleteVoucher } = usePermissions();
+  const isIcRow = (t: unknown) => {
+    const link = (t as { interCompanyLink?: { linkId?: string } } | null)?.interCompanyLink;
+    return !!(link && String(link.linkId || "").trim());
+  };
+  /** IC rows: separate "Approve IC voucher" permission (either side); others: approve_transactions. */
+  const canApproveThisRow = (t: unknown) =>
+    isIcRow(t) ? sharedUserCanApproveInterCompanyVoucher(icAccessCompany, can) : can("approve_transactions");
+  const canEditIcRows = sharedUserCanEditInterCompanyVoucher(icAccessCompany, can);
     const isNote = context === "note";
     const { settings: animationSettings } = useAnimationSettings();
     const isRowAnimationEnabled = animationSettings?.rows?.enabled === true;
@@ -2337,11 +2364,11 @@ export const TransactionRow = React.memo(
                   }
                 : undefined;
               const singlePdfOpen =
-                rowUrls.length === 1 && getAttachmentFormatLabel(rowUrls[0]!) === "PDF"
+                rowUrls.length === 1 && txnAttachmentOpenKind(rowUrls[0]!) !== null
                   ? (e: React.MouseEvent<HTMLDivElement>) => {
                       e.stopPropagation();
                       void openAttachmentInApp(rowUrls[0]!, {
-                        kind: "pdf",
+                        kind: txnAttachmentOpenKind(rowUrls[0]!) === "pdf" ? "pdf" : undefined,
                         localLedgerOnly,
                         serverFallback: serverFb,
                         gateCompany: company,
@@ -2668,7 +2695,7 @@ export const TransactionRow = React.memo(
               ) : null}
               {/* Add Link action intentionally removed from 3-dot menu as per latest UX requirement. */}
               {!isFyOpeningRow &&
-                can("approve_transactions") &&
+                canApproveThisRow(transaction) &&
                 effectiveNotificationSettings?.approve?.on !== false &&
                 effectiveNotificationSettings?.approve?.onTransaction !== false &&
                 (transaction as any).isApproved !== true && (
@@ -2678,7 +2705,7 @@ export const TransactionRow = React.memo(
                   </DropdownMenuItem>
                 )}
               {!isFyOpeningRow &&
-                can("approve_transactions") &&
+                canApproveThisRow(transaction) &&
                 effectiveNotificationSettings?.approve?.on !== false &&
                 effectiveNotificationSettings?.approve?.onTransaction !== false &&
                 (transaction as any).isApproved === true && (
@@ -2699,7 +2726,9 @@ export const TransactionRow = React.memo(
                 )}
               {!isFyOpeningRow &&
                 (() => {
-                  const icViewOnly = isInterCompanyVoucherEditDeleteBlocked(transaction as Record<string, unknown>);
+                  const icViewOnly =
+                    isInterCompanyVoucherEditDeleteBlocked(transaction as Record<string, unknown>) ||
+                    (isIcRow(transaction) && !canEditIcRows);
                   return (
                     <DropdownMenuItem onClick={() => onRowClick?.(transaction)} className="flex items-center gap-2">
                       <Pencil className="h-3.5 w-3.5" />

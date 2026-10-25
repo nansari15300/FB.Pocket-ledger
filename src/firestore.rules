@@ -567,6 +567,16 @@ service cloud.firestore {
         allow read, list: if isCompanyUser(companyId) || isSuperAdmin();
         allow create, update, delete: if isCompanyUser(companyId) || isSuperAdmin();
       }
+
+      /**
+       * Quotations — recycle bin lists deleted rows (`isDeleted == true`).
+       * Missing match → implicit deny → client "permission-denied" (not quota).
+       * @path /companies/{companyId}/quotations/{quotationId}
+       */
+      match /quotations/{quotationId} {
+        allow read, list: if isCompanyUser(companyId) || isSuperAdmin();
+        allow create, update, delete: if isCompanyUser(companyId) || isSuperAdmin();
+      }
       
       /**
        * @description Manages user presence in a company.

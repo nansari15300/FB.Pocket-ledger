@@ -1,5 +1,6 @@
 "use client";
 
+import { resolveCurrentAttachmentUrlAfterLoadError } from "@/lib/attachmentCurrentUrlFallback";
 import * as React from "react";
 import { CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -70,8 +71,11 @@ export function VoucherAttachmentFileIndicator({
   );
   const readyState = useAttachmentUrlsReadyState(urls);
   const [thumbRetryKey, setThumbRetryKey] = React.useState(0);
+  /** 404 fallback: current URL re-read from the doc (local -> server) after a swap on another device. */
+  const [currentDocUrlOverride, setCurrentDocUrlOverride] = React.useState<string | null>(null);
   React.useEffect(() => {
     setThumbRetryKey(0);
+    setCurrentDocUrlOverride(null);
   }, [primaryUrl, displayMode]);
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -102,7 +106,7 @@ export function VoucherAttachmentFileIndicator({
     filesNetworkAllowed &&
     (readyState === "ready" || shouldUseAttachmentLazyLoad(company));
   const thumbUrl = useAttachmentThumbDisplayUrl(
-    primaryUrl,
+    currentDocUrlOverride ?? primaryUrl,
     allowThumbLoad,
     companyId,
     thumbRetryKey,
@@ -308,8 +312,19 @@ export function VoucherAttachmentFileIndicator({
           className="h-full w-full object-cover"
           draggable={false}
           onError={() => {
-            invalidateAttachmentThumbDisplayUrl(primaryUrl, thumbUrl);
+            invalidateAttachmentThumbDisplayUrl(currentDocUrlOverride ?? primaryUrl, thumbUrl);
             setThumbRetryKey((n) => n + 1);
+            if (!currentDocUrlOverride && primaryUrl && /^https?:\/\//i.test(primaryUrl)) {
+              void resolveCurrentAttachmentUrlAfterLoadError({
+                companyId,
+                placeKey: currentReusePlaceKey || null,
+                badUrl: primaryUrl,
+                siblingUrls: urls.map((u) => String(u || "").trim()).filter(Boolean),
+                index: 0,
+              }).then((next) => {
+                if (next) setCurrentDocUrlOverride(next);
+              });
+            }
           }}
         />
         {countBadge}

@@ -1,8 +1,9 @@
 "use client";
 
-import { collection, getDocs, limit, query, where } from "firebase/firestore";
+import { collection, limit, query, where } from "firebase/firestore";
+import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
-import { getFirebaseAuthUserForApi } from "@/lib/firebaseAuthForApi";
+import { getDriveApiUser } from "@/lib/firebaseAuthForApi";
 import { postDriveJsonViaClient } from "@/lib/localCloudSync/driveApiClient";
 import { getLocalCompanyById, listLocalCompanies, upsertLocalCompany } from "@/lib/localCompanyStore";
 import { runLocalCloudSyncCycle, scheduleDriveAttachmentSyncAfterRestore } from "@/lib/localCloudSync/engine";
@@ -133,7 +134,7 @@ export async function joinDriveSharedLocalCompany(
   options?: JoinDriveSharedLocalCompanyOptions
 ): Promise<string> {
   if (isLocalGoogleDriveSyncDisabled()) throw new Error(LOCAL_GOOGLE_DRIVE_SYNC_DISABLED_MESSAGE);
-  const firebaseUser = await getFirebaseAuthUserForApi();
+  const firebaseUser = await getDriveApiUser();
 
   let manifest: CloudSyncManifest = { latestOp: 0 };
   try {

@@ -1,6 +1,7 @@
 "use client";
 
-import { doc, deleteDoc, updateDoc, writeBatch, getDoc, serverTimestamp } from "firebase/firestore";
+import { doc, deleteDoc, updateDoc, writeBatch, serverTimestamp } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { openDB } from "@/lib/offlineDb";
 

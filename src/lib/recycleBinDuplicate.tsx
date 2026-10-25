@@ -3,7 +3,8 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
-import { Timestamp, collection, getDocs, query, serverTimestamp, where } from "firebase/firestore";
+import { Timestamp, collection, query, serverTimestamp, where } from "firebase/firestore";
+import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";

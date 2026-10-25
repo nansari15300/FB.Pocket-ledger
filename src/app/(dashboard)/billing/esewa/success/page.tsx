@@ -4,8 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { onBillingApiUser } from "@/lib/firebaseAuthForApi";
 import { getBillingApiUrl } from "@/lib/billingApiOrigin";
 import { applyVerifiedStripePayloadToLocalCompany } from "@/lib/applyStripePlanToLocalCompany";
 import type { VerifiedLocalPlanApplyPayload } from "@/lib/payments/localStripePlanApplyTypes";
@@ -42,7 +41,7 @@ function EsewaSubscribeSuccessInner() {
     }
 
     onceRef.current = false;
-    const unsub = onAuthStateChanged(auth, async (user) => {
+    const unsub = onBillingApiUser(async (user) => {
       if (!user || onceRef.current) return;
       onceRef.current = true;
       setState("working");

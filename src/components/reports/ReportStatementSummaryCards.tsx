@@ -415,7 +415,7 @@ export function reportVoucherMatchesSummaryCard(
 
 export function reportMobileSummaryCardTitle(title: string) {
   if (title === "Balance" || title === "Account Balance") return "Net Balance";
-  if (title === "Money In") return "Payment In";
+  if (title === "Money In") return "Receipt";
   if (title === "Money Out") return "Payment Out";
   return title;
 }

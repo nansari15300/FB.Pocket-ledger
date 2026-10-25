@@ -1,5 +1,6 @@
 "use client";
 
+import { voucherTypeDisplayText } from "@/lib/voucherTypeDisplay";
 import {
   Fragment,
   forwardRef,
@@ -436,7 +437,7 @@ export const LoanTransactions = forwardRef(function LoanTransactions(
   const rowKindLabel = (row: LoanTransaction) =>
     row.id === LOAN_OPENING_BALANCE_ROW_ID ? "Opening Balance" : row.kind.replace(/_/g, " ");
 
-  const rowTypeLabel = (row: LoanTransaction) => rowVoucherType(row).replace(/_/g, " ");
+  const rowTypeLabel = (row: LoanTransaction) => voucherTypeDisplayText(rowVoucherType(row));
 
   const sourced = useMemo(() => withRunning(visibleRows), [visibleRows]);
 

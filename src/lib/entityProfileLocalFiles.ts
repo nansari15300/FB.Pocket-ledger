@@ -117,6 +117,13 @@ export async function shouldStageEntityProfileFilesLocally(
   const cid = String(companyId || "").trim();
   if (!cid) return false;
   if (isPlServerThinStaffClient()) return true;
+  // Global local-first (web = EXE): masters never upload inline on save; background pending sync does it.
+  try {
+    const { apkEmbeddedSqliteFirstWritesPreferred } = await import("@/lib/apkOnlineFirestoreWritePolicy");
+    if (apkEmbeddedSqliteFirstWritesPreferred()) return true;
+  } catch {
+    /* continue */
+  }
   if (company && (isOfflineCompanyStorage(company) || isServerGateCompany(company) || companyRowUsesSqliteLedgerWrites(company))) {
     return true;
   }
@@ -244,6 +251,7 @@ export async function stageEntityAvatarAndDocuments(params: {
     const id = generateLocalFileId();
     const staged = await compressEntityProfileFileForPending(avatarFile, companyId);
     await putPendingFile({
+      replacesUrl: await recompressReplacementUrlFor(avatarFile),
       id,
       blob: staged.blob,
       contentType: staged.contentType,
@@ -271,6 +279,7 @@ export async function stageEntityAvatarAndDocuments(params: {
     const id = generateLocalFileId();
     const staged = await compressEntityProfileFileForPending(f, companyId);
     await putPendingFile({
+      replacesUrl: await recompressReplacementUrlFor(f),
       id,
       blob: staged.blob,
       contentType: staged.contentType,
@@ -295,6 +304,28 @@ export async function stageEntityAvatarAndDocuments(params: {
   return { fileUrl, documentFileUrls };
 }
 
+async function recompressReplacementUrlFor(f: Blob): Promise<string | undefined> {
+  try {
+    const { getRecompressReplacementSourceUrl } = await import("@/lib/attachmentRecompressOnSave");
+    return getRecompressReplacementSourceUrl(f);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Phase 2 hotfix: Storage failure / quota must never block a master save. */
+async function reportMasterUploadFailure(e: unknown): Promise<void> {
+  console.warn("[entityProfile] remote upload failed - staging files as local pending", e);
+  try {
+    const { reportOnlineTriggerQuotaExceeded } = await import("@/lib/onlineTriggerLog");
+    reportOnlineTriggerQuotaExceeded(
+      String((e as { code?: string })?.code ?? "") + " " + String((e as { message?: string })?.message ?? "")
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Online Firebase company: Storage URL; local/Drive company par hamesha `stageEntityAvatarAndDocuments`. */
 export async function uploadEntityAvatarAndDocumentsRemote(params: {
   companyId: string;
@@ -310,6 +341,17 @@ export async function uploadEntityAvatarAndDocumentsRemote(params: {
   if (await shouldStageEntityProfileFilesLocally(params.companyId, params.company)) {
     return stageEntityAvatarAndDocuments(params);
   }
+  try {
+    return await uploadEntityAvatarAndDocumentsRemoteDirect(params);
+  } catch (e) {
+    await reportMasterUploadFailure(e);
+    return stageEntityAvatarAndDocuments(params);
+  }
+}
+
+async function uploadEntityAvatarAndDocumentsRemoteDirect(
+  params: Parameters<typeof uploadEntityAvatarAndDocumentsRemote>[0]
+): Promise<{ fileUrl: string | null; documentFileUrls: string[] }> {
   const { companyId, collectionSeg, avatarFile, documentFiles } = params;
   const maxDocuments = params.maxDocuments ?? DEFAULT_MAX_ENTITY_DOCS;
   const filesForSave = await maybeConvertMasterDocumentPdfsToImages(
@@ -393,6 +435,7 @@ export async function stageItemAvatarAndAttachments(params: {
     const id = generateLocalFileId();
     const staged = await compressEntityProfileFileForPending(avatarFile, companyId);
     await putPendingFile({
+      replacesUrl: await recompressReplacementUrlFor(avatarFile),
       id,
       blob: staged.blob,
       contentType: staged.contentType,
@@ -421,6 +464,7 @@ export async function stageItemAvatarAndAttachments(params: {
     const id = generateLocalFileId();
     const staged = await compressEntityProfileFileForPending(f, companyId);
     await putPendingFile({
+      replacesUrl: await recompressReplacementUrlFor(f),
       id,
       blob: staged.blob,
       contentType: staged.contentType,
@@ -457,6 +501,17 @@ export async function uploadItemAvatarAndAttachmentsRemote(params: {
   if (await shouldStageEntityProfileFilesLocally(params.companyId)) {
     return stageItemAvatarAndAttachments(params);
   }
+  try {
+    return await uploadItemAvatarAndAttachmentsRemoteDirect(params);
+  } catch (e) {
+    await reportMasterUploadFailure(e);
+    return stageItemAvatarAndAttachments(params);
+  }
+}
+
+async function uploadItemAvatarAndAttachmentsRemoteDirect(
+  params: Parameters<typeof uploadItemAvatarAndAttachmentsRemote>[0]
+): Promise<{ avatarUrl: string | null; newAttachmentUrls: string[] }> {
   const { companyId, avatarFile, attachmentFiles, maxAttachments } = params;
   const filesForSave = await maybeConvertMasterDocumentPdfsToImages(
     attachmentFiles,

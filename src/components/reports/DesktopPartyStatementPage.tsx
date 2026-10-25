@@ -1,6 +1,7 @@
 
 "use client";
 
+import { voucherTypeDisplayText, voucherTypeSearchText } from "@/lib/voucherTypeDisplay";
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useFyScopedVouchers } from "@/hooks/useFyScopedVouchers";
 import { useDate } from "@/hooks/useDate";
@@ -157,8 +158,8 @@ export default function DesktopPartyStatementPage() {
             : "parties"
     );
     const [listSearchTerm, setListSearchTerm] = useState("");
-    const [partyListQuickFilter, setPartyListQuickFilter] = useState<EntityListQuickFilter>("default");
-    const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("default");
+    const [partyListQuickFilter, setPartyListQuickFilter] = useState<EntityListQuickFilter>("latest");
+    const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("latest");
     // Same preference as Party Details: Statement vs Bill wise (running balance vs per-voucher status).
     const { balanceMode, setBalanceMode } = useBalanceMode();
 
@@ -448,7 +449,7 @@ export default function DesktopPartyStatementPage() {
         return list.filter((t: any) => {
             const vno = (t.voucherNumber || "").toLowerCase();
             const narr = (t.narration || "").toLowerCase();
-            const type = (typeof t.type === "string" ? t.type.replace(/_/g, " ") : "").toLowerCase();
+            const type = voucherTypeSearchText(t.type);
             const amount = String(t.debit ?? t.credit ?? t.total ?? "").toLowerCase();
             return vno.includes(q) || narr.includes(q) || type.includes(q) || amount.includes(q);
         });
@@ -593,7 +594,7 @@ export default function DesktopPartyStatementPage() {
                 "Date (BS)": formatDateBS(d),
                 "Date (AD)": formatDate(d),
                 "Voucher No.": t.voucherNumber,
-                "Type": t.type.replace(/_/g, ' '),
+                "Type": voucherTypeDisplayText(t.type),
                 "Narration": t.narration || "",
                 "Debit": t.debit,
                 "Credit": t.credit,

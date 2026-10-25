@@ -41,7 +41,8 @@ import { compressImageForCompany, attachmentImageStillTooLargeToastFields } from
 import { usePcFileDropZone } from "@/lib/attachmentPcFileDrop";
 import { FilePreview } from "../vouchers/FilePreview";
 import { RestrictedFileUploader } from "../ui/RestrictedFileUploader";
-import { doc, setDoc, serverTimestamp, Timestamp, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, Timestamp, collection, query, where } from "firebase/firestore";
+import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { initializeCompanyDataClient } from "@/lib/initializeCompanyDataClient";
 import { ensureSuperAdminInSharedEmails } from "@/lib/superAdminEmails";
 import { sharedWithEmailsLowerFromList } from "@/lib/sharedWithEmailsQuery";
@@ -66,6 +67,14 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useCreateCompanyAvailability } from "@/hooks/useCreateCompanyAvailability";
 import { resolveCreateStorageMode } from "@/lib/createCompanyAvailability";
+import {
+  ONLINE_DATA_SERVER_POCKETBASE_ID,
+  ensureOnlineDataServerSettingsHydrated,
+  resolveOnlineDataBackend,
+} from "@/lib/onlineDataServer";
+import { registerPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { isPocketBaseAppSessionActive } from "@/lib/pocketbaseData/pbAppSession";
+import { patchFirebaseLedgerCompanySyncEntry } from "@/lib/firebaseLedgerCompanySyncPrefs";
 
 const formSchema = z
   .object({
@@ -569,7 +578,16 @@ export function CreateCompanyForm({
         adoptNewLocalCompany(localCompanyDoc);
       } else {
         const currencyRowOnline = getDefaultCurrencyForCountry(values.billingCurrencyCountry);
-        await setDoc(doc(firestore, "companies", companyId), {
+        // Online data server seam: record the SuperAdmin-selected server on the company.
+        // Firebase (default) or Pocket Ledger Server (PocketBase): company ledger data then reads/writes there.
+        // The company root doc (gate list, plan, sharing) stays in Firestore for both.
+        const onlineBackend = resolveOnlineDataBackend(
+          await ensureOnlineDataServerSettingsHydrated({ force: true }),
+          "company create"
+        );
+        // Server login (pl_users, no Firebase session): the company root lives on the server only.
+        const pbSessionOnly = isPocketBaseAppSessionActive();
+        const onlineRootDoc = {
           name: values.companyName,
           interCompanyAccountNo,
           interCompanyCompanyCode,
@@ -586,6 +604,8 @@ export function CreateCompanyForm({
           fiscalYearStart: toFirestoreTs(values.fiscalYearStart) ?? null,
           fiscalYearEnd: toFirestoreTs(values.fiscalYearEnd) ?? null,
           storageOption: "firebase",
+          onlineServerId: onlineBackend.selected.id,
+          onlineDataBackend: onlineBackend.effective.id,
           ownerId: effectiveUserId,
           ownerEmail: effectiveUserEmail,
           ...pocketLedgerStorageDocFields(companyId),
@@ -609,9 +629,17 @@ export function CreateCompanyForm({
             accountPlanId !== "basic" && accountPlanExpiryMs != null
               ? Timestamp.fromMillis(accountPlanExpiryMs)
               : Timestamp.fromDate(expiryDate),
-        });
-        // Static/APK: SQLite registry row abhi banao taaki `initializeCompanyDataClient` → `writeEntity` (outbox) path chale, web cloud flow same.
-        if (isStaticAppBuild()) {
+        };
+        if (!pbSessionOnly) await setDoc(doc(firestore, "companies", companyId), onlineRootDoc);
+        const usesPocketBase = onlineBackend.effective.id === ONLINE_DATA_SERVER_POCKETBASE_ID;
+        if (usesPocketBase) {
+          registerPocketBaseCompanyId(companyId);
+          // Data sync on by default for a new Pocket Ledger Server company (its data lives only there).
+          patchFirebaseLedgerCompanySyncEntry(companyId, { data: true });
+        }
+        // Static/APK (and every Pocket Ledger Server company): SQLite registry row abhi banao taaki
+        // `initializeCompanyDataClient` → `writeEntity` (outbox) path chale, web cloud flow same.
+        if (isStaticAppBuild() || usesPocketBase) {
           await upsertLocalCompany({
             id: companyId,
             name: values.companyName,
@@ -629,6 +657,8 @@ export function CreateCompanyForm({
             fiscalYearStart: toLocalIso(values.fiscalYearStart),
             fiscalYearEnd: toLocalIso(values.fiscalYearEnd),
             storageOption: "firebase",
+            onlineServerId: onlineBackend.selected.id,
+            onlineDataBackend: onlineBackend.effective.id,
             ownerId: effectiveUserId,
             ownerEmail: effectiveUserEmail,
             ...pocketLedgerStorageDocFields(companyId),
@@ -664,6 +694,46 @@ export function CreateCompanyForm({
                 : null,
           } as Parameters<typeof upsertLocalCompany>[0]);
         }
+        if (usesPocketBase) {
+          // Create the company on the Pocket Ledger Server now when signed in; otherwise the first
+          // outbox push creates it (rows wait in the outbox until the user signs in).
+          try {
+            const pb = await import("@/lib/pocketbaseData/pbSync");
+            const { getValidPocketBaseAuth } = await import("@/lib/pocketbaseData/pbClient");
+            if (getValidPocketBaseAuth()) {
+              await pb.ensurePocketBaseCompany(companyId, {
+                createIfMissing: true,
+                info: {
+                  name: values.companyName,
+                  pan: values.pan ?? "",
+                  country: values.country,
+                  currencyCode: currencyRowOnline.currencyCode,
+                  fiscalYearStartMs: values.fiscalYearStart ? new Date(values.fiscalYearStart).getTime() : undefined,
+                  fiscalYearEndMs: values.fiscalYearEnd ? new Date(values.fiscalYearEnd).getTime() : undefined,
+                  planId: accountPlanId,
+                },
+              });
+              if (pbSessionOnly) {
+                // the server is the only copy: wait for it (an error is shown below)
+                await pb.pbWriteCompanyRoot(companyId, onlineRootDoc, "set", { throwOnError: true });
+              } else {
+                // company root doc + members on the server too (background; a failure is retried by the pull)
+                void pb.pbPushCompanyRootFromFirestore(companyId);
+              }
+            } else if (pbSessionOnly) {
+              throw new Error("Pocket Ledger Server: sign in again to create an online company.");
+            } else {
+              pb.setPocketBaseCompanyRootDirty(companyId, true);
+              toast({
+                title: "Pocket Ledger Server",
+                description: "Sign in to the Pocket Ledger Server (Settings) to sync this company. Data is kept on this device until then.",
+              });
+            }
+          } catch (pbErr) {
+            if (pbSessionOnly) throw pbErr;
+            console.warn("[CreateCompany] Pocket Ledger Server company create failed; will retry on sync.", pbErr);
+          }
+        }
         await initializeCompanyDataClient(companyId, effectiveUserId);
       }
 
@@ -692,6 +762,8 @@ export function CreateCompanyForm({
       let description = "Failed to save company. Please try again.";
       if (createAsLocalOnly && errMsg) {
         description = `Failed to save company: ${errMsg}`;
+      } else if (errMsg.startsWith("Pocket Ledger Server")) {
+        description = errMsg;
       } else if (errMsg === "local_company_storage") {
         description =
           "This company uses device storage and Google Drive sync — not Firebase Storage. Enable cloud sync in company settings, or save without a logo.";

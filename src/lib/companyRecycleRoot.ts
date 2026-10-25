@@ -7,7 +7,8 @@
  * same id online doc ho to soft-delete/restore cloud production ko corrupt kar deta hai).
  * Online (Firestore) companies: root `companies/{id}` soft markers + optional SQLite mirror.
  */
-import { deleteField, doc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { deleteField, doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import {
   getLocalCompanyById,

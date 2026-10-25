@@ -1,7 +1,9 @@
 import "server-only";
 
+import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { google } from "googleapis";
 import { createGoogleOAuth2Client } from "@/lib/server/googleOAuthCredentials";
+import { hostingSetting } from "@/lib/server/hostingConfig";
 
 export type DriveOAuthState = {
   returnPath: string;
@@ -9,6 +11,42 @@ export type DriveOAuthState = {
   email?: string;
   formData?: unknown;
 };
+
+/** OAuth `state` lifetime (sign-in at Google must finish within this). */
+const DRIVE_OAUTH_STATE_MAX_AGE_MS = 30 * 60_000;
+
+function driveOAuthStateKey(): Buffer {
+  // env > server panel "Hosting settings" (ensureHostingConfig() is awaited by the routes)
+  const own = hostingSetting("drive_state_secret");
+  const base = own || hostingSetting("google_client_secret");
+  if (!base) throw new Error("Drive OAuth state key missing (GOOGLE_CLIENT_SECRET / DRIVE_OAUTH_STATE_SECRET)");
+  return createHash("sha256").update(`pl-drive-state:${base}`).digest();
+}
+
+function driveOAuthStateSig(s: { returnPath?: unknown; uid?: unknown; email?: unknown; formData?: unknown; iat?: unknown }): string {
+  const payload = JSON.stringify([s.returnPath ?? null, s.uid ?? null, s.email ?? null, s.formData ?? null, s.iat ?? null]);
+  return createHmac("sha256", driveOAuthStateKey()).update(payload).digest("base64url");
+}
+
+/**
+ * OAuth callback: the state (uid the tokens are saved for) must be the one this server signed
+ * (`sig` + `iat` inside the same base64 JSON the client already decodes).
+ */
+export function verifyDriveOAuthState(decoded: unknown): boolean {
+  if (!decoded || typeof decoded !== "object") return false;
+  const s = decoded as { sig?: unknown; iat?: unknown };
+  const iat = Number(s.iat);
+  if (typeof s.sig !== "string" || !Number.isFinite(iat)) return false;
+  const age = Date.now() - iat;
+  if (age < -60_000 || age > DRIVE_OAUTH_STATE_MAX_AGE_MS) return false;
+  try {
+    const want = Buffer.from(driveOAuthStateSig(decoded as Record<string, unknown>));
+    const got = Buffer.from(s.sig);
+    return want.length === got.length && timingSafeEqual(want, got);
+  } catch {
+    return false;
+  }
+}
 
 /** Server-only — `googleapis` browser bundle me nahi aata. */
 export function buildGoogleDriveAuthUrl(state: DriveOAuthState): string {
@@ -22,7 +60,15 @@ export function buildGoogleDriveAuthUrl(state: DriveOAuthState): string {
     "profile",
   ];
 
-  const encodedState = Buffer.from(JSON.stringify(state)).toString("base64");
+  const unsigned = {
+    returnPath: state.returnPath,
+    uid: state.uid,
+    email: state.email,
+    formData: state.formData,
+    iat: Date.now(),
+  };
+  const signed = { ...unsigned, sig: driveOAuthStateSig(unsigned) };
+  const encodedState = Buffer.from(JSON.stringify(signed)).toString("base64");
 
   return oauth2Client.generateAuthUrl({
     access_type: "offline",

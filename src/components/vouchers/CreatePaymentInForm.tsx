@@ -1,4 +1,5 @@
 "use client";
+import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
 import { STAFF_ENTITY_LABEL, STAFF_ENTITY_TYPE_KEY, STAFF_ENTITY_SEARCH_PLACEHOLDER, STAFF_ENTITY_ADD_BUTTON, staffEntityDisplayLabel } from "@/lib/staffEntityDisplayName";
 
@@ -35,7 +36,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
 import { firestore, storage } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, query, where } from "firebase/firestore";
+import { getDoc, onSnapshot, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { format, startOfDay } from "date-fns";
 import { ScrollArea } from "../ui/scroll-area";
@@ -455,6 +457,7 @@ export function CreatePaymentInForm({
   /* OCR (local, generic adapter): first attachment -> validated autofill; Auto Post saves UNAPPROVED. */
   const ocr = useVoucherOcr({
     adapter: ocrAdapters.paymentIn(),
+    currentVoucherType: defaultTab === "direct_income" ? "direct_income" : "payment_in",
     form: form as never,
     files,
     setFiles: setFiles as never,
@@ -1565,7 +1568,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
 
       if (newFilesToUpload.length > 0) {
         const totalNewBytes = newFilesToUpload.reduce((s, f) => s + (f.size || 0), 0);
-        const limitCheck = await checkStorageLimit(companyId, company?.planId, { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes }, company?.storageOption);
+        const limitCheck = await checkStorageLimitSafe(companyId, company?.planId, { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes }, company?.storageOption);
         if (!limitCheck.allowed) {
           sonnerToast.error("Storage limit reached", { id: toastId, description: limitCheck.message });
           setIsLoading(false);
@@ -1598,15 +1601,17 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
             }
           }
         } else {
-          for (const file of newFilesToUpload) {
-            if (fileUrls.length >= fileAttachmentLimits.maxFileCount) break;
-            const url = await uploadVoucherAttachmentFileToFirebase({
+          {
+            const up = await uploadVoucherFilesOrStageLocalPending({
               companyId,
-              voucherType,
-              file,
+              storageFolder: String(voucherType),
+              existingFileUrls: fileUrls,
+              files: newFilesToUpload,
+              maxFileCount: fileAttachmentLimits.maxFileCount,
+              existingVoucherId: isEditingAndConverting && voucher?.id ? null : idArgForFirestore ?? null,
             });
-            fileUrls.push(url);
-            await incrementCompanyStorage(companyId, { attachmentsBytes: file.size, storageBytes: file.size });
+            fileUrls = up.fileUrls;
+            if (up.preGeneratedVoucherId) preGeneratedVoucherId = up.preGeneratedVoucherId;
           }
         }
       }
@@ -2043,7 +2048,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     setIsLoading(true);
     try {
       await permanentDeleteVoucherFromForm(companyId, savedVoucherId);
-      toast({ title: "Payment in deleted permanently." });
+      toast({ title: "Receipt deleted permanently." });
       setIsDeleteDialogOpen(false);
       onVoucherAction?.("cancelled", false, savedVoucherId);
     } catch (error) {
@@ -3396,7 +3401,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           paymentInVoucherNumber={form.watch("voucherNumber") || undefined}
           paymentInDate={form.watch("date")}
           partyOpeningBalance={processedParties.find((p) => p.id === partyId)?.openingBalance ?? 0}
-          dialogTitle="Link Payment In to Linkable Dr Txns"
+          dialogTitle="Link Receipt to Linkable Dr Txns"
           onDone={(allocs, _amount, info) => {
             // Link save only on local; server save when user clicks Save on voucher
             setAllocations(allocs);
@@ -3449,10 +3454,11 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       <VoucherDeleteConfirmAlertDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}
-        entityKind="payment in"
-        entityName={voucher?.voucherNumber || "this payment in"}
+        entityKind="receipt"
+        entityName={voucher?.voucherNumber || "this receipt"}
         onMoveToBin={handleDelete}
         onDeletePermanently={handlePermanentDelete}
+        localOnlyCheck={{ companyId, collectionName: "vouchers", docId: savedVoucherId }}
         busy={isLoading}
       />
     </>

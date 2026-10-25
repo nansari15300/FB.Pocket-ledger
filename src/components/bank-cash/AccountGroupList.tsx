@@ -13,6 +13,7 @@ import {
   EntityListQuickFilterBar,
   type EntityListQuickFilter,
 } from "@/components/entity/EntityListQuickFilterBar";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
 import { motion } from "framer-motion";
 import { isSystemParentGroup } from "@/lib/system-groups";
 import { masterListShellCn, MASTER_LIST_AVATAR_CN, MASTER_LIST_AVATAR_FALLBACK_CN } from "@/lib/masterListChrome";
@@ -67,10 +68,11 @@ export function AccountGroupList({
   canMoveGroup?: (group: AccountGroup) => boolean;
   allGroupsForMove?: AccountGroup[];
 }) {
+  const { hideSettled, setHideSettled } = useEntityListHideSettled();
   const { formatCurrency } = useDate();
   const { animatePresenceMode, rowMotionProps, markListScrolling, isRowAnimationEnabled, layoutHoldMs } =
     useMasterListRowMotion();
-  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("latest");
   const quickFilter = quickFilterProp ?? internalQuickFilter;
   const setQuickFilter = onQuickFilterChange ?? setInternalQuickFilter;
 
@@ -195,7 +197,12 @@ export function AccountGroupList({
           </ul>
         </ScrollArea>
         {!hideQuickFilterBar ? (
-          <EntityListQuickFilterBar active={quickFilter} onChange={setQuickFilter} />
+          <EntityListQuickFilterBar
+            active={quickFilter}
+            onChange={setQuickFilter}
+            hideSettled={hideSettled}
+            onHideSettledChange={setHideSettled}
+          />
         ) : null}
       </motion.div>
     </TooltipProvider>

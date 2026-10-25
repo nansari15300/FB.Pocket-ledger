@@ -22,8 +22,10 @@ import { normalizePlanIdForClient, planTierIndex } from "@/config/plans";
 import { highestPlanIdAmongOwnedCompanies } from "@/lib/accountPlanForOwner";
 import { verifyPlanEntitlementJws } from "@/lib/security/planEntitlementJwtVerify";
 import { getOrCreateClientDeviceId } from "@/lib/security/deviceIdentity";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
+import { isPocketBaseAppSessionMarked } from "@/lib/pocketbaseData/pbAppSession";
 
 const TWENTY_DAYS_MS = 20 * 24 * 60 * 60 * 1000;
 
@@ -573,6 +575,11 @@ export async function syncCompanyPlanFromServer(opts: {
     }
   } catch {
     // Local DB read fail par sync ko block mat karo; fallback path continue kare.
+  }
+
+  // Pocket Ledger Server login: never call the Firebase-backed plan route (firebase-admin Firestore read).
+  if (isPocketBaseAppSessionMarked()) {
+    return { ok: true, applied: false, reason: "server_login_session" };
   }
 
   let token: string;

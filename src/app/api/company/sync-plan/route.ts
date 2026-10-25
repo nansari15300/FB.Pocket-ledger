@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import { corsHeadersForPocketLedgerBillingApi } from "@/lib/server/billingApiCors";
-import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
 import { isCompanyOwner } from "@/lib/server/companyOwner";
 import { applyExpiredPaidPlanAutoDowngradeIfEligible } from "@/lib/server/applyExpiredPaidPlanAutoDowngrade";
 import { reconcileOwnerCompaniesPlanWithDriftHeal } from "@/lib/server/accountCanonicalPlan";
 import { normalizePlanIdForClient } from "@/config/plans";
+import { resolveBillingCaller } from "@/lib/server/billingCaller";
 
 /** `companyId` = Firestore doc id; `localCompanyId` = SQLite row id jab alag ho (offline-first) */
 type Body = { companyId?: string; localCompanyId?: string };
@@ -75,23 +75,12 @@ export async function OPTIONS(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const cors = corsHeadersForPocketLedgerBillingApi(req);
   try {
-    if (!isFirebaseAdminConfigured()) {
-      return NextResponse.json({ error: "Firebase Admin not configured" }, { status: 503, headers: cors });
+    // Firebase Admin is checked inside resolveBillingCaller (server-login callers don't need it).
+    const billingCaller = await resolveBillingCaller(req);
+    if (!billingCaller.ok) {
+      return NextResponse.json({ error: billingCaller.error }, { status: billingCaller.status, headers: cors });
     }
-
-    const authHeader = req.headers.get("authorization");
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    if (!token) {
-      return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401, headers: cors });
-    }
-
-    getAdminDb();
-    let decoded: admin.auth.DecodedIdToken;
-    try {
-      decoded = await admin.auth().verifyIdToken(token);
-    } catch {
-      return NextResponse.json({ error: "Invalid auth token" }, { status: 401, headers: cors });
-    }
+    const decoded = billingCaller.decoded;
 
     const body = (await req.json()) as Body;
     const companyId = typeof body.companyId === "string" ? body.companyId.trim() : "";
@@ -103,7 +92,7 @@ export async function POST(req: NextRequest) {
         ? body.localCompanyId.trim()
         : companyId /* backward compat: same id */;
 
-    const ref = getAdminDb().collection("companies").doc(companyId);
+    const ref = billingCaller.db.collection("companies").doc(companyId);
     const snap = await withFirestoreTransientRetry(() => ref.get());
     if (!snap.exists) {
       return NextResponse.json({ error: "company_not_found" }, { status: 404, headers: cors });
@@ -118,7 +107,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "forbidden" }, { status: 403, headers: cors });
     }
 
-    const db = getAdminDb();
+    const db = billingCaller.db;
     /** Paid expiry beet chuki + preference ON → owner sync par Basic (same request me nayi values). */
     const expiredDowngraded = await applyExpiredPaidPlanAutoDowngradeIfEligible({
       db,

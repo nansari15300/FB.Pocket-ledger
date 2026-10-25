@@ -83,7 +83,7 @@ export function InterCompanySectionTitle({
               "dark:border-sky-400/60 dark:bg-sky-950/40 dark:text-sky-100"
             )}
           >
-            Payment In
+            Receipt
           </Badge>
         ) : null}
         {trailingAction}

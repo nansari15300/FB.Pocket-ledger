@@ -10,7 +10,7 @@ import {
 import { readCloudSyncConfigFromCompany } from "@/lib/localCloudSync/companyConfig";
 import { postDriveJsonViaClient } from "@/lib/localCloudSync/driveApiClient";
 import { logLocalCloudSync, warnLocalCloudSync } from "@/lib/localCloudSync/logger";
-import { hasRealFirebaseAuthSession } from "@/lib/firebaseAuthForApi";
+import { hasDriveApiAuthSession } from "@/lib/firebaseAuthForApi";
 import { isDeviceLocalCompany } from "@/lib/companyStorageKind";
 import { isLocalBackupRestoredCompanyRow } from "@/lib/localBackupRestoreCompany";
 import { isWithinDriveRestorePurgeGrace } from "@/lib/driveRestoredLocalCompany";
@@ -97,7 +97,7 @@ export async function purgeLocalCompanyIfDriveFolderMissing(
 ): Promise<DriveMissingPurgeResult | null> {
   const cid = String(companyId || "").trim();
   if (!cid) return null;
-  if (!hasRealFirebaseAuthSession()) return null;
+  if (!hasDriveApiAuthSession()) return null;
 
   const reg = await getLocalCompanyById(cid, { includeDeleted: true });
   if (!reg) return null;
@@ -137,7 +137,7 @@ export async function purgeLocalCompanyIfDriveFolderMissing(
 export async function purgeAllLocalCompaniesMissingOnDrive(
   firebaseUid: string | null | undefined
 ): Promise<DriveMissingPurgeResult[]> {
-  if (!hasRealFirebaseAuthSession()) return [];
+  if (!hasDriveApiAuthSession()) return [];
   const rows = await listLocalCompanies();
   const purged: DriveMissingPurgeResult[] = [];
   for (const row of rows) {

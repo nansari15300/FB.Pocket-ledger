@@ -1,6 +1,7 @@
 "use client";
 
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { isLocalFileRef, LOCAL_FILE_PREFIX } from "@/lib/localPendingFiles";
 import { normalizeFileUrlsField, getVoucherAttachmentUrlsForUi } from "@/lib/voucherAttachmentNormalize";

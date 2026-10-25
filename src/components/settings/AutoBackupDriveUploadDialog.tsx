@@ -60,7 +60,7 @@ import {
 
 import { readDriveOAuthConnectedMarker } from "@/lib/driveOAuthConnectedMarker";
 
-import { getFirebaseAuthUserForApi, hasRealFirebaseAuthSession, isLocalSyntheticAuthUid } from "@/lib/firebaseAuthForApi";
+import { getDriveApiUser, hasDriveApiAuthSession, isLocalSyntheticAuthUid } from "@/lib/firebaseAuthForApi";
 
 import {
 
@@ -137,7 +137,7 @@ export function AutoBackupDriveUploadDialog({ open, onOpenChange, companies }: P
 
   const refreshDriveConnection = useCallback(async () => {
 
-    if (!hasRealFirebaseAuthSession()) {
+    if (!hasDriveApiAuthSession()) {
 
       setDriveConnection(null);
 
@@ -227,7 +227,7 @@ export function AutoBackupDriveUploadDialog({ open, onOpenChange, companies }: P
 
     setDriveStatusError(null);
 
-    const isSignedIn = hasRealFirebaseAuthSession();
+    const isSignedIn = hasDriveApiAuthSession();
 
     setSignedIn(isSignedIn);
 
@@ -357,7 +357,7 @@ export function AutoBackupDriveUploadDialog({ open, onOpenChange, companies }: P
 
       await signInWithGoogleForApp();
 
-      setSignedIn(hasRealFirebaseAuthSession());
+      setSignedIn(hasDriveApiAuthSession());
 
       await refreshDriveConnection();
 
@@ -399,7 +399,7 @@ export function AutoBackupDriveUploadDialog({ open, onOpenChange, companies }: P
 
     try {
 
-      const firebaseUser = await getFirebaseAuthUserForApi();
+      const firebaseUser = await getDriveApiUser();
 
       const { url } = await getGoogleDriveAuthUrl({
 

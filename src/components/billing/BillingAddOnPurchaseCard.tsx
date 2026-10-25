@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ import {
   type PurchasedPlanAddOns,
 } from "@/lib/planAddOns";
 import { getBillingApiUrl } from "@/lib/billingApiOrigin";
+import { getServerLoginBillingAuthHeader } from "@/lib/firebaseAuthForApi";
 import { browserHistoryHref } from "@/lib/webAppBasePath";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -250,7 +252,7 @@ export function BillingAddOnPurchaseCard({
     try {
       const res = await fetch(getBillingApiUrl("/api/payments/addon-checkout"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await getServerLoginBillingAuthHeader()) },
         body: JSON.stringify({
           gateway,
           userId,

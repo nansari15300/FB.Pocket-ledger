@@ -3,7 +3,8 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
-import { collection, query, where, onSnapshot, updateDoc, doc, deleteDoc, getDoc, serverTimestamp, deleteField } from "firebase/firestore";
+import { collection, query, where, updateDoc, doc, deleteDoc, serverTimestamp, deleteField } from "firebase/firestore";
+import { onSnapshot, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,6 +24,7 @@ import { adminPermanentDeleteCompanyOnServer } from "@/lib/adminRecycleBinApiCli
 import { getRecycleBinConfig, setRecycleBinConfig, type RecycleBinConfig } from "@/lib/recycleBinConfig";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { reportFirestoreListenFailure } from "@/lib/classifyFirestoreClientError";
 
 
 const COLLECTIONS_TO_CHECK = [
@@ -169,7 +171,7 @@ export default function AdminRecycleBinPage() {
                 setDeletedItems(newItems.sort((a,b) => (b.deletedAt?.getTime() || 0) - (a.deletedAt?.getTime() || 0)));
 
             }, (error) => {
-                console.error(`Error fetching from ${coll.path}:`, error);
+                reportFirestoreListenFailure("admin-recycle-bin", coll.path, error);
                 if (!initialLoadComplete) {
                    setLoading(false);
                    initialLoadComplete = true;

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { collection, query, where } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";

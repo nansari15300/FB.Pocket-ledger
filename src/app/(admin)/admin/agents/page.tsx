@@ -2,7 +2,8 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { collection, query, onSnapshot, doc, updateDoc } from "firebase/firestore";
+import { collection, query, doc, updateDoc } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { getAdminDb } from "@/lib/firebaseAdmin";
+import { billingDbForStore, billingStoreFromMeta } from "@/lib/server/billingCaller";
 import * as admin from "firebase-admin";
 import { normalizePlanIdForClient } from "@/config/plans";
 import { grantAccountCanonicalPlan } from "@/lib/server/accountCanonicalPlan";
@@ -32,10 +32,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const db = getAdminDb();
+    // `metadata.plStore === "server"` -> Pocket Ledger Server store; anything else -> Firestore (unchanged).
+    const dbFor = (meta: Record<string, unknown> | null | undefined) => billingDbForStore(billingStoreFromMeta(meta));
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
+      const db = dbFor(session.metadata);
       const result = await fulfillStripeCheckoutSessionCompleted(stripe, session, db);
       if (result.ok === false) {
         console.warn("[stripe webhook] checkout.session.completed failed", result.reason, session.id);
@@ -54,6 +56,7 @@ export async function POST(req: NextRequest) {
       if (!period) return NextResponse.json({ received: true });
       const { subscription: sub, endMs } = period;
       const meta = sub.metadata || {};
+      const db = dbFor(meta);
       const companyId = meta.companyId?.trim();
       const subscriptionUserId = meta.userId?.trim();
       if (!subscriptionUserId) return NextResponse.json({ received: true });
@@ -118,6 +121,7 @@ export async function POST(req: NextRequest) {
       const sub = await stripe.subscriptions.retrieve(subId);
       const companyId = sub.metadata?.companyId?.trim();
       if (!companyId) return NextResponse.json({ received: true });
+      const db = dbFor(sub.metadata);
 
       const coRef = db.collection("companies").doc(companyId);
       const coSnap = await coRef.get();

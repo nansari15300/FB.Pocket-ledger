@@ -73,8 +73,8 @@ export function ReportStatementHeaderAvatar({
     return (
       <div className={LEDGER_HEADER_AVATAR_CN} title={displayName}>
         <Avatar className={avatarClassName}>
-          <AvatarImage src={fileUrl ?? undefined} alt={displayName} />
-          <AvatarFallback className="bg-muted p-0 text-muted-foreground">
+          <AvatarImage src={fileUrl ?? undefined} alt={displayName} className="rounded-none" />
+          <AvatarFallback className="rounded-none bg-muted p-0 text-muted-foreground">
             <FileDigit className="h-6 w-6" aria-hidden />
           </AvatarFallback>
         </Avatar>

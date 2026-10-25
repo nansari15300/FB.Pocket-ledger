@@ -1,5 +1,10 @@
 import type { EntityListQuickFilter } from "@/components/entity/EntityListQuickFilterBar";
-import { masterEntityTextMatchesSearch } from "@/lib/filterMasterEntityListRows";
+import {
+  compareEntityListQuickFilterSort,
+  entityListQuickFilterShowsAllRows,
+  masterEntityTextMatchesSearch,
+  shouldHideEntityListSettledRow,
+} from "@/lib/filterMasterEntityListRows";
 
 export const GROUP_LIST_CHILD_INDENT_CLASS = "pl-[10px]";
 
@@ -15,10 +20,15 @@ export function getEntityListInitials(name: string): string {
 }
 
 export type GroupListSortableMember = {
+  id?: string;
   name?: string;
   accountName?: string;
   balance?: number;
   openingBalanceDate?: unknown;
+  lastVoucherAt?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  lastEditedAt?: unknown;
 };
 
 /** Master list member search — bank uses accountName, others use name. */
@@ -40,16 +50,12 @@ function isGroupListAmountSettled(n: unknown): boolean {
 /** Footer quick filter — hide rows that do not match Dr/Cr/Settled (same as flat account lists). */
 export function filterGroupListMembersByQuickFilter<T extends GroupListSortableMember>(
   rows: T[],
-  quickFilter: EntityListQuickFilter
+  quickFilter: EntityListQuickFilter,
+  hideSettled?: boolean
 ): T[] {
-  if (
-    quickFilter === "default" ||
-    quickFilter === "name" ||
-    quickFilter === "date"
-  ) {
-    return rows;
-  }
   return rows.filter((row) => {
+    if (shouldHideEntityListSettledRow(row.balance, hideSettled, quickFilter)) return false;
+    if (entityListQuickFilterShowsAllRows(quickFilter)) return true;
     const balRaw = row.balance;
     const bal = typeof balRaw === "number" && !Number.isNaN(balRaw) ? balRaw : null;
     if (quickFilter === "dr") return bal !== null && bal > 0;
@@ -60,40 +66,29 @@ export function filterGroupListMembersByQuickFilter<T extends GroupListSortableM
   });
 }
 
-function openingDateMs(raw: unknown): number {
-  if (!raw) return 0;
-  if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? 0 : raw.getTime();
-  if (typeof (raw as { toDate?: () => Date }).toDate === "function") {
-    const d = (raw as { toDate: () => Date }).toDate();
-    return Number.isNaN(d.getTime()) ? 0 : d.getTime();
-  }
-  const d = new Date(raw as string | number);
-  return Number.isNaN(d.getTime()) ? 0 : d.getTime();
-}
-
 export function compareGroupListMembers<T extends GroupListSortableMember>(
   a: T,
   b: T,
   quickFilter: EntityListQuickFilter,
-  nameOf?: (row: T) => string
+  nameOf?: (row: T) => string,
+  lastVoucherMsById?: Map<string, number> | null
 ): number {
-  if (quickFilter === "name") {
-    const na = nameOf?.(a) ?? String(a.name || "");
-    const nb = nameOf?.(b) ?? String(b.name || "");
-    return na.localeCompare(nb);
-  }
-  if (quickFilter === "date") {
-    return openingDateMs(b.openingBalanceDate) - openingDateMs(a.openingBalanceDate);
-  }
-  return Math.abs(Number(b.balance || 0)) - Math.abs(Number(a.balance || 0));
+  return compareEntityListQuickFilterSort(
+    a,
+    b,
+    quickFilter,
+    nameOf ?? ((row) => String(row.accountName || row.name || "")),
+    lastVoucherMsById
+  );
 }
 
 export function sortGroupListMembers<T extends GroupListSortableMember>(
   rows: T[],
   quickFilter: EntityListQuickFilter,
-  nameOf?: (row: T) => string
+  nameOf?: (row: T) => string,
+  lastVoucherMsById?: Map<string, number> | null
 ): T[] {
-  return [...rows].sort((a, b) => compareGroupListMembers(a, b, quickFilter, nameOf));
+  return [...rows].sort((a, b) => compareGroupListMembers(a, b, quickFilter, nameOf, lastVoucherMsById));
 }
 
 /** Search mode — sirf naam match wale accounts; group name match se saare accounts mat dikhao. */
@@ -112,11 +107,13 @@ export function groupListMembersForDisplay<T extends GroupListSortableMember>(
   rows: T[],
   quickFilter: EntityListQuickFilter,
   searchTerm: string,
-  nameOf?: (row: T) => string
+  nameOf?: (row: T) => string,
+  lastVoucherMsById?: Map<string, number> | null,
+  hideSettled?: boolean
 ): T[] {
   const labelOf = nameOf ?? ((row: T) => resolveGroupListMemberSearchText(row));
-  const filtered = filterGroupListMembersByQuickFilter(rows, quickFilter);
-  const sorted = sortGroupListMembers(filtered, quickFilter, labelOf);
+  const filtered = filterGroupListMembersByQuickFilter(rows, quickFilter, hideSettled);
+  const sorted = sortGroupListMembers(filtered, quickFilter, labelOf, lastVoucherMsById);
   return filterGroupListMembersBySearch(sorted, searchTerm, labelOf);
 }
 

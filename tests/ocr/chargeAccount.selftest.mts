@@ -1,0 +1,16 @@
+﻿import { pickChargeAccount } from "../../src/lib/ocr/receiptDetect/fillPaymentOut";
+let fail = 0;
+const ok = (c: unknown, m: string) => { if (c) console.log("ok  " + m); else { fail++; console.log("FAIL " + m); } };
+const ex = (id: string, name: string) => ({ id, name, kind: "expense" as const });
+const base = [ex("e1", "Office Rent"), ex("e2", "Bank Charge"), ex("e3", "Commission Expense"), { id: "p1", name: "Bhraman Iron Pvt. Ltd", kind: "party" as const }];
+ok(pickChargeAccount(base)?.id === "e2", "bank charge preferred over commission");
+ok(pickChargeAccount(base, { defaultId: "e1" })?.method === "detected", "detected wins over default");
+ok(pickChargeAccount([ex("e1", "Office Rent"), ex("e9", "Misc")], { defaultId: "e9" })?.id === "e9", "fallback to default");
+ok(pickChargeAccount([ex("e1", "Office Rent")], { defaultId: "gone" }) === null, "invalid default -> null");
+ok(pickChargeAccount([ex("e1", "Office Rent")]) === null, "nothing -> null");
+ok(pickChargeAccount([ex("a", "Bank Charges - Nabil"), ex("b", "Bank Charges - Prabhu")], { bankName: "2601-Prabhu Bank Limited" })?.id === "b", "bank-name + charge");
+ok(pickChargeAccount([ex("a", "Service Charge"), ex("b", "Commission")])?.id === "a", "service charge > commission");
+ok(pickChargeAccount([{ id: "p", name: "Charge Traders", kind: "party" }, ex("e", "Bank Charge")])?.id === "e", "expense beats party");
+ok(pickChargeAccount([ex("a", "Bank Charge"), ex("b", "Bank Charges")], { defaultId: "b" })?.id === "b", "tie -> default");
+console.log(fail ? `${fail} FAILED` : "ALL PASS");
+process.exit(fail ? 1 : 0);

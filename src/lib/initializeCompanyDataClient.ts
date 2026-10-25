@@ -1,6 +1,7 @@
 "use client";
 
-import { doc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { doc, serverTimestamp } from "firebase/firestore";
+import { writeBatch } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { firestore } from "@/lib/firebase";
 import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
 import { getLocalCompanyById } from "@/lib/localCompanyStore";

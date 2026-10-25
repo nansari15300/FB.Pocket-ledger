@@ -2,7 +2,8 @@
  * Inter Company — source + target company par linked `inter_company` vouchers save/update.
  */
 import type { InterCompanyEntityKind } from "@/components/inter-company/InterCompanyEntitySide";
-import { collection, doc, getDoc, getDocs, query, where, Timestamp } from "firebase/firestore";
+import { collection, doc, query, where, Timestamp } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { auth, firestore } from "@/lib/firebase";
 import {
   isRecurringAutoUserDisplayLabel,
@@ -921,17 +922,66 @@ export async function saveInterCompanyVoucherPair(
     peerApplyKeepApprovedOpt && existingSourceApproved ? peerApplyKeepApprovedOpt : undefined;
 
   /** Pair pehle se dono companies par exist — peer auto-overwrite mat karo. */
+  // IC redesign (final): freeze the OTHER copy only once that other side is approved. Before that, an edit just
+  // updates the other copy (no Change Detected). After approval, Save-only => Change Detected, never unapprove.
   const freezePeerOnEdit =
-    !isCreate && !!input.existingSourceVoucherId && !!resolvedExistingTargetVoucherId;
+    !isCreate &&
+    !!input.existingSourceVoucherId &&
+    !!resolvedExistingTargetVoucherId &&
+    (editingSide === "source" ? existingTargetApproved : existingSourceApproved);
+
+  // IC redesign (final): the other company's copy is created only when the source side is APPROVED.
+  // Save-only on source => store the target payload on the source row (interCompanyDeferredTarget); the approve
+  // path (voucherActionsClient materializeInterCompanyDeferredTarget) creates it local-first (SQLite + outbox).
+  const deferTargetCreate =
+    !resolvedExistingTargetVoucherId &&
+    editingSide === "source" &&
+    !existingSourceApproved &&
+    !input.approveSourceAfterSave;
 
   let sourceSavedId = String(input.existingSourceVoucherId || "").trim();
   let targetSavedId = String(resolvedExistingTargetVoucherId || "").trim();
 
-  if (!freezePeerOnEdit) {
+  if (!freezePeerOnEdit && deferTargetCreate) {
     const sourceSaved = await saveVoucher(
       input.sourceCompanyId,
       input.userId,
       sourcePayload,
+      input.existingSourceVoucherId || null,
+      undefined,
+      {
+        ...(icHistoryOpts || {}),
+        preserveApprovalOnInterCompanyEdit: existingSourceApproved,
+      }
+    );
+    sourceSavedId = sourceSaved.id;
+    targetLink.peerVoucherId = sourceSavedId;
+    targetSavedId = "";
+    await patchVoucherFields(
+      input.sourceCompanyId,
+      sourceSavedId,
+      {
+        interCompanyDeferredTarget: {
+          companyId: input.targetCompanyId,
+          sourceCompanyId: input.sourceCompanyId,
+          sourceVoucherId: sourceSavedId,
+          userId: input.userId,
+          payload: JSON.parse(JSON.stringify({ ...targetPayload, interCompanyLink: targetLink })),
+          share: {
+            sourceOwnFileUrls,
+            shareSourceToTarget: shareSourceAttachmentsWithPeer,
+            targetOwnFileUrls,
+            shareTargetToSource: shareTargetAttachmentsWithSource,
+          },
+        },
+      },
+      IC_PATCH_SQLITE_FIRST
+    );
+  } else if (!freezePeerOnEdit) {
+    const sourceSaved = await saveVoucher(
+      input.sourceCompanyId,
+      input.userId,
+      { ...sourcePayload, interCompanyDeferredTarget: null },
       input.existingSourceVoucherId || null,
       undefined,
       {
@@ -1249,7 +1299,7 @@ export async function saveInterCompanyVoucherPair(
   }
 
   // Source already approved (or just approved) — target ledger must show the pair copy.
-  if (sourceApprovedForTargetVisibility) {
+  if (sourceApprovedForTargetVisibility && targetSavedId) {
     try {
       await patchVoucherFields(
         input.targetCompanyId,
@@ -1268,6 +1318,8 @@ export async function saveInterCompanyVoucherPair(
   // Background: peer attachment copy + counterparty cleanup — UI turant return (SQLite/outbox pehle ho chuka).
   void (async () => {
     try {
+      // Deferred target (not yet created): sharing runs when the copy is materialized on approve.
+      if (!targetSavedId) throw null;
       const shareResult = await reconcileAndPatchInterCompanyAttachmentSharing({
         sourceCompanyId: input.sourceCompanyId,
         sourceVoucherId: sourceSavedId,
@@ -1287,11 +1339,15 @@ export async function saveInterCompanyVoucherPair(
         });
       }
     } catch (err) {
+      if (err === null) {
+        /* deferred target: nothing to share yet */
+      } else {
       const message =
         err instanceof Error ? err.message : "Could not sync Inter Company attachments.";
       console.warn("[IC] attachment share reconcile:", err);
       const { toast } = await import("sonner");
       toast.warning("Attachment sync pending", { description: message });
+      }
     }
 
     try {

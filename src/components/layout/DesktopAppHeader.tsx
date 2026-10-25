@@ -111,7 +111,8 @@ import {
   planUserCapWithAddOns,
   type PurchasedPlanAddOns,
 } from "@/lib/planAddOns";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { GlobalFileHoverPreviewSwitch } from "@/components/layout/GlobalFileHoverPreviewSwitch";
 import { useFileHoverPreview } from "@/contexts/FileHoverPreviewContext";
@@ -499,7 +500,7 @@ function HeaderActions() {
       {/* ✅ Payment In */}
       <AddVoucherDialog defaultTab="payment_in" voucher={undefined} isOpen={openPaymentIn} onOpenChange={setOpenPaymentIn}>
         <PermissionButton permission="create_records" variant="chromePill" size="sm" className={buttonClass} onClick={() => setOpenPaymentIn(true)} data-theme-btn="payment-in">
-          <ArrowRight className="mr-1 h-4 w-4" /> Payment In
+          <ArrowRight className="mr-1 h-4 w-4" /> Receipt
         </PermissionButton>
       </AddVoucherDialog>
 

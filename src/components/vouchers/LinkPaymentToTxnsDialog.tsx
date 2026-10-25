@@ -644,7 +644,7 @@ export function LinkPaymentToTxnsDialog({
       return {
         id: v.id,
         date: v.date,
-        type: "Payment In" as const,
+        type: "Receipt" as const,
         refNo: (v as any).voucherNumber ?? "—",
         total,
         outstanding,
@@ -951,7 +951,7 @@ export function LinkPaymentToTxnsDialog({
         <DialogHeader className="flex-shrink-0 space-y-0.5 text-center sm:text-center">
           <p className="text-xs text-muted-foreground leading-tight">Link for bill wise (1)</p>
           <DialogTitle className="text-xl leading-tight">
-            {dialogTitleOverride ?? (isOut ? "Link Payment Out to Linkable Cr Txns" : "Link Payment In to Linkable Dr Txns")}
+            {dialogTitleOverride ?? (isOut ? "Link Payment Out to Linkable Cr Txns" : "Link Receipt to Linkable Dr Txns")}
           </DialogTitle>
           <div className="flex flex-wrap items-center justify-center gap-4 text-sm pt-1 hidden md:flex">
             <span className="text-muted-foreground">{isOut ? "Paid" : "Received"}: <strong className="text-foreground">{formatCurrency(received, { noSuffix: true })}</strong></span>
@@ -995,7 +995,7 @@ export function LinkPaymentToTxnsDialog({
           <div className="flex-1 min-h-0 border rounded-md overflow-auto scrollbar-slim-dim">
             {targetList.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">
-                {isOut ? "No purchases or payment in for this party." : "No sales or payment out for this party."}
+                {isOut ? "No purchases or receipts for this party." : "No sales or payment out for this party."}
               </p>
             ) : (
               <div className="min-w-0 overflow-x-auto">

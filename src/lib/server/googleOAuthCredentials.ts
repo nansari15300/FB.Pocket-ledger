@@ -1,5 +1,7 @@
 import "server-only";
 
+import { hostingSetting } from "@/lib/server/hostingConfig";
+
 /** Firebase Google sign-in Web client — google-services.json / Capacitor / EXE jaisa hi. */
 export const FIREBASE_WEB_OAUTH_CLIENT_ID =
   "469450068553-h848203thcqi3u8mvl8bvnm7gh8v5icl.apps.googleusercontent.com";
@@ -11,7 +13,8 @@ const POCKET_LEDGER_PRODUCTION_APP_URL = "https://pocket-ledger.com";
  * phir legacy GOOGLE_CLIENT_ID. Purana alag Drive client delete ho to bhi chale.
  */
 export function resolveGoogleOAuthClientId(): string {
-  const web = String(process.env.NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "").trim();
+  // env NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID > server panel "Hosting settings" > built-in Firebase client
+  const web = hostingSetting("google_client_id");
   const legacy = String(
     process.env.GOOGLE_CLIENT_ID ??
       (process.env as Record<string, string | undefined>)["GOOGLE_CLIENT_ID  "] ??
@@ -23,19 +26,19 @@ export function resolveGoogleOAuthClientId(): string {
 }
 
 export function resolveGoogleOAuthClientSecret(): string {
-  const secret = String(process.env.GOOGLE_CLIENT_SECRET ?? "").trim();
+  // env GOOGLE_CLIENT_SECRET > server panel "Hosting settings" (call ensureHostingConfig() first)
+  const secret = hostingSetting("google_client_secret");
   if (!secret) {
     throw new Error(
-      "Missing GOOGLE_CLIENT_SECRET. Set this Web client secret in Firebase App Hosting → Environment secrets, then redeploy."
+      "Missing GOOGLE_CLIENT_SECRET. Set it as an environment secret, or in the server panel (Hosting settings) with PL_HOSTING_KEY set for this app."
     );
   }
   return secret;
 }
 
 export function resolveGoogleOAuthRedirectUri(): string {
-  const appUrl = String(
-    process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_BASE_URL ?? ""
-  ).trim();
+  // env NEXT_PUBLIC_APP_URL / NEXT_PUBLIC_BASE_URL > server panel "Hosting settings" > production URL
+  const appUrl = hostingSetting("app_url");
   const base = (appUrl || POCKET_LEDGER_PRODUCTION_APP_URL).replace(/\/+$/, "");
   // Hosted Next is under `/app`; avoid `/app/app` if env already includes it.
   if (/\/app$/i.test(base)) {

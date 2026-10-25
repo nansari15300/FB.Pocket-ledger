@@ -20,7 +20,7 @@ const RING = ["ring-2", "ring-pink-500", "ring-offset-1", "rounded-md", "transit
 
 /** Suggestion id -> form field anchor key. */
 export function ocrFieldForSuggestion(id: string): string {
-  if (id === "switch") return "voucher-type";
+  if (id === "switch" || id.startsWith("switch-")) return "voucher-type";
   if (id === "create-party" || id === "find-party") return "party";
   if (id === "date") return "date";
   if (id === "due") return "due-date";
@@ -37,6 +37,8 @@ export function ocrFieldForSuggestion(id: string): string {
 export function ocrFieldForMissing(label: string): string {
   const l = label.toLowerCase();
   if (l.startsWith("party")) return "party";
+  if (l.startsWith("bank") || l.startsWith("account")) return "account";
+  if (l.startsWith("other charge")) return "amount";
   if (l.startsWith("date")) return "date";
   if (l.includes("vat") || l.includes("tax")) return "tax";
   if (l.startsWith("line")) return "lines";
@@ -53,6 +55,8 @@ export type OcrBubble = {
   kind: "suggest" | "missing";
   title: string;
   items: OcrSuggestion[];
+  /** Auto-switch countdown (seconds left) shown on the primary "Switch" button. */
+  countdown?: number;
 };
 
 function findAnchor(key: string, anchor?: string): HTMLElement | null {
@@ -304,7 +308,7 @@ function BubbleView({
             {b.items[0].reason ? <p className="text-[11px] text-slate-500">{b.items[0].reason}</p> : null}
             {b.items[0].blocked ? <p className="text-[11px] text-amber-700">{b.items[0].blocked}</p> : null}
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {!b.items[0].blocked ? <Button type="button" size="sm" className={pill} onClick={() => onApply(b.items[0])}>{b.items[0].deferred ? "Open" : "Apply"}</Button> : null}
+              {!b.items[0].blocked ? <Button type="button" size="sm" className={pill} onClick={() => onApply(b.items[0])}>{b.items[0].id === "switch" || b.items[0].id.startsWith("switch-") ? (b.items[0].id === "switch" && b.countdown != null ? `Switch (${b.countdown})` : "Switch") : b.items[0].deferred ? "Open" : "Apply"}</Button> : null}
               <Button type="button" size="sm" variant="ghost" className={pill} onClick={onDismiss}>Dismiss</Button>
             </div>
           </div>
@@ -317,7 +321,7 @@ function BubbleView({
                   <p className="break-words text-[11px] text-slate-500">{s.value}</p>
                   {s.blocked ? <p className="text-[11px] text-amber-700">{s.blocked}</p> : null}
                 </div>
-                {!s.blocked ? <Button type="button" size="sm" variant="outline" className="h-6 rounded-full px-2.5 text-[11px]" onClick={() => onApply(s)}>{s.deferred ? "Open" : "Apply"}</Button> : null}
+                {!s.blocked ? <Button type="button" size="sm" variant="outline" className="h-6 rounded-full px-2.5 text-[11px]" onClick={() => onApply(s)}>{s.id === "switch" || s.id.startsWith("switch-") ? (s.id === "switch" && b.countdown != null ? `Switch (${b.countdown})` : "Switch") : s.deferred ? "Open" : "Apply"}</Button> : null}
               </div>
             ))}
             <div className="flex justify-end">

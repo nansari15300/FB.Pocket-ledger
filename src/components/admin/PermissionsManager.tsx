@@ -3,7 +3,8 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import { firestore } from "@/lib/firebase";
-import { doc, setDoc, onSnapshot } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { Permission, PermissionGroups, type PermissionGroup } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Loader2, Save, Undo2 } from "lucide-react";

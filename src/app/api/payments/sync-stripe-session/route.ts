@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
-import { getAdminDb } from "@/lib/firebaseAdmin";
 import {
   buildVerifiedLocalPlanApplyPayload,
   fulfillStripeCheckoutSessionCompleted,
   getStripeForPaymentsMerged,
 } from "@/lib/payments/stripeCheckoutFulfill";
+import { billingStoreFromMeta, resolveBillingCaller } from "@/lib/server/billingCaller";
 
 /**
  * After redirect from Stripe, client calls this so the plan updates even when webhooks
@@ -13,19 +13,11 @@ import {
  */
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization");
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    if (!token) {
-      return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
+    const billingCaller = await resolveBillingCaller(req);
+    if (!billingCaller.ok) {
+      return NextResponse.json({ error: billingCaller.error }, { status: billingCaller.status });
     }
-
-    getAdminDb();
-    let decoded: admin.auth.DecodedIdToken;
-    try {
-      decoded = await admin.auth().verifyIdToken(token);
-    } catch {
-      return NextResponse.json({ error: "Invalid auth token" }, { status: 401 });
-    }
+    const decoded = billingCaller.decoded;
 
     const body = await req.json();
     const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
@@ -68,7 +60,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Checkout session not finished yet — wait a few seconds and refresh this page." }, { status: 409 });
     }
 
-    const db = getAdminDb();
+    // Checkout made for a server company (`plStore: "server"`) must be synced by a server login, and vice versa.
+    if (billingStoreFromMeta(session.metadata) !== billingCaller.store) {
+      return NextResponse.json(
+        {
+          error:
+            billingCaller.store === "server"
+              ? "This payment was made from a Google/Firebase account. Sign in with that account to finish it."
+              : "This payment was made from a Pocket Ledger Server account. Sign in with that account to finish it.",
+        },
+        { status: 403 }
+      );
+    }
+    const db = billingCaller.db;
     const result = await fulfillStripeCheckoutSessionCompleted(stripe, session, db);
     if (result.ok === false) {
       // Offline/local-only company: Firestore me doc nahi — payment verified ho to payload client ko bhejo (local SQLite apply).

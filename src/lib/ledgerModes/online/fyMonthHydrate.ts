@@ -4,6 +4,7 @@ import { getDocs } from "firebase/firestore";
 import { upsertCompanyDocInBrowserDb } from "@/lib/localCompanyDocMirror";
 import { firestoreVouchersQueryForRange } from "@/lib/ledgerModes/online/fyMonthQueries";
 import type { FyDateRangeMs } from "@/lib/fyPagination/types";
+import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 
 function firestoreValueToPlain(value: unknown): unknown {
   if (value == null) return value;
@@ -35,6 +36,8 @@ export async function hydrateOnlineVoucherRangeFromFirestore(params: {
 }): Promise<number> {
   const { companyId, fsCompanyId, range } = params;
   if (!companyId || !fsCompanyId) return 0;
+  // Pocket Ledger Server companies: vouchers come from the server pull into the local DB, not Firestore.
+  if (isPocketBaseCompanyId(companyId) || isPocketBaseCompanyId(fsCompanyId)) return 0;
   const q = firestoreVouchersQueryForRange(fsCompanyId, range);
   const snap = await getDocs(q);
   let count = 0;

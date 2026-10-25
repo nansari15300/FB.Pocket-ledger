@@ -8,11 +8,11 @@
 import {
   collection,
   doc,
-  getDoc,
   runTransaction,
   serverTimestamp,
   setDoc,
 } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { ref, deleteObject, getBlob } from "firebase/storage";
 import { firestore, storage } from "@/lib/firebase";
 import { companyAttachmentRegistryEnabled } from "@/lib/firebaseBillingOptimization";
@@ -227,6 +227,14 @@ function isRegistryEligibleHttpsUrl(url: string): boolean {
 
 async function registryEnabledForCompany(companyId: string): Promise<boolean> {
   if (!companyAttachmentRegistryEnabled()) return false;
+  // Quota/billing pause: skip every Firestore registry read/transaction (they fail with resource-exhausted and
+  // retry for seconds). Registry is advisory; local usage scan decides deletes.
+  try {
+    const { isServerQuotaHoldActive } = await import("@/lib/serverQuotaHold");
+    if (isServerQuotaHoldActive()) return false;
+  } catch {
+    /* ignore */
+  }
   const cid = String(companyId || "").trim();
   if (!cid) return false;
   const reg = await getLocalCompanyById(cid, { includeDeleted: true });
@@ -401,6 +409,8 @@ async function listAttachmentUsagePlacesInCompanyUncached(
       return false;
     };
     const scanIds = await companyIdsForAttachmentScan(companyId);
+    /** IC shared attachments: peer company copies may reference the same Storage object. */
+    const icPeerIds = new Set<string>();
     for (const cid of scanIds) {
       for (const coll of COMPANY_LOCAL_MIRROR_SUBCOLLECTIONS) {
         const rows = await listCompanyDocsFromBrowserDb(cid, coll);
@@ -410,19 +420,43 @@ async function listAttachmentUsagePlacesInCompanyUncached(
           // Recycle Bin (soft-deleted) refs Storage delete / reuse count me mat gin —
           // warna permanent delete pe source-only file bhi SKIPPED_REFCOUNT ho jati.
           if ((row as { isDeleted?: unknown }).isDeleted === true) continue;
-          const hit =
-            rowHasNeedle(row.fileUrls) ||
-            rowHasNeedle(row.documentFileUrls) ||
-            rowHasNeedle(row.fileUrl) ||
-            rowHasNeedle(row.logoUrl) ||
-            rowHasNeedle(row.avatarUrl) ||
-            rowHasNeedle(row.unassignedFile);
+          // Strict usage (Phase 2): ANY field of the live doc counts (IC interCompanyOwnFileUrls, peer pending
+          // proposals, loan_documents, recurring templates, ...). Only `history` (audit trail of old values)
+          // is excluded, as before, so edit-time recompress can still free the old object.
+          const hit = Object.entries(row as Record<string, unknown>).some(
+            ([k, v]) => k !== "history" && rowHasNeedle(v)
+          );
+          if (coll === "vouchers") {
+            const peer = String(
+              ((row as Record<string, unknown>).interCompanyLink as { peerCompanyId?: string } | undefined)
+                ?.peerCompanyId || ""
+            ).trim();
+            if (peer && !scanIds.includes(peer)) icPeerIds.add(peer);
+          }
           if (!hit) continue;
           const placeKey = `${coll}/${id}`;
           const atMs = rowEarliestMs(row as Record<string, unknown>);
           const prev = byKey.get(placeKey);
           if (prev == null || atMs < prev) byKey.set(placeKey, atMs);
         }
+      }
+    }
+    // Peer companies (only those mirrored on this device): count IC vouchers that still use the URL.
+    for (const peerId of icPeerIds) {
+      try {
+        const rows = await listCompanyDocsFromBrowserDb(peerId, "vouchers");
+        for (const row of rows) {
+          const id = String((row as { id?: unknown }).id || "").trim();
+          if (!id || (row as { isDeleted?: unknown }).isDeleted === true) continue;
+          const hit = Object.entries(row as Record<string, unknown>).some(
+            ([k, v]) => k !== "history" && rowHasNeedle(v)
+          );
+          if (!hit) continue;
+          const placeKey = `peer:${peerId}:vouchers/${id}`;
+          byKey.set(placeKey, rowEarliestMs(row as Record<string, unknown>));
+        }
+      } catch {
+        /* peer not mirrored here */
       }
     }
     return [...byKey.entries()]

@@ -1,6 +1,7 @@
 "use client";
 
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, query, where } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 
 /** Firestore `where('…','in', …)` discrete values cap. */

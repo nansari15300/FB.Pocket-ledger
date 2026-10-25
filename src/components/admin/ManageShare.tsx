@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { doc, onSnapshot, updateDoc, arrayRemove, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, arrayRemove, collection, query, where } from "firebase/firestore";
+import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
+import { updateCompanyRootFirestore } from "@/lib/writeGateway/companyRootFirestore";
 import { useCompany } from "@/hooks/useCompany";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -131,7 +133,7 @@ export function ManageShare() {
         if (!currentConfig || !currentConfig.roles || !currentConfig.dateLimits) {
             console.log("Permission schema mismatch or missing. Resetting to default.");
             currentConfig = initialPermissionConfig;
-            await updateDoc(companyRef, { permissionConfig: currentConfig });
+            await updateCompanyRootFirestore(companyRef.id, { permissionConfig: currentConfig });
         }
         
         setFirestorePermissionConfig(currentConfig);
@@ -178,7 +180,7 @@ export function ManageShare() {
     setIsSavingPermissions(true);
     try {
       const companyRef = doc(firestore, "companies", companyId);
-      await updateDoc(companyRef, { permissionConfig: editablePermissionConfig });
+      await updateCompanyRootFirestore(companyRef.id, { permissionConfig: editablePermissionConfig });
       toast({ title: "Success", description: "Permissions have been saved." });
     } catch (error) {
       console.error("Error saving permissions:", error);
@@ -208,7 +210,7 @@ export function ManageShare() {
         u.email === email ? { ...u, role: newRole } : u
       );
 
-      await updateDoc(companyRef, { sharedWith: updatedSharedWith });
+      await updateCompanyRootFirestore(companyRef.id, { sharedWith: updatedSharedWith });
       
       toast({ title: "Success", description: `Role for ${email} has been updated to ${newRole}.` });
     } catch (error) {
@@ -236,7 +238,7 @@ export function ManageShare() {
         u.email === email ? { ...u, name: newName } : u
       );
 
-      await updateDoc(companyRef, { sharedWith: updatedSharedWith });
+      await updateCompanyRootFirestore(companyRef.id, { sharedWith: updatedSharedWith });
       toast({ title: "Success", description: `Name for ${email} has been updated.` });
     } catch (error) {
       console.error("Error updating name:", error);
@@ -263,7 +265,7 @@ export function ManageShare() {
         u.email === userToEdit.email ? { ...u, password: newPassword } : u
       );
 
-      await updateDoc(companyRef, { sharedWith: updatedSharedWith });
+      await updateCompanyRootFirestore(companyRef.id, { sharedWith: updatedSharedWith });
       toast({ title: "Success", description: `Password for ${userToEdit.email} has been updated.` });
     } catch (error) {
       console.error("Error updating password:", error);
@@ -283,7 +285,7 @@ export function ManageShare() {
           const companyRef = doc(firestore, "companies", companyId);
           const fullUserObject = companyData.sharedWith?.find(u => u.email === userToRemove.email);
 
-          await updateDoc(companyRef, { 
+          await updateCompanyRootFirestore(companyRef.id, { 
               sharedWith: arrayRemove(fullUserObject),
               sharedWithEmails: arrayRemove(userToRemove.email) 
             });

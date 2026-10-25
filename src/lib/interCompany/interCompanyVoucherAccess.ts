@@ -31,3 +31,12 @@ export function sharedUserCanEditInterCompanyVoucher(
   if (company?.isOwned !== false) return true;
   return can("edit_inter_company_voucher");
 }
+
+/** IC approve (either side) - owner/admin always; shared user needs "Approve IC voucher". */
+export function sharedUserCanApproveInterCompanyVoucher(
+  company: CompanyRow,
+  can: (permission: Permission) => boolean
+): boolean {
+  if (company?.isOwned !== false) return true;
+  return can("approve_inter_company_voucher");
+}

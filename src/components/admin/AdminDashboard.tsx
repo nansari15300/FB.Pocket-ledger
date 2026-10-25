@@ -1,6 +1,7 @@
 
 "use client";
 
+import { voucherTypeDisplayText } from "@/lib/voucherTypeDisplay";
 import React, { useMemo, useState, useEffect, useCallback, useRef, startTransition } from "react";
 import {
   ResponsiveContainer,
@@ -33,7 +34,8 @@ import {
   FileClock,
   Globe,
 } from "lucide-react";
-import { collection, onSnapshot, query, where, Timestamp, orderBy, getDocs } from "firebase/firestore";
+import { collection, query, where, Timestamp, orderBy } from "firebase/firestore";
+import { onSnapshot, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
 import { ensureAdminSync } from "@/lib/adminSync";
@@ -307,7 +309,7 @@ const CompanyByCountryCard = ({ allUsers, allCompanies, allVouchers, loading, da
 const ADMIN_VOUCHER_SUMMARY_TYPES: ReadonlyArray<{ id: string; label: string }> = [
   { id: "sale", label: "Sale" },
   { id: "purchase", label: "Purchase" },
-  { id: "payment_in", label: "Payment In" },
+  { id: "payment_in", label: "Receipt" },
   { id: "payment_out", label: "Payment Out" },
   { id: "pay_salary", label: "Pay Salary" },
   { id: "contra", label: "Contra" },
@@ -420,7 +422,7 @@ const VoucherChartCard = ({ vouchers, dateRange, loading }: { vouchers: any[], d
             const type = v.subType || v.type;
             if (type) counts[type] = (counts[type] || 0) + 1;
         });
-        return Object.entries(counts).map(([name, count]) => ({ name: name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), count }));
+        return Object.entries(counts).map(([name, count]) => ({ name: voucherTypeDisplayText(name).replace(/\b\w/g, l => l.toUpperCase()), count }));
     }, [filteredVouchers]);
 
     const BAR_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16", "#f97316", "#6366f1", "#14b8a6", "#a855f7"];

@@ -83,7 +83,7 @@ export type VoucherEditConvertPresentation = {
 const VOUCHER_EDIT_CONVERT_TYPE_LABEL: Record<string, string> = {
   sale: "Sale",
   purchase: "Purchase",
-  payment_in: "Payment In",
+  payment_in: "Receipt",
   payment_out: "Payment Out",
   direct_income: "Direct Income",
   direct_expense: "Direct Expense",

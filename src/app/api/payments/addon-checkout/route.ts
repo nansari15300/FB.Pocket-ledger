@@ -11,6 +11,7 @@ import {
   type GatewayKeys,
 } from "@/ai/flows/gateway-keys";
 import { getAdminDb } from "@/lib/firebaseAdmin";
+import { optionalServerBillingCaller } from "@/lib/server/billingCaller";
 import { getPublicAppHrefForPaymentRedirects } from "@/lib/checkoutPublicOrigin";
 import {
   PENDING_ADDON_PURCHASES_COLLECTION,
@@ -88,7 +89,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const db = getAdminDb();
+    // Pocket Ledger Server login: `Bearer plpb.` -> server store + `plStore` on Stripe metadata.
+    const serverCaller = await optionalServerBillingCaller(req);
+    if (serverCaller && !serverCaller.ok) {
+      return NextResponse.json({ error: serverCaller.error }, { status: serverCaller.status });
+    }
+    if (serverCaller && serverCaller.decoded.uid !== userId) {
+      return NextResponse.json({ error: "userId does not match the signed-in account" }, { status: 403 });
+    }
+    const db = serverCaller ? serverCaller.db : getAdminDb();
     const sub = await resolveOwnerActivePaidSubscription(db, userId, companyId || null);
     if (sub.ok === false) {
       return NextResponse.json({ error: sub.error }, { status: sub.status });
@@ -236,6 +245,7 @@ export async function POST(req: NextRequest) {
         userId,
         billingIntent: "addon_bundle",
         amountNpr: String(amountNpr),
+        ...(serverCaller ? { plStore: "server" } : {}),
       },
     });
 

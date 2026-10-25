@@ -17,7 +17,8 @@ import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { LinkPaymentToTxnsDialog } from "@/components/vouchers/LinkPaymentToTxnsDialog";
 import { PermissionButton } from "@/components/permission";
 import type { DateRange } from "@/components/ui/ad-calendar";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 
@@ -166,10 +167,10 @@ export default function PaymentInPage() {
         const totalAmount = paymentInVouchers.reduce((sum, v) => sum + (v.total || v.amount || 0), 0);
         return {
             id: 'all',
-            name: 'All Payment In',
+            name: 'All Receipts',
             type: 'Other',
             balance: totalAmount,
-            entity: { id: 'all', name: 'All Payment In', balance: totalAmount, openingBalance: 0 }
+            entity: { id: 'all', name: 'All Receipts', balance: totalAmount, openingBalance: 0 }
         };
     }, [showAllCompanyVouchers, paymentInVouchers]);
     
@@ -229,7 +230,7 @@ export default function PaymentInPage() {
                 <div className="p-4 border-b space-y-4">
                     <div className="grid grid-cols-2 gap-2">
                         <PermissionButton permission="create_records" className="w-full" onClick={() => openVoucherDialog("payment_in")}>
-                            <PlusCircle className="mr-2 h-4 w-4" /> Payment In
+                            <PlusCircle className="mr-2 h-4 w-4" /> Receipt
                         </PermissionButton>
                         <PermissionButton permission="create_records" className="w-full" variant="outline" onClick={() => openVoucherDialog("direct_income")}>
                             <PlusCircle className="mr-2 h-4 w-4" /> Direct Income
@@ -270,7 +271,7 @@ export default function PaymentInPage() {
                           userNames={userNames}
                           context="payment-in"
                           mobileFooterVariant="report"
-                          mobileReportStickyTitle={showAllCompanyVouchers ? "All Payment In" : "Payment In"}
+                          mobileReportStickyTitle={showAllCompanyVouchers ? "All Receipts" : "Receipt"}
                         />
                     </div>
                 ): (
@@ -282,7 +283,7 @@ export default function PaymentInPage() {
                             </CardHeader>
                              <CardContent>
                                 <PermissionButton permission="create_records" onClick={() => openVoucherDialog("payment_in")}>
-                                <PlusCircle className="mr-2 h-4 w-4" /> Record Payment In
+                                <PlusCircle className="mr-2 h-4 w-4" /> Record Receipt
                             </PermissionButton>
                              </CardContent>
                         </Card>

@@ -15,6 +15,8 @@ import {
   warmAllBrowserSqliteNamespaces,
 } from "@/lib/localSqlite";
 import { mergePersistedLocalCloudSyncUserSettings } from "@/lib/localCloudSync/persistRegistryUserSettings";
+import { notePocketBaseCompanyRow } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { filterFirebaseCompaniesForServerSession } from "@/lib/pocketbaseData/serverSessionCompanyScope";
 import { clearLocalAuth } from "@/lib/localApiClient";
 import { clearCompanyPlanLocalCache } from "@/lib/companyPlanLocalCache";
 import { clearCloudCompanyPasswordUnlockSession } from "@/lib/cloudCompanyPasswordUnlockRemember";
@@ -103,6 +105,8 @@ async function ensureCompanyInNamespace(
 
 export async function upsertLocalCompany(company: LocalCompanyDoc): Promise<void> {
   if (!company?.id) return;
+  // Pocket Ledger Server companies (`onlineServerId: "pocketbase"`) - remembered for the sync routing.
+  notePocketBaseCompanyRow(company.id, company);
   const now = Date.now();
   const existing = await getLocalCompanyById(company.id, { includeDeleted: true });
   const mergedRaw = mergePersistedLocalCloudSyncUserSettings(existing, company);
@@ -241,7 +245,8 @@ export async function listLocalCompanies(options?: { includeDeleted?: boolean })
       out.push({ ...parsed, id: row.id });
     }
   }
-  return out;
+  // Server-only login: cached Firebase company rows stay in SQLite but are not listed anywhere.
+  return filterFirebaseCompaniesForServerSession(out);
 }
 
 export type RemoveLocalCompanyOptions = {

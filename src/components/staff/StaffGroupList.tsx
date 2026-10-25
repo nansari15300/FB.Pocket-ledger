@@ -12,6 +12,9 @@ import {
   type EntityListQuickFilter,
 } from "@/components/entity/EntityListQuickFilterBar";
 import { filterAndSortEntityGroups } from "@/lib/entityGroupListQuickFilter";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
+import { stampLastVoucherMsFromMemberGroups } from "@/lib/masterListLastVoucherMs";
 import { motion } from "framer-motion";
 import { isSystemParentGroup } from "@/lib/system-groups";
 import { masterListShellCn } from "@/lib/masterListChrome";
@@ -46,9 +49,11 @@ export function StaffGroupList({
   pendingApprovalByMemberId?: Record<string, number>;
 }) {
   const { formatCurrency } = useDate();
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled, setHideSettled } = useEntityListHideSettled();
   const { animatePresenceMode, rowMotionProps, markListScrolling, isRowAnimationEnabled, layoutHoldMs } =
     useMasterListRowMotion();
-  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("latest");
   const quickFilter = quickFilterProp ?? internalQuickFilter;
   const setQuickFilter = onQuickFilterChange ?? setInternalQuickFilter;
 
@@ -61,8 +66,14 @@ export function StaffGroupList({
       if (isReportOnly || isSystemParent) return false;
       return !!group.name;
     });
-    return filterAndSortEntityGroups(base, searchTerm, quickFilter);
-  }, [groups, searchTerm, quickFilter]);
+    return filterAndSortEntityGroups(
+      base,
+      searchTerm,
+      quickFilter,
+      stampLastVoucherMsFromMemberGroups(lastVoucherMsById, groupMembersByGroupId),
+      hideSettled
+    );
+  }, [groups, searchTerm, quickFilter, lastVoucherMsById, groupMembersByGroupId, hideSettled]);
 
   const listOrderKey = useMemo(
     () => masterListOrderKey(filteredAndSortedGroups.map((g) => g.id)),
@@ -109,7 +120,12 @@ export function StaffGroupList({
           </ul>
         </ScrollArea>
         {!hideQuickFilterBar ? (
-          <EntityListQuickFilterBar active={quickFilter} onChange={setQuickFilter} />
+          <EntityListQuickFilterBar
+            active={quickFilter}
+            onChange={setQuickFilter}
+            hideSettled={hideSettled}
+            onHideSettledChange={setHideSettled}
+          />
         ) : null}
       </motion.div>
     </TooltipProvider>

@@ -241,7 +241,7 @@ const statCardData = [
   { title: 'Contra', icon: Landmark, type: 'contra', link: '/contra', isCredit: false },
   { title: 'Direct Income', icon: TrendingUp, type: 'direct_income', link: '/incomes', isCredit: true },
   { title: 'Direct Expense', icon: TrendingDown, type: 'direct_expense', link: '/incomes', isCredit: false },
-  { title: 'Payment In', icon: ArrowDownCircle, type: 'payment_in', link: '/payment-in', isCredit: true },
+  { title: 'Receipt', icon: ArrowDownCircle, type: 'payment_in', link: '/payment-in', isCredit: true },
   { title: 'Payment Out', icon: ArrowUpCircle, type: 'payment_out_excl_pay_salary', link: '/payment-out', isCredit: false },
   { title: 'Pay Salary', icon: HandCoins, type: 'pay_salary', link: '/add-salary', isCredit: false },
   { title: 'Notes', icon: StickyNote, type: 'note', link: '/notes', isCredit: true },
@@ -1846,7 +1846,7 @@ export default function DashboardPage() {
                 <MonthYearFilter dateRange={cashFlowDateRange} setDateRange={setCashFlowDateRange} dateSystem={dateSystem} />
               </CardHeader>
               <CardContent className="p-4 pt-0 space-y-2">
-                <div className="flex items-baseline justify-between"><span className="text-xs text-muted-foreground">Payment In</span><span className="text-base font-bold text-green-600">{formatCurrency(cashFlowDetails.totalInflow, {noSuffix: true})} <span className="text-xs">Dr</span></span></div>
+                <div className="flex items-baseline justify-between"><span className="text-xs text-muted-foreground">Receipt</span><span className="text-base font-bold text-green-600">{formatCurrency(cashFlowDetails.totalInflow, {noSuffix: true})} <span className="text-xs">Dr</span></span></div>
                 <div className="flex items-baseline justify-between"><span className="text-xs text-muted-foreground">Payment Out</span><span className="text-base font-bold text-red-600">{formatCurrency(cashFlowDetails.totalOutflow, {noSuffix: true})} <span className="text-xs">Cr</span></span></div>
                 <div className="flex items-baseline justify-between pt-2 mt-2 border-t"><span className="text-sm font-bold">Net Flow</span><span className={cn('text-lg font-bold', (cashFlowDetails.totalInflow - cashFlowDetails.totalOutflow) >= 0 ? "text-green-600" : "text-red-600")}>{formatCurrency(Math.abs(cashFlowDetails.totalInflow - cashFlowDetails.totalOutflow), { noSuffix: true, duration: 2 })} <span className="text-xs">{(cashFlowDetails.totalInflow - cashFlowDetails.totalOutflow) >= 0 ? 'Dr' : 'Cr'}</span></span></div>
                 {isReportsEnabled && (

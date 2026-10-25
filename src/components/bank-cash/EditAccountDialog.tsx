@@ -1,13 +1,15 @@
 
 "use client";
 
+import { checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Trash2, CalendarIcon, Upload } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useLiveEntityDocAttachments } from "@/hooks/useLiveEntityDocAttachments";
 import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
-import { doc, updateDoc, serverTimestamp, Timestamp, onSnapshot, collection, query, getDoc } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp, Timestamp, collection, query } from "firebase/firestore";
+import { onSnapshot, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import {
   uploadEntityAvatarAndDocumentsRemote,
   syncEntityAttachmentsAfterSave,
@@ -433,7 +435,7 @@ export function EditAccountDialog({ account, allAccounts, onAccountUpdated, onAc
           (prepared.avatar instanceof File ? prepared.avatar.size : 0) +
           newDocFiles.reduce((s, f) => s + f.size, 0);
         if (totalBytes > 0 && companyId) {
-          const limitCheck = await checkStorageLimit(
+          const limitCheck = await checkStorageLimitSafe(
             companyId,
             company?.planId,
             { attachmentsBytes: totalBytes, storageBytes: totalBytes },
@@ -671,6 +673,22 @@ export function EditAccountDialog({ account, allAccounts, onAccountUpdated, onAc
         if (isStaticAppBuild()) {
           armDashboardRedirectGuard(router, { isMobile: isMobile || isStaticAppBuild() });
           beginApkLedgerAsyncWriteShield({ pinCompanyId: companyId });
+        }
+        {
+          // Never-synced local doc => permanent local delete (no Firestore / recycle bin).
+          const { tryHardDeleteNeverSyncedDoc } = await import("@/lib/localOnlyHardDelete");
+          const hd = await tryHardDeleteNeverSyncedDoc(companyId, "bank_accounts", account.id);
+          if (hd === "cancelled") {
+            setIsDeleteDialogOpen(false);
+            return;
+          }
+          if (hd === "hard") {
+            toast({ title: "Deleted", description: "Not synced yet - permanently removed from this device." });
+            onAccountDeleted(account.id);
+            setIsOpen(false);
+            setIsDeleteDialogOpen(false);
+            return;
+          }
         }
         if (localSqlMirror) {
           const fromDb = await getCompanyDocFromBrowserDb(companyId, "bank_accounts", account.id);
@@ -1282,6 +1300,7 @@ export function EditAccountDialog({ account, allAccounts, onAccountUpdated, onAc
         entityName={account.accountName}
         onMoveToBin={handleDelete}
         onDeletePermanently={handlePermanentDelete}
+        localOnlyCheck={{ companyId, collectionName: "bank_accounts", docId: account.id }}
         busy={isLoading}
         moveToBinDisabled={apkOfflineViewOnly}
         permanentDeleteDisabled={apkOfflineViewOnly}

@@ -121,7 +121,7 @@ export const reports: Report[] = [
   },
   { id: "sale", name: "Sale Register", description: "Create and manage sales / invoices.", category: "Sales/Purchase" },
   { id: "purchase", name: "Purchase Register", description: "Create and manage purchases.", category: "Sales/Purchase" },
-  { id: "payment-in", name: "Payment In", description: "Record incoming payments.", category: "Payments" },
+  { id: "payment-in", name: "Receipt", description: "Record incoming payments.", category: "Payments" },
   { id: "payment-out", name: "Payment Out", description: "Record outgoing payments.", category: "Payments" },
   { id: "add-salary", name: "Add Salary", description: "Add salary entries for staff.", category: "Staff" },
   { id: "contra", name: "Contra Report", description: "Transfer between bank and cash accounts.", category: "Bank/Cash" },

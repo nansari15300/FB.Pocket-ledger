@@ -10,7 +10,7 @@ import { purgeAllLocalCompaniesMissingOnDrive } from "@/lib/localCloudSync/drive
 import { isLocalCloudSyncCycleRunning, runLocalCloudSyncCycle } from "@/lib/localCloudSync/engine";
 import { logLocalCloudSync } from "@/lib/localCloudSync/logger";
 import { MIN_CLOUD_SYNC_TICK_MS } from "@/lib/localCloudSync/types";
-import { hasRealFirebaseAuthSession, waitForFirebaseAuthReady } from "@/lib/firebaseAuthForApi";
+import { hasDriveApiAuthSession, waitForFirebaseAuthReady } from "@/lib/firebaseAuthForApi";
 import { isLocalGoogleDriveSyncDisabled } from "@/lib/localCloudSync/driveSyncDisabled";
 
 const MAX_BACKGROUND_CLOUD_SYNC_TICK_MS = 60_000;
@@ -115,7 +115,7 @@ export function LocalCompanyCloudSyncManager() {
         return;
       }
       await waitForFirebaseAuthReady();
-      if (!hasRealFirebaseAuthSession()) {
+      if (!hasDriveApiAuthSession()) {
         await scheduleNext();
         return;
       }

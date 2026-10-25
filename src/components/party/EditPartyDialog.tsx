@@ -1,13 +1,15 @@
 
 "use client";
 
+import { checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Trash2, CalendarIcon, Upload } from "lucide-react";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
-import { doc, updateDoc, serverTimestamp, onSnapshot, collection, query, Timestamp } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp, collection, query, Timestamp } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import {
   uploadEntityAvatarAndDocumentsRemote,
   syncEntityAttachmentsAfterSave,
@@ -420,7 +422,7 @@ export function EditPartyDialog({ party, onPartyUpdated, onPartyDeleted, childre
           (prepared.avatar instanceof File ? prepared.avatar.size : 0) +
           newDocFiles.reduce((s, f) => s + f.size, 0);
         if (totalBytes > 0 && companyId) {
-          const limitCheck = await checkStorageLimit(
+          const limitCheck = await checkStorageLimitSafe(
             companyId,
             company?.planId,
             { attachmentsBytes: totalBytes, storageBytes: totalBytes },
@@ -1204,6 +1206,7 @@ export function EditPartyDialog({ party, onPartyUpdated, onPartyDeleted, childre
         entityName={party.name}
         onMoveToBin={handleDelete}
         onDeletePermanently={handlePermanentDelete}
+        localOnlyCheck={{ companyId, collectionName: "parties", docId: party.id }}
         busy={isLoading}
         moveToBinDisabled={apkOfflineViewOnly}
         permanentDeleteDisabled={apkOfflineViewOnly}

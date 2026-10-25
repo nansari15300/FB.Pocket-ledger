@@ -1906,7 +1906,7 @@ export function FinancialSummaryCards({
         { title: 'Contra', icon: Landmark, type: 'contra', link: '/contra', isCredit: false },
         { title: 'Direct Income', icon: TrendingUp, type: 'direct_income', link: '/incomes', isCredit: true },
         { title: 'Direct Expense', icon: TrendingDown, type: 'direct_expense', link: '/incomes', isCredit: false },
-        { title: 'Payment In', icon: ArrowDownCircle, type: 'payment_in', link: '/payment-in', isCredit: true },
+        { title: 'Receipt', icon: ArrowDownCircle, type: 'payment_in', link: '/payment-in', isCredit: true },
         { title: 'Payment Out', icon: ArrowUpCircle, type: 'payment_out_excl_pay_salary', link: '/payment-out', isCredit: false },
         { title: 'Pay Salary', icon: HandCoins, type: 'pay_salary', link: '/add-salary', isCredit: false },
         { title: 'Notes', icon: StickyNote, type: 'note', link: '/notes', isCredit: true },
@@ -3255,7 +3255,7 @@ export function FinancialSummaryCards({
                     </CardHeader>
                     <CardContent className={cn("overflow-hidden p-4 pt-0 space-y-2", contentClass, topSummaryCardBodyClass)}>
                         <div className={topSummaryMetricRowCn}>
-                            <span className={topSummaryMetricLabelCn}>Payment In</span>
+                            <span className={topSummaryMetricLabelCn}>Receipt</span>
                             <span className={cn(topSummaryMetricLineValueCn, "text-green-600")}>
                                 {formatCurrency(cashFlowDetails.totalInflow, {noSuffix: true})}{" "}
                                 <span className={topSummaryMetricDrCrCn}>Dr</span>
@@ -3280,7 +3280,7 @@ export function FinancialSummaryCards({
                                 {/* Cash Flow: 3 rows — in / out / net; har chart full-screen popup. */}
                                 {renderDashboardMiniBar(
                                     dashboardCashFlowDailyTri.inflow,
-                                    "Payment in / day",
+                                    "Receipts / day",
                                     "#16a34a",
                                     false,
                                     dashboardCashFlowDailyTri.inflowPointsByDay

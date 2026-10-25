@@ -65,9 +65,10 @@ export async function hydrateVoucherLocalAttachmentsForServer(
           next.push(resolved);
           continue;
         }
-        console.warn(
-          `[sync] Attachment bytes missing for ${entry} — server push without this file; UI se dubara attach kar sakte ho.`
-        );
+        // RULE: bytes not on this device (another device's local: ref) => keep the ref AS-IS. Never drop it;
+        // only the owning device uploads its file and patches the URL.
+        console.warn(`[sync] Attachment bytes not on this device for ${entry} - keeping ref as-is`);
+        next.push(entry);
         continue;
       }
       const objectPath = buildVoucherAttachmentStoragePath({
@@ -104,12 +105,9 @@ export async function hydrateVoucherLocalAttachmentsForServer(
     if (typeof urlStr === "string" && isLocalFileRef(urlStr)) {
       const item = await getPendingPayloadForLocalRef(urlStr);
       if (!item?.blob) {
-        console.warn(
-          `[sync] unassignedFile bytes missing for ${urlStr} — clearing for server push; dubara attach kar sakte ho.`
-        );
-        const rest = { ...out };
-        delete rest.unassignedFile;
-        return rest;
+        // RULE: keep another device's local: ref as-is (never clear it).
+        console.warn(`[sync] unassignedFile bytes not on this device for ${urlStr} - keeping ref as-is`);
+        return out;
       }
       const objectPath = buildVoucherAttachmentStoragePath({
         companyId: cid,

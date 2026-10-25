@@ -37,8 +37,10 @@ import { Badge } from "@/components/ui/badge";
 import { Check, Download, Loader2, Printer, X } from "lucide-react";
 import { AppFreshInfoButton } from "@/components/ui/AppFreshInfoButton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { auth, firestore } from "@/lib/firebase";
+import { getBillingApiIdToken, getServerLoginBillingAuthHeader } from "@/lib/firebaseAuthForApi";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell, TableFooter } from "@/components/ui/table";
 import { format as formatDateFns } from "date-fns";
@@ -559,6 +561,7 @@ function CheckoutForm({
       // Online-only: server route JSON; optional NEXT_PUBLIC_BILLING_API_ORIGIN for static shell → hosted API
       const res = await fetch(getBillingApiUrl("/api/payments/initiate"), {
         method: "POST",
+        headers: { "Content-Type": "application/json", ...(await getServerLoginBillingAuthHeader()) },
         body: JSON.stringify({
           planId: plan.id,
           gateway,
@@ -575,7 +578,6 @@ function CheckoutForm({
           subscriptionTermKey: termKey,
           billingIntent: "subscribe",
         }),
-        headers: { "Content-Type": "application/json" },
       });
 
       const data = await res.json();
@@ -1122,7 +1124,7 @@ function BillingPageInner() {
     repairExpiryAttemptedRef.current = true;
     void (async () => {
       try {
-        const token = await user.getIdToken();
+        const token = await getBillingApiIdToken(user);
         const res = await fetch(getBillingApiUrl("/api/company/repair-stripe-plan-expiry"), {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -1399,7 +1401,7 @@ function BillingPageInner() {
     const loadKey = `pay:${targetPlanId}`;
     setProrationLoading(loadKey);
     try {
-      const token = await user.getIdToken();
+      const token = await getBillingApiIdToken(user);
       const res = await fetch(planChangeCheckoutApiUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -1527,7 +1529,7 @@ function BillingPageInner() {
     const loadKey = `down:${targetPlanId}`;
     setDowngradeLoading(loadKey);
     try {
-      const token = await user.getIdToken();
+      const token = await getBillingApiIdToken(user);
       const res = await fetch(getBillingApiUrl("/api/company/downgrade-plan"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -1556,7 +1558,7 @@ function BillingPageInner() {
     }
     setAutoRenewSaving(true);
     try {
-      const token = await user.getIdToken();
+      const token = await getBillingApiIdToken(user);
       const res = await fetch(getBillingApiUrl("/api/company/billing-auto-renew"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -1667,7 +1669,7 @@ function BillingPageInner() {
 
   /** Ek hi API response — Print overlay aur Download file dono isi payload se. */
   const fetchBillingStatementPdfArgsForFooter = useCallback(async () => {
-    const idToken = await auth.currentUser?.getIdToken();
+    const idToken = await getBillingApiIdToken(auth.currentUser).catch(() => null);
     if (!idToken) throw new Error("Not signed in.");
     const url = getBillingApiUrl(
       `/api/company/billing-payments-statement?companyId=${encodeURIComponent(billingFirestoreCompanyId)}`
@@ -1792,7 +1794,7 @@ function BillingPageInner() {
     }
     setOnlineDemoPlanBusy(true);
     try {
-      const token = await user.getIdToken();
+      const token = await getBillingApiIdToken(user);
       const res = await fetch(getBillingApiUrl("/api/company/activate-plan-demo"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

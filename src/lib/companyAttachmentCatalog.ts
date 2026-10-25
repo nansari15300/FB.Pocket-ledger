@@ -1,6 +1,7 @@
 "use client";
 
-import { collection, getDocs } from "firebase/firestore";
+import { collection } from "firebase/firestore";
+import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { isOfflineCompanyStorage } from "@/lib/companyUnlockGate";
 import { getLocalCompanyById } from "@/lib/localCompanyStore";

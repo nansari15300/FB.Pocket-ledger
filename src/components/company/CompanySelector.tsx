@@ -43,7 +43,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "../ui/input";
 import { toast } from "@/hooks/use-toast";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { auth, firestore } from "@/lib/firebase";
 import { useEmbeddedLogout } from "@/contexts/EmbeddedLogoutContext";
 import { isLocalOnlyMode } from "@/lib/localMode";
@@ -52,7 +53,8 @@ import {
   grantOpenLocalCompanySession,
   shouldPromptCompanyUnlockAsync,
   showCompanyUserNameField,
-  verifyCompanyUnlock,
+  verifyCompanyUnlockAsync,
+  companyRootHasPassword,
   isOfflineCompanyStorage,
   isOnlineSharedCompany,
   onlineSharedHasPerUserPassword,
@@ -112,6 +114,7 @@ import { normalizeRowForLocalDriveSyncUi } from "@/lib/localCloudSync/companyCon
 import { scheduleLocalCloudSyncInBackground } from "@/lib/localCloudSync/engine";
 import type { DriveSharedJoinCompleteSource } from "@/lib/localCloudSync/driveSharedJoinClient";
 import { listLocalCompanies, localCompanyRowIsDeleted, getLocalCompanyById } from "@/lib/localCompanyStore";
+import { filterFirebaseCompaniesForServerSession } from "@/lib/pocketbaseData/serverSessionCompanyScope";
 import { JoinSharedLocalCompanyPanel } from "@/components/company/JoinSharedLocalCompanyPanel";
 import {
   omitAdminPanelCompanyFromTabLists,
@@ -1094,7 +1097,7 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
         return;
       }
 
-      const result = verifyCompanyUnlock(row, user?.email, usernameInput, passwordInput);
+      const result = await verifyCompanyUnlockAsync(row, user?.email, usernameInput, passwordInput);
       if (result.ok) {
         if (!isOfflineCompanyStorage(row)) {
           saveCloudCompanyPasswordUnlockSession(
@@ -1149,7 +1152,8 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
 
   const allCompanies = useMemo(() => {
     const shareUser = { uid: user?.uid || "", email: user?.email ?? null };
-    const merged = companies
+    // Server-only login: Firebase company rows (cached registry / SQLite) are never listed.
+    const merged = filterFirebaseCompaniesForServerSession(companies)
       .filter((c) => !c.isDeleted)
       .map((c) => ({
         ...c,
@@ -1857,7 +1861,7 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
                         {" "}
                         <strong>Shared login:</strong> use your <strong>account email</strong>, <strong>display name</strong>,
                         or your email <strong>prefix (before @)</strong>, then enter the password set for your shared user.
-                        {(companyToUnlock as CompanyData & { password?: string }).password ? (
+                        {companyRootHasPassword(companyToUnlock) ? (
                           <>
                             {" "}
                             Or use <strong>Admin username</strong> + <strong>Protect company</strong> password from Company Profile.
@@ -2446,7 +2450,7 @@ export function CompanyActions({
         return;
       }
 
-      const result = verifyCompanyUnlock(row, user?.email, usernameInput, passwordInput);
+      const result = await verifyCompanyUnlockAsync(row, user?.email, usernameInput, passwordInput);
       if (result.ok) {
         if (!isOfflineCompanyStorage(row)) {
           saveCloudCompanyPasswordUnlockSession(
@@ -2507,9 +2511,11 @@ export function CompanyActions({
   const showAdminPanelInSelector = adminLedgerMode;
 
   const selectorCompanies = useMemo(() => {
+    // Server-only login: Firebase company rows (cached registry / SQLite) are never listed.
+    const sessionCompanies = filterFirebaseCompaniesForServerSession(companies);
     const base = usePlServerCompanyMerge
-      ? companies
-      : companies.filter((c) => !isServerGateCompany(c));
+      ? sessionCompanies
+      : sessionCompanies.filter((c) => !isServerGateCompany(c));
     const mergedRaw = usePlServerCompanyMerge ? mergePlServerSharedCompaniesIntoRegistry(base) : base;
     const merged = mergedRaw.map((c) => ({ ...c, isOwned: Boolean(c.isOwned) }));
     const filtered = applyAdminPanelCompanyListFilter(merged);
@@ -3247,7 +3253,7 @@ export function CompanyActions({
                       <>
                         {" "}
                         <strong>Shared login:</strong> email / display name / email prefix + your shared password.
-                        {(companyToUnlock as CompanyData & { password?: string }).password ? (
+                        {companyRootHasPassword(companyToUnlock) ? (
                           <>
                             {" "}
                             Or <strong>Admin username</strong> + <strong>Protect company</strong> password.

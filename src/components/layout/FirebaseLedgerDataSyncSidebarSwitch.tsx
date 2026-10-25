@@ -12,6 +12,7 @@ import {
   setFirebaseLedgerDataSyncEnabled,
 } from "@/lib/firebaseLedgerDataSyncDisabled";
 import { requestOnlineCompanyRegistryPull } from "@/lib/mirrorOnlineCompaniesFromFirestore";
+import { isServerOnlyLoginSession } from "@/lib/pocketbaseData/serverSessionCompanyScope";
 import {
   Tooltip,
   TooltipContent,
@@ -70,7 +71,9 @@ export function FirebaseLedgerDataSyncSidebarSwitch({ sidebarOpen }: Props) {
       toast({
         title: next ? "Cloud data sync ON" : "Cloud data sync OFF",
         description: next
-          ? "Company list pulled from Firebase. Online tab me tick karke data / files sync chuniye."
+          ? isServerOnlyLoginSession()
+            ? "Online companies come from the Pocket Ledger Server in this session."
+            : "Company list pulled from Firebase. Online tab me tick karke data / files sync chuniye."
           : "Ledger + attachments stay on this device. Plan sync still works.",
       });
       window.setTimeout(() => {
@@ -157,7 +160,9 @@ export function FirebaseLedgerDataSyncInlineSwitch({ className }: { className?: 
         <p className="text-sm font-medium leading-none">Cloud data sync</p>
         <p className="text-xs text-muted-foreground leading-snug">
           {enabled
-            ? "Online ledger Firestore se load hoga."
+            ? isServerOnlyLoginSession()
+              ? "Online ledger loads from the Pocket Ledger Server."
+              : "Online ledger Firestore se load hoga."
             : "Abhi OFF — unlock ke baad data nahi aayega jab tak ON na karein."}
         </p>
       </div>
@@ -174,7 +179,9 @@ export function FirebaseLedgerDataSyncInlineSwitch({ className }: { className?: 
           toast({
             title: next ? "Cloud data sync ON" : "Cloud data sync OFF",
             description: next
-              ? "Company list Firebase se aayegi. Online tab me company + Data / Files tick karein."
+              ? isServerOnlyLoginSession()
+                ? "Online companies come from the Pocket Ledger Server in this session."
+                : "Company list Firebase se aayegi. Online tab me company + Data / Files tick karein."
               : "Sirf local SQLite — online upload/download band.",
           });
         }}

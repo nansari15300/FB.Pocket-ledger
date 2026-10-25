@@ -25,7 +25,9 @@ import { preserveLocalVoucherApprovalOverIncoming } from "@/lib/ledgerPendingApp
 import {
   readPendingApprovalOutboxByVoucherId,
   readPendingBillWiseOutboxByVoucherId,
+  readPendingOutboxPayloadsForCompany,
 } from "@/lib/localVoucherOutbox";
+import { PL_CLIENT_OFFLINE_FIRST_PERSIST_MS } from "@/lib/localMirrorServerMeta";
 import { preserveLocalVoucherBillWiseOverIncoming } from "@/lib/ledgerPendingBillWiseLinks";
 
 /** Merge options: `storageOption: local` par same doc id pe Firestore purana na jeete (restore / backup). */
@@ -124,6 +126,8 @@ function docAttachmentEditTimeMs(row: Record<string, unknown> | null | undefined
     const d = parseFirestoreDateFieldToJsDate(row[key]);
     if (d && !Number.isNaN(d.getTime())) return d.getTime();
   }
+  const pl = row[PL_CLIENT_OFFLINE_FIRST_PERSIST_MS];
+  if (typeof pl === "number" && Number.isFinite(pl)) return pl;
   return 0;
 }
 
@@ -463,6 +467,7 @@ function mergeDocAttachmentFieldsForPull(
   return out;
 }
 
+const plKeptUnsyncedLogged = new Set<string>();
 export async function mergeRemoteSnapshotWithLocalOnlyDocs(
   localCompanyId: string,
   collectionPath: string,
@@ -496,10 +501,45 @@ export async function mergeRemoteSnapshotWithLocalOnlyDocs(
       );
     };
     // Har Firestore snapshot row ko mirror marker lagao taaki purge vs pending-local differentiate ho sake.
-    const remoteStamped = remoteData.map((r: any) =>
-      stampLocalMirrorBackedByFirestore({ ...(typeof r === "object" && r ? r : {}), id: r?.id } as Record<string, unknown>)
-    );
     let cached = await listCompanyDocsFromBrowserDb(localCompanyId, collectionPath, { forBackupMerge: true });
+    // Unsynced local edit wins: any doc with a sync_outbox row (pending/failed/paused - e.g. quota hold) keeps the
+    // LOCAL row. A stale server snapshot must never overwrite an edit the server has not accepted yet.
+    const unsyncedPayloads = await readPendingOutboxPayloadsForCompany(localCompanyId, collectionPath).catch(
+      () => new Map<string, Record<string, unknown>>()
+    );
+    const unsyncedIds = new Set(unsyncedPayloads.keys());
+    const cachedForUnsynced = new Map<string, Record<string, unknown>>();
+    if (unsyncedIds.size) {
+      for (const c of cached) {
+        const id = String((c as { id?: unknown })?.id ?? "").trim();
+        if (id && unsyncedIds.has(id)) cachedForUnsynced.set(id, c as Record<string, unknown>);
+      }
+    }
+    const keepUnsyncedLocal = (id: string, remoteRow: Record<string, unknown> | null | undefined) => {
+      const fromOutbox = unsyncedPayloads.get(id);
+      const fromSqlite = cachedForUnsynced.get(id);
+      const localRow = fromOutbox && Object.keys(fromOutbox).length > 1 ? fromOutbox : fromSqlite ?? fromOutbox;
+      if (!localRow) return null;
+      if (remoteRow && docAttachmentEditTimeMs(remoteRow) > docAttachmentEditTimeMs(localRow)) return null;
+      return { ...localRow, id };
+    };
+    const remoteStamped = remoteData.map((r: any) => {
+      const id = String(r?.id ?? "").trim();
+      const kept = id ? keepUnsyncedLocal(id, r as Record<string, unknown>) : null;
+      if (kept) {
+        if (!plKeptUnsyncedLogged.has(id)) {
+          plKeptUnsyncedLogged.add(id);
+          console.info("[PL-DEBUG-SAVE] pull kept unsynced local row over server snapshot", { collectionPath, id });
+        }
+        return kept;
+      }
+      const stamped = stampLocalMirrorBackedByFirestore({ ...(typeof r === "object" && r ? r : {}), id: r?.id } as Record<string, unknown>);
+      const localRow = id ? cachedForUnsynced.get(id) ?? (undefined as Record<string, unknown> | undefined) : undefined;
+      if (localRow && docAttachmentEditTimeMs(localRow) >= docAttachmentEditTimeMs(stamped)) {
+        return { ...localRow, id };
+      }
+      return stamped;
+    });
 
     const fsIds = new Set(remoteStamped.map((d: any) => String(d?.id ?? "")));
     const orphanSqliteIds: string[] = [];
@@ -578,6 +618,13 @@ export async function mergeRemoteSnapshotWithLocalOnlyDocs(
           const localRow = id ? cachedById.get(id) : undefined;
           if (!localRow) {
             return preserveVoucherApproval(null, r);
+          }
+          const kept = id ? keepUnsyncedLocal(id, r) : null;
+          if (kept) {
+            return preserveVoucherApproval(localRow, kept);
+          }
+          if (docAttachmentEditTimeMs(localRow) >= docAttachmentEditTimeMs(r)) {
+            return preserveVoucherApproval(localRow, { ...localRow, id });
           }
           return preserveVoucherApproval(
             localRow,
@@ -732,6 +779,24 @@ export async function pullCompanyDocFromFirestoreToLocalDb(
     return toMirror;
   }
   let toMirror = decrypted as Record<string, unknown>;
+  // Unsynced local edit (outbox row pending/failed/paused) wins over the server copy.
+  try {
+    const unsynced = await readPendingOutboxPayloadsForCompany(localId, path);
+    const pending = unsynced.get(id);
+    if (pending) {
+      const localRow = (await getCompanyDocFromBrowserDb(localId, path, id)) as Record<string, unknown> | null;
+      const kept =
+        pending && Object.keys(pending).length > 1
+          ? pending
+          : localRow;
+      if (kept) {
+        console.info("[PL-DEBUG-SAVE] single-doc pull skipped (unsynced local edit)", { path, id });
+        return kept;
+      }
+    }
+  } catch {
+    /* fall through */
+  }
   // Delta sync raw Firestore bake se local empty attachments undo na ho.
   try {
     const localRow = (await getCompanyDocFromBrowserDb(localId, path, id, {

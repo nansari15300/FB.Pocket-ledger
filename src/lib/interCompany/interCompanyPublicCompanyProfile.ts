@@ -2,7 +2,8 @@
  * Public Inter Company profile — code / PAN / phone sab signed-in users read kar saken.
  * Company owner join/add par likhta hai; doosre users company doc read nahi kar sakte.
  */
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import type { Company } from "@/hooks/useCompany";
 import {

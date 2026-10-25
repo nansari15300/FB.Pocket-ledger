@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import { v4 as uuidv4 } from "uuid";
-import { getAdminDb } from "@/lib/firebaseAdmin";
 import { type PlanId, normalizePlanIdForClient } from "@/config/plans";
 import { parseBillingDowngradeBlockedPlanIds } from "@/lib/billingFrozenPlanSnapshots";
 import { getEffectivePlanPrices, getEffectivePlanIsFree } from "@/lib/server/getEffectivePlanPrices";
@@ -10,6 +9,7 @@ import { isCompanyOwner } from "@/lib/server/companyOwner";
 import { classifyPlanChange, quoteDowngradeNewExpiry, daysLeftRounded } from "@/lib/subscriptionPlanMath";
 import { applyOwnerPlanMirrorBatched } from "@/lib/server/mirrorOwnerCompanyPlanBilling";
 import { persistAccountCanonicalPlanDoc } from "@/lib/server/accountCanonicalPlan";
+import { resolveBillingCaller } from "@/lib/server/billingCaller";
 
 type Body = {
   companyId?: string;
@@ -32,19 +32,11 @@ function resolvePlanExpiryMillis(cdata: {
  */
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization");
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    if (!token) {
-      return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
+    const billingCaller = await resolveBillingCaller(req);
+    if (!billingCaller.ok) {
+      return NextResponse.json({ error: billingCaller.error }, { status: billingCaller.status });
     }
-
-    getAdminDb();
-    let decoded: admin.auth.DecodedIdToken;
-    try {
-      decoded = await admin.auth().verifyIdToken(token);
-    } catch {
-      return NextResponse.json({ error: "Invalid auth token" }, { status: 401 });
-    }
+    const decoded = billingCaller.decoded;
 
     const body = (await req.json()) as Body;
     const companyId = typeof body.companyId === "string" ? body.companyId.trim() : "";
@@ -57,7 +49,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid targetPlanId" }, { status: 400 });
     }
 
-    const db = getAdminDb();
+    const db = billingCaller.db;
     const companyRef = db.collection("companies").doc(companyId);
     const companySnap = await companyRef.get();
     if (!companySnap.exists) {

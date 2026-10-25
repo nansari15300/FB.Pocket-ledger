@@ -3,6 +3,9 @@
 import { useMemo } from "react";
 import type { EntityListQuickFilter } from "@/components/entity/EntityListQuickFilterBar";
 import { masterListOrderKey } from "@/hooks/useMasterListRowMotion";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { stampLastVoucherMsOnGroupForest } from "@/lib/masterListLastVoucherMs";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
 import {
   buildMasterGroupListForest,
   filterMasterGroupForest,
@@ -29,6 +32,8 @@ export function useMasterGroupListForest<G extends MasterGroupListRow>({
   groupMembersByGroupId: Record<string, { name?: string }[]>;
   visibleGroupFilter: (group: G) => boolean;
 }) {
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled } = useEntityListHideSettled();
   const visibleGroups = useMemo(
     () => (groups || []).filter(visibleGroupFilter),
     [groups, visibleGroupFilter]
@@ -40,10 +45,16 @@ export function useMasterGroupListForest<G extends MasterGroupListRow>({
       raw,
       searchTerm,
       quickFilter,
+      groupMembersByGroupId,
+      hideSettled
+    );
+    const stamped = stampLastVoucherMsOnGroupForest(
+      filtered,
+      lastVoucherMsById,
       groupMembersByGroupId
     );
-    return sortMasterGroupTreeNodes(filtered, quickFilter);
-  }, [visibleGroups, config, searchTerm, quickFilter, groupMembersByGroupId]);
+    return sortMasterGroupTreeNodes(filtered, quickFilter, stamped);
+  }, [visibleGroups, config, searchTerm, quickFilter, groupMembersByGroupId, lastVoucherMsById, hideSettled]);
 
   const branchForests = useMemo(
     () => splitMasterGroupForestByBranch(forest, config, visibleGroups),

@@ -3,12 +3,14 @@
 /**
  * Inter-company voucher � ribbon: Voucher | Invite | Join; linked save on both companies.
  */
+import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useForm, useFormState, type Control, type FieldValues } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CalendarIcon, ArrowLeftRight } from "lucide-react";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -195,10 +197,7 @@ import {
 } from "@/lib/interCompany/interCompanyConnectUsers";
 import { syncInterCompanyResolvedSourceAccountToPeer } from "@/lib/interCompany/interCompanyConnectUserSync";
 import { InterCompanyVoucherFooter } from "@/components/inter-company/InterCompanyVoucherFooter";
-import {
-  IC_REVERSE_REQUESTS_CHANGED,
-  isSourceVoucherReversePendingOrDone,
-} from "@/lib/interCompany/interCompanyReverseRequests";
+import { sharedUserCanApproveInterCompanyVoucher } from "@/lib/interCompany/interCompanyVoucherAccess";
 import {
   subscribeAcceptedSystemJoinLinksForRequester,
 } from "@/lib/interCompany/interCompanySystemJoinRequest";
@@ -682,7 +681,6 @@ export function InterCompanyVoucherForm({
   const accountBaselineRef = useRef<IcAccountBaseline | null>(null);
   /** Tick: doosri company ki account side bhi edit + save pe apply (jab peer company exist) */
   const [applyAccountChangesToOtherSide, setApplyAccountChangesToOtherSide] = useState(false);
-  const [reverseTick, setReverseTick] = useState(0);
   const [voucherOverride, setVoucherOverride] = useState<Record<string, unknown> | null>(null);
   const lastHydratedVoucherIdRef = useRef<string | null>(null);
   /** Async next-no fetch � hydrate ke baad overwrite na ho */
@@ -832,7 +830,7 @@ export function InterCompanyVoucherForm({
       if (newFiles.length === 0) return { fileUrls, attachmentBlobByRef };
 
       const totalNewBytes = newFiles.reduce((sum, f) => sum + (f.size || 0), 0);
-      const limitCheck = await checkStorageLimit(
+      const limitCheck = await checkStorageLimitSafe(
         cid,
         planContext?.planId ?? company?.planId,
         { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes },
@@ -868,19 +866,17 @@ export function InterCompanyVoucherForm({
           }
         }
       } else {
-        for (const file of newFiles) {
-          if (fileUrls.length >= fileAttachmentLimits.maxFileCount) break;
-          const url = await uploadVoucherAttachmentFileToFirebase({
+        {
+          const up = await uploadVoucherFilesOrStageLocalPending({
             companyId: cid,
-            voucherType: "inter_company",
-            file,
+            storageFolder: "inter_company",
+            existingFileUrls: fileUrls,
+            files: newFiles,
+            maxFileCount: fileAttachmentLimits.maxFileCount,
+            existingVoucherId,
+            onUploaded: (url, file) => attachmentBlobByRef.set(url, file),
           });
-          fileUrls.push(url);
-          attachmentBlobByRef.set(url, file);
-          await incrementCompanyStorage(cid, {
-            attachmentsBytes: file.size,
-            storageBytes: file.size,
-          });
+          fileUrls = up.fileUrls;
         }
       }
       return { fileUrls, attachmentBlobByRef };
@@ -1213,11 +1209,6 @@ export function InterCompanyVoucherForm({
     (displayVoucher as Record<string, unknown> | undefined)?.companyBankAccountId,
   ]);
 
-  useEffect(() => {
-    const onRev = () => setReverseTick((n) => n + 1);
-    window.addEventListener(IC_REVERSE_REQUESTS_CHANGED, onRev);
-    return () => window.removeEventListener(IC_REVERSE_REQUESTS_CHANGED, onRev);
-  }, []);
 
   // Target dropdown — my / shared / local + Firebase Code/A/c/PAN resolve
   const {
@@ -1921,13 +1912,8 @@ export function InterCompanyVoucherForm({
     });
   }, [user?.uid]);
 
-  const sourceVoucherIdForReverse = icViewerSide === "source" ? String(displayVoucher?.id || savedSourceId || "") : "";
-  const reverseFlowState = useMemo(() => {
-    if (!companyId || !sourceVoucherIdForReverse) {
-      return { pending: false, accepted: !!(voucherRow as { interCompanyReversed?: boolean })?.interCompanyReversed };
-    }
-    return isSourceVoucherReversePendingOrDone(companyId, sourceVoucherIdForReverse);
-  }, [companyId, sourceVoucherIdForReverse, voucherRow, reverseTick]);
+  // Reverse-request feature removed: reversal = each side deletes its own voucher. Legacy reversed rows keep the badge.
+  const canApproveIc = sharedUserCanApproveInterCompanyVoucher(company, can) || isCompanyAdmin;
 
   const currentLinkedVoucherId = useMemo(() => {
     if (icViewerSide === "target") {
@@ -1943,19 +1929,16 @@ export function InterCompanyVoucherForm({
   const icSaveAndApproveOnCreate =
     icViewerSide !== "target" &&
     !currentLinkedVoucherId &&
-    can("approve_transactions") &&
-    (showSaveAndApproveOnCreate || isCompanyAdmin);
+    canApproveIc;
 
   /** Saved voucher — Approve / Save & Approve (source ya target; role `approve_transactions`) */
   const icShowApproveButton =
     !!currentLinkedVoucherId &&
-    can("approve_transactions") &&
-    (showApproveButton || isCompanyAdmin);
+    canApproveIc;
 
   /** Reverted — source/target header par blue pill (ledger type pill jaisa) */
   const showIcRevertedBadge =
-    !!(voucherRow as { interCompanyReversed?: boolean })?.interCompanyReversed ||
-    reverseFlowState.accepted;
+    !!(voucherRow as { interCompanyReversed?: boolean })?.interCompanyReversed;
 
   /** Attachment box storage caps — jis company ki apni file hai us company ke plan/storage se */
   const sourceCompanyIdForAttachBox =
@@ -3334,7 +3317,7 @@ export function InterCompanyVoucherForm({
       toast.error("Sign in and select a company");
       return;
     }
-    if (!can("approve_transactions") && !isCompanyAdmin) {
+    if (!canApproveIc) {
       toast.error("You do not have permission to approve");
       return;
     }
@@ -3893,7 +3876,7 @@ export function InterCompanyVoucherForm({
 
       <p className="text-xs text-muted-foreground">
         Clearing account and Source/Target account are required on both sides. Unapproved: amount stays on
-        clearing (Payment Out = Cr, Payment In = Dr). After approve: clearing is intermediary (Dr+Cr) and
+        clearing (Payment Out = Cr, Receipt = Dr). After approve: clearing is intermediary (Dr+Cr) and
         amount moves to the account.
       </p>
     </div>

@@ -25,6 +25,7 @@ import {
   PENDING_SUBSCRIPTION_CHECKOUTS_COLLECTION,
   PENDING_SUBSCRIPTION_CHECKOUT_TTL_MS,
 } from "@/lib/payments/pendingSubscriptionCheckout";
+import { optionalServerBillingCaller } from "@/lib/server/billingCaller";
 type AdminKeysResult = {
   stored: GatewayKeys;
   adminReadOk: boolean;
@@ -127,6 +128,16 @@ export async function POST(req: NextRequest) {
     }
     const billingCompanyId = String(companyId || "").trim();
 
+    // Pocket Ledger Server login: `Bearer plpb.` -> pending docs on the server store, `plStore` on Stripe metadata.
+    const serverCaller = await optionalServerBillingCaller(req);
+    if (serverCaller && !serverCaller.ok) {
+      return NextResponse.json({ error: serverCaller.error }, { status: serverCaller.status });
+    }
+    if (serverCaller && serverCaller.decoded.uid !== userId.trim()) {
+      return NextResponse.json({ error: "userId does not match the signed-in account" }, { status: 403 });
+    }
+    const storeMeta: Record<string, string> = serverCaller ? { plStore: "server" } : {};
+
     const intent = billingIntent ?? "subscribe";
     const periodYears =
       billingCycle === "yearly"
@@ -164,7 +175,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const db = getAdminDb();
+    const db = serverCaller ? serverCaller.db : getAdminDb();
     const amountNpr = chargeMinor / 100;
     const adminResult = await getGatewayKeysFromAdmin();
     const keys = mergeGatewayKeysWithEnv(adminResult.stored);
@@ -214,6 +225,7 @@ export async function POST(req: NextRequest) {
               billingIntent: intent,
               periodYears: String(periodYears),
               subscriptionTermKey,
+              ...storeMeta,
             },
             subscription_data: {
               metadata: {
@@ -225,6 +237,7 @@ export async function POST(req: NextRequest) {
                 billingIntent: intent,
                 periodYears: String(periodYears),
                 subscriptionTermKey,
+                ...storeMeta,
               },
             },
         });

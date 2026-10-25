@@ -1,5 +1,6 @@
 "use client";
 
+import { voucherTypeDisplayText } from "@/lib/voucherTypeDisplay";
 import React, { useMemo, useState } from "react";
 import {
   Table,
@@ -79,12 +80,12 @@ export function CashFlowStatementPage() {
         case "sale":
         case "payment_in":
         case "direct_income":
-          row = { particulars: `From ${v.type.replace(/_/g, ' ')}`, group: "Operating", inflow: amount, outflow: 0, transactions: [v] };
+          row = { particulars: `From ${voucherTypeDisplayText(v.type)}`, group: "Operating", inflow: amount, outflow: 0, transactions: [v] };
           break;
         case "purchase":
         case "payment_out":
         case "direct_expense":
-           row = { particulars: `To ${v.type.replace(/_/g, ' ')}`, group: "Operating", inflow: 0, outflow: amount, transactions: [v] };
+           row = { particulars: `To ${voucherTypeDisplayText(v.type)}`, group: "Operating", inflow: 0, outflow: amount, transactions: [v] };
            break;
         case "journal":
           // Simplified: Assuming journals affect financing/investing based on narration

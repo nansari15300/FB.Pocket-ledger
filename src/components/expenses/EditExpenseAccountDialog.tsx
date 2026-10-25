@@ -1,6 +1,7 @@
 
 "use client";
 
+import { checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Trash2, CalendarIcon } from "lucide-react";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
@@ -34,7 +35,8 @@ import { compressImageForCompany, attachmentImageStillTooLargeToastFields, useIm
 import { MAX_IMAGE_BYTES_BEFORE_COMPRESS, MAX_IMAGE_MB_BEFORE_COMPRESS } from "@/lib/fileUploadLimits";
 import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
-import { doc, updateDoc, serverTimestamp, Timestamp, onSnapshot, query, collection } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp, Timestamp, query, collection } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { MasterDeleteConfirmAlertDialog } from "@/components/common/MasterDeleteConfirmAlertDialog";
@@ -331,7 +333,7 @@ export function EditExpenseAccountDialog({ account, onAccountUpdated, onAccountD
           (prepared.avatar instanceof File ? prepared.avatar.size : 0) +
           newDocFiles.reduce((s, f) => s + f.size, 0);
         if (totalBytes > 0 && companyId) {
-          const limitCheck = await checkStorageLimit(
+          const limitCheck = await checkStorageLimitSafe(
             companyId,
             company?.planId,
             { attachmentsBytes: totalBytes, storageBytes: totalBytes },
@@ -514,6 +516,22 @@ export function EditExpenseAccountDialog({ account, onAccountUpdated, onAccountD
     }
     setIsLoading(true);
     try {
+        {
+          // Never-synced local doc => permanent local delete (no Firestore / recycle bin).
+          const { tryHardDeleteNeverSyncedDoc } = await import("@/lib/localOnlyHardDelete");
+          const hd = await tryHardDeleteNeverSyncedDoc(companyId, "expense_accounts", account.id);
+          if (hd === "cancelled") {
+            setIsDeleteDialogOpen(false);
+            return;
+          }
+          if (hd === "hard") {
+            toast({ title: "Deleted", description: "Not synced yet - permanently removed from this device." });
+            onAccountDeleted(account.id);
+            setIsOpen(false);
+            setIsDeleteDialogOpen(false);
+            return;
+          }
+        }
         await updateDoc(doc(firestore, `companies/${companyId}/expense_accounts`, account.id), {
             isDeleted: true,
             deletedAt: serverTimestamp()
@@ -897,6 +915,7 @@ export function EditExpenseAccountDialog({ account, onAccountUpdated, onAccountD
         entityName={account.name}
         onMoveToBin={handleDelete}
         onDeletePermanently={handlePermanentDelete}
+        localOnlyCheck={{ companyId, collectionName: "expense_accounts", docId: account.id }}
         busy={isLoading}
         moveToBinDisabled={apkOfflineViewOnly}
         permanentDeleteDisabled={apkOfflineViewOnly}

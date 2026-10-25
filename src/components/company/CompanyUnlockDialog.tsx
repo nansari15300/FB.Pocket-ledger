@@ -28,7 +28,7 @@ import {
   isOnlineSharedCompany,
   onlineSharedHasPerUserPassword,
   showCompanyUserNameField,
-  verifyCompanyUnlock,
+  verifyCompanyUnlockAsync,
 } from "@/lib/companyUnlockGate";
 import {
   saveRememberedSharedUnlockUsername,
@@ -295,7 +295,7 @@ export function CompanyUnlockDialog({
         return;
       }
 
-      const result = verifyCompanyUnlock(row, user?.email, usernameInput, passwordInput);
+      const result = await verifyCompanyUnlockAsync(row, user?.email, usernameInput, passwordInput);
       if (result.ok) {
         if (!isOfflineCompanyStorage(row)) {
           saveCloudCompanyPasswordUnlockSession(user?.uid, activeCompany.id, rememberUnlockDays, user?.email);

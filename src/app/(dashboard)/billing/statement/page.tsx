@@ -19,6 +19,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
 import { auth } from "@/lib/firebase";
+import { getBillingApiIdToken } from "@/lib/firebaseAuthForApi";
 import { getBillingApiUrl } from "@/lib/billingApiOrigin";
 import { openBillingStatementPdfPreview } from "@/lib/billingStatementPdf";
 import { toast } from "@/hooks/use-toast";
@@ -192,7 +193,7 @@ export default function BillingStatementPage() {
     setState("loading");
     setErrMsg(null);
     try {
-      const idToken = await auth.currentUser?.getIdToken();
+      const idToken = await getBillingApiIdToken(auth.currentUser).catch(() => null);
       if (!idToken) {
         setState("error");
         setErrMsg("Not signed in.");

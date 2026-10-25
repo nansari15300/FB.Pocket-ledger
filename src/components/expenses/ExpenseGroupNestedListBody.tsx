@@ -55,6 +55,9 @@ import { groupListAmountCn, GROUP_LIST_FOCUS_DIM_CLASS } from "@/lib/groupListUi
 import { useGroupListAccountMove } from "@/hooks/useGroupListAccountMove";
 import { canMoveExpenseAccountInGroupList } from "@/lib/expenseGroupAccountMove";
 import { GroupListAccountMoveOverlay } from "@/components/entity/GroupListAccountMoveOverlay";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
+import { stampLastVoucherMsOnGroupForest } from "@/lib/masterListLastVoucherMs";
 
 type ExpenseGroupNestedListBodyProps = {
   forest: ExpenseGroupTreeNode[];
@@ -172,13 +175,26 @@ function ExpenseGroupTreeNodeRow({
         {body}
       </motion.li>
     );
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled } = useEntityListHideSettled();
   const members = groupMembersByGroupId[group.id] ?? [];
   const highlightQuery = searchTerm.trim();
-  const displayMembers = groupListMembersForDisplay(members, quickFilter, searchTerm);
-  const sortedChildNodes = useMemo(
-    () => sortExpenseGroupTreeNodes(node.children, quickFilter),
-    [node.children, quickFilter]
+  const displayMembers = groupListMembersForDisplay(
+    members,
+    quickFilter,
+    searchTerm,
+    undefined,
+    lastVoucherMsById,
+    hideSettled
   );
+  const sortedChildNodes = useMemo(() => {
+    const stamped = stampLastVoucherMsOnGroupForest(
+      node.children,
+      lastVoucherMsById,
+      groupMembersByGroupId
+    );
+    return sortExpenseGroupTreeNodes(node.children, quickFilter, stamped);
+  }, [node.children, quickFilter, lastVoucherMsById, groupMembersByGroupId]);
   const childGroupsListKey = useMemo(
     () => `${quickFilter}|${masterListOrderKey(sortedChildNodes.map((n) => n.group.id))}`,
     [quickFilter, sortedChildNodes]
@@ -440,14 +456,20 @@ function ExpenseGroupSystemBranchRow({
   disableOuterMotion?: boolean;
   focusGroupId?: string | null;
 }) {
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled } = useEntityListHideSettled();
   const branchLabel =
     EXPENSE_GROUP_TOP_PARENT_OPTIONS.find((o) => o.id === branch)?.name ?? branch;
   const branchLayoutKey = expenseGroupBranchListExpandKey(branch);
   const branchRowLayoutKey = siblingOrderKey ?? branchLayoutKey;
-  const sortedBranchForest = useMemo(
-    () => sortExpenseGroupTreeNodes(branchForest, quickFilter),
-    [branchForest, quickFilter]
-  );
+  const sortedBranchForest = useMemo(() => {
+    const stamped = stampLastVoucherMsOnGroupForest(
+      branchForest,
+      lastVoucherMsById,
+      rest.groupMembersByGroupId
+    );
+    return sortExpenseGroupTreeNodes(branchForest, quickFilter, stamped);
+  }, [branchForest, quickFilter, lastVoucherMsById, rest.groupMembersByGroupId]);
   const branchGroupsListKey = useMemo(
     () =>
       `${quickFilter}|${masterListOrderKey(sortedBranchForest.map((n) => n.group.id))}`,
@@ -461,7 +483,10 @@ function ExpenseGroupSystemBranchRow({
   const displayBranchDirectMembers = groupListMembersForDisplay(
     branchDirectMembers,
     quickFilter,
-    rest.searchTerm || ""
+    rest.searchTerm || "",
+    undefined,
+    lastVoucherMsById,
+    hideSettled
   );
   const branchExpanded = isExpenseGroupBranchListExpanded(expandedIds, branch, branchForest);
   const directBalance = displayBranchDirectMembers.reduce(
@@ -671,15 +696,26 @@ export function ExpenseGroupNestedListBody({
   canMoveGroup,
   ...rest
 }: ExpenseGroupNestedListBodyProps) {
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
   const [expandedIds, setExpandedIds] = useState(defaultExpenseGroupListExpandedIds);
   const [focusGroupId, setFocusGroupId] = useState<string | null>(null);
   const branchForests = useMemo(() => {
     const split = splitExpenseGroupForestByBranch(forest);
+    const incomeStamped = stampLastVoucherMsOnGroupForest(
+      split.income,
+      lastVoucherMsById,
+      rest.groupMembersByGroupId
+    );
+    const expensesStamped = stampLastVoucherMsOnGroupForest(
+      split.expenses,
+      lastVoucherMsById,
+      rest.groupMembersByGroupId
+    );
     return {
-      income: sortExpenseGroupTreeNodes(split.income, rest.quickFilter),
-      expenses: sortExpenseGroupTreeNodes(split.expenses, rest.quickFilter),
+      income: sortExpenseGroupTreeNodes(split.income, rest.quickFilter, incomeStamped),
+      expenses: sortExpenseGroupTreeNodes(split.expenses, rest.quickFilter, expensesStamped),
     };
-  }, [forest, rest.quickFilter]);
+  }, [forest, rest.quickFilter, lastVoucherMsById, rest.groupMembersByGroupId]);
   const income = branchForests.income;
   const expenses = branchForests.expenses;
   const searchActive = Boolean((rest.searchTerm || "").trim());
@@ -849,8 +885,8 @@ export function ExpenseGroupNestedListBody({
           sumExpenseGroupBranchDirectMemberBalance("expenses", rest.groupMembersByGroupId),
       },
     ];
-    return sortExpenseGroupListBranches(rows, rest.quickFilter);
-  }, [income, expenses, rest.quickFilter, rest.groupMembersByGroupId]);
+    return sortExpenseGroupListBranches(rows, rest.quickFilter, lastVoucherMsById);
+  }, [income, expenses, rest.quickFilter, rest.groupMembersByGroupId, lastVoucherMsById]);
 
   const systemBranchesListKey = useMemo(
     () =>

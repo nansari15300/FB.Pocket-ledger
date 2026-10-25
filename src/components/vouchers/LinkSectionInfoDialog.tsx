@@ -26,11 +26,11 @@ const LINK_SECTION_INFO = {
       "Use the Link buttons in this section to attach payment vouchers with bills or with other spend-wise entries.",
       "When you link bill wise, the party page will show bill wise status — Unpaid, Paid, Partial, Over due, etc.",
       "When you link spend wise, on the bank/cash page in spend wise view you can track transactions.",
-      "E.g. where the amount from one Payment In (Voucher No. 001) was spent.",
+      "E.g. where the amount from one Receipt (Voucher No. 001) was spent.",
       "When links are correct, your pending balance, settled status and follow-up report stay accurate.",
     ],
     billWise: [
-      "Bill wise is used to settle sales and purchase bills against Payment In or Payment Out vouchers.",
+      "Bill wise is used to settle sales and purchase bills against Receipt or Payment Out vouchers.",
       "Tap \"Link to Txns\" to select exact bills manually, or use \"Auto Link\" for quick suggestions (oldest 1st).",
       "Always check Total linked and Balance. If balance is zero, that bill-side payment is fully settled.",
     ],
@@ -54,11 +54,11 @@ const LINK_SECTION_INFO = {
       "इस section के Link buttons से आप payment vouchers को bills या spend wise entries से जोड़ सकते हैं।",
       "जब bill wise में link होगा तो party page पर bill wise में status दिखेगा — Unpaid, Paid, Partial, Over due, आदि।",
       "जब spend wise में link होगा तो bank/cash page पर spend wise view में transaction track किया जा सकेगा।",
-      "जैसे एक Payment In (Voucher No. 001) का amount कहाँ-कहाँ खर्च हुआ।",
+      "जैसे एक Receipt (Voucher No. 001) का amount कहाँ-कहाँ खर्च हुआ।",
       "सही linking रहने पर pending balance, settled status और follow-up report सभी सही आते हैं।",
     ],
     billWise: [
-      "Bill wise का उपयोग Sales/Purchase bills को Payment In या Payment Out से settle करने के लिए होता है।",
+      "Bill wise का उपयोग Sales/Purchase bills को Receipt या Payment Out से settle करने के लिए होता है।",
       "\"Link to Txns\" से आप manually सही bills चुन सकते हैं, और \"Auto Link\" से system suggest करता है (oldest 1st)।",
       "Total linked और Balance जरूर देखें। Balance zero मतलब bill-side payment पूरी तरह settled है।",
     ],
@@ -82,11 +82,11 @@ const LINK_SECTION_INFO = {
       "यो section का Link buttons प्रयोग गरेर payment vouchers लाई bills वा spend wise entries सँग जोड्न सकिन्छ।",
       "Bill wise link भएमा party page मा bill wise को status देखिन्छ — Unpaid, Paid, Partial, Over due, आदि।",
       "Spend wise link भएमा bank/cash page को spend wise view मा transaction track गर्न सकिन्छ।",
-      "जस्तै एक Payment In (Voucher No. 001) को amount कहाँ-कहाँ खर्च भयो।",
+      "जस्तै एक Receipt (Voucher No. 001) को amount कहाँ-कहाँ खर्च भयो।",
       "सही linking भएपछि pending balance, settled status र follow-up report सबै भरपर्दो हुन्छन्।",
     ],
     billWise: [
-      "Bill wise ले Sales/Purchase bills लाई Payment In वा Payment Out सँग settle गर्न सहयोग गर्छ।",
+      "Bill wise ले Sales/Purchase bills लाई Receipt वा Payment Out सँग settle गर्न सहयोग गर्छ।",
       "\"Link to Txns\" बाट तपाईंले bills manually छान्न सक्नुहुन्छ, र \"Auto Link\" ले छिटो सुझाव दिन्छ (oldest 1st)।",
       "Total linked र Balance अनिवार्य जाँच गर्नुहोस्। Balance zero भए bill-side payment पूर्ण settle भएको हो।",
     ],
@@ -173,7 +173,7 @@ export function LinkSectionInfoDialog({
     <div className="flex flex-col gap-[30px]">
       <SectionBox title="General" paragraphs={LINK_SECTION_INFO[lang].general} />
       <SectionBox title="Bill wise" paragraphs={LINK_SECTION_INFO[lang].billWise} />
-      <SectionBox title="Spend wise: Payment In / Direct Income / contra in → Payment Out / Direct Expense / contra out" paragraphs={LINK_SECTION_INFO[lang].spendWise} />
+      <SectionBox title="Spend wise: Receipt / Direct Income / contra in → Payment Out / Direct Expense / contra out" paragraphs={LINK_SECTION_INFO[lang].spendWise} />
       {/* Keep Contra heading concise and aligned with current linking flow wording. */}
       <SectionBox title="Contra In to other out" paragraphs={LINK_SECTION_INFO[lang].contra} />
     </div>

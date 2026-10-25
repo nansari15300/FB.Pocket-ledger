@@ -29,6 +29,9 @@ import {
   toggleGroupListAccordionExpand,
 } from "@/lib/groupListExpand";
 import { highlightQueryInText } from "@/lib/highlightQueryInText";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
+import { shouldHideEntityListSettledRow } from "@/lib/filterMasterEntityListRows";
 
 const getInitials = (name: string) => {
   if (!name) return "NA";
@@ -103,6 +106,8 @@ export function IcCompanyGroupTabListTree({
   onFocusGroup,
 }: IcCompanyGroupTabListTreeProps) {
   const { formatCurrency } = useDate();
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled } = useEntityListHideSettled();
   const highlightQuery = searchTerm.trim();
   const icCompanyRowProps = { "data-pl-ic-company-row": "" } as const;
   const href = getItemHref?.(group);
@@ -162,8 +167,15 @@ export function IcCompanyGroupTabListTree({
   );
 
   const sortedPeerCompanies = useMemo(
-    () => sortPartyListRows(icPeerCompanyRows, quickFilter),
-    [icPeerCompanyRows, quickFilter]
+    () =>
+      sortPartyListRows(
+        icPeerCompanyRows.filter(
+          (row) => !shouldHideEntityListSettledRow(row.balance, hideSettled, quickFilter)
+        ),
+        quickFilter,
+        lastVoucherMsById
+      ),
+    [icPeerCompanyRows, quickFilter, lastVoucherMsById, hideSettled]
   );
   const peerOrderKey = useMemo(
     () => masterListOrderKey(sortedPeerCompanies.map((row) => row.id)),
@@ -368,7 +380,13 @@ export function IcCompanyGroupTabListTree({
             />
           );
 
-          const sortedMembers = sortIcMemberParties(members, quickFilter);
+          const sortedMembers = sortIcMemberParties(
+            members.filter(
+              (member) => !shouldHideEntityListSettledRow(member.balance, hideSettled, quickFilter)
+            ),
+            quickFilter,
+            lastVoucherMsById
+          );
           const memberOrderKey = masterListOrderKey(sortedMembers.map((m) => m.id));
 
           const peerRow = renderRowShell(

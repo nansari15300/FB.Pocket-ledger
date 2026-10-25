@@ -1,6 +1,7 @@
 
 "use client";
 
+import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,7 +30,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
 import { firestore, storage } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, query, where } from "firebase/firestore";
+import { getDoc, onSnapshot, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { format, startOfDay } from "date-fns";
 import { ScrollArea } from "../ui/scroll-area";
@@ -1177,7 +1179,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     }
     if (amount > 0 && spendWiseLinkRequired) {
       if (!linkedPaymentInIds?.length) {
-        sonnerToast.error("Select Payment In", { description: "Linking is required for this role. Please choose at least one Payment In to link this contra to." });
+        sonnerToast.error("Select Receipt", { description: "Linking is required for this role. Please choose at least one Receipt to link this contra to." });
         return;
       }
       if (linkedPaymentInIds?.length) {
@@ -1203,7 +1205,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           return sum + Math.max(0, amt - alreadyLinked);
         }, 0);
         if (linkedTotal < amount) {
-          sonnerToast.error("Link amount too low", { description: "Selected Payment In linkable total must match or exceed the amount." });
+          sonnerToast.error("Link amount too low", { description: "Selected Receipt linkable total must match or exceed the amount." });
           return;
         }
       }
@@ -1291,7 +1293,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       let preGeneratedVoucherId: string | undefined;
       if (newFilesToUpload.length > 0) {
         const totalNewBytes = newFilesToUpload.reduce((sum, f) => sum + (f.size || 0), 0);
-        const limitCheck = await checkStorageLimit(companyId, company?.planId, { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes }, company?.storageOption);
+        const limitCheck = await checkStorageLimitSafe(companyId, company?.planId, { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes }, company?.storageOption);
         if (!limitCheck.allowed) {
           sonnerToast.error("Storage limit reached", { id: toastId, description: limitCheck.message });
           setIsLoading(false);
@@ -1324,15 +1326,17 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
             }
           }
         } else {
-          for (const file of newFilesToUpload) {
-            if (submissionData.fileUrls.length >= fileAttachmentLimits.maxFileCount) break;
-            const url = await uploadVoucherAttachmentFileToFirebase({
+          {
+            const up = await uploadVoucherFilesOrStageLocalPending({
               companyId,
-              voucherType: "contra",
-              file,
+              storageFolder: "contra",
+              existingFileUrls: submissionData.fileUrls as string[],
+              files: newFilesToUpload,
+              maxFileCount: fileAttachmentLimits.maxFileCount,
+              existingVoucherId: isEditingAndConverting && voucher?.id ? null : idArgForFirestore ?? null,
             });
-            submissionData.fileUrls.push(url);
-            await incrementCompanyStorage(companyId, { attachmentsBytes: file.size, storageBytes: file.size });
+            submissionData.fileUrls = up.fileUrls;
+            if (up.preGeneratedVoucherId) preGeneratedVoucherId = up.preGeneratedVoucherId;
           }
         }
       }
@@ -2550,7 +2554,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     </p>
                     <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-hidden">
                     {!showSpendWiseSection ? (
-                      <p className="text-sm text-muted-foreground">Select From account to link Payment In / Direct Income / Contra.</p>
+                      <p className="text-sm text-muted-foreground">Select From account to link Receipt / Direct Income / Contra.</p>
                     ) : (selectedContraLeg === 'in' ? displayLinkedToMeRows.length === 0 : spendWiseDisplayRows.length === 0) ? null : (
                       <div className="overflow-x-auto -mx-1 min-w-0">
                         <table className="w-full text-sm border-collapse min-w-[400px]">
@@ -2617,7 +2621,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                                 className={cn("w-fit", BTN_SAVE_CLASS)}
                               >
                                 <Link2 className="h-4 w-4 mr-2" />
-                                {selectedContraLeg === "in" ? "Link Pay Out" : "Link Pay In"}
+                                {selectedContraLeg === "in" ? "Link Pay Out" : "Link Receipt"}
                               </Button>
                             )}
                             <Button type="button" variant="ghost" size="sm" className="h-8 gap-1.5 text-muted-foreground hover:text-foreground" onClick={() => setLinkSectionInfoOpen(true)} aria-label="Link section information">
@@ -2833,6 +2837,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
         entityName={voucher?.voucherNumber || "this contra"}
         onMoveToBin={handleDelete}
         onDeletePermanently={handlePermanentDelete}
+        localOnlyCheck={{ companyId, collectionName: "vouchers", docId: savedVoucherId }}
         busy={isLoading}
       />
     </>

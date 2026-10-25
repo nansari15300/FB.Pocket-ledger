@@ -1,5 +1,6 @@
 "use client";
 
+import { voucherTypeDisplayText, voucherTypeSearchText } from "@/lib/voucherTypeDisplay";
 import * as React from "react";
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { differenceInDays } from "date-fns";
@@ -326,7 +327,7 @@ export function OverdueAccountView({
     }
     const typeVal = (filters.type || "").trim().toLowerCase();
     if (typeVal) {
-      list = list.filter((t) => String(t.type || "").replace(/_/g, " ").toLowerCase().includes(typeVal));
+      list = list.filter((t) => voucherTypeSearchText(t.type).includes(typeVal));
     }
     const voucherQ = (filters.voucherNumber || "").trim().toLowerCase();
     if (voucherQ) {
@@ -1055,7 +1056,7 @@ export function OverdueAccountView({
                             "capitalize"
                           )}
                         >
-                          {hl(t.type.replace(/_/g, " "))}
+                          {hl(voucherTypeDisplayText(t.type))}
                         </Badge>
                       </TableCell>
                     )}

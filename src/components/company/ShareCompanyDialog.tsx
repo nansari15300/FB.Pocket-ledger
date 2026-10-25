@@ -9,17 +9,16 @@ import { z } from "zod";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import {
   doc,
-  updateDoc,
   arrayUnion,
-  getDoc,
-  getDocs,
   query,
   collection,
   where,
   serverTimestamp,
   deleteField,
 } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
+import { updateCompanyRootFirestore } from "@/lib/writeGateway/companyRootFirestore";
 import { type PlanId } from "@/config/plans";
 import { resolveAccountPlanIdForEntitlements } from "@/lib/accountPlanForOwner";
 import {
@@ -148,7 +147,7 @@ export function ShareCompanyDialog({
         // Purana `authoritativeCompanyId` (doosri company id) ho to galat path + 0 vouchers — align + push.
         if (String(company.storageOption || "").toLowerCase() === "local") {
           try {
-            await updateDoc(companyRef, { authoritativeCompanyId: deleteField() });
+            await updateCompanyRootFirestore(companyRef.id, { authoritativeCompanyId: deleteField() });
           } catch {
             /* ignore */
           }
@@ -189,7 +188,7 @@ export function ShareCompanyDialog({
                     }
                   : u
             );
-             await updateDoc(companyRef, { sharedWith: updatedSharedWith, updatedAt: serverTimestamp() });
+             await updateCompanyRootFirestore(companyRef.id, { sharedWith: updatedSharedWith, updatedAt: serverTimestamp() });
              toast({ title: "User updated", description: `Details for ${values.email} have been updated.` });
 
         } else if (existingIdx >= 0) {
@@ -217,7 +216,7 @@ export function ShareCompanyDialog({
               role: values.role,
               password: nextPassword,
             };
-            await updateDoc(companyRef, {
+            await updateCompanyRootFirestore(companyRef.id, {
               sharedWith: updatedSharedWith,
               updatedAt: serverTimestamp(),
             });
@@ -305,7 +304,7 @@ export function ShareCompanyDialog({
               // keep optional; sharing should not fail if uid lookup is unavailable
             }
             const sharedEmailLower = String(values.email || "").trim().toLowerCase();
-            await updateDoc(companyRef, {
+            await updateCompanyRootFirestore(companyRef.id, {
                 sharedWith: arrayUnion({ name: values.name, email: values.email, uid: sharedUid, role: values.role, password: values.password || null }),
                 sharedWithEmails: arrayUnion(sharedEmailLower),
                 sharedWithEmailsLower: arrayUnion(sharedEmailLower),

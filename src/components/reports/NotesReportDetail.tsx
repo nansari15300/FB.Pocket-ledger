@@ -11,10 +11,11 @@ import { useFyScopedVouchers } from "@/hooks/useFyScopedVouchers";
 import { useDate } from "@/hooks/useDate";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { PermissionButton } from "@/components/permission";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useCompany } from "@/hooks/useCompany";
-import { collection, query, onSnapshot, orderBy, where } from "firebase/firestore";
+import { collection, query, orderBy, where } from "firebase/firestore";
 import type { Party } from "@/components/party/types";
 import type { Staff } from "@/components/staff/types";
 import type { Account } from "@/components/bank-cash/types";
@@ -46,6 +47,7 @@ import {
     type EntityListQuickFilter,
 } from "@/components/entity/EntityListQuickFilterBar";
 import { filterAndSortMasterEntityListRows } from "@/lib/filterMasterEntityListRows";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
 import { masterListOrderKey, useMasterListDisplayRows, useMasterListRowMotion } from "@/hooks/useMasterListRowMotion";
 
 const ALL_NOTES_LIST_ROW_NAME = "All";
@@ -102,6 +104,7 @@ function NotedEntityList({
     showAllSelected: boolean;
     onSelectAll: () => void;
 }) {
+    const lastVoucherMsById = useLastVoucherMsByEntityId();
     const filteredEntities = useMemo(
         () =>
             filterAndSortMasterEntityListRows(
@@ -112,9 +115,10 @@ function NotedEntityList({
                     openingBalanceDate: e.openingBalanceDate ?? e.entity?.openingBalanceDate,
                 })),
                 searchTerm,
-                quickFilter
+                quickFilter,
+                { lastVoucherMsById }
             ),
-        [entities, searchTerm, quickFilter]
+        [entities, searchTerm, quickFilter, lastVoucherMsById]
     );
 
     const { animatePresenceMode, rowMotionProps, markListScrolling, isRowAnimationEnabled, layoutHoldMs } =
@@ -231,6 +235,7 @@ export function NotesReportDetail() {
   const isMobile = useIsMobile();
   const searchParams = useSearchParams();
   const { formatCurrency } = useDate();
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
   const { companyId } = useCompany();
   const { vouchers: allVouchers, loading: vouchersLoading, processedParties } = useFyScopedVouchers();
   const [selectedEntity, setSelectedEntity] = useState<NotedEntity | null>(null);
@@ -394,9 +399,10 @@ export function NotesReportDetail() {
         openingBalanceDate: e.openingBalanceDate ?? e.entity?.openingBalanceDate,
       })),
       searchTerm,
-      listQuickFilter
+      listQuickFilter,
+      { lastVoucherMsById }
     );
-  }, [notedEntities, searchTerm, listQuickFilter]);
+  }, [notedEntities, searchTerm, listQuickFilter, lastVoucherMsById]);
 
   const REPORT_MEMORY_KEY = "reportNotesState";
 

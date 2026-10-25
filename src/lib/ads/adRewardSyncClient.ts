@@ -1,4 +1,5 @@
 import { hostedApiFetch } from "@/lib/hostedApiFetch";
+import { isPocketBaseAppSessionMarked } from "@/lib/pocketbaseData/pbAppSession";
 import type { AdPendingEvent, AdWalletState } from "@/lib/ads/adWalletTypes";
 
 export type AdRewardSyncResponse = {
@@ -16,6 +17,8 @@ export async function postAdRewardSync(args: {
   pending: AdPendingEvent[];
   local: Pick<AdWalletState, "points" | "earnedToday" | "dayKey" | "unlocks">;
 }): Promise<AdRewardSyncResponse> {
+  // Pocket Ledger Server login: the reward route reads Firestore through firebase-admin - skip it.
+  if (isPocketBaseAppSessionMarked()) return { ok: false, error: "server_login_session" };
   const res = await hostedApiFetch("/api/ads/reward-sync", {
     method: "POST",
     headers: {

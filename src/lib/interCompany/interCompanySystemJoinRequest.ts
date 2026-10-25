@@ -6,9 +6,6 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDoc,
-  getDocs,
-  onSnapshot,
   query,
   serverTimestamp,
   setDoc,
@@ -16,6 +13,7 @@ import {
   where,
   type Unsubscribe,
 } from "firebase/firestore";
+import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { auth, firestore } from "@/lib/firebase";
 import type { InterCompanyGroupCompanyOwner } from "@/lib/interCompany/interCompanyGroups";
 import { ensureJoinPairCompaniesInInterCompanySystem } from "@/lib/interCompany/interCompanyGroups";

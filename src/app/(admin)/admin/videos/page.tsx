@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { doc, getDocFromServer, setDoc } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
+import { getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
 import { Video } from "lucide-react";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { firestore } from "@/lib/firebase";

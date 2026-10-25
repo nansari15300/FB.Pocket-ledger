@@ -14,6 +14,9 @@ import {
   type EntityListQuickFilter,
 } from "@/components/entity/EntityListQuickFilterBar";
 import { filterAndSortEntityGroups } from "@/lib/entityGroupListQuickFilter";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
+import { stampLastVoucherMsFromMemberGroups } from "@/lib/masterListLastVoucherMs";
 import { motion, AnimatePresence } from "framer-motion";
 import { isSystemParentGroup } from "@/lib/system-groups"
 import { masterListShellCn, masterListScrollBodyCn, masterListCategoryLabelCn } from "@/lib/masterListChrome";
@@ -136,10 +139,12 @@ export function PartyGroupList({
   allGroupsForMove?: Group[];
 }) {
   const { formatCurrency } = useDate();
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled, setHideSettled } = useEntityListHideSettled();
   const { animatePresenceMode, rowMotionProps, markListScrolling, isRowAnimationEnabled, layoutHoldMs } =
     useMasterListRowMotion();
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['party group']));
-  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("latest");
   const quickFilter = quickFilterProp ?? internalQuickFilter;
   const setQuickFilter = onQuickFilterChange ?? setInternalQuickFilter;
   const [expandedListNodeId, setExpandedListNodeId] = useState<string | null>(null);
@@ -176,7 +181,14 @@ export function PartyGroupList({
       }
     }
 
-    const sortedFlat = filterAndSortEntityGroups(allGroups, searchTerm, quickFilter);
+    const stamped = stampLastVoucherMsFromMemberGroups(lastVoucherMsById, groupMembersByGroupId);
+    const sortedFlat = filterAndSortEntityGroups(
+      allGroups,
+      searchTerm,
+      quickFilter,
+      stamped,
+      hideSettled
+    );
 
     const taxGroups: GroupWithType[] = [];
     const staffGroups: GroupWithType[] = [];
@@ -208,7 +220,7 @@ export function PartyGroupList({
       { name: "Income & Expense", icon: <FileText className="h-4 w-4" />, groups: expenseGroups },
       { name: "Item", icon: <Package className="h-4 w-4" />, groups: itemGroups },
     ].filter((cat) => cat.groups.length > 0);
-  }, [groups, searchTerm, quickFilter]);
+  }, [groups, searchTerm, quickFilter, lastVoucherMsById, groupMembersByGroupId, hideSettled]);
 
   const listOrderKey = useMemo(
     () => masterListOrderKey(categories.flatMap((c) => c.groups.map((g) => g.id))),
@@ -449,7 +461,12 @@ export function PartyGroupList({
           </div>
       </ScrollArea>
       {!hideQuickFilterBar ? (
-        <EntityListQuickFilterBar active={quickFilter} onChange={setQuickFilter} />
+        <EntityListQuickFilterBar
+          active={quickFilter}
+          onChange={setQuickFilter}
+          hideSettled={hideSettled}
+          onHideSettledChange={setHideSettled}
+        />
       ) : null}
       </div>
     </TooltipProvider>

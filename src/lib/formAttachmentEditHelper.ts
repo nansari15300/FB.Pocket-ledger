@@ -699,7 +699,19 @@ export async function readVoucherEditAttachmentContext(
     (baselineUrls.length === 0 && rowHasLegacyUnassignedRemote(sqliteRow)) ||
     baselineUrls.length === 0;
 
-  if (needsFirestoreRemotes && typeof navigator !== "undefined" && navigator.onLine !== false) {
+  // Save critical path: under web/APK local-first or the quota pause, NEVER await Firestore here (resource-exhausted
+  // => SDK backoff kept "Saving payment..." up 20-40 s on edit). SQLite baseline only; otherwise cap at 1.5 s.
+  let skipFsRemotes = false;
+  try {
+    const [{ apkEmbeddedSqliteFirstWritesPreferred }, { isServerQuotaHoldActive }] = await Promise.all([
+      import("@/lib/apkOnlineFirestoreWritePolicy"),
+      import("@/lib/serverQuotaHold"),
+    ]);
+    skipFsRemotes = apkEmbeddedSqliteFirstWritesPreferred() || isServerQuotaHoldActive();
+  } catch {
+    /* ignore */
+  }
+  if (!skipFsRemotes && needsFirestoreRemotes && typeof navigator !== "undefined" && navigator.onLine !== false) {
     try {
       const { doc, getDoc } = await import("firebase/firestore");
       const { firestore } = await import("@/lib/firebase");
@@ -707,8 +719,11 @@ export async function readVoucherEditAttachmentContext(
         "@/lib/resolveAuthoritativeFirestoreCompanyId"
       );
       const fsId = await resolveAuthoritativeFirestoreCompanyId(cid);
-      const snap = await getDoc(doc(firestore, `companies/${fsId}/vouchers`, vid));
-      if (snap.exists()) {
+      const snap = await Promise.race([
+        getDoc(doc(firestore, `companies/${fsId}/vouchers`, vid)),
+        new Promise<null>((r) => setTimeout(() => r(null), 1500)),
+      ]);
+      if (snap && snap.exists()) {
         const fsRemotes = readVoucherAttachmentBaselineFromRow(snap.data() as Record<string, unknown>).remoteUrls;
         remoteUrls = mergeVoucherRemoteUrlsForEditBaseline(baselineUrls, fsRemotes);
       }

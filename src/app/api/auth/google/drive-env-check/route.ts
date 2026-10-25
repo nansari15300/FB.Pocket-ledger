@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 import { resolveGoogleOAuthRedirectUri } from "@/lib/server/googleOAuthCredentials";
 import { verifyBearerUid } from "@/lib/localCloudSync/server/apiAuth";
 import { driveHostedApiJson, driveHostedApiOptions } from "@/lib/server/driveHostedApiCors";
+import { ensureHostingConfig, hostingLinked, hostingSource } from "@/lib/server/hostingConfig";
 
 export async function OPTIONS(req: NextRequest) {
   return driveHostedApiOptions(req);
@@ -32,11 +33,20 @@ function buildSafeEnvDiagnostics() {
     effective_google_oauth_client_id_present: hasClientId || hasWebClientId,
     // Callback preview se Google Console redirect URI match turant compare ho sake.
     oauth_callback_preview: resolveGoogleOAuthRedirectUri(),
+    // env var > server panel "Hosting settings" > none (sources only, never values)
+    hosting_linked: hostingLinked(),
+    effective_source: {
+      google_client_id: hostingSource("google_client_id"),
+      google_client_secret: hostingSource("google_client_secret"),
+      drive_state_secret: hostingSource("drive_state_secret"),
+      app_url: hostingSource("app_url"),
+    },
   };
 }
 
 /** Browser-open quick check: deploy ke baad URL hit karke runtime env presence turant verify karo. */
 export async function GET(req: NextRequest) {
+  await ensureHostingConfig();
   return driveHostedApiJson(req, buildSafeEnvDiagnostics());
 }
 
@@ -46,5 +56,6 @@ export async function POST(req: NextRequest) {
   if ("error" in auth) {
     return driveHostedApiJson(req, { error: auth.error }, auth.status);
   }
+  await ensureHostingConfig();
   return driveHostedApiJson(req, buildSafeEnvDiagnostics());
 }

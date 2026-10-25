@@ -265,11 +265,41 @@ export function computePartyFyTransactionTotal(
   return total;
 }
 
+/** Company root key — Anusuchi 13 list default minimum FY transaction (all users of the company). */
+export const ANUSUCHI13_DEFAULT_THRESHOLD_KEY = "anusuchi13DefaultThreshold" as const;
+
+/** Company-wide default threshold; missing / invalid → 1 Lac (100000). */
+export function readAnusuchi13DefaultThreshold(company: unknown): number {
+  const raw = (company as Record<string, unknown> | null | undefined)?.[ANUSUCHI13_DEFAULT_THRESHOLD_KEY];
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : ANUSUCHI13_ONE_LAC;
+}
+
+/** Typed amount (commas allowed) → positive number, else null. */
+export function parseAnusuchi13ThresholdInput(input: string): number | null {
+  const cleaned = String(input ?? "").replace(/[^0-9.]/g, "");
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** 100000 → "1 Lac", 250000 → "2.5 Lac", 50000 → "50,000". */
+export function formatAnusuchi13ThresholdLabel(amount: number): string {
+  if (amount >= ANUSUCHI13_ONE_LAC) {
+    const lac = amount / ANUSUCHI13_ONE_LAC;
+    if (Math.round(lac * 100) === lac * 100) {
+      return `${lac.toLocaleString("en-IN", { maximumFractionDigits: 2 })} Lac`;
+    }
+  }
+  return amount.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+
 export function listAnusuchi13EligibleParties(
   parties: Party[],
   vouchers: any[],
   fyStart: Date,
-  fyEnd: Date
+  fyEnd: Date,
+  minAmount: number = ANUSUCHI13_ONE_LAC
 ): Party[] {
   const fyVouchers = filterVouchersInFy(vouchers, fyStart, fyEnd);
   return parties
@@ -278,7 +308,7 @@ export function listAnusuchi13EligibleParties(
       party,
       total: computePartyFyTransactionTotal(party, fyVouchers),
     }))
-    .filter(({ total }) => total >= ANUSUCHI13_ONE_LAC)
+    .filter(({ total }) => total >= minAmount)
     .sort((a, b) => b.total - a.total)
     .map(({ party }) => party);
 }

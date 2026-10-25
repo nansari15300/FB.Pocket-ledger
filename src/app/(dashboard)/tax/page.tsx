@@ -33,7 +33,8 @@ import { collectInterCompanyIdsForPendingApproval } from "@/lib/interCompany/int
 import { useResponsiveListLayout } from "@/hooks/useResponsiveListLayout";
 import { ResponsiveMasterDetail } from "@/components/layout/ResponsiveMasterDetail";
 import { LoadingSpinner } from "@/components/layout/LoadingSpinner";
-import { doc, getDoc, collection, query, getDocs, where } from "firebase/firestore";
+import { doc, collection, query, where } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useMasterDetailQueryNav } from "@/hooks/useMasterDetailQueryNav";
@@ -171,8 +172,8 @@ function TaxPageContent() {
   useRegisterMasterDetailHardwareBack("tax", onBackToList);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [taxListQuickFilter, setTaxListQuickFilter] = useState<EntityListQuickFilter>("default");
-  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [taxListQuickFilter, setTaxListQuickFilter] = useState<EntityListQuickFilter>("latest");
+  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("latest");
   const {
     showOnlyEntities: showOnlyTaxesWithPendingApproval,
     setShowOnlyEntities: setShowOnlyTaxesWithPendingApproval,

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { doc, getDocFromServer, setDoc } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
+import { getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
 import { Fingerprint, Loader2, Search } from "lucide-react";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import PermissionsManager from "@/components/admin/PermissionsManager";
@@ -31,6 +32,18 @@ import {
   type GlobalSyncMode,
   type GlobalSyncModeSettings,
 } from "@/lib/globalSyncModeSettings";
+import {
+  DEFAULT_ONLINE_DATA_SERVER_SETTINGS,
+  DEFAULT_POCKETBASE_SERVER_URL,
+  ONLINE_DATA_SERVER_SETTINGS_COLLECTION,
+  ONLINE_DATA_SERVER_SETTINGS_ID,
+  POCKETBASE_BACKEND_NOT_IMPLEMENTED_MESSAGE,
+  getActiveOnlineDataServer,
+  normalizeOnlineDataServerSettings,
+  writeCachedOnlineDataServerSettings,
+  type OnlineDataServerSettings,
+} from "@/lib/onlineDataServer";
+import { OnlineDataServerTable } from "@/components/settings/OnlineDataServerTable";
 
 /** Always green track/thumb — All (left) and Lazy load (right); only knob side changes. */
 const alwaysGreenSwitchClass = cn(
@@ -56,6 +69,12 @@ const SYNC_MODE_HELP = {
     "Delta — SQLite + change feed (_pl_change_log). Only fetches changed documents. Saves huge Firebase reads and runs smooth on low internet.\n\nLive — real-time Firebase collection listeners. Updates cross-device in ~300ms. Higher Firebase read usage.\n\nApplies globally to all users and companies after save.",
 };
 
+const ONLINE_DATA_SERVER_HELP = {
+  title: "Online data server",
+  body:
+    "Choose the server where online company data and files are saved. Applies to every user after save; users see it read-only on the Gate page.\n\nFirebase - current cloud backend (Firestore + Storage).\n\nPocket Ledger Server - self-hosted PocketBase. Data sync for it is not built yet: while it is selected, data still saves to Firebase. New online companies record the selected server.",
+};
+
 function GlobalSettingsPage() {
   useAdminAccess(["SuperAdmin"]);
   const { toast } = useToast();
@@ -69,6 +88,11 @@ function GlobalSettingsPage() {
   const [syncMode, setSyncMode] = useState<GlobalSyncModeSettings>(DEFAULT_GLOBAL_SYNC_MODE_SETTINGS);
   const [syncModeLoading, setSyncModeLoading] = useState(true);
   const [syncModeSaving, setSyncModeSaving] = useState(false);
+
+  const [onlineServer, setOnlineServer] = useState<OnlineDataServerSettings>(DEFAULT_ONLINE_DATA_SERVER_SETTINGS);
+  const [onlineServerLoading, setOnlineServerLoading] = useState(true);
+  const [onlineServerSaving, setOnlineServerSaving] = useState(false);
+  const [pocketbaseUrlDraft, setPocketbaseUrlDraft] = useState(DEFAULT_ONLINE_DATA_SERVER_SETTINGS.pocketbaseUrl);
 
   const filteredGroups = useMemo(() => {
     if (!searchTerm) return PermissionGroups;
@@ -107,10 +131,30 @@ function GlobalSettingsPage() {
     }
   }, [toast]);
 
+  const loadOnlineDataServerSettings = useCallback(async () => {
+    setOnlineServerLoading(true);
+    try {
+      const snap = await getDocFromServer(
+        doc(firestore, ONLINE_DATA_SERVER_SETTINGS_COLLECTION, ONLINE_DATA_SERVER_SETTINGS_ID)
+      );
+      const next = normalizeOnlineDataServerSettings(snap.exists() ? snap.data() : undefined);
+      setOnlineServer(next);
+      setPocketbaseUrlDraft(next.pocketbaseUrl);
+      writeCachedOnlineDataServerSettings(next);
+    } catch {
+      setOnlineServer(DEFAULT_ONLINE_DATA_SERVER_SETTINGS);
+      setPocketbaseUrlDraft(DEFAULT_ONLINE_DATA_SERVER_SETTINGS.pocketbaseUrl);
+      toast({ title: "Could not load online data server settings", variant: "destructive" });
+    } finally {
+      setOnlineServerLoading(false);
+    }
+  }, [toast]);
+
   useEffect(() => {
     void loadVoucherLoadSettings();
     void loadSyncModeSettings();
-  }, [loadVoucherLoadSettings, loadSyncModeSettings]);
+    void loadOnlineDataServerSettings();
+  }, [loadVoucherLoadSettings, loadSyncModeSettings, loadOnlineDataServerSettings]);
 
   const saveVoucherLoadMode = async (mode: VoucherLoadMode) => {
     setVoucherLoadSaving(true);
@@ -162,6 +206,36 @@ function GlobalSettingsPage() {
       toast({ title: "Save failed", variant: "destructive" });
     } finally {
       setSyncModeSaving(false);
+    }
+  };
+
+  const saveOnlineDataServer = async (patch: Partial<Pick<OnlineDataServerSettings, "serverId" | "pocketbaseUrl">>) => {
+    setOnlineServerSaving(true);
+    const prev = onlineServer;
+    const next: OnlineDataServerSettings = {
+      ...onlineServer,
+      ...patch,
+      updatedAtMs: Date.now(),
+    };
+    setOnlineServer(next);
+    try {
+      await setDoc(doc(firestore, ONLINE_DATA_SERVER_SETTINGS_COLLECTION, ONLINE_DATA_SERVER_SETTINGS_ID), next, {
+        merge: true,
+      });
+      writeCachedOnlineDataServerSettings(next);
+      setPocketbaseUrlDraft(next.pocketbaseUrl);
+      const server = getActiveOnlineDataServer(next);
+      toast({
+        title: "Saved",
+        description: server.implemented
+          ? `Online data server: ${server.name}.`
+          : `Online data server: ${server.name}. ${POCKETBASE_BACKEND_NOT_IMPLEMENTED_MESSAGE}`,
+      });
+    } catch {
+      setOnlineServer(prev);
+      toast({ title: "Save failed", variant: "destructive" });
+    } finally {
+      setOnlineServerSaving(false);
     }
   };
 
@@ -298,6 +372,82 @@ function GlobalSettingsPage() {
                 </Label>
                 {syncModeSaving ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Card 3: Online data server (Firebase / Pocket Ledger Server) */}
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <CardTitle>Online data server</CardTitle>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <AppFreshInfoButton
+                    size="sm"
+                    aria-label="About online data server"
+                    title="Online data server help"
+                  />
+                </PopoverTrigger>
+                <PopoverContent align="start" className="z-[80] w-[min(92vw,22rem)] space-y-2 p-3 text-left">
+                  <p className="text-sm font-semibold">{ONLINE_DATA_SERVER_HELP.title}</p>
+                  <div className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+                    {ONLINE_DATA_SERVER_HELP.body}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+            <CardDescription>Where online company data and files are saved for all users.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {onlineServerLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading.
+              </div>
+            ) : (
+              <>
+                <OnlineDataServerTable
+                  settings={onlineServer}
+                  onSelect={(id) => {
+                    if (id !== onlineServer.serverId) void saveOnlineDataServer({ serverId: id });
+                  }}
+                  disabled={onlineServerSaving}
+                  idPrefix="admin-online-data-server"
+                />
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="min-w-[14rem] flex-1 space-y-1">
+                    <Label htmlFor="admin-pocketbase-url" className="text-xs">
+                      Pocket Ledger Server URL
+                    </Label>
+                    <Input
+                      id="admin-pocketbase-url"
+                      value={pocketbaseUrlDraft}
+                      onChange={(e) => setPocketbaseUrlDraft(e.target.value)}
+                      placeholder={DEFAULT_POCKETBASE_SERVER_URL}
+                      disabled={onlineServerSaving}
+                      className="h-9 font-mono text-xs"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      onlineServerSaving ||
+                      (pocketbaseUrlDraft.trim() || DEFAULT_POCKETBASE_SERVER_URL) === onlineServer.pocketbaseUrl
+                    }
+                    onClick={() => {
+                      void saveOnlineDataServer({
+                        pocketbaseUrl: pocketbaseUrlDraft.trim() || DEFAULT_POCKETBASE_SERVER_URL,
+                      });
+                    }}
+                  >
+                    Save URL
+                  </Button>
+                  {onlineServerSaving ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
+                </div>
+              </>
             )}
           </CardContent>
         </Card>

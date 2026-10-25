@@ -1,7 +1,7 @@
 "use client";
 
 import { resolveDriveHostedApiUrl } from "@/lib/driveHostedApiOrigin";
-import { getFirebaseIdTokenForApi } from "@/lib/firebaseAuthForApi";
+import { getDriveApiIdToken } from "@/lib/firebaseAuthForApi";
 import { hostedApiFetch } from "@/lib/hostedApiFetch";
 import { assertDriveMutationAllowedForCompany } from "@/lib/localCloudSync/driveUploadGate";
 import {
@@ -13,7 +13,7 @@ import {
 export async function postDriveJsonViaClient<T>(path: string, body: unknown): Promise<T> {
   if (isLocalGoogleDriveSyncDisabled()) throw new Error(LOCAL_GOOGLE_DRIVE_SYNC_DISABLED_MESSAGE);
   await assertDriveMutationAllowedForCompany(path, body);
-  const { token } = await getFirebaseIdTokenForApi();
+  const { token } = await getDriveApiIdToken();
   const apiUrl = resolveDriveHostedApiUrl(path);
   const res = await hostedApiFetch(apiUrl, {
     method: "POST",

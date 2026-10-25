@@ -29,7 +29,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import AdCalendar from "@/components/ui/ad-calendar";
 import { useFyScopedVouchers } from "@/hooks/useFyScopedVouchers";
 import { TransactionsTable } from "../vouchers/TransactionsTable";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useCompany } from "@/hooks/useCompany";
 import { useDate } from "@/hooks/useDate";

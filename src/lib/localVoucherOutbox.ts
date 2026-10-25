@@ -6,6 +6,7 @@
  * then write idem doc + target subcollection doc together — same `payload_hash` is not applied twice.
  */
 
+import { isServerQuotaHoldActive, startServerQuotaHold } from "@/lib/serverQuotaHold";
 import {
   doc,
   getDoc,
@@ -15,7 +16,7 @@ import {
   enableNetwork,
   deleteField,
 } from "firebase/firestore";
-import { runTransaction } from "@/lib/writeGateway/firestoreMutationsInternal";
+import { firestoreRunTransaction as runTransaction } from "@/lib/writeGateway/firestoreMutationsInternal";
 import {
   firestore,
   firestoreNetworkDisabledByApi,
@@ -29,7 +30,11 @@ import {
   shouldAutoFlushOutboxAfterEnqueue,
 } from "@/lib/apkOnlineFirestoreWritePolicy";
 import { isFirebaseLedgerDataSyncDisabled } from "@/lib/firebaseLedgerDataSyncDisabled";
-import { isFirebaseLedgerCompanyDataSyncEnabled } from "@/lib/firebaseLedgerCompanySyncPrefs";
+import {
+  isFirebaseLedgerCompanyDataSyncEnabled,
+  isPocketBaseCompanyDataSyncEnabled,
+} from "@/lib/firebaseLedgerCompanySyncPrefs";
+import { isPocketBaseCompany, isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { mirrorCompanyDocToBrowserDb, getCompanyDocFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { getLocalCompanyById, type LocalCompanyDoc } from "@/lib/localCompanyStore";
 import { coerceVoucherDocumentDate } from "@/lib/voucherDateNormalize";
@@ -566,7 +571,13 @@ export async function enqueueCompanyDocOutbox(
 ): Promise<void> {
   // SQLite-first callers enqueue; live online Firebase bhi (background flush). Pure local-only canSync false → skip.
   if (!companyId || !collectionName || !docId) return;
-  if (!(await canSyncCompanyCollectionToServer(companyId, collectionName, docId, payload))) return;
+  // Pocket Ledger Server companies always queue (registry row may not be mirrored yet on web).
+  if (
+    !isPocketBaseCompanyId(companyId) &&
+    !(await canSyncCompanyCollectionToServer(companyId, collectionName, docId, payload))
+  ) {
+    return;
+  }
   const db = await getBrowserDbForCompanyId(companyId);
   if (!db) return;
   const outboxId =
@@ -645,22 +656,43 @@ export async function listPendingOutboxDocIdsForCompany(
   companyId: string,
   collectionName: string
 ): Promise<Set<string>> {
-  const out = new Set<string>();
+  const payloads = await readPendingOutboxPayloadsForCompany(companyId, collectionName);
+  return new Set(payloads.keys());
+}
+
+/** Pending/failed/paused outbox payloads — stale Firestore snapshot se local edit (narration etc.) mat wipe. */
+export async function readPendingOutboxPayloadsForCompany(
+  companyId: string,
+  collectionName: string
+): Promise<Map<string, Record<string, unknown>>> {
+  const out = new Map<string, Record<string, unknown>>();
   try {
     const cid = companyId.trim();
     const coll = collectionName.trim();
     if (!cid || !coll) return out;
     const db = await getBrowserDbForCompanyId(companyId);
     if (!db) return out;
-    const rows = db.prepare(
-      `SELECT doc_id FROM sync_outbox WHERE company_id = ? AND collection_name = ?`
-    ).all(cid, coll) as Array<{ doc_id?: string }>;
+    const rows = db
+      .prepare(
+        `SELECT doc_id, payload FROM sync_outbox WHERE company_id = ? AND collection_name = ?`
+      )
+      .all(cid, coll) as Array<{ doc_id?: string; payload?: string }>;
     for (const row of rows) {
       const id = String(row?.doc_id || "").trim();
-      if (id) out.add(id);
+      if (!id) continue;
+      try {
+        const payload = outboxJsonParse(String(row.payload || "{}"));
+        if (payload && typeof payload === "object") {
+          out.set(id, { ...(payload as Record<string, unknown>), id });
+        } else {
+          out.set(id, { id });
+        }
+      } catch {
+        out.set(id, { id });
+      }
     }
   } catch {
-    /* empty set */
+    /* empty */
   }
   return out;
 }
@@ -786,12 +818,236 @@ export async function deleteOutboxRowsForCompanyCollection(
       .get(cid, col) as { c?: number };
     const n = Number(before?.c ?? 0);
     if (n <= 0) return 0;
-    db.prepare(`DELETE FROM sync_outbox WHERE company_id = ? AND collection_name = ?`).run(cid, col);
+    // Phase 2 hotfix: never purge on permission-denied / billing. Keep rows, mark failed for retry.
+    ensureOutboxRetryColumns(db);
+    db.prepare(
+      `UPDATE sync_outbox SET status = 'failed', last_error = COALESCE(last_error, ?) WHERE company_id = ? AND collection_name = ?`
+    ).run("permission-denied (collection paused)", cid, col);
     return n;
   } catch (e) {
     console.warn("[localVoucherOutbox] deleteOutboxRowsForCompanyCollection failed", e);
     return 0;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 hotfix: retry metadata on sync_outbox rows (status / attempts / last_error).
+// Columns are added lazily (ALTER TABLE, idempotent) so localSqlite.ts schema is untouched.
+// status: null|'pending' = queued, 'failed' = last attempt errored (kept), 'paused' = quota/billing hold.
+// ---------------------------------------------------------------------------
+type OutboxDbLike = { prepare: (sql: string) => { run: (...a: unknown[]) => unknown; get: (...a: unknown[]) => unknown; all: (...a: unknown[]) => unknown } };
+const outboxRetryColumnsReady = new WeakSet<object>();
+
+function ensureOutboxRetryColumns(db: unknown): void {
+  if (!db || typeof db !== "object" || outboxRetryColumnsReady.has(db)) return;
+  const d = db as OutboxDbLike;
+  for (const sql of [
+    "ALTER TABLE sync_outbox ADD COLUMN status TEXT",
+    "ALTER TABLE sync_outbox ADD COLUMN attempts INTEGER DEFAULT 0",
+    "ALTER TABLE sync_outbox ADD COLUMN last_error TEXT",
+    "ALTER TABLE sync_outbox ADD COLUMN last_attempt_at INTEGER",
+  ]) {
+    try {
+      d.prepare(sql).run();
+    } catch {
+      /* column already exists */
+    }
+  }
+  outboxRetryColumnsReady.add(db);
+}
+
+function outboxErrorText(e: unknown): string {
+  const code = String((e as { code?: string })?.code ?? "");
+  const message = String((e as { message?: string })?.message ?? (typeof e === "string" ? e : ""));
+  return [code, message].filter(Boolean).join(": ").slice(0, 500) || "unknown error";
+}
+
+/** Quota / billing errors (incl. PERMISSION_DENIED whose text mentions billing) = pause, never purge. */
+export function isOutboxQuotaOrBillingError(e: unknown): boolean {
+  const code = String((e as { code?: string })?.code ?? "").toLowerCase();
+  const message = String((e as { message?: string })?.message ?? "").toLowerCase();
+  if (code === "resource-exhausted" || code === "resource_exhausted" || code === "storage/quota-exceeded") return true;
+  return (
+    message.includes("billing") ||
+    message.includes("quota exceeded") ||
+    message.includes("quota-exceeded") ||
+    message.includes("resource_exhausted") ||
+    message.includes("resource-exhausted")
+  );
+}
+
+async function markOutboxRowAttemptFailed(
+  outboxId: string,
+  companyId: string,
+  e: unknown,
+  status: "failed" | "paused"
+): Promise<void> {
+  try {
+    const db = await getBrowserDbForCompanyId(companyId);
+    if (!db) return;
+    ensureOutboxRetryColumns(db);
+    db.prepare(
+      `UPDATE sync_outbox SET status = ?, attempts = COALESCE(attempts, 0) + 1, last_error = ?, last_attempt_at = ? WHERE outbox_id = ?`
+    ).run(status, outboxErrorText(e), Date.now(), outboxId);
+  } catch (err) {
+    console.warn("[localVoucherOutbox] markOutboxRowAttemptFailed failed", err);
+  }
+}
+
+export type OutboxStatusCounts = {
+  pending: number;
+  failed: number;
+  paused: number;
+  total: number;
+  /** Most common recent errors (for the trigger log / banner). */
+  topErrors: Array<{ error: string; count: number }>;
+};
+
+/** Pending / failed / paused outbox counts across all SQLite namespaces (optionally one company). */
+export async function getOutboxStatusCounts(companyId?: string): Promise<OutboxStatusCounts> {
+  const out: OutboxStatusCounts = { pending: 0, failed: 0, paused: 0, total: 0, topErrors: [] };
+  const errs = new Map<string, number>();
+  try {
+    const { getBrowserDbForNamespace } = await import("@/lib/localSqlite");
+    const { SQLITE_STORAGE_NAMESPACES } = await import("@/lib/sqliteStorageNamespace");
+    const seen = new Set<unknown>();
+    for (const ns of SQLITE_STORAGE_NAMESPACES) {
+      const db = await getBrowserDbForNamespace(ns);
+      if (!db || seen.has(db)) continue;
+      seen.add(db);
+      ensureOutboxRetryColumns(db);
+      const where = companyId ? "WHERE company_id = ?" : "";
+      const args = companyId ? [companyId] : [];
+      const rows = db
+        .prepare(`SELECT status, last_error, COUNT(1) as c FROM sync_outbox ${where} GROUP BY status, last_error`)
+        .all(...args) as Array<{ status?: string | null; last_error?: string | null; c?: number }>;
+      for (const r of rows) {
+        const n = Number(r.c ?? 0);
+        out.total += n;
+        if (r.status === "failed") out.failed += n;
+        else if (r.status === "paused") out.paused += n;
+        else out.pending += n;
+        if (r.last_error && (r.status === "failed" || r.status === "paused")) {
+          errs.set(r.last_error, (errs.get(r.last_error) ?? 0) + n);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[localVoucherOutbox] getOutboxStatusCounts failed", e);
+  }
+  out.topErrors = [...errs.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([error, count]) => ({ error, count }));
+  return out;
+}
+
+/** Clear the session permission-denied parking and mark every failed/paused row pending again. */
+export async function requeueFailedOutboxRows(companyId?: string): Promise<number> {
+  permissionDeniedOutboxKeys.clear();
+  let n = 0;
+  try {
+    const { getBrowserDbForNamespace } = await import("@/lib/localSqlite");
+    const { SQLITE_STORAGE_NAMESPACES } = await import("@/lib/sqliteStorageNamespace");
+    const seen = new Set<unknown>();
+    for (const ns of SQLITE_STORAGE_NAMESPACES) {
+      const db = await getBrowserDbForNamespace(ns);
+      if (!db || seen.has(db)) continue;
+      seen.add(db);
+      ensureOutboxRetryColumns(db);
+      const where = companyId ? "AND company_id = ?" : "";
+      const args = companyId ? [companyId] : [];
+      const before = db
+        .prepare(`SELECT COUNT(1) as c FROM sync_outbox WHERE status IN ('failed','paused') ${where}`)
+        .get(...args) as { c?: number };
+      n += Number(before?.c ?? 0);
+      db.prepare(`UPDATE sync_outbox SET status = 'pending' WHERE status IN ('failed','paused') ${where}`).run(...args);
+    }
+  } catch (e) {
+    console.warn("[localVoucherOutbox] requeueFailedOutboxRows failed", e);
+  }
+  return n;
+}
+
+/**
+ * Recovery scan (RC-1): local SQLite docs of a server-synced company that have no outbox row and whose
+ * Firestore *cache* copy is missing or older than the local edit. Uses getDocFromCache only (no server reads).
+ */
+export async function findUnsyncedLocalDocs(
+  companyId: string,
+  opts?: { collections?: string[]; limit?: number }
+): Promise<Array<{ collectionName: string; docId: string }>> {
+  const result: Array<{ collectionName: string; docId: string }> = [];
+  const cid = String(companyId || "").trim();
+  if (!cid) return result;
+  if (!(await canSyncCompanyToServer(cid))) return result;
+  const db = await getBrowserDbForCompanyId(cid);
+  if (!db) return result;
+  const reg = await getLocalCompanyById(cid, { includeDeleted: true });
+  const fsCompanyId = String((reg as Record<string, unknown> | null)?.authoritativeCompanyId || cid).trim() || cid;
+  const { getDocFromCache } = await import("firebase/firestore");
+  const { mirrorDocEditTimeMs, deserializeLocalDbValue } = await import("@/lib/localCompanyDocMirror");
+  const { LOCAL_MIRROR_META_SERVER_CONFIRMED_KEY } = await import("@/lib/localMirrorServerMeta");
+  const collections = opts?.collections ?? ["vouchers"];
+  const limit = opts?.limit ?? 5000;
+  let scanned = 0;
+  for (const coll of collections) {
+    const queued = await listPendingOutboxDocIdsForCompany(cid, coll);
+    const rows = db
+      .prepare(`SELECT id, data FROM company_docs WHERE company_id = ? AND collection = ?`)
+      .all(cid, coll) as Array<{ id: string; data: string }>;
+    for (const r of rows) {
+      if (scanned++ >= limit) return result;
+      if (queued.has(r.id)) continue;
+      let local: Record<string, unknown>;
+      try {
+        local = deserializeLocalDbValue(JSON.parse(r.data)) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const localMs = mirrorDocEditTimeMs(local);
+      let unsynced = false;
+      try {
+        const snap = await getDocFromCache(doc(firestore, "companies", fsCompanyId, coll, r.id));
+        if (!snap.exists()) {
+          unsynced = local[LOCAL_MIRROR_META_SERVER_CONFIRMED_KEY] !== true;
+        } else {
+          const serverMs = mirrorDocEditTimeMs(snap.data() as Record<string, unknown>);
+          unsynced = localMs > 0 && serverMs > 0 && localMs > serverMs + 1000;
+        }
+      } catch {
+        // Not in cache: only treat as unsynced when the local row was never confirmed by the server.
+        unsynced = local[LOCAL_MIRROR_META_SERVER_CONFIRMED_KEY] !== true;
+      }
+      if (unsynced) result.push({ collectionName: coll, docId: r.id });
+      if (scanned % 50 === 0) await new Promise<void>((res) => setTimeout(res, 0));
+    }
+  }
+  return result;
+}
+
+/** Re-enqueue found docs (op=update; merge write) from their local SQLite copy. */
+export async function requeueLocalDocsToOutbox(
+  companyId: string,
+  docs: Array<{ collectionName: string; docId: string }>
+): Promise<number> {
+  let n = 0;
+  for (const d of docs) {
+    try {
+      const data = await getCompanyDocFromBrowserDb(companyId, d.collectionName, d.docId, {
+        includeDeleted: true,
+        sqliteOnly: true,
+      });
+      if (!data) continue;
+      const { stripLocalMirrorMetaForUiRow } = await import("@/lib/localMirrorServerMeta");
+      const payload = stripLocalMirrorMetaForUiRow({ ...data });
+      await enqueueCompanyDocOutbox(companyId, d.collectionName, data.isDeleted === true ? "delete" : "update", d.docId, payload);
+      n++;
+    } catch (e) {
+      console.warn("[localVoucherOutbox] requeueLocalDocsToOutbox failed", d, e);
+    }
+  }
+  return n;
 }
 
 /**
@@ -820,6 +1076,24 @@ let flushVoucherOutboxQueued = false;
  * follow-up round so newly queued docs are not stuck waiting 20–50s for a later full flush.
  */
 let flushVoucherOutboxFollowUpOptions: FlushVoucherOutboxOptions | undefined;
+
+/** Doc whose outbox row is being sent right now (company|collection|doc). Local-only hard delete checks this. */
+let outboxRowInFlightKey: string | null = null;
+
+export function isCompanyDocOutboxInFlight(companyId: string, collectionName: string, docId: string): boolean {
+  return outboxRowInFlightKey === `${companyId}|${collectionName}|${docId}`;
+}
+
+/** Wait until the current outbox flush (if any) has finished. */
+export async function awaitVoucherOutboxFlushIdle(): Promise<void> {
+  const p = flushVoucherOutboxInFlight;
+  if (!p) return;
+  try {
+    await p;
+  } catch {
+    /* ignore */
+  }
+}
 
 /**
  * Firestore `permission-denied` on a collection (e.g. loan_schedules rules) must not
@@ -851,6 +1125,8 @@ function isOutboxPermissionDenied(e: unknown): boolean {
 }
 
 export async function flushVoucherOutbox(options?: FlushVoucherOutboxOptions): Promise<{ ok: number; failed: number }> {
+  // Quota pause (serverQuotaHold.ts): keep rows queued locally, send nothing; resumes on hold end.
+  if (isServerQuotaHoldActive()) return { ok: 0, failed: 0 };
   if (flushVoucherOutboxInFlight) {
     flushVoucherOutboxQueued = true;
     flushVoucherOutboxFollowUpOptions = {
@@ -877,6 +1153,7 @@ export async function flushVoucherOutbox(options?: FlushVoucherOutboxOptions): P
       return last;
     } finally {
       flushVoucherOutboxInFlight = null;
+      outboxRowInFlightKey = null;
       flushVoucherOutboxFollowUpOptions = undefined;
     }
   })();
@@ -917,6 +1194,7 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
     doc_id: string;
     op: string;
     payload: string;
+    created_at?: number | null;
     client_write_id: string | null;
     nonce: string | null;
     payload_hash: string | null;
@@ -926,7 +1204,7 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
     if (!nsDb) continue;
     const part = nsDb
       .prepare(
-        `SELECT outbox_id, company_id, collection_name, doc_id, op, payload, client_write_id, nonce, payload_hash FROM sync_outbox ORDER BY created_at ASC`
+        `SELECT outbox_id, company_id, collection_name, doc_id, op, payload, created_at, client_write_id, nonce, payload_hash FROM sync_outbox ORDER BY created_at ASC`
       )
       .all() as typeof rows;
     if (part.length) rows = rows.concat(part);
@@ -959,18 +1237,14 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
     rows = [...rows].sort((a, b) => score(b) - score(a));
   }
 
-  // Session-parked unwritable collections: wipe leftover SQLite rows so pending count is truthful.
+  // Session-parked collections (permission-denied this session): skip. Rows are KEPT (Phase 2 hotfix).
   {
     const parked = new Set<string>();
     for (const row of rows) {
       const k = outboxPermissionKey(row.company_id, row.collection_name);
       if (permissionDeniedOutboxKeys.has(k)) parked.add(k);
     }
-    for (const k of parked) {
-      const parsed = parseOutboxPermissionKey(k);
-      if (!parsed) continue;
-      await deleteOutboxRowsForCompanyCollection(parsed.companyId, parsed.collectionName);
-    }
+    void parseOutboxPermissionKey;
     if (parked.size) {
       rows = rows.filter(
         (row) => !permissionDeniedOutboxKeys.has(outboxPermissionKey(row.company_id, row.collection_name))
@@ -984,6 +1258,7 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
   const YIELD_EVERY = 4;
   let attemptsSinceYield = 0;
   for (const row of rows) {
+    outboxRowInFlightKey = null;
     const denyKey = outboxPermissionKey(row.company_id, row.collection_name);
     if (permissionDeniedOutboxKeys.has(denyKey)) {
       continue;
@@ -998,6 +1273,17 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
           setTimeout(resolve, 0);
         }
       });
+    }
+    // Mark in-flight first, then skip rows removed meanwhile (local-only hard delete).
+    outboxRowInFlightKey = `${row.company_id}|${row.collection_name}|${row.doc_id}`;
+    {
+      const stillQueued = (await getDbForCid(row.company_id))
+        ?.prepare(`SELECT 1 AS x FROM sync_outbox WHERE outbox_id = ?`)
+        .get(row.outbox_id) as { x?: number } | undefined;
+      if (!stillQueued?.x) {
+        outboxRowInFlightKey = null;
+        continue;
+      }
     }
     try {
       if (row.payload_hash) {
@@ -1035,6 +1321,30 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
           ));
         if (dropPureLocalRow) {
           await deleteOutboxRow(row.outbox_id, row.company_id);
+        }
+        continue;
+      }
+      // Pocket Ledger Server (PocketBase) company: push this row there instead of Firestore.
+      if (isPocketBaseCompany(row.company_id, reg)) {
+        const regRow = reg as { authoritativeCompanyId?: string };
+        if (!isPocketBaseCompanyDataSyncEnabled(row.company_id, regRow)) continue;
+        const { getValidPocketBaseAuth } = await import("@/lib/pocketbaseData/pbClient");
+        // Not signed in to the server yet: keep the row for later.
+        if (!getValidPocketBaseAuth()) continue;
+        try {
+          const pbData = data as Record<string, unknown>;
+          if (row.collection_name === "vouchers") {
+            delete pbData[PL_CLIENT_OFFLINE_FIRST_PERSIST_MS];
+            coerceVoucherDocumentDate(pbData);
+          }
+          const { pushOutboxRowToPocketBase } = await import("@/lib/pocketbaseData/pbSync");
+          await pushOutboxRowToPocketBase({ ...row, payload: outboxJsonStringify(pbData) });
+          await deleteOutboxRow(row.outbox_id, row.company_id);
+          ok++;
+        } catch (pbErr) {
+          console.warn("[flushVoucherOutbox] Pocket Ledger Server push failed", row.collection_name, row.doc_id, pbErr);
+          await markOutboxRowAttemptFailed(row.outbox_id, row.company_id, pbErr, "failed");
+          failed++;
         }
         continue;
       }
@@ -1389,17 +1699,25 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
           /* fall through */
         }
       }
+      if (isOutboxQuotaOrBillingError(e)) {
+        // Quota / billing (incl. PERMISSION_DENIED "billing account ... disabled"): keep row, global pause.
+        await markOutboxRowAttemptFailed(row.outbox_id, row.company_id, e, "paused");
+        startServerQuotaHold();
+        console.warn("[flushVoucherOutbox] quota/billing error: row kept, quota hold started", outboxErrorText(e));
+        failed++;
+        break;
+      }
       if (isOutboxPermissionDenied(e)) {
         const firstDeny = !permissionDeniedOutboxKeys.has(denyKey);
         permissionDeniedOutboxKeys.add(denyKey);
-        // Cannot sync with current rules — remove from outbox (do not leave 800+ “pending” forever).
-        const purged = await deleteOutboxRowsForCompanyCollection(row.company_id, row.collection_name);
-        if (firstDeny || purged > 0) {
+        // Phase 2 hotfix: never purge. Keep the row, mark failed; collection parked for this session only.
+        await markOutboxRowAttemptFailed(row.outbox_id, row.company_id, e, "failed");
+        failed++;
+        if (firstDeny) {
           console.warn(
-            "[flushVoucherOutbox] permission-denied — pausing collection + purged stuck outbox rows",
+            "[flushVoucherOutbox] permission-denied: collection paused for this session, rows kept for retry",
             row.collection_name,
-            row.company_id,
-            purged
+            row.company_id
           );
         }
         // Later rows of this collection hit permissionDeniedOutboxKeys above and skip.
@@ -1411,6 +1729,7 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
         row.collection_name,
         (e as { code?: string })?.code || (e as { message?: string })?.message || e
       );
+      await markOutboxRowAttemptFailed(row.outbox_id, row.company_id, e, "failed");
       failed++;
       // One bad row should not block the entire outbox forever; keep flushing remaining rows.
       continue;

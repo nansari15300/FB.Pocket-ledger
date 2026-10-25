@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, query, where } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import type { RecurringVoucherTemplate } from "@/lib/recurringVouchers";
 import { resolveRecurringTemplateProgress } from "@/lib/recurringVouchers";

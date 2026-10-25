@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
-import { getAdminDb } from "@/lib/firebaseAdmin";
 import { isCompanyOwner } from "@/lib/server/companyOwner";
+import { resolveBillingCaller } from "@/lib/server/billingCaller";
 
 function createdAtMs(data: Record<string, unknown>): number {
   const c = data.createdAt as admin.firestore.Timestamp | undefined;
@@ -15,26 +15,18 @@ function createdAtMs(data: Record<string, unknown>): number {
  */
 export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization");
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    if (!token) {
-      return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
+    const billingCaller = await resolveBillingCaller(req);
+    if (!billingCaller.ok) {
+      return NextResponse.json({ error: billingCaller.error }, { status: billingCaller.status });
     }
-
-    getAdminDb();
-    let decoded: admin.auth.DecodedIdToken;
-    try {
-      decoded = await admin.auth().verifyIdToken(token);
-    } catch {
-      return NextResponse.json({ error: "Invalid auth token" }, { status: 401 });
-    }
+    const decoded = billingCaller.decoded;
 
     const companyId = req.nextUrl.searchParams.get("companyId")?.trim() ?? "";
     if (!companyId) {
       return NextResponse.json({ error: "companyId query required" }, { status: 400 });
     }
 
-    const db = getAdminDb();
+    const db = billingCaller.db;
     const companyRef = db.collection("companies").doc(companyId);
     const snap = await companyRef.get();
     if (!snap.exists) {

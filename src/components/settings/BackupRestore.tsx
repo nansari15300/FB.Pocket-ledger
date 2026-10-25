@@ -9,7 +9,6 @@ import { useCompany } from "@/hooks/useCompany";
 import type { Company } from "@/hooks/useCompany";
 import {
   collection,
-  getDocs,
   query,
   writeBatch,
   doc,
@@ -17,15 +16,15 @@ import {
   setDoc,
   serverTimestamp,
   addDoc,
-  getDoc,
   where,
   orderBy,
   limit,
   startAfter,
   documentId,
 } from "firebase/firestore";
+import { getDocs, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import type { QueryDocumentSnapshot } from "firebase/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore, isFirestoreBlockedForServerSession } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
@@ -75,6 +74,16 @@ import {
 } from "@/lib/attachmentBackupBundle";
 import { finalizeLocalCompanyRowAfterBackupRestore, markLocalBackupRestoreSelectionGrace, beginLocalAttachmentRestoreHold, endLocalAttachmentRestoreHold, stripOnlineFieldsFromBackupLedgerDoc } from "@/lib/localBackupRestoreCompany";
 import { pocketLedgerStorageDocFields } from "@/lib/firebaseStoragePaths";
+import {
+  ONLINE_DATA_SERVER_POCKETBASE_ID,
+  ensureOnlineDataServerSettingsHydrated,
+  resolveOnlineDataBackend,
+} from "@/lib/onlineDataServer";
+import { isPocketBaseSessionUser } from "@/lib/pocketbaseData/pbAppSession";
+import { isPocketBaseCompany } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { getValidPocketBaseAuth } from "@/lib/pocketbaseData/pbClient";
+import { ensureSuperAdminInSharedEmails } from "@/lib/superAdminEmails";
+import { sharedWithEmailsLowerFromList } from "@/lib/sharedWithEmailsQuery";
 import { wipeCompanyFirebaseStorageForRestore } from "@/lib/deleteCompanyStorageFolder";
 import { grantOpenLocalCompanySession } from "@/lib/companyUnlockGate";
 import {
@@ -93,7 +102,7 @@ import {
 } from "@/lib/companyBackupCore";
 import { startRestoreCloudBackgroundSync } from "@/lib/restoreCloudBackgroundSync";
 import { useCompanyBackupRun } from "@/hooks/useCompanyBackupRun";
-import { readBackupLocationDisplayLabel, formatNativeFolderDisplayPath, readBackupLocationDisplayHint, formatAutoBackupPathPreview } from "@/lib/backupLocationDisplay";
+import { readBackupLocationDisplayLabel, formatNativeFolderDisplayPath, readBackupLocationDisplayHint, formatAutoBackupPathPreview, isBackupLocationFullPathDisplay } from "@/lib/backupLocationDisplay";
 import {
   readAutoBackupPrefs,
   saveAutoBackupPrefs,
@@ -112,6 +121,7 @@ import {
 } from "@/lib/autoBackupPrefs";
 import { runAutoBackupQueue, loadAutoBackupCompanyPickerRows, companyHasAutoBackupPassword, syncAutoBackupCompanyIdsWithEligible } from "@/lib/autoBackupRunner";
 import { AutoBackupDriveUploadDialog } from "@/components/settings/AutoBackupDriveUploadDialog";
+import { AttachmentSqliteServerCompareDialog } from "@/components/settings/AttachmentSqliteServerCompareDialog";
 import { buildAutoBackupRelativeDir } from "@/lib/autoBackupPath";
 import { isDeviceLocalCompany, partitionCompaniesForSelector, filterCompaniesForSelectorPartition, filterOnlineTabCompaniesForSelector, type CompanyListTab } from "@/lib/companyStorageKind";
 import { filterSharedOnlyCompaniesForSuperAdminInMainApp } from "@/lib/companySuperAdminFilter";
@@ -202,6 +212,10 @@ type BackupLocationFieldProps = {
   disabledHint?: string;
   /** Auto backup card — path + button right side. */
   align?: "start" | "end";
+  hint?: string | null;
+  /** Full C:\\ / UNC path — static EXE me Auto card jaisa. */
+  pathPreview?: string | null;
+  pathPreviewLabel?: string;
 };
 
 /** Backup Data + auto backup — ek hi prefs label; kisi card se choose → dono refresh. */
@@ -212,8 +226,14 @@ function BackupLocationField({
   disabled = false,
   disabledHint,
   align = "start",
+  hint,
+  pathPreview,
+  pathPreviewLabel = "Backup path",
 }: BackupLocationFieldProps) {
   const alignEnd = align === "end";
+  const preview = String(pathPreview || "").trim();
+  const shownLocation =
+    preview && isBackupLocationFullPathDisplay(preview) ? preview : locationLabel;
   return (
     <div
       className={cn(
@@ -224,8 +244,9 @@ function BackupLocationField({
     >
       <p>
         Backup location:{" "}
-        <span className="font-medium text-foreground break-all">{locationLabel}</span>
+        <span className="font-medium text-foreground break-all">{shownLocation}</span>
       </p>
+      {hint ? <p className="text-xs leading-snug text-muted-foreground">{hint}</p> : null}
       {disabled && disabledHint ? (
         <p className="text-xs text-muted-foreground">{disabledHint}</p>
       ) : null}
@@ -835,11 +856,17 @@ export function BackupRestore() {
     backupDataToRestore as Record<string, unknown> | null
   );
   /** Offline backup → Online sirf naya company (replace block). No company open = hamesha naya company. */
-  const restoreOnlineDestinationEnabled =
-    !staticBackupClient &&
-    restoreOnlineSlotGate.ok &&
-    restoreOnlineSlotGate.max > 0 &&
-    (!isOfflineIntentRestore || restoreAsNewCompany);
+  /**
+   * Pocket Ledger Server login: Online = the server. Company limits come from the server admin,
+   * not from the Firebase plan (that plan is unknown here and resolves to Free = 0 online slots).
+   */
+  const restoreServerLoginSession = isPocketBaseSessionUser(user) || isFirestoreBlockedForServerSession();
+  const restoreOnlineDestinationEnabled = restoreServerLoginSession
+    ? !isOfflineIntentRestore || restoreAsNewCompany
+    : !staticBackupClient &&
+      restoreOnlineSlotGate.ok &&
+      restoreOnlineSlotGate.max > 0 &&
+      (!isOfflineIntentRestore || restoreAsNewCompany);
   const [autoBackupEditCompanyOpen, setAutoBackupEditCompanyOpen] = useState(false);
   const [autoBackupEditCompanyTarget, setAutoBackupEditCompanyTarget] = useState<Company | null>(null);
   const autoBackupPreviousCompanyIdRef = useRef<string | null>(null);
@@ -868,6 +895,7 @@ export function BackupRestore() {
   /** Restore: bundle ho to attachments restore karna hai ya sirf URLs. */
   const [restoreIncludeAttachments, setRestoreIncludeAttachments] = useState(false);
   const [restoreAttachmentGateHint, setRestoreAttachmentGateHint] = useState<string | null>(null);
+  const [attachmentCompareOpen, setAttachmentCompareOpen] = useState(false);
   const [predownloadRunning, setPredownloadRunning] = useState(false);
   const [predownloadProgress, setPredownloadProgress] = useState<StaticBackupPredownloadProgress | null>(null);
   const predownloadAbortRef = useRef<AbortController | null>(null);
@@ -1801,6 +1829,10 @@ export function BackupRestore() {
       }
       return;
     }
+    if (includeAttachments) {
+      setAttachmentCompareOpen(true);
+      return;
+    }
     predownloadAbortRef.current?.abort();
     const ac = new AbortController();
     predownloadAbortRef.current = ac;
@@ -2104,8 +2136,10 @@ export function BackupRestore() {
       return;
     }
 
+    // Pocket Ledger Server login: Firestore is off for this session (no reads, no writes).
+    const pbServerSession = isPocketBaseSessionUser(user) || isFirestoreBlockedForServerSession();
     try {
-      if (user?.uid) {
+      if (user?.uid && !pbServerSession) {
         const userDocRef = doc(firestore, "users", user.uid);
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
@@ -2132,6 +2166,37 @@ export function BackupRestore() {
 
     const replaceCurrent = restoreTargetMode === "replace_current";
     const cloudRestore = options?.cloudRestore === true;
+    // Online target: a Pocket Ledger Server login always restores to the server (no Firestore write).
+    // Otherwise a new company goes to the admin-selected online server (same as Create company);
+    // replacing an existing company keeps that company's own server.
+    let pbRestore = false;
+    if (cloudRestore) {
+      if (pbServerSession) {
+        pbRestore = true;
+      } else if (replaceCurrent) {
+        pbRestore = isPocketBaseCompany(companyId, company);
+      } else {
+        try {
+          const onlineBackend = resolveOnlineDataBackend(
+            await ensureOnlineDataServerSettingsHydrated({ force: true }),
+            "backup restore"
+          );
+          pbRestore = onlineBackend.effective.id === ONLINE_DATA_SERVER_POCKETBASE_ID;
+        } catch (e) {
+          console.warn("[BackupRestore] online server settings unavailable; restoring to Firebase:", e);
+        }
+      }
+    }
+    if (pbRestore && !getValidPocketBaseAuth()) {
+      toast({
+        variant: "destructive",
+        title: "Pocket Ledger Server sign-in needed",
+        description: "Sign in to the Pocket Ledger Server first, then restore again.",
+        duration: 10_000,
+      });
+      setIsOverwriteConfirmOpen(false);
+      return;
+    }
 
     setIsRestoring(true);
     setIsOverwriteConfirmOpen(false);
@@ -2167,7 +2232,8 @@ export function BackupRestore() {
       // Hold: pending orphan sync is window me restored bytes delete na kare.
       if (restoreAttachments && backupDataHasAttachmentBundle(backupData)) {
         beginLocalAttachmentRestoreHold(targetCompanyId);
-        if (!staticBackupClient) {
+        // Server login: the Firebase plan is unknown (Free), so its attachment gate would always block.
+        if (!staticBackupClient && !pbServerSession) {
           const gate = await checkAttachmentRestoreAllowed(user.uid, accountPlanId);
           if (!gate.allowed) {
             endLocalAttachmentRestoreHold(targetCompanyId);
@@ -2230,6 +2296,7 @@ export function BackupRestore() {
       if (
         replaceCurrent &&
         cloudRestore &&
+        !pbRestore &&
         restoreAttachments &&
         backupDataHasAttachmentBundle(backupData)
       ) {
@@ -2281,6 +2348,7 @@ export function BackupRestore() {
       };
 
       const backupCompanyIdFromFile = String(backupData.companyDetails?.[0]?.id ?? "").trim();
+      const pbRestoreDocs: Array<{ coll: string; id: string; data: Record<string, unknown> }> = [];
 
       for (const colName of collectionsToBackup) {
         report.throwIfAborted();
@@ -2306,6 +2374,7 @@ export function BackupRestore() {
             notify: false,
             force: true,
           });
+          if (pbRestore) pbRestoreDocs.push({ coll: colName, id: String(originalId), data: finalData });
           report.tick("Writing records", colName.replace(/_/g, " "));
         }
         notifyBrowserDbCollectionUpdated(targetCompanyId, colName);
@@ -2356,6 +2425,12 @@ export function BackupRestore() {
           ownerEmail: user.email ?? null,
           syncedFromCloud: true,
           ...pocketLedgerStorageDocFields(targetCompanyId),
+          ...(pbRestore
+            ? {
+                onlineServerId: ONLINE_DATA_SERVER_POCKETBASE_ID,
+                onlineDataBackend: ONLINE_DATA_SERVER_POCKETBASE_ID,
+              }
+            : {}),
         } as Parameters<typeof promoteLocalCompanyRowToOnline>[1]);
       } else {
         const localCompanyRow = finalizeLocalCompanyRowAfterBackupRestore(companyRowBase, {
@@ -2369,6 +2444,59 @@ export function BackupRestore() {
       }
       report.tick("Finalizing", "Flushing local database…");
       await flushBrowserDbToIndexedDB();
+      let pbUploadResult: { uploaded: number; removed: number; attachments: number } | null = null;
+      if (pbRestore) {
+        // Pocket Ledger Server: create the company there and upload every restored record (awaited).
+        const ownerEmail = String(user.email ?? "").trim();
+        const sharedWithEmails = ensureSuperAdminInSharedEmails(
+          ownerEmail ? [ownerEmail] : [],
+          customUser?.email,
+          customUser?.role === "SuperAdmin"
+        );
+        const toTs = (iso: unknown) => {
+          const d = typeof iso === "string" && iso ? new Date(iso) : null;
+          return d && !Number.isNaN(d.getTime()) ? Timestamp.fromDate(d) : null;
+        };
+        const rootFromBackup: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(restNoFiscalLocalSafe)) {
+          if (v !== undefined && k !== "localCompanyUsers") rootFromBackup[k] = v;
+        }
+        const pbRootDoc: Record<string, unknown> = {
+          ...rootFromBackup,
+          name: resolvedCompanyLabel || String(rootFromBackup.name ?? targetCompanyId),
+          fiscalYearStart: toTs(companyRowBase.fiscalYearStart),
+          fiscalYearEnd: toTs(companyRowBase.fiscalYearEnd),
+          storageOption: "firebase",
+          syncPolicy: "online",
+          onlineServerId: ONLINE_DATA_SERVER_POCKETBASE_ID,
+          onlineDataBackend: ONLINE_DATA_SERVER_POCKETBASE_ID,
+          ownerId: user.uid,
+          ownerEmail: ownerEmail || null,
+          ...pocketLedgerStorageDocFields(targetCompanyId),
+          sharedWith: [],
+          sharedWithEmails,
+          sharedWithEmailsLower: sharedWithEmailsLowerFromList(sharedWithEmails),
+          planId: accountPlanId ?? rootFromBackup.planId ?? null,
+          planOwnerUid: user.uid,
+          isDeleted: false,
+          createdAt: Timestamp.now(),
+        };
+        if (!pbServerSession && !replaceCurrent) {
+          // Firebase login: the company root is also listed in Firestore (same as Create company).
+          void setDoc(doc(firestore, "companies", targetCompanyId), pbRootDoc).catch((e) =>
+            console.warn("[BackupRestore] Firestore company root for server restore skipped:", e)
+          );
+        }
+        report.tick("Uploading to Pocket Ledger Server", "Creating company.");
+        const { uploadRestoredCompanyToPocketBase } = await import("@/lib/pocketbaseData/pbRestoreUpload");
+        pbUploadResult = await uploadRestoredCompanyToPocketBase({
+          companyId: targetCompanyId,
+          rootDoc: pbRootDoc,
+          docs: pbRestoreDocs,
+          replaceCurrent,
+          onProgress: (label, detail) => report.tick(label, detail, 0),
+        });
+      }
       if (isFyScopedBackupData(backupData)) {
         // FY-scoped backup: openings changed vs any cached FY snapshot -> invalidate + notify ledgers.
         const { finalizeFyScopedBackupRestore } = await import("@/lib/backupFyScopeRestoreFinalize");
@@ -2394,6 +2522,19 @@ export function BackupRestore() {
       setRestoreProgress(null);
       setRestoreProgressDialogOpen(false);
       restoreAbortRef.current = null;
+
+      if (pbRestore) {
+        const files = pbUploadResult?.attachments ?? 0;
+        toast({
+          title: "Restored on Pocket Ledger Server",
+          description: `Company "${resolvedCompanyLabel || company?.name || targetCompanyId}" is on the Pocket Ledger Server: ${
+            pbUploadResult?.uploaded ?? 0
+          } record(s)${files ? `, ${files} file(s)` : ""}. Opening dashboard.`,
+        });
+        setFileToRestore(null);
+        window.setTimeout(() => window.location.assign("/dashboard"), 0);
+        return;
+      }
 
       if (cloudRestore) {
         toast({
@@ -2828,6 +2969,8 @@ export function BackupRestore() {
             <div className={cn(backupCardSoftGreenBorderCn, "p-2.5")}>
               <BackupLocationField
                 locationLabel={backupLocationLabel}
+                pathPreview={webFolderDisplayPath}
+                hint={backupLocationHint}
                 onChooseLocation={openBackupLocationDialog}
                 showButton={false}
               />
@@ -3381,6 +3524,12 @@ export function BackupRestore() {
           open={driveUploadDialogOpen}
           onOpenChange={setDriveUploadDialogOpen}
           companies={driveUploadCompanies}
+        />
+        <AttachmentSqliteServerCompareDialog
+          open={attachmentCompareOpen}
+          onOpenChange={setAttachmentCompareOpen}
+          company={company ?? null}
+          companyId={companyId ?? null}
         />
 
         <Card className={cn("order-4 flex min-w-0 flex-col overflow-hidden", backupCardToneSkyCn)}>
@@ -4427,7 +4576,11 @@ export function BackupRestore() {
                 <SettingsInfoTip
                   label="Online"
                   description={
-                    isOfflineIntentRestore && !restoreAsNewCompany
+                    restoreServerLoginSession
+                      ? isOfflineIntentRestore && !restoreAsNewCompany
+                        ? "This is an Offline backup. Replacing the same company Online is not available. Choose Offline, or switch to 'Restore as new company' to restore it on the Pocket Ledger Server."
+                        : "Restore to the Pocket Ledger Server. Records and files are uploaded to the server; the server admin controls company limits."
+                      : isOfflineIntentRestore && !restoreAsNewCompany
                       ? "This is an Offline backup (cloud HTTPS links were removed). Replacing the same company Online is not available. Choose Offline, or switch to “Restore as new company” — then Online can create fresh cloud links (needs a free plan slot)."
                       : restoreOnlineSlotGate.max <= 0
                         ? "Your plan has no online company slots. Upgrade to restore into Firestore (cloud)."
@@ -4450,7 +4603,7 @@ export function BackupRestore() {
                 />
               </div>
             </RadioGroup>
-            {!restoreOnlineDestinationEnabled && isOfflineIntentRestore && restoreAsNewCompany ? (
+            {!restoreServerLoginSession && !restoreOnlineDestinationEnabled && isOfflineIntentRestore && restoreAsNewCompany ? (
               <p className="text-xs text-amber-800 dark:text-amber-200">
                 {restoreOnlineSlotGate.max <= 0
                   ? "Online restore needs an online company slot on your plan."
@@ -4540,7 +4693,7 @@ export function BackupRestore() {
                 </label>
                 <label
                   className={`flex items-center gap-2 text-left text-sm ${
-                    !attachmentFeatureOn && !staticBackupClient && !restoreToLocalSqlite
+                    !attachmentFeatureOn && !staticBackupClient && !restoreToLocalSqlite && !restoreServerLoginSession
                       ? "opacity-60 cursor-not-allowed"
                       : "cursor-pointer"
                   }`}
@@ -4548,7 +4701,9 @@ export function BackupRestore() {
                   <RadioGroupItem
                     value="attachments"
                     id="restore-mode-attachments"
-                    disabled={!attachmentFeatureOn && !staticBackupClient && !restoreToLocalSqlite}
+                    disabled={
+                      !attachmentFeatureOn && !staticBackupClient && !restoreToLocalSqlite && !restoreServerLoginSession
+                    }
                   />
                   <span className="font-medium text-foreground">With attachments</span>
                 </label>

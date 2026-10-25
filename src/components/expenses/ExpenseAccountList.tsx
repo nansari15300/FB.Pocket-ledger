@@ -23,6 +23,8 @@ import {
   type EntityListQuickFilter,
 } from "@/components/entity/EntityListQuickFilterBar";
 import { filterAndSortMasterEntityListRows } from "@/lib/filterMasterEntityListRows"
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
 import { masterListShellCn, masterListRowUnselectedCn, MASTER_LIST_AVATAR_CN, MASTER_LIST_AVATAR_FALLBACK_CN } from "@/lib/masterListChrome";
 import { highlightQueryInText } from "@/lib/highlightQueryInText";
 import { MasterAliasSearchHint } from "@/components/entity/MasterAliasSearchHint";
@@ -56,18 +58,28 @@ export function ExpenseAccountList({
 }: ExpenseAccountListProps) {
   const { formatCurrency } = useDate();
   const { company } = useCompany();
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled, setHideSettled } = useEntityListHideSettled();
   const { animatePresenceMode, rowMotionProps, markListScrolling, isRowAnimationEnabled, layoutHoldMs } = useMasterListRowMotion();
-  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("latest");
   const quickFilter = quickFilterProp ?? internalQuickFilter;
   const setQuickFilter = onQuickFilterChange ?? setInternalQuickFilter;
   const quickFilterFooter = !hideQuickFilterBar ? (
-    <EntityListQuickFilterBar active={quickFilter} onChange={setQuickFilter} />
+    <EntityListQuickFilterBar
+      active={quickFilter}
+      onChange={setQuickFilter}
+      hideSettled={hideSettled}
+      onHideSettledChange={setHideSettled}
+    />
   ) : null;
   const highlightSearch = searchTerm.trim();
 
   const filteredAndSortedAccounts = useMemo(() => {
-    return filterAndSortMasterEntityListRows(accounts ?? [], searchTerm, quickFilter);
-  }, [accounts, searchTerm, quickFilter]);
+    return filterAndSortMasterEntityListRows(accounts ?? [], searchTerm, quickFilter, {
+      lastVoucherMsById,
+      hideSettled,
+    });
+  }, [accounts, searchTerm, quickFilter, lastVoucherMsById, hideSettled]);
 
   const visibleAccountAttachmentUrls = useMemo(
     () =>

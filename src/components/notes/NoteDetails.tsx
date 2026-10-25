@@ -1,6 +1,7 @@
 
 "use client";
 
+import { voucherTypeDisplayText } from "@/lib/voucherTypeDisplay";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -137,7 +138,7 @@ export function NoteDetails({
               break;
             }
             case "type":
-              cellValue = t.type ? t.type.replace(/_/g, " ") : "";
+              cellValue = t.type ? voucherTypeDisplayText(t.type) : "";
               break;
             default:
               return true;

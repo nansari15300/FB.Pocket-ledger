@@ -7,7 +7,7 @@ import {
   resolveGroupListMemberSearchText,
   sortGroupListMembers,
 } from "@/lib/groupListExpand";
-import { masterEntityTextMatchesSearch } from "@/lib/filterMasterEntityListRows";
+import { masterEntityTextMatchesSearch, shouldHideEntityListSettledRow } from "@/lib/filterMasterEntityListRows";
 
 export type MasterGroupListRow = {
   id: string;
@@ -62,7 +62,8 @@ export type MasterGroupListBranchSortRow = {
 export function sortMasterGroupListBranches(
   rows: MasterGroupListBranchSortRow[],
   _config: MasterGroupListConfig,
-  quickFilter: EntityListQuickFilter
+  quickFilter: EntityListQuickFilter,
+  lastVoucherMsById?: Map<string, number> | null
 ): MasterGroupListBranchSortRow[] {
   type BranchSortEntry = MasterGroupListBranchSortRow & {
     id: string;
@@ -76,7 +77,7 @@ export function sortMasterGroupListBranches(
   }));
 
   const filtered = filterGroupListMembersByQuickFilter(entries, quickFilter);
-  return sortGroupListMembers(filtered, quickFilter, (entry) => entry.branch.name);
+  return sortGroupListMembers(filtered, quickFilter, (entry) => entry.branch.name, lastVoucherMsById);
 }
 
 export function masterGroupBranchListExpandKey(
@@ -225,11 +226,26 @@ export function collectMasterGroupMoveExpandAncestorIds<G extends MasterGroupLis
   return ids;
 }
 
-function nodeMatchesQuickFilter(group: MasterGroupListRow, quickFilter: string): boolean {
+function nodeMatchesQuickFilter(
+  group: MasterGroupListRow,
+  quickFilter: string,
+  hideSettled?: boolean
+): boolean {
   const balRaw = group.balance;
   const bal = typeof balRaw === "number" && !Number.isNaN(balRaw) ? balRaw : null;
   const isSettled = bal !== null && Math.abs(bal) < 1e-6;
-  if (quickFilter === "default" || quickFilter === "name" || quickFilter === "date") return true;
+  if (shouldHideEntityListSettledRow(balRaw, hideSettled, quickFilter as EntityListQuickFilter)) {
+    return false;
+  }
+  if (
+    quickFilter === "default" ||
+    quickFilter === "latest" ||
+    quickFilter === "amount" ||
+    quickFilter === "amount_asc" ||
+    quickFilter === "name" ||
+    quickFilter === "date"
+  )
+    return true;
   if (quickFilter === "dr") return bal !== null && bal > 0;
   if (quickFilter === "cr") return bal !== null && bal < 0;
   if (quickFilter === "settled") return isSettled;
@@ -263,7 +279,8 @@ export function filterMasterGroupForest<G extends MasterGroupListRow>(
   nodes: MasterGroupTreeNode<G>[],
   searchTerm: string,
   quickFilter: string,
-  groupMembersByGroupId: Record<string, MasterGroupSearchMemberRow[]>
+  groupMembersByGroupId: Record<string, MasterGroupSearchMemberRow[]>,
+  hideSettled?: boolean
 ): MasterGroupTreeNode<G>[] {
   const q = searchTerm.trim().toLowerCase();
 
@@ -272,7 +289,7 @@ export function filterMasterGroupForest<G extends MasterGroupListRow>(
     const descendantMembers = collectMasterGroupNodeDescendantMembers(node, groupMembersByGroupId);
     const memberMatch = q.length > 0 && masterGroupMemberListMatchesSearch(descendantMembers, searchTerm);
     const selfMatch =
-      (nameMatch || memberMatch) && nodeMatchesQuickFilter(node.group, quickFilter);
+      (nameMatch || memberMatch) && nodeMatchesQuickFilter(node.group, quickFilter, hideSettled);
 
     const filteredChildren = node.children
       .map((c) => walk(c))
@@ -344,13 +361,16 @@ export function masterGroupSearchHasVisibleResults(
 
 export function sortMasterGroupTreeNodes<G extends MasterGroupListRow>(
   nodes: MasterGroupTreeNode<G>[],
-  quickFilter: EntityListQuickFilter | string
+  quickFilter: EntityListQuickFilter | string,
+  lastVoucherMsById?: Map<string, number> | null
 ): MasterGroupTreeNode<G>[] {
   const filter = quickFilter as EntityListQuickFilter;
-  const sorted = [...nodes].sort((a, b) => compareGroupListMembers(a.group, b.group, filter));
+  const sorted = [...nodes].sort((a, b) =>
+    compareGroupListMembers(a.group, b.group, filter, undefined, lastVoucherMsById)
+  );
   return sorted.map((n) => ({
     ...n,
-    children: sortMasterGroupTreeNodes(n.children, filter),
+    children: sortMasterGroupTreeNodes(n.children, filter, lastVoucherMsById),
   }));
 }
 

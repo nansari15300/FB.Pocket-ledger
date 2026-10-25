@@ -4,7 +4,8 @@
  * (entity missing ho to legacy `ic_peer_*` fallback)
  */
 
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc } from "firebase/firestore";
+import { collection, doc, setDoc, updateDoc } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { interCompanyAcNoForNewEntity } from "@/lib/interCompany/interCompanyAccountNo";
 import type { InterCompanyEntityKind } from "@/components/inter-company/InterCompanyEntitySide";

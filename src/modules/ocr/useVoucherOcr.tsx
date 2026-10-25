@@ -6,6 +6,7 @@
  * - Refresh: re-runs on the first attachment; keeps user-edited fields unless "Overwrite edited" is on.
  * - Auto Post: saves via the form's own submit with `ocrAutoPost` (form forces isApproved=false).
  */
+import { voucherTypeDisplayText } from "@/lib/voucherTypeDisplay";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { toast } from "sonner";
@@ -13,7 +14,8 @@ import { runOcrOnFile } from "./engine";
 import { parseBill } from "./parser";
 import { extractIdentifiers, type OcrIdentifiers } from "./identifiers";
 import { learnTemplateParty, lookupTemplateParty } from "./templates";
-import { getOcrPrefs, useOcrPrefs } from "./prefs";
+import { clampAutoPostSeconds, getOcrPrefs, useOcrPrefs } from "./prefs";
+import { AutoPostCountdownBubble } from "./AutoPostCountdownBubble";
 import { useOcrPlanAllowed } from "./gate";
 import { OcrFindAccountDialog } from "./OcrFindAccountDialog";
 import type { OcrSuggestion } from "./OcrSuggestionsDialog";
@@ -30,6 +32,9 @@ import { isOcrSelectableParty } from "./types";
 import { resolveOcrItemUnit } from "./extras";
 import { billVatPercent, cleanItemName, partyNamePrefill, findVat13, isOwnCompany, otherPans, pickLedgerAccount } from "./extras";
 import { useCompany } from "@/hooks/useCompany";
+import { useVouchers } from "@/hooks/useVouchers";
+import { detectReceipt, type ReceiptDetection } from "@/lib/ocr/receiptDetect";
+import { accountDisplayLabel, buildPaymentOutFill, pickChargeAccount, receiptNarration } from "@/lib/ocr/receiptDetect/fillPaymentOut";
 import { normalizeName } from "./normalize";
 import type { OcrFormAdapter } from "./adapters";
 import type { OcrItemLike, OcrParsedBill, OcrPartyLike } from "./types";
@@ -54,7 +59,13 @@ export type UseVoucherOcrOptions = {
   disabled?: boolean;
   /** Purchase/Sale ledger options (value/label) for the Dr account lookup. */
   ledgerAccounts?: readonly { value: string; label: string }[];
+  /** Actual open tab when one form serves two types (Payment In/Direct Income, Payment Out/Direct Expense). */
+  currentVoucherType?: string;
 };
+
+/** Voucher types the AddVoucherDialog can switch to from an OCR suggestion. */
+const OCR_SWITCHABLE = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"];
+const niceType = (t: string) => voucherTypeDisplayText(t).replace(/\b\w/g, (c) => c.toUpperCase());
 
 const LEDGER_LS = (companyId: string) => `pl.ocr.ledger.${companyId}`;
 function learnedLedger(companyId: string, partyId: string): string | null {
@@ -95,6 +106,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   // Own company straight from the company profile (not only form props) - hard guard against offering ourselves as party
   const { company: profileCompany } = useCompany();
   const ownRef = useRef<{ name: string | null; pan: string | null }>({ name: null, pan: null });
+  // Bank-receipt masters (local in-memory context, no Firestore read): own Bank/Cash, parties, staff
+  const { processedAccounts: vAccounts, processedParties: vParties, processedStaff: vStaff, processedExpenseAccounts: vExp } = useVouchers();
+  const mastersRef = useRef({ accounts: vAccounts, parties: vParties, staff: vStaff, expense: vExp });
+  mastersRef.current = { accounts: vAccounts, parties: vParties, staff: vStaff, expense: vExp };
   {
     const pc = profileCompany as { name?: string; pan?: string; panNumber?: string } | null | undefined;
     ownRef.current = { name: pc?.name || o.ownName || null, pan: pc?.pan || pc?.panNumber || o.ownPan || null };
@@ -102,13 +117,15 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   // Newly created masters: re-apply once the (async) master lists contain them
   const pendingRef = useRef<{ party?: string; items: { index: number; id: string }[]; tax?: string }>({ items: [] });
   const prefs = useOcrPrefs();
-  const visible = planAllowed && prefs.enabled && !o.disabled;
+  // Edit Trxn (existing voucher): no OCR at all - no Refresh bar, no auto-run, no bubbles. Add mode unchanged.
+  const visible = planAllowed && prefs.enabled && !o.disabled && !o.isEditing;
   const [running, setRunning] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [ids, setIds] = useState<OcrIdentifiers | null>(null);
   const [lastBill, setLastBill] = useState<OcrParsedBill | null>(null);
   const [debugInfo, setDebugInfo] = useState<{ text: string; meanConfidence: number; reasons: string[]; filled: string[]; missing: string[] } | null>(null);
   const [suggestions, setSuggestions] = useState<OcrSuggestion[]>([]);
+  const [receiptTarget, setReceiptTarget] = useState<string | null>(null);
   const [sugOpen, setSugOpen] = useState(false); // field bubbles shown
   const [doneIds, setDoneIds] = useState<Set<string>>(() => new Set());
   const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(() => new Set());
@@ -120,6 +137,32 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const filledRef = useRef(new Map<string, unknown>());
   const preOcrDoneRef = useRef(false);
   const pendingAutoPostRef = useRef(false);
+  /* Auto Post countdown: after OCR, wait the configured seconds (header gear, default 10) then save; bubble above Save can cancel. */
+  const [apCount, setApCount] = useState<number | null>(null);
+  /** OCR result (raw) that already scheduled an Auto Post -> never schedule twice for the same read. */
+  const apScheduledForRef = useRef<unknown>(null);
+  const apTimerRef = useRef<number | null>(null);
+  const cancelAutoPostCountdown = useCallback(() => {
+    if (apTimerRef.current != null) { window.clearInterval(apTimerRef.current); apTimerRef.current = null; }
+    pendingAutoPostRef.current = false;
+    setApCount(null);
+  }, []);
+  const startAutoPostCountdown = useCallback(() => {
+    if (apTimerRef.current != null) window.clearInterval(apTimerRef.current);
+    let n = clampAutoPostSeconds(getOcrPrefs().autoPostSeconds);
+    setApCount(n);
+    apTimerRef.current = window.setInterval(() => {
+      n -= 1;
+      if (n > 0) { setApCount(n); return; }
+      if (apTimerRef.current != null) window.clearInterval(apTimerRef.current);
+      apTimerRef.current = null;
+      setApCount(null);
+      optsRef.current.autoPost();
+    }, 1000);
+  }, []);
+  useEffect(() => () => { if (apTimerRef.current != null) window.clearInterval(apTimerRef.current); }, []);
+  const apPrefOn = useOcrPrefs().autoPost;
+  useEffect(() => { if (!apPrefOn) cancelAutoPostCountdown(); }, [apPrefOn, cancelAutoPostCountdown]);
   const [preReading, setPreReading] = useState<string | null>(null);
   const lastRawRef = useRef<OcrRawResult | null>(null);
   const inputNoteRef = useRef("handoff (no OCR)");
@@ -174,6 +217,137 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           return;
         }
         const own = ownRef.current;
+        /* ---------- Bank receipt (connectIPS etc.): detect + suggest voucher type only; no field filling yet ---------- */
+        {
+          const M = mastersRef.current;
+          const rc: ReceiptDetection = detectReceipt(`${raw.text}\n${raw.altText ?? ""}`, {
+            ownAccounts: (M.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType })),
+            parties: (M.parties ?? []).filter((p) => !(p as { isDeleted?: boolean }).isDeleted).map((p) => ({ id: p.id, name: String((p as { name?: string }).name ?? ""), aliasName: (p as { aliasName?: string }).aliasName })),
+            staff: (M.staff ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => ({ id: x.id, name: String((x as { name?: string }).name ?? "") })),
+            companyName: own.name ?? undefined,
+          });
+          if (rc.format) {
+            const cur = opt.currentVoucherType ?? opt.adapter.voucherType;
+            const types: string[] = rc.voucherType ? [rc.voucherType] : rc.candidates;
+            const m = rc.master;
+            const masterTxt = m.kind ? `${m.kind === "own_bank" ? "own bank" : m.kind}: ${m.name ?? "-"} (${Math.round(m.score * 100)}%)` : "no master matched";
+            const why = `${rc.format} receipt; ${rc.reason}; ${masterTxt}${rc.payeeType === "staff" ? "; payee type Staff" : ""}`;
+            /* Payment Out tab only (not Direct Expense): fill payee / from-account / amount / charge / date / narration */
+            const rFilled: string[] = [];
+            const rMissing: string[] = [];
+            const rExtra: OcrSuggestion[] = [];
+            if (rc.parsed && opt.adapter.voucherType === "payment_out" && cur === "payment_out") {
+              const F = opt.form;
+              const pf = buildPaymentOutFill(rc.parsed, {
+                ownAccounts: (M.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType })),
+                parties: (M.parties ?? []).filter((p) => isOcrSelectableParty(p as never)).map((p) => ({ id: p.id, name: String((p as { name?: string }).name ?? ""), aliasName: (p as { aliasName?: string }).aliasName })),
+                staff: (M.staff ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => ({ id: x.id, name: String((x as { name?: string }).name ?? "") })),
+                taxes: (opt.taxes ?? []).map((t) => ({ id: t.id, name: String(t.name ?? "") })),
+              });
+              const idPath = { party: "partyId", staff: "staffId", tax: "taxAccountId" } as const;
+              if (pf.payee) {
+                const path = idPath[pf.payee.payeeType];
+                if (canWrite(path) && canWrite("payeeType")) {
+                  if (F.getValues("payeeType") !== pf.payee.payeeType) write("payeeType", pf.payee.payeeType);
+                  write(path, pf.payee.id);
+                  rFilled.push(`Payee (${pf.payee.payeeType}: ${pf.payee.name})`);
+                }
+              } else {
+                rMissing.push("Party / payee");
+                if (pf.payeeName) {
+                  const nm = pf.payeeName;
+                  const bn = rc.parsed.beneficiary;
+                  rExtra.push({
+                    id: "create-party", label: "Create new party", value: nm, confidence: 0.8,
+                    reason: `Beneficiary "${nm}" matches no party / staff / tax payee - opens Create Party prefilled; you confirm Save`, deferred: true,
+                    apply: () => setCreatePrefill({ ...partyNamePrefill(nm), pan: "", phone: "", email: "", address: "", accountTypeId: PARTY_SYSTEM_CREDITORS_ID, extra: [bn.accountMasked && `Bank A/c: ${bn.accountMasked}`, bn.bankName, bn.branch].filter(Boolean).join(" | ") }),
+                  });
+                  rExtra.push({ id: "find-party", label: "Pick an existing account instead", value: "search by name", deferred: true, apply: () => setFindOpen(true) });
+                }
+              }
+              if (pf.from.ok) {
+                if (canWrite("accountId")) { write("accountId", pf.from.id); rFilled.push(`From: ${pf.from.name}`); }
+              } else rMissing.push(`Bank / cash account (${pf.from.reason})`);
+              /* Party row amount = `payeeAmount`; form derives top `amount` (Amount Paid) = payeeAmount + charge. */
+              if (pf.amount && canWrite("payeeAmount")) { write("payeeAmount", pf.amount); rFilled.push(`Amount ${pf.amount}`); }
+              if (pf.amount && canWrite("amount")) write("amount", pf.amount + (pf.charge ?? 0));
+              if (pf.date && canWrite("date")) { write("date", pf.date); rFilled.push("Date"); }
+              if (pf.charge) {
+                if (canWrite("otherChargeAmount")) { write("otherChargeAmount", pf.charge); rFilled.push(`Charge ${pf.charge}`); }
+                {
+                  let defId: string | null = null;
+                  try { defId = localStorage.getItem(`pocket-ledger:payment-out:other-charge-default:${opt.companyId || "global"}`); } catch { /* ignore */ }
+                  const cands = [
+                    ...(M.expense ?? []).filter((e) => !(e as { isDeleted?: boolean }).isDeleted).map((e) => ({ id: e.id, name: String((e as { name?: string }).name ?? ""), kind: "expense" as const })),
+                    ...(M.parties ?? []).filter((p) => isOcrSelectableParty(p as never)).map((p) => ({ id: p.id, name: String((p as { name?: string }).name ?? ""), kind: "party" as const })),
+                    ...(M.staff ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => ({ id: x.id, name: String((x as { name?: string }).name ?? ""), kind: "staff" as const })),
+                  ];
+                  const ch = pickChargeAccount(cands, { bankName: rc.parsed.sender?.bankName, defaultId: defId });
+                  const curCh = String(F.getValues("otherChargeAccountId") ?? "");
+                  if (ch && (!curCh || (ch.method === "detected" && canWrite("otherChargeAccountId")))) {
+                    if (curCh !== ch.id) write("otherChargeAccountId", ch.id);
+                    rFilled.push(`Charge account (${ch.method}: ${ch.name})`);
+                  } else if (!ch && !curCh) rMissing.push("Other charge account (bank charge)");
+                }
+              }
+              /* Narration uses the account actually selected in From Bank/Cash (OCR match or user pick). */
+              {
+                const selId = String(F.getValues("accountId") ?? "");
+                const sel = (M.accounts ?? []).find((a) => a.id === selId);
+                pf.narration = receiptNarration(rc.parsed, sel ? accountDisplayLabel(sel as never) : null);
+              }
+              if (pf.narration) {
+                const curN = String(F.getValues("narration") ?? "");
+                if (!curN || canWrite("narration")) { write("narration", pf.narration); rFilled.push("Narration"); }
+                else if (rc.parsed.txnId && !curN.includes(rc.parsed.txnId)) { write("narration", `${curN} | ${pf.narration}`); rFilled.push("Narration (appended)"); }
+              }
+            }
+            const sg: OcrSuggestion[] = [...rExtra, ...types.filter((t) => t !== cur).map((t, i) => ({
+              id: i === 0 ? "switch" : `switch-${t}`, label: `Switch to ${niceType(t)} voucher${rc.voucherType ? "" : i === 0 ? " (likely)" : " (alternative)"}`,
+              value: `from: ${niceType(cur)}`, confidence: rc.voucherType ? rc.typeConfidence : Math.max(0.3, rc.typeConfidence - i * 0.1), reason: why,
+              blocked: !OCR_SWITCHABLE.includes(t) ? "This voucher type cannot be opened from OCR" : opt.isEditing ? "Only for new vouchers" : undefined,
+              deferred: true,
+              apply: () => requestOcrVoucherSwitch(t, optsRef.current.files, { raw, original: takeOcrOriginal(optsRef.current.files[0]), selectedIds: [] }),
+            }))];
+            setLastBill(null);
+            setReceiptTarget(sg[0] && !sg[0].blocked ? types.filter((t) => t !== cur)[0] ?? null : null);
+            setSuggestions(sg);
+            if (reason === "refresh") { setDoneIds(new Set()); setDismissedKeys(new Set()); }
+            if (sg.some((x) => !x.blocked)) setSugOpen(true);
+            setMissingNow(rMissing);
+            setDebugInfo({
+              text: [`--- OCR build ${OCR_BUILD} | bank receipt: ${rc.format} (${Math.round(rc.confidence * 100)}%) ---`, `Type: ${rc.voucherType ?? `undecided (${rc.candidates.join(" / ")})`}`, why, rc.narration ? `Narration (not filled yet): ${rc.narration}` : "", rc.otherCharge ? `Charge: ${rc.otherCharge.amount}` : "", "--- OCR text ---", raw.text].filter(Boolean).join("\n"),
+              meanConfidence: raw.meanConfidence, reasons: [why], filled: rFilled, missing: rMissing,
+            });
+            const here = types.includes(cur);
+            toast.success(`OCR: ${rc.format === "connectips" ? "connectIPS" : rc.format} receipt detected`, {
+              id: tId, duration: 6000, position: "top-right",
+              description: rFilled.length || rMissing.length
+                ? `Filled: ${rFilled.join(", ") || "nothing"}${rMissing.length ? ` | Missing: ${rMissing.map((x) => x.split(" (")[0]).join(", ")}` : ""}`
+                : here && types.length === 1 ? `${niceType(cur)} is the right voucher. Fields are not auto-filled for this voucher type yet.` : `Suggested: ${types.map(niceType).join(" / ")}. Fields are not auto-filled yet.`,
+            });
+            /* Auto Post for bank receipts (direct attach OR after a voucher-type switch hand-off): only when this tab was filled
+               (Payment Out), nothing is missing, and no other voucher type is suggested. Once per OCR read. */
+            if ((reason === "auto" || reason === "handoff") && getOcrPrefs().autoPost && !opt.isEditing && opt.adapter.autoPost && apScheduledForRef.current !== raw) {
+              const F = opt.form;
+              const ok =
+                rFilled.length > 0 &&
+                rMissing.length === 0 &&
+                !sg.some((x) => (x.id === "switch" || x.id.startsWith("switch-")) && !x.blocked) &&
+                (opt.adapter.requiredPaths ?? []).every((pth) => !isEmptyVal(F.getValues(pth)));
+              if (ok) {
+                apScheduledForRef.current = raw;
+                if (F.getValues("isApproved") !== undefined) F.setValue("isApproved", false as never);
+                toast.info("OCR Auto Post: saving as UNAPPROVED", { duration: 2500 });
+                if (reuse?.direct) pendingAutoPostRef.current = true;
+                else startAutoPostCountdown();
+              } else {
+                toast.message("OCR Auto Post skipped", { description: "Required fields missing - review and save manually.", duration: 5000 });
+              }
+            }
+            return;
+          }
+        }
         const bill = parseBill(raw, { kind: opt.adapter.partySide === "seller" ? "purchase" : "sale", parties: opt.parties, items: opt.items, ownPan: own.pan, ownName: own.name });
         // Counter-party block identifiers from the parser (never our own buyer block); legacy scan as fallback
         const identifiers = bill.identifiers ?? extractIdentifiers(raw.lines.map((l) => l.text), opt.ownPan, bill.pan?.value);
@@ -190,6 +364,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           }
         }
         setIds(identifiers);
+        setReceiptTarget(null);
         setLastBill(bill);
 
         // Learned template (identifier → account) when strict match failed
@@ -355,10 +530,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         const curParty = A.party ? F.getValues(A.party.path) : "x";
         if (bill.docType && !sameVoucherBucket(A.voucherType, bill.docType.type)) {
           const dt = bill.docType.type;
-          const supported = ["sale", "purchase", "payment_in", "payment_out"].includes(dt);
-          const nice = dt.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
+          const supported = OCR_SWITCHABLE.includes(dt);
+          const nice = niceType(dt);
           sg.push({
-            id: "switch", label: `Switch to ${nice} voucher`, value: `open: ${A.voucherType}`, confidence: bill.docType.confidence, reason: bill.docType.reason,
+            id: "switch", label: `Switch to ${nice} voucher`, value: `from: ${niceType(opt.currentVoucherType ?? A.voucherType)}`, confidence: bill.docType.confidence, reason: bill.docType.reason,
             blocked: supported ? (opt.isEditing ? "Only for new vouchers" : undefined) : "No return/note voucher form in this app",
             deferred: true,
             apply: (ctx) => requestOcrVoucherSwitch(dt, optsRef.current.files, { raw, original: takeOcrOriginal(optsRef.current.files[0]), selectedIds: ctx?.selectedIds ?? [] }),
@@ -503,7 +678,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         const partyOk = !A.party || !partyApplies || !!F.getValues(A.party.path);
         void partyApplies;
 
-        if (reason === "auto" && getOcrPrefs().autoPost && !opt.isEditing) {
+        if ((reason === "auto" || reason === "handoff") && getOcrPrefs().autoPost && !opt.isEditing && apScheduledForRef.current !== raw) {
           const coreOk =
             A.autoPost &&
             partyOk &&
@@ -512,11 +687,12 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             (!A.amount || filledKeys.has("amount")) &&
             (A.requiredPaths ?? []).every((p) => !isEmptyVal(F.getValues(p)));
           if (coreOk) {
+            apScheduledForRef.current = raw;
             if (F.getValues("isApproved") !== undefined) F.setValue("isApproved", false as never);
             toast.info("OCR Auto Post: saving as UNAPPROVED…", { duration: 2500 });
             // Pre-OCR path: attachment is appended (compressed) only after OCR -> post once it is in state
             if (reuse?.direct) pendingAutoPostRef.current = true;
-            else window.setTimeout(() => optsRef.current.autoPost(), 700);
+            else startAutoPostCountdown();
           } else {
             toast.message("OCR Auto Post skipped", {
               description: A.autoPost ? "Required fields missing - review and save manually." : "This voucher type needs manual review before saving.",
@@ -535,15 +711,28 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
 
   // Voucher-type switch hand-off: receive the attachment, then OCR it here.
   const handoffRunRef = useRef<{ raw?: OcrRawResult; selectedIds?: string[] } | null>(null);
+  // Files handed over by a voucher switch; kept briefly so a form's own "new voucher" hydration (setFiles([]) in an effect
+  // that runs AFTER this hook's effect) cannot wipe them.
+  const handoffFilesRef = useRef<{ files: (File | string)[]; until: number } | null>(null);
   useEffect(() => {
     const h = takeOcrHandoff();
     if (h?.files.length && o.setFiles) {
       handoffRunRef.current = { raw: h.raw, selectedIds: h.selectedIds };
+      handoffFilesRef.current = { files: h.files, until: Date.now() + 2500 };
       linkOcrOriginal(h.files[0], h.original ?? null);
       o.setFiles(h.files);
+      const setF = o.setFiles;
+      window.setTimeout(() => { const g = handoffFilesRef.current; if (g && Date.now() < g.until) setF(g.files); }, 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(() => {
+    const g = handoffFilesRef.current;
+    if (!g) return;
+    if (Date.now() > g.until) { handoffFilesRef.current = null; return; }
+    if (o.files.length === 0 && o.setFiles) o.setFiles(g.files);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [o.files]);
   useEffect(() => {
     if (handoffRunRef.current && o.files.length && visible) {
       const h = handoffRunRef.current;
@@ -560,11 +749,13 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     prevLen.current = o.files.length;
     if (!visible || prev !== 0 || o.files.length === 0) return;
     if (typeof o.files[0] === "string") return;
+    // switch hand-off re-applying its files is not a new upload (the handoff run re-uses the OCR text)
+    if (handoffFilesRef.current && Date.now() < handoffFilesRef.current.until) return;
     if (preOcrDoneRef.current) {
       preOcrDoneRef.current = false;
       if (pendingAutoPostRef.current) {
         pendingAutoPostRef.current = false;
-        window.setTimeout(() => optsRef.current.autoPost(), 700);
+        startAutoPostCountdown();
       }
       return;
     }
@@ -698,9 +889,51 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const switchTarget = useMemo(() => {
     const s = suggestions.find((x) => x.id === "switch");
     if (!s || s.blocked || doneIds.has("switch") || dismissedKeys.has("switch")) return null;
-    return lastBill?.docType?.type ?? null;
-  }, [suggestions, doneIds, dismissedKeys, lastBill]);
+    return lastBill?.docType?.type ?? receiptTarget ?? null;
+  }, [suggestions, doneIds, dismissedKeys, lastBill, receiptTarget]);
   useOcrTabBadge(visible ? switchTarget : null);
+
+  /* Auto-switch countdown (10 s) on the top "switch" suggestion. One per OCR result (keyed by the suggestions array).
+     Cancelled by: Dismiss / X (switchTarget -> null), any other option click, user form edit, Hide, tab change, unmount. */
+  const SWITCH_COUNTDOWN_S = clampAutoPostSeconds(prefs.autoSwitchSeconds);
+  const autoSwitchOn = prefs.autoSwitchVoucher !== false;
+  const [swCount, setSwCount] = useState<number | null>(null);
+  const [swCancelledFor, setSwCancelledFor] = useState<unknown>(null);
+  const swFiredForRef = useRef<unknown>(null);
+  const sugListRef = useRef(suggestions);
+  sugListRef.current = suggestions;
+  const cancelSwitchCountdown = useCallback(() => { setSwCancelledFor(sugListRef.current); setSwCount(null); }, []);
+  useEffect(() => {
+    const sw = suggestions.find((x) => x.id === "switch");
+    if (!autoSwitchOn || !visible || !sugOpen || !switchTarget || !sw || sw.blocked || swCancelledFor === suggestions || swFiredForRef.current === suggestions) {
+      setSwCount(null);
+      return;
+    }
+    let n = SWITCH_COUNTDOWN_S;
+    setSwCount(n);
+    const t = setInterval(() => {
+      n -= 1;
+      if (n > 0) { setSwCount(n); return; }
+      clearInterval(t);
+      setSwCount(null);
+      if (swFiredForRef.current === suggestions) return; // never switch twice
+      swFiredForRef.current = suggestions;
+      void runApply([sw]);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [autoSwitchOn, SWITCH_COUNTDOWN_S, visible, sugOpen, switchTarget, suggestions, swCancelledFor, runApply]);
+  // user edits the form (RHF watch: type "change" only for user input, not OCR setValue) -> cancel
+  const swActive = swCount != null;
+  useEffect(() => {
+    if (!swActive) return;
+    const sub = optsRef.current.form.watch((_v: unknown, info: { type?: string }) => { if (info?.type === "change") cancelSwitchCountdown(); });
+    return () => sub.unsubscribe();
+  }, [swActive, cancelSwitchCountdown]);
+  // manual tab change inside the same form (e.g. Payment Out <-> Direct Expense) -> cancel
+  const curTabRef = useRef(o.currentVoucherType);
+  useEffect(() => {
+    if (curTabRef.current !== o.currentVoucherType) { curTabRef.current = o.currentVoucherType; cancelSwitchCountdown(); }
+  }, [o.currentVoucherType, cancelSwitchCountdown]);
   const bubbles = useMemo<OcrBubble[]>(() => {
     const out = new Map<string, OcrBubble>();
     for (const m of missingNow) {
@@ -729,9 +962,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         const ci = b.items.find((x) => x.id.startsWith("create-item-"));
         if (b.key === "lines" && ci) b.anchor = `lines#${ci.id.slice("create-item-".length)}`;
         if (b.items.some((x) => x.id === "switch")) {
-          b.title = `${b.items.find((x) => x.id === "switch")!.label}? (bill looks like a different voucher type)`;
+          b.title = `${b.items.find((x) => x.id === "switch")!.label}? (Added Document looks like a different voucher type)`;
           // anchor to the target voucher-type tab (e.g. Purchase); falls back to the tab row / OCR bar
           if (switchTarget) b.anchor = `voucher-type-${switchTarget}`;
+          if (swCount != null) b.countdown = swCount;
         }
         out.set(k, b);
       }
@@ -739,7 +973,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       for (const k of [...out.keys()]) if (k.startsWith("m:") && out.has(`s:${k.slice(2)}`)) out.delete(k);
     }
     return [...out.values()];
-  }, [missingNow, sugOpen, suggestions, doneIds, dismissedKeys, switchTarget]);
+  }, [missingNow, sugOpen, suggestions, doneIds, dismissedKeys, switchTarget, lastBill, swCount]);
 
   const panel = useMemo(
     () =>
@@ -747,8 +981,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         <>
           <OcrFieldBubbles
             bubbles={bubbles}
-            onApply={(sg) => void runApply([sg])}
+            onApply={(sg) => { if (sg.id !== "switch") cancelSwitchCountdown(); void runApply([sg]); }}
             onDismiss={(b) => {
+              cancelSwitchCountdown();
               if (b.kind === "missing") setMissingNow((p) => p.filter((m) => ocrFieldForMissing(m) !== b.key));
               else setDismissedKeys((p) => new Set([...p, ...b.items.map((x) => x.id)]));
             }}
@@ -808,6 +1043,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     [visible, ids, findOpen, lastBill, o.parties, o.adapter.party, pickParty, bubbles, runApply, createPrefill, createItemFor, createTaxOpen, write]
   );
 
+  useEffect(() => { if (!visible) cancelAutoPostCountdown(); }, [visible, cancelAutoPostCountdown]);
+
   return {
     visible,
     running,
@@ -828,7 +1065,15 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     tickedCount: tickedList.length,
     applyTicked,
     canFindAccount: !!ids && !!o.adapter.party,
-    panel,
+    panel: (
+      <>
+        {panel}
+        {visible && apCount != null ? <AutoPostCountdownBubble seconds={apCount} onCancel={() => { cancelAutoPostCountdown(); toast.message("Auto save cancelled"); }} /> : null}
+      </>
+    ),
+    /** Auto Post countdown seconds left (null = not running). */
+    autoPostCountdown: apCount,
+    cancelAutoPostCountdown,
   };
 }
 

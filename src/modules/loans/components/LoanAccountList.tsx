@@ -27,8 +27,14 @@ import {
 import { usePrewarmVisibleAttachments } from "@/hooks/usePrewarmVisibleAttachments";
 import { useCompany } from "@/hooks/useCompany";
 import { useVouchers } from "@/hooks/useVouchers";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
 import { highlightQueryInText } from "@/lib/highlightQueryInText";
-import { masterEntityTextMatchesSearch } from "@/lib/filterMasterEntityListRows";
+import {
+  compareEntityListQuickFilterSort,
+  masterEntityTextMatchesSearch,
+  shouldHideEntityListSettledRow,
+} from "@/lib/filterMasterEntityListRows";
 import type { Loan } from "../types/loanTypes";
 import { findLoanForAccount } from "../db/loanQueries";
 import { resolveLoanAccountAvatarUrl } from "../utils/resolveLoanAccountAvatarUrl";
@@ -57,7 +63,9 @@ export function LoanAccountList({
   const { formatCurrency } = useDate();
   const { company } = useCompany();
   const { processedStaff, processedAccounts } = useVouchers();
-  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("default");
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled, setHideSettled } = useEntityListHideSettled();
+  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("latest");
   const quickFilter = quickFilterProp ?? internalQuickFilter;
   const setQuickFilter = onQuickFilterChange ?? setInternalQuickFilter;
   const { animatePresenceMode, rowMotionProps, markListScrolling, isRowAnimationEnabled, layoutHoldMs } =
@@ -90,16 +98,6 @@ export function LoanAccountList({
   }, [processedStaff]);
 
   const filteredAndSortedAccounts = useMemo(() => {
-    const toDateMs = (raw: unknown): number => {
-      if (!raw) return 0;
-      if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? 0 : raw.getTime();
-      if (typeof (raw as { toDate?: () => Date }).toDate === "function") {
-        const d = (raw as { toDate: () => Date }).toDate();
-        return Number.isNaN(d.getTime()) ? 0 : d.getTime();
-      }
-      const d = new Date(raw as never);
-      return Number.isNaN(d.getTime()) ? 0 : d.getTime();
-    };
     const isSettled = (bal: number) => Math.abs(Number(bal || 0)) < 1e-6;
     return accounts
       .filter((account) => {
@@ -108,16 +106,15 @@ export function LoanAccountList({
         const bal = Number(account.balance || 0);
         if (quickFilter === "dr") return bal > 0;
         if (quickFilter === "cr") return bal < 0;
+        if (shouldHideEntityListSettledRow(bal, hideSettled, quickFilter)) return false;
         if (quickFilter === "settled") return isSettled(bal);
         if (quickFilter === "non_settled") return !isSettled(bal);
         return true;
       })
-      .sort((a, b) => {
-        if (quickFilter === "name") return String(a.name || "").localeCompare(String(b.name || ""));
-        if (quickFilter === "date") return toDateMs(b.openingBalanceDate) - toDateMs(a.openingBalanceDate);
-        return Math.abs(Number(b.balance || 0)) - Math.abs(Number(a.balance || 0));
-      });
-  }, [accounts, searchTerm, quickFilter]);
+      .sort((a, b) =>
+        compareEntityListQuickFilterSort(a, b, quickFilter, undefined, lastVoucherMsById)
+      );
+  }, [accounts, searchTerm, quickFilter, lastVoucherMsById, hideSettled]);
 
   const visibleAccountAttachmentUrls = useMemo(
     () =>
@@ -255,7 +252,12 @@ export function LoanAccountList({
         </ul>
       </ScrollArea>
       {!hideQuickFilterBar ? (
-        <EntityListQuickFilterBar active={quickFilter} onChange={setQuickFilter} />
+        <EntityListQuickFilterBar
+          active={quickFilter}
+          onChange={setQuickFilter}
+          hideSettled={hideSettled}
+          onHideSettledChange={setHideSettled}
+        />
       ) : null}
     </div>
   );

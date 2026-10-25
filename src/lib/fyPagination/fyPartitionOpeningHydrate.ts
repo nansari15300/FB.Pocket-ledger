@@ -1,8 +1,10 @@
 "use client";
 
 import { startOfDay } from "date-fns";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { isCloudLinkedCompanyStorage } from "@/lib/companyUnlockGate";
+import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import type { CompanyStorageRow } from "@/lib/companyStorageKind";
 import { firestore } from "@/lib/firebase";
 import { fetchServerFyClosingSnapshot } from "@/lib/fyPagination/serverFyClosingSnapshotClient";
@@ -53,9 +55,9 @@ async function hydratePriorFyOpeningBalancesFromServer(params: {
   const cid = String(companyId || "").trim();
   if (!cid || !priorFyKey) return unavailableOpeningHydrateResult();
 
-  if (isCloudLinkedCompanyStorage(company)) {
+  if (isCloudLinkedCompanyStorage(company) && !isPocketBaseCompanyId(cid)) {
     const fsCompanyId = String(company?.authoritativeCompanyId || cid).trim();
-    if (fsCompanyId) {
+    if (fsCompanyId && !isPocketBaseCompanyId(fsCompanyId)) {
       try {
         const path = fySnapshotDocPath(fsCompanyId, "fy", priorFyKey);
         const snap = await getDoc(doc(firestore, path));

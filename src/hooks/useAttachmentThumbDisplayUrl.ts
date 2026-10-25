@@ -6,7 +6,7 @@ import {
   peekHoverCachedBlobUrl,
   rememberHoverBlobUrl,
 } from "@/lib/attachmentHoverBlobCache";
-import { sniffBlobKindForPreview } from "@/lib/attachmentFormatLabel";
+import { isNonImageBlobObjectUrl, sniffBlobKindForPreview } from "@/lib/attachmentFormatLabel";
 import { isLocalFileRef } from "@/lib/localPendingFiles";
 import {
   getOfflineCachedAttachmentNativeRef,
@@ -37,6 +37,18 @@ function pdfPortalCacheKey(url: string): string {
   return `${url}::pdf-portal`;
 }
 
+/**
+ * Cached cell thumb. `local:` refs: never fall back to the shared `url` key - that holds the raw
+ * file blob (PDF for pending PDFs) seeded by localPendingFiles / FilePreview, not an <img> thumb.
+ */
+function peekCachedCellThumb(url: string): string | undefined {
+  return (
+    peekHoverCachedBlobUrl(thumbCacheKey(url)) ??
+    (isLocalFileRef(url) ? undefined : peekHoverCachedBlobUrl(url)) ??
+    undefined
+  );
+}
+
 function isInlineImagePreviewUrl(raw: string): boolean {
   return /^data:image\//i.test(String(raw || "").trim()) || /^blob:/i.test(String(raw || "").trim());
 }
@@ -51,7 +63,8 @@ export function invalidateAttachmentThumbDisplayUrl(
   // Cell thumb pehle — shared hover `url` key tabhi clear jab wahi blob ho.
   forgetHoverBlobUrl(thumbCacheKey(url), expected);
   const hoverCached = peekHoverCachedBlobUrl(url);
-  if (hoverCached && (!expected || hoverCached === expected)) {
+  // `local:` shared key = raw file blob (FilePreview / open use it); a bad <img> thumb must not revoke it.
+  if (hoverCached && !isLocalFileRef(url) && (!expected || hoverCached === expected)) {
     forgetHoverBlobUrl(url, expected);
   }
   requestAttachmentUiRefresh();
@@ -81,7 +94,7 @@ export function useAttachmentThumbDisplayUrl(
   const [thumb, setThumb] = useState<string | null>(() => {
     if (!url) return null;
     if (isInlineImagePreviewUrl(url)) return url;
-    return peekHoverCachedBlobUrl(thumbCacheKey(url)) ?? peekHoverCachedBlobUrl(url);
+    return peekCachedCellThumb(url) ?? null;
   });
 
   useEffect(() => {
@@ -94,7 +107,7 @@ export function useAttachmentThumbDisplayUrl(
     const readCached = () =>
       isInlineImagePreviewUrl(url)
         ? url
-        : peekHoverCachedBlobUrl(thumbCacheKey(url)) ?? peekHoverCachedBlobUrl(url);
+        : peekCachedCellThumb(url);
 
     const applyCached = () => {
       setUiRefreshTick(getAttachmentUiRefreshTick());
@@ -108,7 +121,7 @@ export function useAttachmentThumbDisplayUrl(
 
   useEffect(() => {
     if (!url || refreshKey <= 0) return;
-    const cached = peekHoverCachedBlobUrl(thumbCacheKey(url)) ?? peekHoverCachedBlobUrl(url);
+    const cached = peekCachedCellThumb(url);
     if (!cached) setThumb(null);
   }, [url, refreshKey]);
 
@@ -121,9 +134,8 @@ export function useAttachmentThumbDisplayUrl(
         if (await isOfflineCachedAttachmentOnDevice(url)) {
           markAttachmentUrlReady(url);
         }
-        const existingThumb =
-          peekHoverCachedBlobUrl(thumbCacheKey(url)) ?? peekHoverCachedBlobUrl(url);
-        if (existingThumb) {
+        const existingThumb = peekCachedCellThumb(url);
+        if (existingThumb && !(isLocalFileRef(url) && (await isNonImageBlobObjectUrl(existingThumb)))) {
           if (!cancelled) setThumb(existingThumb);
           markAttachmentUrlReady(url);
           return;
@@ -157,8 +169,10 @@ export function useAttachmentThumbDisplayUrl(
 
   useEffect(() => {
     if (!url) return;
-    const cached =
-      peekHoverCachedBlobUrl(thumbCacheKey(url)) ?? peekHoverCachedBlobUrl(url);
+    const rawCached = peekCachedCellThumb(url);
+    // local: blob thumb is verified async below (PDF blob under ::cell-thumb => raster path).
+    const verifyLocalCached = Boolean(rawCached && isLocalFileRef(url) && /^blob:/i.test(rawCached));
+    const cached = verifyLocalCached ? undefined : rawCached;
     if (cached) {
       setThumb(cached);
       // Portal/focus refresh: cache hit pe naya objectURL mat banao —
@@ -166,12 +180,21 @@ export function useAttachmentThumbDisplayUrl(
       // Sirf explicit invalidate (refreshKey / onError) par re-resolve.
       if (refreshKey <= 0) return;
     }
-    if (!ready) return;
+    if (!ready && !verifyLocalCached) return;
     const networkAllowed = resolveFallback?.filesNetworkAllowed !== false;
 
     let cancelled = false;
     void (async () => {
       try {
+        if (verifyLocalCached && rawCached) {
+          if (!(await isNonImageBlobObjectUrl(rawCached))) {
+            if (!cancelled) setThumb(rawCached);
+            if (refreshKey <= 0) return;
+          } else {
+            forgetHoverBlobUrl(thumbCacheKey(url), rawCached);
+          }
+        }
+        if (!ready || cancelled) return;
         let blob: Blob | null = null;
         if (/^(data:|blob:)/i.test(url) && !isInlineImagePreviewUrl(url)) {
           try {

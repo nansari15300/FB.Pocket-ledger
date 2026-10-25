@@ -13,11 +13,14 @@ import { PayeeList, filterPayeeListRows } from "@/components/payee/PayeeList";
 import type { UnifiedPayee } from "@/components/payee/PayeeList";
 import type { EntityListQuickFilter } from "@/components/entity/EntityListQuickFilterBar";
 import { useFyScopedVouchers } from "@/hooks/useFyScopedVouchers";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
 import { useDate } from "@/hooks/useDate";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { PermissionButton } from "@/components/permission";
 import type { DateRange } from "@/components/ui/ad-calendar";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSearchParams } from "next/navigation";
@@ -34,6 +37,8 @@ export function PaymentOutReportDetail() {
   const isMobile = useIsMobile();
   const searchParams = useSearchParams();
   const { formatCurrency, formatCurrencyForPrint } = useDate();
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled } = useEntityListHideSettled();
   const {
     vouchers: allVouchers,
     loading: vouchersLoading,
@@ -46,7 +51,7 @@ export function PaymentOutReportDetail() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState("");
-  const [listQuickFilter, setListQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [listQuickFilter, setListQuickFilter] = useState<EntityListQuickFilter>("latest");
   const [showAllCompanyVouchers, setShowAllCompanyVouchers] = useState(false);
   const [isVoucherOpen, setIsVoucherOpen] = useState(false);
   const [defaultTab, setDefaultTab] = useState<"payment_out" | "direct_expense">("payment_out");
@@ -184,8 +189,8 @@ export function PaymentOutReportDetail() {
   const currentTransactions = showAllCompanyVouchers ? paymentOutVouchers : payeeTransactions;
 
   const filteredPayees = useMemo(
-    () => filterPayeeListRows(payeesWithPayments, searchTerm, listQuickFilter),
-    [payeesWithPayments, searchTerm, listQuickFilter]
+    () => filterPayeeListRows(payeesWithPayments, searchTerm, listQuickFilter, lastVoucherMsById, hideSettled),
+    [payeesWithPayments, searchTerm, listQuickFilter, lastVoucherMsById, hideSettled]
   );
 
   const REPORT_MEMORY_KEY = "reportPaymentOutState";

@@ -6,7 +6,7 @@ import { isEmbeddedDeviceLockShell } from "@/lib/embeddedDeviceLock";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Share2, Loader2, Hash, Palette, FileDigit, Zap, Building, ShieldAlert, Bell, Smartphone, ChevronLeft, PanelRight, CalendarRange, LockKeyhole, Cloud, Server, Link2, Activity } from "lucide-react";
+import { Share2, Loader2, Hash, Palette, FileDigit, Zap, Building, ShieldAlert, Bell, Smartphone, ChevronLeft, PanelLeft, PanelRight, CalendarRange, LockKeyhole, Cloud, Server, Link2, Activity } from "lucide-react";
 import { ManageShare } from "@/components/company/ManageShare";
 import usePermissions from "@/hooks/usePermissions";
 import { useCompany } from "@/hooks/useCompany";
@@ -64,12 +64,13 @@ const SETTINGS_LIST_SHEET_RIGHT_EDGE_OPTS: EdgeSwipeDocumentOptions = { edgeWidt
  * Ek nav row — `PartyList.tsx` `cardClassName` ke saath align (selected = primary border + secondary fill).
  * Native `button` taake ghost/outline variant se border fight na ho.
  */
-function settingsNavRowClass(isActive: boolean, isDanger?: boolean) {
+function settingsNavRowClass(isActive: boolean, isDanger?: boolean, collapsed?: boolean) {
   return cn(
     "pl-settings-nav-row pl-dashboard-tone-card pl-dashboard-ribbon-emerald",
-    "min-w-0 max-w-full w-full overflow-hidden rounded-lg py-2 px-3",
+    "min-w-0 max-w-full w-full overflow-hidden rounded-lg py-2",
+    collapsed ? "justify-center px-1" : "px-3 gap-3 text-left",
     "cursor-pointer transition-all duration-200",
-    "flex items-center gap-3 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+    "flex items-center text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
     isActive ? cn("font-bold", masterListSelectedCn) : cn(masterListUnselectedCn, "bg-card"),
     isDanger && !isActive && "text-destructive hover:text-destructive",
     isDanger && isActive && "text-destructive"
@@ -163,6 +164,28 @@ function SettingsPageContent() {
     const { settingsListOpen, setSettingsListOpen } = useSettingsList();
 
     const [activeView, setActiveView] = useState<string>("");
+    const SETTINGS_LIST_COLLAPSE_KEY = "pl-settings-list-collapsed";
+    const [desktopSettingsListOpen, setDesktopSettingsListOpen] = useState(true);
+    useLayoutEffect(() => {
+        try {
+            setDesktopSettingsListOpen(localStorage.getItem(SETTINGS_LIST_COLLAPSE_KEY) !== "1");
+        } catch {
+            /* ignore */
+        }
+    }, []);
+    const toggleDesktopSettingsList = useCallback(() => {
+        setDesktopSettingsListOpen((prev) => {
+            const next = !prev;
+            try {
+                localStorage.setItem(SETTINGS_LIST_COLLAPSE_KEY, next ? "0" : "1");
+            } catch {
+                /* ignore */
+            }
+            return next;
+        });
+    }, []);
+    const settingsListToggleBtnClass =
+        "h-7 w-7 shrink-0 rounded-full border-blue-300/90 bg-blue-100 text-blue-900 shadow-sm hover:bg-blue-200 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-100 dark:hover:bg-blue-900/50";
 
     const canConfigureCompany = can("configure_company_settings");
     const devServerNav = process.env.NODE_ENV === "development";
@@ -402,15 +425,36 @@ function SettingsPageContent() {
         [can, setActiveViewWithUrl, setSettingsListOpen]
     );
 
-    const renderSettingsListHeader = () => (
-        <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-                <h2 className="text-lg font-semibold tracking-tight">Settings</h2>
-                <p className="text-sm text-muted-foreground">Manage your app preferences.</p>
+    const renderSettingsListCollapseBtn = () =>
+        mobileSettingsUx ? null : (
+            <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className={settingsListToggleBtnClass}
+                onClick={toggleDesktopSettingsList}
+                title={desktopSettingsListOpen ? "Collapse settings list" : "Expand settings list"}
+                aria-label={desktopSettingsListOpen ? "Collapse settings list" : "Expand settings list"}
+            >
+                <PanelLeft className="h-3.5 w-3.5" />
+            </Button>
+        );
+
+    const renderSettingsListHeader = () =>
+        desktopSettingsListOpen ? (
+            <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                    <h2 className="text-lg font-semibold tracking-tight">Settings</h2>
+                    <p className="text-sm text-muted-foreground">Manage your app preferences.</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                    <MyRoleButton onJumpToEditor={jumpMyRoleToEditor} />
+                    {renderSettingsListCollapseBtn()}
+                </div>
             </div>
-            <MyRoleButton onJumpToEditor={jumpMyRoleToEditor} />
-        </div>
-    );
+        ) : (
+            <div className="flex justify-center">{renderSettingsListCollapseBtn()}</div>
+        );
 
     const backToSettingsListOnly = useCallback(() => {
         setActiveView("");
@@ -477,7 +521,9 @@ function SettingsPageContent() {
         [openSettingsListSheet]
     );
 
-    const renderNavList = (onPick?: () => void) => (
+    const renderNavList = (onPick?: () => void) => {
+        const collapsed = !mobileSettingsUx && !desktopSettingsListOpen;
+        return (
         <ul className="list-none space-y-1 py-1 w-full min-w-0" data-theme-list="account-list">
             {navItemsForUi.map((item) => {
                 const isActive = activeView === item.id;
@@ -488,20 +534,23 @@ function SettingsPageContent() {
                             data-pl-settings-nav-row=""
                             data-pl-settings-nav-selected={isActive ? "" : undefined}
                             aria-current={isActive ? "page" : undefined}
-                            className={settingsNavRowClass(isActive, item.isDanger)}
+                            title={collapsed ? item.title : undefined}
+                            aria-label={item.title}
+                            className={settingsNavRowClass(isActive, item.isDanger, collapsed)}
                             onClick={() => {
                                 setActiveViewWithUrl(item.id);
                                 onPick?.();
                             }}
                         >
                             <item.icon className="h-5 w-5 shrink-0" />
-                            <span className="truncate">{item.title}</span>
+                            {collapsed ? null : <span className="truncate">{item.title}</span>}
                         </button>
                     </li>
                 );
             })}
         </ul>
-    );
+        );
+    };
 
     const renderFixedUpdateRow = () => (
         <div
@@ -526,7 +575,7 @@ function SettingsPageContent() {
                 <div className={cn("min-h-0 flex-1 overflow-y-auto overflow-x-hidden", SETTINGS_NAV_INSET_X)}>
                     {renderNavList(onPick)}
                 </div>
-                {renderFixedUpdateRow()}
+                {mobileSettingsUx || desktopSettingsListOpen ? renderFixedUpdateRow() : null}
             </>
         );
 
@@ -559,7 +608,11 @@ function SettingsPageContent() {
             case "devices":
                 return can('configure_company_settings') ? <ManageDevices /> : null;
             case "online_trigger_log":
-                return can("configure_company_settings") ? <OnlineTriggerLogSettings /> : null;
+                return can("configure_company_settings") ? (
+                    <div className="flex h-full min-h-0 flex-col">
+                        <OnlineTriggerLogSettings />
+                    </div>
+                ) : null;
             case "local_cloud_sync":
                 return <LocalCloudSyncSettingsPage />;
             case "local_app_server":
@@ -752,7 +805,14 @@ function SettingsPageContent() {
     return (
       <div className="h-full flex flex-col overflow-hidden">
         {/* Baen list column ~30% patla (0.4fr→0.28fr, 300px→210px min); daen content zyada; nav scroll par L/R 4px same */}
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-[5px] overflow-hidden p-2 sm:p-3 md:grid-cols-[minmax(210px,0.28fr)_minmax(0,1fr)] md:p-3">
+        <div
+          className={cn(
+            "grid min-h-0 flex-1 grid-cols-1 gap-[5px] overflow-hidden p-2 sm:p-3 md:p-3",
+            desktopSettingsListOpen
+              ? "md:grid-cols-[minmax(210px,0.28fr)_minmax(0,1fr)]"
+              : "md:grid-cols-[4rem_minmax(0,1fr)]"
+          )}
+        >
           <aside className="flex min-h-0 w-full min-w-0 flex-col overflow-hidden">
             <div
               className={cn("flex min-h-0 h-full min-w-0 flex-1 flex-col overflow-hidden", SETTINGS_LIST_SHELL)}
@@ -772,7 +832,7 @@ function SettingsPageContent() {
             <div
               className={cn(
                 "min-h-0 min-w-0 flex-1 overflow-x-hidden [scrollbar-gutter:stable]",
-                activeView === "local_cloud_sync"
+                activeView === "local_cloud_sync" || activeView === "online_trigger_log"
                   ? "flex flex-col overflow-hidden"
                   : "overflow-y-auto"
               )}

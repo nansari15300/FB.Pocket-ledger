@@ -12,7 +12,11 @@ import {
   isLocalFileRef,
   putPendingFile,
 } from "@/lib/localPendingFiles";
-import { apkCloudCompanyUsesSqliteFirstWrites, isClientNavigatorOffline } from "@/lib/apkOnlineFirestoreWritePolicy";
+import {
+  apkCloudCompanyUsesSqliteFirstWrites,
+  apkEmbeddedSqliteFirstWritesPreferred,
+  isClientNavigatorOffline,
+} from "@/lib/apkOnlineFirestoreWritePolicy";
 import { getRemoteAttachmentBlobPreferOfflineCache } from "@/lib/offlineAttachmentUrlCache";
 import { isDriveFileRef } from "@/lib/legacyDriveFileRef";
 import { tryGetStoragePathFromFirebaseDownloadUrl } from "@/lib/firebaseStorageDownloadUrl";
@@ -69,6 +73,24 @@ export function recordContainsLocalPendingVoucherFileRef(obj: Record<string, unk
   return false;
 }
 
+const STAGE_TIMEOUT = Symbol("stage-timeout");
+/** IndexedDB / Capacitor Filesystem write that never settles must not block "Saving..." forever. */
+function raceStageTimeout<T>(p: Promise<T>, ms: number): Promise<T | typeof STAGE_TIMEOUT> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => resolve(STAGE_TIMEOUT), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
+
 export async function appendLocalOnlyVoucherFilesToUrls(params: {
   companyId: string;
   /** `voucher-files/${companyId}/${storageFolder}/...` — sale, purchase, journal, payment_in, ... */
@@ -83,18 +105,21 @@ export async function appendLocalOnlyVoucherFilesToUrls(params: {
   const out = [...existingFileUrls];
   if (newFiles.length === 0) return { fileUrls: out };
 
-  const fsCompanyId = await resolveAuthoritativeFirestoreCompanyId(companyId);
+  const fsRes = await raceStageTimeout(resolveAuthoritativeFirestoreCompanyId(companyId).catch(() => companyId), 5_000);
+  const fsCompanyId = fsRes === STAGE_TIMEOUT ? companyId : fsRes;
   // PL staff: pending docPath local company id pe rakho — upload queue flush key mismatch (host id vs local id) avoid.
   let docCompanyId = fsCompanyId || companyId;
   try {
     const { isPlServerThinStaffCompany } = await import("@/lib/plServerThinStaffClient");
-    if (await isPlServerThinStaffCompany(companyId)) docCompanyId = companyId;
+    if ((await raceStageTimeout(isPlServerThinStaffCompany(companyId), 3_000)) === true) docCompanyId = companyId;
   } catch {
     /* keep fsCompanyId */
   }
   const voucherIdForDoc = existingVoucherId || generateLocalVoucherIdForCreate();
   const preGeneratedVoucherId = existingVoucherId ? undefined : voucherIdForDoc;
-  const usePocketLedger = await resolveCompanyUsesPocketLedgerStorage(companyId);
+  const plRes = await raceStageTimeout(resolveCompanyUsesPocketLedgerStorage(companyId).catch(() => false), 5_000);
+  const usePocketLedger = plRes === STAGE_TIMEOUT ? false : plRes;
+  if (plRes === STAGE_TIMEOUT) console.warn("[PL-DEBUG-SAVE] stage: resolveCompanyUsesPocketLedgerStorage timed out (5 s), default false");
   const storagePathPrefix = buildStoragePathPrefix({
     companyId,
     usePocketLedger,
@@ -103,10 +128,13 @@ export async function appendLocalOnlyVoucherFilesToUrls(params: {
     voucherType: storageFolder,
   });
 
+  const { getRecompressReplacementSourceUrl } = await import("@/lib/attachmentRecompressOnSave");
   for (const file of newFiles) {
     if (out.length >= maxFileCount) break;
     const localFileId = generateLocalFileId();
     const pendingFile = {
+      // Phase 2 hotfix: edit-time recompress whose re-upload failed -> swap + delete old after background upload.
+      replacesUrl: getRecompressReplacementSourceUrl(file),
       id: localFileId,
       blob: file,
       contentType: file.type || "application/octet-stream",
@@ -115,12 +143,44 @@ export async function appendLocalOnlyVoucherFilesToUrls(params: {
       storagePathPrefix,
       fileName: file.name,
     };
-    await putPendingFile(pendingFile);
     const localRef = `${LOCAL_FILE_PREFIX}${localFileId}`;
-    let stagedBlob = await getBlobFromLocalFileRef(localRef);
+    const putP = putPendingFile(pendingFile);
+    const putRes = await raceStageTimeout(putP, 15_000);
+    if (putRes === STAGE_TIMEOUT) {
+      // Write still in flight: keep the ref (bytes land when the write finishes) instead of blocking save / dropping file.
+      console.warn("[PL-DEBUG-SAVE] stage: putPendingFile timed out (15 s); keeping ref, write continues in background", {
+        localRef,
+        fileName: file.name,
+        size: file.size,
+      });
+      putP.catch((e) => {
+        console.error("[voucherLocalAttachmentUpload] background putPendingFile failed; retrying once", e);
+        void putPendingFile(pendingFile).catch((e2) =>
+          console.error("[voucherLocalAttachmentUpload] retry putPendingFile failed", localRef, e2)
+        );
+      });
+      out.push(localRef);
+      continue;
+    }
+    const readBack = async () => {
+      const r = await raceStageTimeout(getBlobFromLocalFileRef(localRef), 8_000);
+      return r === STAGE_TIMEOUT ? STAGE_TIMEOUT : r;
+    };
+    let stagedBlob = await readBack();
+    if (stagedBlob === STAGE_TIMEOUT) {
+      console.warn("[PL-DEBUG-SAVE] stage: read-back timed out (8 s); write succeeded, keeping ref", localRef);
+      out.push(localRef);
+      continue;
+    }
     if (!stagedBlob || stagedBlob.size <= 0) {
-      await putPendingFile(pendingFile);
-      stagedBlob = await getBlobFromLocalFileRef(localRef);
+      const again = await raceStageTimeout(putPendingFile(pendingFile), 15_000);
+      const rb = again === STAGE_TIMEOUT ? STAGE_TIMEOUT : await readBack();
+      if (rb === STAGE_TIMEOUT) {
+        console.warn("[PL-DEBUG-SAVE] stage: re-put/read-back timed out; keeping ref", localRef);
+        out.push(localRef);
+        continue;
+      }
+      stagedBlob = rb;
     }
     if (!stagedBlob || stagedBlob.size <= 0) {
       console.warn("[voucherLocalAttachmentUpload] pending file bytes missing after stage", {
@@ -150,6 +210,8 @@ export async function shouldStageNewVoucherFilesAsLocalPending(companyId: string
   if (isClientNavigatorOffline()) return true;
   // Embedded shells (EXE/APK/static): keep local pending pipeline.
   if (isElectronDesktopApp() || isCapacitorNativeApp() || isStaticAppBuild()) return true;
+  // Global local-first (web = EXE): never upload inline on save; background pending sync uploads + patches URL.
+  if (apkEmbeddedSqliteFirstWritesPreferred()) return true;
   // Hosted web online: hamesha Firebase HTTPS — sqlite-first online company par bhi `local:` mat stage
   // (warna 2nd file web pe invisible / delete cross-device stale rehta hai).
   if (typeof navigator !== "undefined" && navigator.onLine) return false;

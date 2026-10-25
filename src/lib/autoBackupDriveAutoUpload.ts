@@ -5,7 +5,7 @@ import { runAutoBackupDriveUpload } from "@/lib/autoBackupDriveUpload";
 import { runAutoBackupDriveUploadWithRunner, isAutoBackupDriveUploadRunning } from "@/lib/autoBackupDriveUploadRunner";
 import { fetchGoogleDriveConnectionStatus } from "@/lib/driveAuthClient";
 import { isBackupSaveLocationConfigured } from "@/lib/backupSaveLocation";
-import { hasRealFirebaseAuthSession } from "@/lib/firebaseAuthForApi";
+import { hasDriveApiAuthSession } from "@/lib/firebaseAuthForApi";
 import { isDesktopPcBackupStripView } from "@/lib/isDesktopPcBackupStripView";
 import {
   isLocalGoogleDriveSyncDisabled,
@@ -21,7 +21,7 @@ export async function maybeTriggerAutoBackupDriveUploadAfterBackup(input: {
   const selected = prefs.uploadCompanyIds || [];
   if (selected.length > 0 && !selected.includes(input.companyId)) return;
   if (isLocalGoogleDriveSyncDisabled()) return;
-  if (!hasRealFirebaseAuthSession()) return;
+  if (!hasDriveApiAuthSession()) return;
   if (!isBackupSaveLocationConfigured()) return;
   if (isAutoBackupDriveUploadRunning()) return;
 

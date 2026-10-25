@@ -385,7 +385,7 @@ export function InterCompanyAmountDualFields({
       </div>
 
       <div className={amountSidePanelClass}>
-        <InterCompanyAmountSideRow label="Payment In (target)">
+        <InterCompanyAmountSideRow label="Receipt (target)">
           <InterCompanyResponsiveAmountInput
             type="text"
             readOnly

@@ -4,7 +4,7 @@ import {
   syncEntityAttachmentsAfterSave,
   uploadEntityAvatarAndDocumentsRemote,
 } from "@/lib/entityProfileLocalFiles";
-import { checkStorageLimit, incrementCompanyStorage } from "@/lib/storageUsageClient";
+import { incrementCompanyStorage } from "@/lib/storageUsageClient";
 import { nowIso } from "../db/loanIds";
 
 export async function saveLoanLiabilityAttachments(params: {
@@ -45,7 +45,8 @@ export async function saveLoanLiabilityAttachments(params: {
   const totalBytes =
     (prepared.avatar instanceof File ? prepared.avatar.size : 0) + newDocFiles.reduce((s, f) => s + f.size, 0);
   if (totalBytes > 0) {
-    const limitCheck = await checkStorageLimit(
+    const { checkStorageLimitSafe } = await import("@/lib/voucherFormAttachmentsBeforeSave");
+    const limitCheck = await checkStorageLimitSafe(
       params.companyId,
       params.company?.planId,
       { attachmentsBytes: totalBytes, storageBytes: totalBytes },

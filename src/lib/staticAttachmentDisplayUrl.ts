@@ -1,5 +1,6 @@
 "use client";
 
+import { isPbAttachmentRef, resolvePbAttachmentDisplay } from "@/lib/pocketbaseData/pbAttachments";
 import {
   companyRowUsesSqliteLedgerWrites,
   isServerGateCompany,
@@ -105,6 +106,8 @@ export async function resolveStaticAttachmentDisplay(
   rawUrl: string,
   options?: StaticAttachmentDisplayOptions
 ): Promise<StaticAttachmentDisplayResult> {
+  // Pocket Ledger Server (PocketBase) attachment link: bytes from the server, shown as a blob URL.
+  if (isPbAttachmentRef(rawUrl)) return resolvePbAttachmentDisplay(rawUrl);
   const mode = options?.companyMode ?? (options?.localLedgerOnly === true ? "local" : "online");
   return strategyForMode(mode).resolveAttachmentDisplay(rawUrl, options);
 }

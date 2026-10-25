@@ -11,12 +11,11 @@ import {
   collection,
   query,
   where,
-  onSnapshot,
   orderBy,
   collectionGroup,
-  getDoc,
   doc,
 } from "firebase/firestore";
+import { onSnapshot, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Skeleton } from "@/components/ui/skeleton";
 import {

@@ -1,4 +1,5 @@
 "use client";
+import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { shouldMoveVoucherConvertSourceToBin } from "@/lib/voucherEditConvert";
 import { STAFF_ENTITY_LABEL, STAFF_ENTITY_TYPE_KEY, STAFF_ENTITY_SEARCH_PLACEHOLDER, STAFF_ENTITY_ADD_BUTTON, staffEntityDisplayLabel } from "@/lib/staffEntityDisplayName";
 
@@ -28,7 +29,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
 import { firestore, storage } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, updateDoc, deleteDoc, query, where } from "firebase/firestore";
+import { getDoc, onSnapshot, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { format, startOfDay } from "date-fns";
 import { ScrollArea } from "../ui/scroll-area";
@@ -438,7 +440,7 @@ export function CreatePaymentInForm({
       let preGeneratedVoucherId: string | undefined;
       if (newFilesToUpload.length > 0) {
         const totalNewBytes = newFilesToUpload.reduce((s, f) => s + (f.size || 0), 0);
-        const limitCheck = await checkStorageLimit(companyId, company?.planId, { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes }, company?.storageOption);
+        const limitCheck = await checkStorageLimitSafe(companyId, company?.planId, { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes }, company?.storageOption);
         if (!limitCheck.allowed) {
           sonnerToast.error("Storage limit reached", { id: toastId, description: limitCheck.message });
           setIsLoading(false);
@@ -471,15 +473,17 @@ export function CreatePaymentInForm({
             }
           }
         } else {
-          for (const file of newFilesToUpload) {
-            if (submissionData.fileUrls.length >= fileAttachmentLimits.maxFileCount) break;
-            const url = await uploadVoucherAttachmentFileToFirebase({
+          {
+            const up = await uploadVoucherFilesOrStageLocalPending({
               companyId,
-              voucherType,
-              file,
+              storageFolder: String(voucherType),
+              existingFileUrls: submissionData.fileUrls as string[],
+              files: newFilesToUpload,
+              maxFileCount: fileAttachmentLimits.maxFileCount,
+              existingVoucherId: isEditingAndConverting && voucher?.id ? null : (savedVoucherId ?? voucher?.id ?? null),
             });
-            submissionData.fileUrls.push(url);
-            await incrementCompanyStorage(companyId, { attachmentsBytes: file.size, storageBytes: file.size });
+            submissionData.fileUrls = up.fileUrls;
+            if (up.preGeneratedVoucherId) preGeneratedVoucherId = up.preGeneratedVoucherId;
           }
         }
       }
@@ -1146,6 +1150,7 @@ export function CreatePaymentInForm({
         entityName={voucher?.voucherNumber || "this voucher"}
         onMoveToBin={handleDelete}
         onDeletePermanently={handlePermanentDelete}
+        localOnlyCheck={{ companyId, collectionName: "vouchers", docId: savedVoucherId }}
         busy={isLoading}
       />
     </>

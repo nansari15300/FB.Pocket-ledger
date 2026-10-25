@@ -4,7 +4,8 @@
 import React, { createContext, useContext, useState, useEffect, useLayoutEffect, ReactNode, useCallback, useRef, useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "./useAuth";
-import { onSnapshot, collection, query, where, Timestamp, getDocs, getDocsFromServer, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, Timestamp, doc } from "firebase/firestore";
+import { onSnapshot, getDocs, getDocsFromServer, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import {
   auth,
   firestore,
@@ -49,6 +50,7 @@ import {
 } from "@/lib/companyStorageKind";
 import { isCloudLinkedCompanyStorage } from "@/lib/companyUnlockGate";
 import { FIREBASE_LEDGER_DATA_SYNC_CHANGED_EVENT } from "@/lib/firebaseLedgerDataSyncDisabled";
+import { getBillingApiIdToken } from "@/lib/firebaseAuthForApi";
 import { FIREBASE_LEDGER_COMPANY_REGISTRY_PULL_EVENT } from "@/lib/firebaseLedgerCompanySyncPrefs";
 import { isLocalBackupRestoredCompanyRow, readLocalBackupRestoreSelectionGrace } from "@/lib/localBackupRestoreCompany";
 import {
@@ -114,6 +116,21 @@ import {
   purgeGhostOnlineCompanyDeltas,
   resolveMirrorUserEmail,
 } from "@/lib/mirrorOnlineCompaniesFromFirestore";
+import {
+  isPocketBaseSessionUser,
+  PB_APP_SESSION_EVENTS,
+  pullPocketBaseCompanyRegistry,
+} from "@/lib/pocketbaseData/pbAppSession";
+import { companyUsesPocketBase, isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
+
+/**
+ * Server login (pl_users): Firebase cloud companies stay hidden - only Pocket Ledger Server
+ * companies plus local / offline ones are listed (Firestore is never touched in that session).
+ */
+import {
+  isFirebaseCloudRowHiddenInServerSession,
+  isServerOnlyLoginSession,
+} from "@/lib/pocketbaseData/serverSessionCompanyScope";
 import { clearSelectedCompanyId, pinBootSelectedCompanyId, readSelectedCompanyId, writeSelectedCompanyId } from "@/lib/selectedCompanyStorage";
 import {
   isAdminPanelCompanyLedgerMode,
@@ -254,6 +271,8 @@ export type Company = {
     /** Default discount adjustment expense account — sale/purchase forms (company-wide). */
     saleDiscountExpenseAccountId?: string;
     purchaseDiscountExpenseAccountId?: string;
+    /** Anusuchi 13 report — default minimum FY transaction (company-wide; fallback 100000). */
+    anusuchi13DefaultThreshold?: number;
     isApprovalEnabled?: boolean;
     isOwned?: boolean;
     planId?: string;
@@ -615,6 +634,7 @@ function mergePlHostCompanyMetaFields(prev: Company, next: Company): Company {
     "currencyCode",
     "currencySymbol",
     "displaySettings",
+    "anusuchi13DefaultThreshold",
     "name",
     "address",
     "pan",
@@ -1717,8 +1737,13 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
 
         if (mirrorUser) {
           try {
-            const ownerIdCandidates = resolveOwnerIdQueryCandidates(user!.uid, customUser?.userDocId);
-            const result = await pullOnlineCompanyRegistryFromFirestore(mirrorUser, ownerIdCandidates);
+            // Server login (pl_users): the company list comes from Pocket Ledger Server, not Firestore.
+            const result = isPocketBaseSessionUser(user)
+              ? await pullPocketBaseCompanyRegistry()
+              : await pullOnlineCompanyRegistryFromFirestore(
+                  mirrorUser,
+                  resolveOwnerIdQueryCandidates(user!.uid, customUser?.userDocId)
+                );
             mirroredRows = result.rows;
             ownedMirrorIds = result.ownedIds;
             sharedOnlyMirrorIds = result.sharedOnlyIds;
@@ -1772,10 +1797,12 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
         }
 
         const localCompanies = await listLocalCompanies();
+        const serverLoginSession = isPocketBaseSessionUser(user);
         for (const c of localCompanies) {
           const norm = normalizeLocalCompany(c as unknown as Company);
           if (!isCompanyVisibleInMainApp(norm)) continue;
           if (!isLocalCompanyVisibleToAppAccount(c, user)) continue;
+          if (serverLoginSession && isFirebaseCloudRowHiddenInServerSession(norm)) continue;
           if (isStrictLocalOnlyCompany(norm)) {
             companyById.set(norm.id, {
               ...norm,
@@ -2143,7 +2170,7 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
         const r = await syncCompanyPlanFromServer({
           firebaseCompanyId,
           localCompanyId: cid,
-          getIdToken: () => user.getIdToken(),
+          getIdToken: () => getBillingApiIdToken(user),
           firebaseUid: user.uid,
           ownedCompaniesHint: allCompaniesLiveRef.current,
         });
@@ -2943,6 +2970,84 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
       return;
     };
 
+    if (isPocketBaseSessionUser(user)) {
+      // Server login (pl_users, no Firebase session): company list from Pocket Ledger Server
+      // (pl_companies the user owns or is a member of). No Firestore listeners.
+      let disposed = false;
+      let inFlight = false;
+      setLoading(true);
+      ownedSnapRef.current = null;
+      ownedLegacySnapRef.current = null;
+      sharedSnapRef.current = null;
+      sharedSnapByVariantRef.current.clear();
+      ownedByEmailSnapRef.current = null;
+      ownedByEmailSnapByVariantRef.current.clear();
+      const asDoc = (id: string, data: Record<string, unknown>) => ({ id, data: () => data });
+      const triggerPbUpdate = () => {
+        void (async () => {
+          let localRows: Company[] = [];
+          try {
+            localRows = (await listLocalCompanies())
+              .filter((c: any) => isCompanyVisibleInMainApp(c))
+              .filter((c) => isLocalCompanyVisibleToAppAccount(c, user))
+              .filter((c) => !isFirebaseCloudRowHiddenInServerSession(c))
+              .map((c) => normalizeLocalCompany(c as unknown as Company));
+          } catch {
+            localRows = [];
+          }
+          if (disposed) return;
+          await handleSnapshotUpdate(
+            ownedSnapRef.current ?? { docs: [] },
+            sharedSnapRef.current ?? { docs: [] },
+            undefined,
+            localRows
+          );
+        })();
+      };
+      const refreshFromServer = async () => {
+        if (inFlight || disposed) return;
+        inFlight = true;
+        try {
+          const res = await pullPocketBaseCompanyRegistry();
+          if (disposed) return;
+          ownedSnapRef.current = { docs: res.rows.filter((r) => r.isOwned).map((r) => asDoc(r.id, r.data)) };
+          sharedSnapRef.current = { docs: res.rows.filter((r) => !r.isOwned).map((r) => asDoc(r.id, r.data)) };
+        } catch (e) {
+          if (disposed) return;
+          console.warn("[useCompany] Pocket Ledger Server company list failed (keeping the last list)", e);
+          if (!ownedSnapRef.current && !sharedSnapRef.current) {
+            // Offline / server down on first load: this device's copies of server companies.
+            try {
+              const rows = (await listLocalCompanies()).filter((c) => isPocketBaseCompanyId(c.id));
+              const asData = (c: unknown) => ({ ...(c as Record<string, unknown>) });
+              ownedSnapRef.current = { docs: rows.filter((c) => (c as { isOwned?: unknown }).isOwned !== false).map((c) => asDoc(c.id, asData(c))) };
+              sharedSnapRef.current = { docs: rows.filter((c) => (c as { isOwned?: unknown }).isOwned === false).map((c) => asDoc(c.id, asData(c))) };
+            } catch {
+              /* empty list */
+            }
+          }
+        } finally {
+          inFlight = false;
+        }
+        if (!disposed) triggerPbUpdate();
+      };
+      const onRootUpdated = () => void refreshFromServer();
+      window.addEventListener("pl-pb-company-root-updated", onRootUpdated);
+      for (const name of PB_APP_SESSION_EVENTS) window.addEventListener(name, onRootUpdated);
+      const poll = window.setInterval(() => void refreshFromServer(), 60_000);
+      triggerRegistryUpdateRef.current = () => void refreshFromServer();
+      void refreshFromServer();
+      return () => {
+        disposed = true;
+        window.clearInterval(poll);
+        window.removeEventListener("pl-pb-company-root-updated", onRootUpdated);
+        for (const name of PB_APP_SESSION_EVENTS) window.removeEventListener(name, onRootUpdated);
+        triggerRegistryUpdateRef.current = null;
+        ownedSnapRef.current = null;
+        sharedSnapRef.current = null;
+      };
+    }
+
     void ensureEmbeddedFirestoreOnlineForCloudCompanyLoad();
     setLoading(true);
     // Reset refs when user changes
@@ -3655,10 +3760,48 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
     });
   }, [companyId, company, reloadLocalCompanyRegistry, triggerSync]);
 
+  /**
+   * Server-only login: every list handed to the UI (header switcher, company page, shared-with-me) drops
+   * Firebase rows - including ones restored from the SQLite / localStorage registry cache. A Firebase company
+   * still selected from an older session is deselected and the picker opens.
+   */
+  const serverOnlyLoginScope = isServerOnlyLoginSession() || isPocketBaseSessionUser(user);
+  const allCompaniesForUiScoped = useMemo(
+    () =>
+      serverOnlyLoginScope
+        ? allCompaniesForUi.filter((c) => !isFirebaseCloudRowHiddenInServerSession(c))
+        : allCompaniesForUi,
+    [serverOnlyLoginScope, allCompaniesForUi]
+  );
+  const allCompaniesRegistryScoped = useMemo(
+    () =>
+      serverOnlyLoginScope
+        ? allCompaniesRegistry.filter((c) => !isFirebaseCloudRowHiddenInServerSession(c))
+        : allCompaniesRegistry,
+    [serverOnlyLoginScope, allCompaniesRegistry]
+  );
+  const firebaseCompanyBlockedForSession =
+    serverOnlyLoginScope && !!companyWithLocalFiscal && isFirebaseCloudRowHiddenInServerSession(companyWithLocalFiscal);
+  const firebaseCompanyDeselectCountRef = useRef(0);
+  useEffect(() => {
+    if (!firebaseCompanyBlockedForSession) return;
+    // Auto-select loops guard: the exposed company stays null either way.
+    if (firebaseCompanyDeselectCountRef.current >= 3) return;
+    firebaseCompanyDeselectCountRef.current += 1;
+    try {
+      clearSelectedCompanyId();
+    } catch {
+      /* ignore */
+    }
+    clearCompanyId({ force: true, reason: "user_clear" });
+    const live = String(pathnameRef.current || "");
+    if (!/(^|\/)company\/?$/.test(live)) router.replace("/company");
+  }, [firebaseCompanyBlockedForSession, clearCompanyId, router]);
+
   const companyContextValue = useMemo(
     () => ({
-      companyId,
-      company: companyWithLocalFiscal,
+      companyId: firebaseCompanyBlockedForSession ? null : companyId,
+      company: firebaseCompanyBlockedForSession ? null : companyWithLocalFiscal,
       loading,
       triggerSync,
       reloadLocalCompanyRegistry,
@@ -3666,8 +3809,8 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
       localCompanyRegistryEpoch: localRegistryEpoch,
       setCompanyId,
       clearCompanyId,
-      allCompanies: allCompaniesForUi,
-      allCompaniesRegistry,
+      allCompanies: allCompaniesForUiScoped,
+      allCompaniesRegistry: allCompaniesRegistryScoped,
       planAuthoritativeSync,
       refreshAuthoritativePlan: () => refreshAuthoritativePlan(),
       effectiveNotificationSettings,
@@ -3675,6 +3818,7 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
     [
       companyId,
       companyWithLocalFiscal,
+      firebaseCompanyBlockedForSession,
       loading,
       triggerSync,
       reloadLocalCompanyRegistry,
@@ -3682,8 +3826,8 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
       localRegistryEpoch,
       setCompanyId,
       clearCompanyId,
-      allCompaniesForUi,
-      allCompaniesRegistry,
+      allCompaniesForUiScoped,
+      allCompaniesRegistryScoped,
       planAuthoritativeSync,
       refreshAuthoritativePlan,
       effectiveNotificationSettings,

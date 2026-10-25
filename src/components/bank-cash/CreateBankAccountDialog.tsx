@@ -17,7 +17,8 @@ import { Loader2, CalendarIcon, Upload } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { doc, setDoc, collection, serverTimestamp, query, onSnapshot, Timestamp } from "firebase/firestore";
+import { doc, setDoc, collection, serverTimestamp, query, Timestamp } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import {
   stageEntityAvatarAndDocuments,
   uploadEntityAvatarAndDocumentsRemote,

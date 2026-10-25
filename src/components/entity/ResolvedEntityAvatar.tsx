@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
 import {
   getBlobFromLocalFileRef,
   getLocalFileRefMeta,
@@ -339,13 +340,13 @@ export function ResolvedEntityAvatar({
   }, [src, imageSrc]);
 
   return (
-    <Avatar className={className}>
+    <Avatar className={cn("rounded-none overflow-hidden", className)}>
       {imageSrc ? (
-        <AvatarImage key={`${imageSrc}:${retryKey}`} src={imageSrc} alt={alt} onError={handleImageError} />
+        <AvatarImage key={`${imageSrc}:${retryKey}`} src={imageSrc} alt={alt} onError={handleImageError} className="rounded-none" />
       ) : (
-        <AvatarImage src={undefined} alt={alt} />
+        <AvatarImage src={undefined} alt={alt} className="rounded-none" />
       )}
-      <AvatarFallback className={fallbackClassName}>{fallbackSlot ?? fallbackText}</AvatarFallback>
+      <AvatarFallback className={cn(fallbackClassName, "rounded-none")}>{fallbackSlot ?? fallbackText}</AvatarFallback>
     </Avatar>
   );
 }

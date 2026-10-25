@@ -36,6 +36,7 @@ import {
 import { getPublicAppHrefForPaymentRedirects } from "@/lib/checkoutPublicOrigin";
 import { applyOwnerPlanMirrorBatched } from "@/lib/server/mirrorOwnerCompanyPlanBilling";
 import { persistAccountCanonicalPlanDoc } from "@/lib/server/accountCanonicalPlan";
+import { resolveBillingCaller } from "@/lib/server/billingCaller";
 
 type AdminKeysResult = {
   stored: GatewayKeys;
@@ -110,19 +111,11 @@ function normalizeProrationGateway(raw: unknown): ProrationGateway {
  */
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization");
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    if (!token) {
-      return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
+    const billingCaller = await resolveBillingCaller(req);
+    if (!billingCaller.ok) {
+      return NextResponse.json({ error: billingCaller.error }, { status: billingCaller.status });
     }
-
-    getAdminDb();
-    let decoded: admin.auth.DecodedIdToken;
-    try {
-      decoded = await admin.auth().verifyIdToken(token);
-    } catch {
-      return NextResponse.json({ error: "Invalid auth token" }, { status: 401 });
-    }
+    const decoded = billingCaller.decoded;
 
     const body = (await req.json()) as Body;
     const companyId = typeof body.companyId === "string" ? body.companyId.trim() : "";
@@ -140,7 +133,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid subscription term" }, { status: 400 });
     }
 
-    const db = getAdminDb();
+    const db = billingCaller.db;
     const companyRef = db.collection("companies").doc(companyId);
     const companySnap = await companyRef.get();
     if (!companySnap.exists) {
@@ -499,6 +492,7 @@ export async function POST(req: NextRequest) {
         changeKind,
         billingIntent: "subscribe",
         paymentGateway: "stripe",
+        ...(billingCaller.store === "server" ? { plStore: "server" } : {}),
       },
     });
 

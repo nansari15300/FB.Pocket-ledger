@@ -22,7 +22,7 @@ import {
 import { logLocalCloudSync, warnLocalCloudSync } from "@/lib/localCloudSync/logger";
 import {
   FIREBASE_SIGN_IN_REQUIRED_FOR_DRIVE_MSG,
-  hasRealFirebaseAuthSession,
+  hasDriveApiAuthSession,
   isDriveAuthRequiredError,
   waitForFirebaseAuthReady,
 } from "@/lib/firebaseAuthForApi";
@@ -200,7 +200,7 @@ export async function runLocalCloudSyncCycle(
 
   // Firebase session restore hone tak wait — startup par galat "Sign in required" error mat likho.
   await waitForFirebaseAuthReady();
-  if (!hasRealFirebaseAuthSession()) {
+  if (!hasDriveApiAuthSession()) {
     return { ok: false, error: FIREBASE_SIGN_IN_REQUIRED_FOR_DRIVE_MSG, uploaded: 0, downloaded: 0 };
   }
 

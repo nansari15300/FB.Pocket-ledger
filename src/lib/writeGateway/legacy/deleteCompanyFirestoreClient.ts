@@ -9,13 +9,12 @@ import {
   deleteDoc,
   deleteField,
   doc,
-  getDoc,
-  getDocs,
   limit,
   query,
   updateDoc,
   writeBatch,
 } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { deleteCompanyFirebaseStorageFolder } from "@/lib/deleteCompanyStorageFolder";
 

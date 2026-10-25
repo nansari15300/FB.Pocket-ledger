@@ -8,6 +8,7 @@ import { PocketSerwistProvider } from "@/components/serwist/PocketSerwistProvide
 import { Phase1bRuntimeVerifyShim } from "@/components/Phase1bRuntimeVerifyShim";
 import { StatementCheckedBlinkPrefsBootstrap } from "@/components/vouchers/StatementCheckedBlinkPrefsBootstrap";
 import { CLIENT_HEALTH_EARLY_BOOT_SCRIPT } from "@/lib/clientHealthEarlyBootScript";
+import { RecoveryModeGate } from "@/components/recovery/RecoveryModeGate";
 
 export const metadata: Metadata = {
   applicationName: 'Pocket Ledger',
@@ -47,7 +48,7 @@ export default function RootLayout({
       <body className="font-body antialiased theme-pro primary-pro">
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var R="pl-theme-default-rev",V="2",TK="theme",PK="primaryColor";var rev=localStorage.getItem(R),t=localStorage.getItem(TK),p=localStorage.getItem(PK);if(!rev||rev!==V){if(!t||t==="theme-pure-white"){t="theme-pro";p="primary-pro";}localStorage.setItem(R,V);localStorage.setItem(TK,t);localStorage.setItem(PK,p||"primary-pro");}if(!t){t="theme-pro";p="primary-pro";}document.body.className="font-body antialiased "+t+" "+(p||"primary-pro");}catch(e){}})();`,
+            __html: `(function(){try{localStorage.removeItem("pl-color-mode");var R="pl-theme-default-rev",V="2",TK="theme",PK="primaryColor";var rev=localStorage.getItem(R),t=localStorage.getItem(TK),p=localStorage.getItem(PK);if(!rev||rev!==V){if(!t||t==="theme-pure-white"){t="theme-pro";p="primary-pro";}localStorage.setItem(R,V);localStorage.setItem(TK,t);localStorage.setItem(PK,p||"primary-pro");}if(!t){t="theme-pro";p="primary-pro";}document.body.className="font-body antialiased "+t+" "+(p||"primary-pro");}catch(e){}})();`,
           }}
         />
         <script
@@ -78,6 +79,7 @@ export default function RootLayout({
         <PocketSerwistProvider>
           <Providers>
             <StatementCheckedBlinkPrefsBootstrap />
+            <RecoveryModeGate />
             {children}
           </Providers>
         </PocketSerwistProvider>

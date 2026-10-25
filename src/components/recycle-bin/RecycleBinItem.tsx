@@ -1,6 +1,7 @@
 
 "use client";
 
+import { voucherTypeDisplayText } from "@/lib/voucherTypeDisplay";
 import { RotateCcw, Trash2, ArrowRight, ArrowUpCircle, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -285,8 +286,7 @@ export function RecycleBinItem({
                         <ArrowRight className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
                         <span className="break-words">
                             Converted to{" "}
-                            {item.convertedToType
-                                ?.replace(/_/g, " ")
+                            {voucherTypeDisplayText(item.convertedToType)
                                 .replace(/\b\w/g, (l) => l.toUpperCase())}{" "}
                             (#{item.convertedToVoucherNumber})
                         </span>

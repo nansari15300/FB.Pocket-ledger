@@ -16,7 +16,22 @@ import {
   VoucherAttachmentFallbackContext,
   useVoucherAttachmentFallback,
 } from "@/contexts/VoucherAttachmentFallbackContext";
-import { getAttachmentFormatLabel, sniffBlobKindForPreview } from "@/lib/attachmentFormatLabel";
+import {
+  getAttachmentFormatLabel,
+  getAttachmentFormatLabelFromHints,
+  sniffBlobKindForPreview,
+} from "@/lib/attachmentFormatLabel";
+
+/**
+ * `local:<uuid>` has no extension => URL label is "FILE". Use pending-file meta hints; when still unknown
+ * return "LOCAL_UNKNOWN" so the portal does NOT paint the raw blob as <img> (PDF => blank) but sniffs bytes.
+ */
+function portalFormatLabel(url: string): string {
+  const fmt = getAttachmentFormatLabel(url);
+  if (fmt !== "FILE" || !isLocalFileRef(url)) return fmt;
+  const meta = getLocalFileRefMetaSync(url);
+  return getAttachmentFormatLabelFromHints(meta?.fileName ?? null, meta?.contentType ?? null) || "LOCAL_UNKNOWN";
+}
 import {
   getRemoteAttachmentBlobPreferOfflineCache,
   seedOfflineAttachmentCacheFromBlob,
@@ -771,7 +786,7 @@ export function LocalFileRefTooltipPreview({
     const pdfPortal = peekPdfPortalCachedBlobUrl(effectiveUrl);
     if (pdfPortal) return { objectUrl: pdfPortal, mime: "image/jpeg" as const, fromCellThumb: false };
     const full = peekHoverCachedBlobUrl(effectiveUrl);
-    const fmt = getAttachmentFormatLabel(effectiveUrl);
+    const fmt = portalFormatLabel(effectiveUrl);
     // STRICT (parked): PDF pe cell-thumb initial mat.
     // if (fmt === "PDF") {
     //   if (full) return { objectUrl: full, mime: "application/pdf" as const, fromCellThumb: false };
@@ -779,6 +794,7 @@ export function LocalFileRefTooltipPreview({
     // }
     // if (full) return { objectUrl: full, mime: "image/jpeg" as const, fromCellThumb: false };
     // return null;
+    if (fmt === "LOCAL_UNKNOWN") return null;
     if (fmt === "PDF" && !full) return null;
     const cellThumb = peekHoverCachedBlobUrl(`${effectiveUrl}::cell-thumb`);
     const cachedPreviewUrl = full || cellThumb;
@@ -840,8 +856,11 @@ export function LocalFileRefTooltipPreview({
       }
     })();
     if (fullCached) {
-      const fmt = getAttachmentFormatLabel(effectiveUrl);
-      if (fmt === "PDF") {
+      const fmt = portalFormatLabel(effectiveUrl);
+      if (fmt === "LOCAL_UNKNOWN") {
+        // Unknown local bytes (often PDF): sniff + raster in the async path below.
+        setState({ status: "loading" });
+      } else if (fmt === "PDF") {
         setState({ status: "ready", objectUrl: fullCached, mime: "application/pdf", fromCellThumb: false });
         // Continue async — attach blob / optional upgrade.
       } else {
@@ -942,6 +961,7 @@ export function LocalFileRefTooltipPreview({
         }
         if (cancelled) return;
         if (!blob || blob.size === 0) {
+          console.warn("[attachmentPreview] no bytes for attachment", effectiveUrl);
           setState((prev) => (prev.status === "ready" ? prev : { status: "error" }));
           return;
         }
@@ -986,8 +1006,9 @@ export function LocalFileRefTooltipPreview({
           return;
         }
         setState({ status: "ready", objectUrl, mime, blob, fromCellThumb: false });
-      } catch {
+      } catch (e) {
         if (!cancelled) {
+          console.warn("[attachmentPreview] preview failed", effectiveUrl, e);
           setState((prev) => (prev.status === "ready" ? prev : { status: "error" }));
         }
       }

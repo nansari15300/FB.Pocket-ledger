@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useGate } from "@/contexts/GateContext";
 import { useCompany } from "@/hooks/useCompany";
@@ -17,8 +17,10 @@ import {
 import { getSuperAdminEmails } from "@/lib/superAdminEmails";
 import { gateTypeLabel, normalizeServerUrl, writeGateTransportUrl, resolveGateServerTransportUrl } from "@/lib/gates/gateStore";
 import {
+  activeGateCreateHint,
   filterCompaniesForActiveGate,
   isLocalServerGate,
+  onlineGateServerLabel,
   refreshActiveLocalServerGateContext,
   activateLocalServerGateOnBundledClient,
   activateLocalServerGateOnWebClient,
@@ -55,6 +57,7 @@ import {
   Smartphone,
   Trash2,
   Cloud,
+  HardDrive,
   Wifi,
   ExternalLink,
   LogOut,
@@ -70,6 +73,11 @@ import {
   readStoredOfflineUnlockSession,
 } from "@/lib/offlineCompanyUnlockRemember";
 import { CompanyUnlockDialog } from "@/components/company/CompanyUnlockDialog";
+import { CloudSyncHelpPopover } from "@/components/company/CloudSyncHelpPopover";
+import { OnlineDataServerTable } from "@/components/settings/OnlineDataServerTable";
+import { useOnlineDataServerSettings } from "@/hooks/useOnlineDataServerSettings";
+import { onlineDataServerName } from "@/lib/onlineDataServer";
+import { GateDriveSummary, useGateDriveSummary } from "@/components/gates/GateDriveSummary";
 import {
   stampCompanyRowForServerGateUnlock,
   finalizePlServerGateCompanyOpen,
@@ -315,6 +323,7 @@ export function GatePageContent() {
   const isSuperAdminUser = customUser?.role === "SuperAdmin" || isSuperAdminByEmail;
   const {
     gates,
+    activeGate,
     activeGateId,
     setActiveGateId,
     addLocalServerGate,
@@ -348,6 +357,9 @@ export function GatePageContent() {
   const serverCompaniesRefreshInFlightRef = useRef<string | null>(null);
   const [companyToUnlock, setCompanyToUnlock] = useState<CompanyData | null>(null);
   const [unlockPreferredGate, setUnlockPreferredGate] = useState<GateRecord | null>(null);
+  /** Gate items whose company list is expanded inline (per item; card header "All companies" toggles a card). */
+  const [expandedGateIds, setExpandedGateIds] = useState<string[]>([]);
+  const [driveCompaniesOpen, setDriveCompaniesOpen] = useState(true);
 
   const useBundledLocalServerGate =
     isElectronDesktopApp() || isCapacitorNativeApp();
@@ -540,6 +552,33 @@ export function GatePageContent() {
       (c) => !isCloudLinkedCompanyStorage(c)
     );
   }, [allCompaniesRegistry, detailGate, user, isSuperAdminUser, pathname, serverAccessEpoch]);
+
+  /** Same registry + filters as the detail panel, for any gate (no extra fetching). */
+  const gateCompanyRegistry = useMemo(() => {
+    void serverAccessEpoch;
+    return filterSharedOnlyCompaniesForSuperAdminInMainApp(
+      allCompaniesRegistry,
+      user ? { uid: user.uid, email: user.email } : null,
+      isSuperAdminUser,
+      pathname
+    );
+  }, [allCompaniesRegistry, user, isSuperAdminUser, pathname, serverAccessEpoch]);
+
+  const companiesForGate = (gate: GateRecord) => {
+    if (isLocalServerGate(gate)) {
+      const shared = buildPlServerGatePreviewCompanyList(gateCompanyRegistry, gate.id).filter(
+        (c) => !isCloudLinkedCompanyStorage(c)
+      );
+      return { owned: [] as typeof shared, shared };
+    }
+    const filtered = filterCompaniesForPlServerAccess(
+      filterCompaniesForActiveGate(mergePlServerSharedCompaniesIntoRegistry(gateCompanyRegistry), gate)
+    );
+    return {
+      owned: filtered.filter((c) => c.isOwned !== false),
+      shared: filtered.filter((c) => c.isOwned === false),
+    };
+  };
 
   const unlockPickerCompanies = useMemo(() => {
     void serverAccessEpoch;
@@ -868,8 +907,416 @@ export function GatePageContent() {
       : false
   );
 
+  const { settings: onlineDataServer } = useOnlineDataServerSettings();
+  const driveSummary = useGateDriveSummary();
+  const onlineGates = gates.filter((g) => g.type === "online");
+  const primaryOnlineGate: GateRecord | null = onlineGates[0] ?? null;
+  const deviceGates = gates.filter((g) => g.type === "device");
+  const localServerGates = gates.filter((g) => g.type === "local_server");
+  const isGateExpanded = (id: string) => expandedGateIds.includes(id);
+  const toggleGateExpanded = (id: string) =>
+    setExpandedGateIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const areAllGatesExpanded = (list: GateRecord[]) => list.length > 0 && list.every((g) => isGateExpanded(g.id));
+  /** "All companies": expand every gate in the card (collapse all if all are already open). */
+  const toggleAllGatesExpanded = (list: GateRecord[]) =>
+    setExpandedGateIds((prev) => {
+      const ids = list.map((g) => g.id);
+      const allOpen = ids.length > 0 && ids.every((id) => prev.includes(id));
+      return allOpen ? prev.filter((id) => !ids.includes(id)) : Array.from(new Set([...prev, ...ids]));
+    });
+  /** Small outline toggle used in card headers and on gate items; pressed state is a subtle tint. */
+  const companiesToggleButton = (opts: {
+    label: string;
+    pressed: boolean;
+    disabled?: boolean;
+    title: string;
+    onClick: () => void;
+  }) => (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      disabled={opts.disabled}
+      aria-pressed={opts.pressed}
+      aria-expanded={opts.pressed}
+      title={opts.title}
+      className={cn(
+        "h-7 shrink-0 bg-background px-2 text-xs",
+        opts.pressed && "border-primary/40 bg-primary/5 text-primary hover:bg-primary/10"
+      )}
+      onClick={opts.onClick}
+    >
+      {opts.label}
+    </Button>
+  );
+  const allCompaniesButton = (list: GateRecord[], emptyTitle: string) =>
+    companiesToggleButton({
+      label: "All companies",
+      pressed: areAllGatesExpanded(list),
+      disabled: list.length === 0,
+      title: list.length === 0 ? emptyTitle : "Show companies of all gates in this card",
+      onClick: () => toggleAllGatesExpanded(list),
+    });
+  const itemCompaniesButton = (gate: GateRecord) =>
+    companiesToggleButton({
+      label: "Company on this gate",
+      pressed: isGateExpanded(gate.id),
+      title: `Companies on ${gate.label}`,
+      onClick: () => toggleGateExpanded(gate.id),
+    });
+  /** Inline company list under one gate item (existing CompanySection + pick/logout handlers). */
+  const renderGateCompanies = (gate: GateRecord) => {
+    const { owned, shared } = companiesForGate(gate);
+    return (
+      <div className="mt-3 space-y-3 border-t border-border pt-3">
+        {isLocalServerGate(gate) ? (
+          <CompanySection
+            title="Shared companies"
+            empty="No companies yet. Tap Test to check this server, or assign local companies on the server PC."
+            companies={shared}
+            activeCompanyId={companyId}
+            pickingCompanyId={pickingCompanyId}
+            onPick={(id) => handlePickCompany(id, gate)}
+            onLogout={handleLogoutCompany}
+          />
+        ) : (
+          <>
+            <CompanySection
+              title="Owned companies"
+              empty="No owned companies on this gate."
+              companies={owned}
+              activeCompanyId={companyId}
+              onPick={(id) => handlePickCompany(id, gate)}
+              onLogout={handleLogoutCompany}
+            />
+            <CompanySection
+              title="Shared companies"
+              empty="No shared companies on this gate."
+              companies={shared}
+              activeCompanyId={companyId}
+              onPick={(id) => handlePickCompany(id, gate)}
+              onLogout={handleLogoutCompany}
+            />
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const addLocalServerGateButton = (
+    <Button
+      type="button"
+      className="w-full sm:w-auto"
+      onClick={() => {
+        cancelEdit();
+        setShowAdd(true);
+      }}
+    >
+      <Plus className="mr-2 h-4 w-4" />
+      Add local server gate
+    </Button>
+  );
+
+  const renderGateRow = (gate: GateRecord) => {
+    const Icon = gateIcon(gate.type);
+    const isActive = gate.id === activeGateId;
+    const isDetail = gate.id === selectedGateIdForDetail;
+    const hubLocalServer = gateHubMode && isLocalServerGate(gate);
+    const rowClass = cn(
+      "w-full rounded-lg border p-3 text-left transition-colors",
+      isDetail && !hubLocalServer ? "border-primary bg-secondary/40" : "hover:bg-muted/40",
+      isActive && "ring-1 ring-primary/40"
+    );
+    return (
+      <li key={gate.id}>
+        {hubLocalServer ? (
+          <div className={rowClass}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{gate.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {gateTypeLabel(gate.type)}
+                    {gate.serverUrl ? ` · ${gate.serverUrl}` : ""}
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                {itemCompaniesButton(gate)}
+                {isActive ? <Badge className="bg-primary/90">Active</Badge> : null}
+                {statusBadge(gate)}
+              </div>
+            </div>
+            {editingGateId === gate.id ? (
+              <div className="mt-3">
+                <LocalServerGateEditFields
+                  fieldKey={gate.id}
+                  editLabel={editLabel}
+                  setEditLabel={setEditLabel}
+                  editServerHost={editServerHost}
+                  setEditServerHost={setEditServerHost}
+                  editServerPort={editServerPort}
+                  setEditServerPort={setEditServerPort}
+                  savingEdit={savingEdit}
+                  onSave={() => void handleSaveEdit()}
+                  onCancel={cancelEdit}
+                />
+              </div>
+            ) : (
+              <>
+                {/* One row, never wraps, full-size buttons; horizontal scroll only as a last resort on small screens. */}
+                <div className="mt-3 flex flex-nowrap items-center gap-2 overflow-x-auto [&>button]:shrink-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={testingId === gate.id}
+                    onClick={() => handleTestPlGateFromHub(gate)}
+                  >
+                    {testingId === gate.id ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Wifi className="mr-2 h-4 w-4" />
+                    )}
+                    Test
+                  </Button>
+                  <Button type="button" size="sm" onClick={() => handleOpenPlGate(gate)}>
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Open gate
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => startEdit(gate)}>
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setDeleteId(gate.id)}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Remove
+                  </Button>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Open gate connects here on this tab — Google sign-in stays on localhost; server data loads via
+                  relay in the background.
+                </p>
+              </>
+            )}
+            {isGateExpanded(gate.id) ? renderGateCompanies(gate) : null}
+          </div>
+        ) : (
+          <div className={rowClass}>
+            <div className="flex items-start justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => handleSelectGate(gate)}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+              >
+                <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{gate.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {gateTypeLabel(gate.type)}
+                    {gate.serverUrl ? ` · ${gate.serverUrl}` : ""}
+                  </p>
+                </div>
+              </button>
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                {itemCompaniesButton(gate)}
+                {isActive ? <Badge className="bg-primary/90">Active</Badge> : null}
+                {statusBadge(gate)}
+              </div>
+            </div>
+            {isGateExpanded(gate.id) ? renderGateCompanies(gate) : null}
+          </div>
+        )}
+      </li>
+    );
+  };
+
+  const gateDetailPanel =
+    showGateDetailPanel && detailGate ? (
+      <Card className="bg-background shadow-none">
+        <CardHeader>
+          <CardTitle className="text-base">{detailGate.label}</CardTitle>
+          <CardDescription>
+            {isLocalServerGate(detailGate)
+              ? "Test connection to load shared companies from this server."
+              : "Owned and shared companies on this gate."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {editingGateId === detailGate.id && isLocalServerGate(detailGate) ? (
+            <LocalServerGateEditFields
+              fieldKey={`detail-${detailGate.id}`}
+              editLabel={editLabel}
+              setEditLabel={setEditLabel}
+              editServerHost={editServerHost}
+              setEditServerHost={setEditServerHost}
+              editServerPort={editServerPort}
+              setEditServerPort={setEditServerPort}
+              savingEdit={savingEdit}
+              onSave={() => void handleSaveEdit()}
+              onCancel={cancelEdit}
+            />
+          ) : (
+            <>
+          <div className="flex flex-wrap gap-2">
+            {isLocalServerGate(detailGate) ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={testingId === detailGate.id}
+                  onClick={() => {
+                    setTestingId(detailGate.id);
+                    void (async () => {
+                      const r = await testLocalServerGate(detailGate.id);
+                      if (!r.ok) {
+                        toast.error(r.message);
+                        return;
+                      }
+                      if (shouldMirrorLocalServerGateOnThisClient) {
+                        const mirror = await syncLocalServerGateCompanyListToThisClient(detailGate);
+                        if (mirror.error) {
+                          toast.warning("Server reachable", { description: mirror.error });
+                        } else {
+                          toast.success("Server reachable", {
+                            description: `${mirror.synced} companies loaded from this server.`,
+                          });
+                        }
+                        return;
+                      }
+                      toast.success(r.message);
+                    })().finally(() => setTestingId(null));
+                  }}
+                >
+                  {testingId === detailGate.id ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wifi className="mr-2 h-4 w-4" />
+                  )}
+                  Test
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={testingId === detailGate.id}
+                  onClick={() => handleUseGate(detailGate)}
+                >
+                  {useBundledLocalServerGate && !isPlRemoteServerClientMode()
+                    ? "Use on this device"
+                    : "Connect & open"}
+                </Button>
+                {useBundledLocalServerGate && !isPlRemoteServerClientMode() ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={testingId === detailGate.id}
+                    onClick={() => connectLocalServerGate(detailGate.id)}
+                  >
+                    Connect &amp; open in browser
+                  </Button>
+                ) : null}
+              </>
+            ) : (
+              <Button type="button" size="sm" onClick={() => handleUseGate(detailGate)}>
+                <Check className="mr-2 h-4 w-4" />
+                Use this gate
+              </Button>
+            )}
+            {detailGate.type === "local_server" ? (
+              <>
+                <Button type="button" variant="outline" size="sm" onClick={() => startEdit(detailGate)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setDeleteId(detailGate.id)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Remove
+                </Button>
+              </>
+            ) : null}
+          </div>
+
+          {!isLocalServerGate(detailGate) && isGateExpanded(detailGate.id) ? (
+            <>
+              <p className="text-xs text-muted-foreground">Companies on this gate are shown above.</p>
+              {canCreateCompanyOnActiveGate && detailGate.id === activeGateId ? (
+                <Button type="button" variant="outline" asChild>
+                  <a href={appNavHref("/company/create")}>Create company on this gate</a>
+                </Button>
+              ) : null}
+            </>
+          ) : !isLocalServerGate(detailGate) ? (
+            <>
+              <CompanySection
+                title="Owned companies"
+                empty="No owned companies on this gate."
+                companies={detailCompanies.owned}
+                activeCompanyId={companyId}
+                onPick={(id) => handlePickCompany(id, detailGate)}
+                onLogout={handleLogoutCompany}
+              />
+              <CompanySection
+                title="Shared companies"
+                empty="No shared companies on this gate."
+                companies={detailCompanies.shared}
+                activeCompanyId={companyId}
+                onPick={(id) => handlePickCompany(id, detailGate)}
+                onLogout={handleLogoutCompany}
+              />
+              {canCreateCompanyOnActiveGate && detailGate.id === activeGateId ? (
+                <Button type="button" variant="outline" asChild>
+                  <a href={appNavHref("/company/create")}>Create company on this gate</a>
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            <>
+              {refreshingServerCompanies ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading companies from server…
+                </p>
+              ) : null}
+              <CompanySection
+                title="Shared companies"
+                empty="No companies yet. Tap Test to check this server, or assign local companies on the server PC."
+                companies={localServerGateCompanies}
+                activeCompanyId={companyId}
+                pickingCompanyId={pickingCompanyId}
+                onPick={(id) => handlePickCompany(id, detailGate)}
+                onLogout={handleLogoutCompany}
+              />
+              <p className="text-sm text-muted-foreground">
+                {useBundledLocalServerGate && !isPlRemoteServerClientMode()
+                  ? "Tap a company to sign in and sync it on this device, or use Use on this device above."
+                  : shouldOpenPlServerCompanyInNewTab() && !(useBundledLocalServerGate && !isPlRemoteServerClientMode())
+                    ? "Tap a company to open it on the server in a new tab, or use Connect & open above."
+                    : "Tap a company to sign in here — same tab, server data via relay."}
+              </p>
+            </>
+          )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+    ) : null;
+  const detailGateType = showGateDetailPanel && detailGate ? detailGate.type : null;
+
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-4 pb-8">
+    <div className="mx-auto w-full max-w-[1800px] space-y-4 p-4 pb-8">
       <div className="flex items-center gap-2">
         <DoorOpen className="h-6 w-6 text-primary" />
         <div>
@@ -911,7 +1358,7 @@ export function GatePageContent() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Active gate</CardTitle>
-          <CardDescription>{activeGateCreateHintText}</CardDescription>
+          <CardDescription>{activeGate ? activeGateCreateHint(activeGate, onlineDataServer) : activeGateCreateHintText}</CardDescription>
         </CardHeader>
         <CardContent className="text-sm">
           {gates.find((g) => g.id === activeGateId)?.label ?? "—"}
@@ -921,364 +1368,224 @@ export function GatePageContent() {
         </CardContent>
       </Card>
 
-      {!showAdd ? (
-        <Button
-          type="button"
-          className="w-full sm:w-auto"
-          onClick={() => {
-            cancelEdit();
-            setShowAdd(true);
-          }}
+      <div
+        className={cn(
+          "grid grid-cols-1 items-stretch gap-4 xl:grid-cols-2",
+          /* Order: Online (wide) | Local Server | Local | Drive. Local Server widens while its add form is open. */
+          /* 4-in-a-row from 1800px; Local Server gets a guaranteed width when it has items (full-size one-row buttons). */
+          showAdd
+            ? "min-[1800px]:grid-cols-[minmax(0,1.8fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]"
+            : localServerGates.length > 0
+              ? "min-[1800px]:grid-cols-[minmax(30rem,1.6fr)_minmax(28.5rem,1.4fr)_minmax(0,1fr)_minmax(0,1fr)]"
+              : "min-[1800px]:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]"
+        )}
+      >
+        <GateSection
+          title="Online"
+          accent="online"
+          headerAction={allCompaniesButton(onlineGates, "No online gate available")}
+          icon={Cloud}
+          count={onlineGates.length}
+          infoLabel="Online"
+          info={
+            <>
+              <p>New companies save to {onlineGateServerLabel(onlineDataServer)}. Each company keeps the server it was created on.</p>
+              <p>They sync across web, desktop and mobile when you are signed in and connected to the internet.</p>
+            </>
+          }
         >
-          <Plus className="mr-2 h-4 w-4" />
-          Add local server gate
-        </Button>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Add local server</CardTitle>
-            <CardDescription>
-              Server IP/URL from the PC owner (Settings / Server). Works on LAN and WAN (port forward).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="space-y-1">
-              <Label htmlFor="gate-label">Local name</Label>
-              <Input
-                id="gate-label"
-                placeholder="Office PC"
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-              />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-[1fr_120px]">
-              <div className="space-y-1">
-                <Label htmlFor="gate-host">Server IP / host</Label>
-                <Input
-                  id="gate-host"
-                  placeholder="110.34.23.84"
-                  value={serverHost}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (/^https?:\/\//i.test(value) || value.includes(":")) {
-                      const parsed = splitServerAddress(value);
-                      setServerHost(parsed.host);
-                      if (parsed.port) setServerPort(parsed.port);
-                      return;
-                    }
-                    setServerHost(value);
-                  }}
-                />
+          <div className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Online data server</div>
+            {/* Active state lives in the table; clicking the active row opens the online gate (was the gate list item). */}
+            <OnlineDataServerTable
+              settings={onlineDataServer}
+              readOnly
+              idPrefix="gate-online-data-server"
+              onActiveRowClick={primaryOnlineGate ? () => toggleGateExpanded(primaryOnlineGate.id) : undefined}
+              activeRowTitle="Company on this gate"
+              activeRowEmphasis={!!primaryOnlineGate && isGateExpanded(primaryOnlineGate.id)}
+            />
+          </div>
+          {/* Online gates have no item rows (the table is the item): expanded company lists, grouped by gate name. */}
+          {onlineGates.map((g) =>
+            isGateExpanded(g.id) ? (
+              <div key={g.id} className="rounded-lg border border-border bg-background p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-sm font-medium">{g.label}</p>
+                  {itemCompaniesButton(g)}
+                </div>
+                {renderGateCompanies(g)}
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="gate-port">Port</Label>
-                <Input
-                  id="gate-port"
-                  inputMode="numeric"
-                  placeholder="3001"
-                  value={serverPort}
-                  onChange={(e) => setServerPort(e.target.value.replace(/[^\d]/g, ""))}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                IP/host aur port alag enter karein. Path mat add karein.
+            ) : null
+          )}
+          {onlineGates.length === 0 ? (
+            <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+              No online gate available.
+            </p>
+          ) : null}
+          {detailGateType === "online" ? gateDetailPanel : null}
+        </GateSection>
+
+        <GateSection
+          title="Local Server"
+          accent="server"
+          headerAction={allCompaniesButton(localServerGates, "No local server gate yet")}
+          icon={Server}
+          count={localServerGates.length}
+          infoLabel="Local Server"
+          info={
+            <>
+              <p>
+                A self-hosted server on your PC or network (for example http://127.0.0.1:8090). Companies shared from
+                that server open here.
               </p>
+              <p>Add the server IP/host and port. Works on LAN and WAN (port forward).</p>
+            </>
+          }
+        >
+          {localServerGates.length > 0 ? (
+            <ul className="space-y-2">{localServerGates.map(renderGateRow)}</ul>
+          ) : !showAdd ? (
+            <div className="rounded-lg border border-dashed p-4 text-center">
+              <Server className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
+              <p className="text-sm font-medium">No local server gates yet</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Add a self-hosted server to open companies shared from it.
+              </p>
+              <div className="mt-3">{addLocalServerGateButton}</div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" disabled={adding} onClick={() => void handleAdd()}>
-                {adding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Add
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>
-                Cancel
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="space-y-2">
-        <h2 className="text-sm font-medium">All gates</h2>
-        <ul className="space-y-2">
-          {gates.map((gate) => {
-            const Icon = gateIcon(gate.type);
-            const isActive = gate.id === activeGateId;
-            const isDetail = gate.id === selectedGateIdForDetail;
-            const hubLocalServer = gateHubMode && isLocalServerGate(gate);
-            const rowClass = cn(
-              "w-full rounded-lg border p-3 text-left transition-colors",
-              isDetail && !hubLocalServer ? "border-primary bg-secondary/40" : "hover:bg-muted/40",
-              isActive && "ring-1 ring-primary/40"
-            );
-            return (
-              <li key={gate.id}>
-                {hubLocalServer ? (
-                  <div className={rowClass}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">{gate.label}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {gateTypeLabel(gate.type)}
-                            {gate.serverUrl ? ` · ${gate.serverUrl}` : ""}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1">
-                        {isActive ? <Badge className="bg-primary/90">Active</Badge> : null}
-                        {statusBadge(gate)}
-                      </div>
-                    </div>
-                    {editingGateId === gate.id ? (
-                      <div className="mt-3">
-                        <LocalServerGateEditFields
-                          fieldKey={gate.id}
-                          editLabel={editLabel}
-                          setEditLabel={setEditLabel}
-                          editServerHost={editServerHost}
-                          setEditServerHost={setEditServerHost}
-                          editServerPort={editServerPort}
-                          setEditServerPort={setEditServerPort}
-                          savingEdit={savingEdit}
-                          onSave={() => void handleSaveEdit()}
-                          onCancel={cancelEdit}
-                        />
-                      </div>
-                    ) : (
-                      <>
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={testingId === gate.id}
-                            onClick={() => handleTestPlGateFromHub(gate)}
-                          >
-                            {testingId === gate.id ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <Wifi className="mr-2 h-4 w-4" />
-                            )}
-                            Test
-                          </Button>
-                          <Button type="button" size="sm" onClick={() => handleOpenPlGate(gate)}>
-                            <ExternalLink className="mr-2 h-4 w-4" />
-                            Open gate
-                          </Button>
-                          <Button type="button" variant="outline" size="sm" onClick={() => startEdit(gate)}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Edit
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => setDeleteId(gate.id)}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Remove
-                          </Button>
-                        </div>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          Open gate connects here on this tab — Google sign-in stays on localhost; server data loads via
-                          relay in the background.
-                        </p>
-                      </>
-                    )}
+          ) : null}
+          {detailGateType === "local_server" ? gateDetailPanel : null}
+          {showAdd ? (
+            <Card className="bg-background shadow-none">
+              <CardHeader className="p-4">
+                <CardTitle className="text-base">Add local server</CardTitle>
+                <CardDescription>
+                  Server IP/URL from the PC owner (Settings / Server). Works on LAN and WAN (port forward).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 p-4 pt-0">
+                {/* Always one row (never wraps): name ~1fr, IP/host ~1.4fr, port 5rem. */}
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_5rem] items-end gap-2">
+                  <div className="min-w-0 space-y-1">
+                    <Label htmlFor="gate-label" className="block truncate whitespace-nowrap text-xs">
+                      Name
+                    </Label>
+                    <Input
+                      className="min-w-0 px-2"
+                      id="gate-label"
+                      placeholder="Office PC"
+                      value={label}
+                      onChange={(e) => setLabel(e.target.value)}
+                    />
                   </div>
-                ) : (
-                  <button type="button" onClick={() => handleSelectGate(gate)} className={rowClass}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">{gate.label}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {gateTypeLabel(gate.type)}
-                            {gate.serverUrl ? ` · ${gate.serverUrl}` : ""}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1">
-                        {isActive ? <Badge className="bg-primary/90">Active</Badge> : null}
-                        {statusBadge(gate)}
-                      </div>
-                    </div>
-                  </button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-
-      {showGateDetailPanel && detailGate ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{detailGate.label}</CardTitle>
-            <CardDescription>
-              {isLocalServerGate(detailGate)
-                ? "Test connection to load shared companies from this server."
-                : "Owned and shared companies on this gate."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {editingGateId === detailGate.id && isLocalServerGate(detailGate) ? (
-              <LocalServerGateEditFields
-                fieldKey={`detail-${detailGate.id}`}
-                editLabel={editLabel}
-                setEditLabel={setEditLabel}
-                editServerHost={editServerHost}
-                setEditServerHost={setEditServerHost}
-                editServerPort={editServerPort}
-                setEditServerPort={setEditServerPort}
-                savingEdit={savingEdit}
-                onSave={() => void handleSaveEdit()}
-                onCancel={cancelEdit}
-              />
-            ) : (
-              <>
-            <div className="flex flex-wrap gap-2">
-              {isLocalServerGate(detailGate) ? (
-                <>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={testingId === detailGate.id}
-                    onClick={() => {
-                      setTestingId(detailGate.id);
-                      void (async () => {
-                        const r = await testLocalServerGate(detailGate.id);
-                        if (!r.ok) {
-                          toast.error(r.message);
+                  <div className="min-w-0 space-y-1">
+                    <Label htmlFor="gate-host" className="block truncate whitespace-nowrap text-xs">
+                      Server IP / host
+                    </Label>
+                    <Input
+                      className="min-w-0 px-2"
+                      id="gate-host"
+                      placeholder="110.34.23.84"
+                      value={serverHost}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (/^https?:\/\//i.test(value) || value.includes(":")) {
+                          const parsed = splitServerAddress(value);
+                          setServerHost(parsed.host);
+                          if (parsed.port) setServerPort(parsed.port);
                           return;
                         }
-                        if (shouldMirrorLocalServerGateOnThisClient) {
-                          const mirror = await syncLocalServerGateCompanyListToThisClient(detailGate);
-                          if (mirror.error) {
-                            toast.warning("Server reachable", { description: mirror.error });
-                          } else {
-                            toast.success("Server reachable", {
-                              description: `${mirror.synced} companies loaded from this server.`,
-                            });
-                          }
-                          return;
-                        }
-                        toast.success(r.message);
-                      })().finally(() => setTestingId(null));
-                    }}
-                  >
-                    {testingId === detailGate.id ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Wifi className="mr-2 h-4 w-4" />
-                    )}
-                    Test
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={testingId === detailGate.id}
-                    onClick={() => handleUseGate(detailGate)}
-                  >
-                    {useBundledLocalServerGate && !isPlRemoteServerClientMode()
-                      ? "Use on this device"
-                      : "Connect & open"}
-                  </Button>
-                  {useBundledLocalServerGate && !isPlRemoteServerClientMode() ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={testingId === detailGate.id}
-                      onClick={() => connectLocalServerGate(detailGate.id)}
-                    >
-                      Connect &amp; open in browser
-                    </Button>
-                  ) : null}
-                </>
-              ) : (
-                <Button type="button" size="sm" onClick={() => handleUseGate(detailGate)}>
-                  <Check className="mr-2 h-4 w-4" />
-                  Use this gate
-                </Button>
-              )}
-              {detailGate.type === "local_server" ? (
-                <>
-                  <Button type="button" variant="outline" size="sm" onClick={() => startEdit(detailGate)}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => setDeleteId(detailGate.id)}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Remove
-                  </Button>
-                </>
-              ) : null}
-            </div>
-
-            {!isLocalServerGate(detailGate) ? (
-              <>
-                <CompanySection
-                  title="Owned companies"
-                  empty="No owned companies on this gate."
-                  companies={detailCompanies.owned}
-                  activeCompanyId={companyId}
-                  onPick={(id) => handlePickCompany(id, detailGate)}
-                  onLogout={handleLogoutCompany}
-                />
-                <CompanySection
-                  title="Shared companies"
-                  empty="No shared companies on this gate."
-                  companies={detailCompanies.shared}
-                  activeCompanyId={companyId}
-                  onPick={(id) => handlePickCompany(id, detailGate)}
-                  onLogout={handleLogoutCompany}
-                />
-                {canCreateCompanyOnActiveGate && detailGate.id === activeGateId ? (
-                  <Button type="button" variant="outline" asChild>
-                    <a href={appNavHref("/company/create")}>Create company on this gate</a>
-                  </Button>
-                ) : null}
-              </>
-            ) : (
-              <>
-                {refreshingServerCompanies ? (
-                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading companies from server…
-                  </p>
-                ) : null}
-                <CompanySection
-                  title="Shared companies"
-                  empty="No companies yet. Tap Test to check this server, or assign local companies on the server PC."
-                  companies={localServerGateCompanies}
-                  activeCompanyId={companyId}
-                  pickingCompanyId={pickingCompanyId}
-                  onPick={(id) => handlePickCompany(id, detailGate)}
-                  onLogout={handleLogoutCompany}
-                />
-                <p className="text-sm text-muted-foreground">
-                  {useBundledLocalServerGate && !isPlRemoteServerClientMode()
-                    ? "Tap a company to sign in and sync it on this device, or use Use on this device above."
-                    : shouldOpenPlServerCompanyInNewTab() && !(useBundledLocalServerGate && !isPlRemoteServerClientMode())
-                      ? "Tap a company to open it on the server in a new tab, or use Connect & open above."
-                      : "Tap a company to sign in here — same tab, server data via relay."}
+                        setServerHost(value);
+                      }}
+                    />
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <Label htmlFor="gate-port" className="block truncate whitespace-nowrap text-xs">
+                      Port
+                    </Label>
+                    <Input
+                      className="min-w-0 px-2"
+                      id="gate-port"
+                      inputMode="numeric"
+                      placeholder="3001"
+                      value={serverPort}
+                      onChange={(e) => setServerPort(e.target.value.replace(/[^\d]/g, ""))}
+                    />
+                  </div>
+                </div>
+                <p
+                  className="truncate text-xs text-muted-foreground"
+                  title="Enter the IP/host and port separately. Do not add a path."
+                >
+                  Enter the IP/host and port separately. Do not add a path.
                 </p>
-              </>
-            )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" disabled={adding} onClick={() => void handleAdd()}>
+                    {adding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Add
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : localServerGates.length > 0 ? (
+            addLocalServerGateButton
+          ) : null}
+        </GateSection>
+
+        <GateSection
+          title="Local"
+          accent="local"
+          headerAction={allCompaniesButton(deviceGates, "No local gate on this device")}
+          icon={Smartphone}
+          count={deviceGates.length}
+          infoLabel="Local"
+          info={
+            <>
+              <p>Companies saved only on this device (offline SQLite database).</p>
+              <p>Works without internet. Data stays on this device unless you back it up or upload it.</p>
+            </>
+          }
+        >
+          {deviceGates.length > 0 ? (
+            <ul className="space-y-2">{deviceGates.map(renderGateRow)}</ul>
+          ) : (
+            <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+              No local gate on this device.
+            </p>
+          )}
+          {detailGateType === "device" ? gateDetailPanel : null}
+        </GateSection>
+
+        <GateSection
+          title="Drive"
+          accent="drive"
+          headerAction={companiesToggleButton({
+            label: "All companies",
+            pressed: driveSummary.companies.length > 0 && driveCompaniesOpen,
+            disabled: driveSummary.companies.length === 0,
+            title:
+              driveSummary.companies.length === 0
+                ? "No companies synced to Google Drive yet"
+                : "Show or hide companies synced to Google Drive",
+            onClick: () => setDriveCompaniesOpen((v) => !v),
+          })}
+          icon={HardDrive}
+          count={driveSummary.companies.length}
+          infoLabel="Drive"
+          info={
+            <>
+              <p>Local companies synced to your Google Drive (backup and sharing).</p>
+              <p>This is a read-only summary. Manage connection and sync on the Google Drive sync page.</p>
+            </>
+          }
+        >
+          <GateDriveSummary state={driveSummary} showCompanies={driveCompaniesOpen} />
+        </GateSection>
+      </div>
 
       <CompanyUnlockDialog
         company={companyToUnlock}
@@ -1369,7 +1676,7 @@ function CompanySection({
 }: {
   title: string;
   empty: string;
-  companies: { id: string; name?: string; isOwned?: boolean }[];
+  companies: { id: string; name?: string; isOwned?: boolean; onlineServerId?: unknown }[];
   activeCompanyId: string | null;
   pickingCompanyId?: string | null;
   onPick: (id: string) => void;
@@ -1393,6 +1700,11 @@ function CompanySection({
                 >
                 <span className="truncate">{c.name || "Company"}</span>
                 <span className="ml-2 flex shrink-0 items-center gap-2">
+                  {typeof c.onlineServerId === "string" && c.onlineServerId ? (
+                    <Badge variant="outline" className="text-[10px] font-normal" title="Online data server">
+                      {onlineDataServerName(c.onlineServerId)}
+                    </Badge>
+                  ) : null}
                   {pickingCompanyId === c.id ? (
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                   ) : null}
@@ -1416,5 +1728,53 @@ function CompanySection({
         </ul>
       )}
     </div>
+  );
+}
+
+function GateSection({
+  title,
+  icon: Icon,
+  count,
+  infoLabel,
+  info,
+  accent,
+  headerAction,
+  children,
+}: {
+  title: string;
+  icon: typeof Cloud;
+  count: number;
+  infoLabel: string;
+  info: ReactNode;
+  accent: "online" | "local" | "server" | "drive";
+  /** Right-aligned action in the card header (e.g. "Company on this gate"). */
+  headerAction?: ReactNode;
+  children: ReactNode;
+}) {
+  const tone =
+    accent === "online"
+      ? { card: "border-sky-200 bg-sky-50/40", chip: "bg-sky-100 text-sky-700", head: "border-sky-100" }
+      : accent === "local"
+        ? { card: "border-emerald-200 bg-emerald-50/40", chip: "bg-emerald-100 text-emerald-700", head: "border-emerald-100" }
+        : accent === "server"
+          ? { card: "border-violet-200 bg-violet-50/40", chip: "bg-violet-100 text-violet-700", head: "border-violet-100" }
+          : { card: "border-amber-200 bg-amber-50/40", chip: "bg-amber-100 text-amber-700", head: "border-amber-100" };
+  return (
+    <Card className={cn("flex h-full min-w-0 flex-col overflow-hidden", tone.card)}>
+      <CardHeader className={cn("border-b px-4 py-3", tone.head)}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-md", tone.chip)}>
+            <Icon className="h-4 w-4" />
+          </span>
+          <CardTitle className="text-base">{title}</CardTitle>
+          <Badge variant="outline" className="h-5 bg-background px-1.5 text-[10px] font-normal text-muted-foreground">
+            {count}
+          </Badge>
+          <CloudSyncHelpPopover label={infoLabel} description={info} side="bottom" />
+          {headerAction ? <div className="ml-auto">{headerAction}</div> : null}
+        </div>
+      </CardHeader>
+      <CardContent className="flex-1 space-y-3 p-4">{children}</CardContent>
+    </Card>
   );
 }

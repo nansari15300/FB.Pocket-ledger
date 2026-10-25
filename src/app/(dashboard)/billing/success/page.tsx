@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { onBillingApiUser } from "@/lib/firebaseAuthForApi";
 import { getLocalDevAwareBillingApiUrl } from "@/lib/billingApiOrigin";
 import { applyVerifiedStripePayloadToLocalCompany } from "@/lib/applyStripePlanToLocalCompany";
 import type { VerifiedLocalPlanApplyPayload } from "@/lib/payments/localStripePlanApplyTypes";
@@ -32,7 +31,7 @@ function BillingSuccessInner() {
     syncOnceRef.current = false;
     setSyncDetail(null);
 
-    const unsub = onAuthStateChanged(auth, async (user) => {
+    const unsub = onBillingApiUser(async (user) => {
       if (!user || syncOnceRef.current) return;
       syncOnceRef.current = true;
       setSyncState("syncing");

@@ -1,6 +1,7 @@
 
 "use client";
 
+import { checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { NESTED_LEDGER_MASTER_EDIT_CONTENT_CN, NESTED_LEDGER_MASTER_EDIT_OVERLAY_CN } from "@/lib/nestedLedgerMasterEditPresentation";
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -76,14 +77,13 @@ import {
   collection,
   query,
   where,
-  getDocs,
   addDoc,
   serverTimestamp,
   doc,
   updateDoc,
-  onSnapshot,
   Timestamp,
 } from "firebase/firestore";
+import { getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 
 import type { Item, ItemGroup } from "@/components/items/types";
 import type { Tax, TaxGroup } from "@/components/tax/types";
@@ -637,7 +637,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
           // Item attachments — `canAddFileImagePdf` bina sirf `canAddAvatar` pe mat roko (CreateItemDialog jaisa)
           if (canAttachDocuments && newFilesToUpload.length > 0) {
             const totalNewBytes = newFilesToUpload.reduce((s, f) => s + (f.size || 0), 0);
-            const limitCheck = await checkStorageLimit(
+            const limitCheck = await checkStorageLimitSafe(
               companyId,
               company?.planId,
               { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes },
@@ -1619,6 +1619,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
         entityName={item.name}
         onMoveToBin={handleDelete}
         onDeletePermanently={handlePermanentDelete}
+        localOnlyCheck={{ companyId, collectionName: "items", docId: item.id }}
         busy={isLoading}
         moveToBinDisabled={apkOfflineViewOnly}
         permanentDeleteDisabled={apkOfflineViewOnly}

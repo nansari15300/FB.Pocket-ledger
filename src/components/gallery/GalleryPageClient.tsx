@@ -77,7 +77,8 @@ import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
 import { firestore } from "@/lib/firebase";
-import { collection, onSnapshot, query, where, serverTimestamp, writeBatch, doc, orderBy, updateDoc, arrayRemove, getDoc, getDocs, deleteDoc, Timestamp } from "firebase/firestore";
+import { collection, query, where, serverTimestamp, writeBatch, doc, orderBy, updateDoc, arrayRemove, deleteDoc, Timestamp } from "firebase/firestore";
+import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { toast } from "sonner";
 import { compressImageForCompany, attachmentImageStillTooLargeToastFields } from "@/lib/attachmentCompressionUi";
 import { uploadFileClient, deleteFileFromStorageClient } from "@/lib/storageClient";
@@ -102,7 +103,7 @@ import { setVisiblePageAttachmentUrls } from "@/lib/attachmentNetworkGate";
 const ATTACHABLE_VOUCHER_TYPES = [
   { id: 'sale', label: 'Sale' },
   { id: 'purchase', label: 'Purchase' },
-  { id: 'payment_in', label: 'Payment In' },
+  { id: 'payment_in', label: 'Receipt' },
   { id: 'payment_out', label: 'Payment Out' },
   { id: 'direct_income', label: 'Direct Income' },
   { id: 'direct_expense', label: 'Direct Expense' },

@@ -1,11 +1,13 @@
 
 "use client";
 
+import { isPocketBaseCompany } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { registerMasterAliases } from "@/lib/masterAliasIndex";
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useRef, useCallback, startTransition } from "react";
 import { usePathname } from "next/navigation";
 // Full collection queries: web cloud bhi pura voucher list (no orderBy/limit window).
-import { collectionGroup, query, where, onSnapshot, collection, getDoc, getDocs, getDocFromServer, doc } from "firebase/firestore";
+import { collectionGroup, query, where, collection, doc } from "firebase/firestore";
+import { onSnapshot, getDoc, getDocs, getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useCompany } from "./useCompany";
 import { useAuth } from "./useAuth";
@@ -590,6 +592,13 @@ function commitVouchersSetter(setter: StateSetter<any>, next: any[]): void {
 function commitCollectionListSetter(path: string, setter: StateSetter<any>, next: any[]): void {
   if (path === "vouchers") commitVouchersSetter(setter, next);
   else commitEntityListSetter(setter, next);
+}
+
+/** SQLite re-read with identical rows: keep the same array ref (no state change / re-render loop). */
+function keepPrevIfSameUiList(prev: any[], next: any[]): any[] {
+  if (prev === next) return prev;
+  if (!Array.isArray(prev) || !Array.isArray(next) || prev.length !== next.length) return next;
+  return entityListUiFingerprint(prev) === entityListUiFingerprint(next) ? prev : next;
 }
 
 function mergeEntityListsByIdOrKeepPrev(prev: any[], cached: any[], orderByField?: string): any[] {
@@ -1531,9 +1540,17 @@ export const VoucherProvider = ({
     company?.sharedWithEmails,
   ]);
 
+  // Stable key: `company.sharedWithEmails` is a NEW array on every company-row refresh (e.g. after a voucher save
+  // bumps the registry/storage counters) - as a raw dep it re-ran the whole fetch effect (full SQLite reload of all
+  // vouchers + loading/blank table + multi-second main-thread task). Compare by content instead.
+  const sharedWithEmailsKey = Array.isArray(company?.sharedWithEmails)
+    ? (company!.sharedWithEmails as unknown[]).map((e) => String(e ?? "")).join("|")
+    : String(company?.sharedWithEmails ?? "");
+
   // --- Data Fetching Logic ---
   useEffect(() => {
     const keepWarmUi = hasWarmLedgerDataRef.current && lastCompanyIdRef.current === companyId;
+    console.info("[PL-DEBUG-SAVE] useVouchers fetch effect run", { companyId, keepWarmUi, t: Math.round(performance.now()) });
 
     if (authLoading) {
       if (!keepWarmUi) setLoadingIfChanged(true);
@@ -1705,11 +1722,11 @@ export const VoucherProvider = ({
         if (cancelled || loadEpoch !== companyDataLoadEpochRef.current) return prev;
         const prevAlive = (prev as any[]).filter(isAliveDoc);
         if (!prevAlive.length || !hasWarmLedgerDataRef.current) {
-          return applyLocalLedgerHoldsToVoucherList(prevAlive, next as any[]) as any;
+          return keepPrevIfSameUiList(prev as any[], applyLocalLedgerHoldsToVoucherList(prevAlive, next as any[])) as any;
         }
         const merged = mergeEntityListsByIdOrKeepPrev(prevAlive, next as any[], orderByField) as any[];
         // Warm sqlite/lite projection `isApproved` drop karta tha — party approve ke baad bank/staff pink reh jata.
-        return applyLocalLedgerHoldsToVoucherList(prevAlive, merged) as any;
+        return keepPrevIfSameUiList(prev as any[], applyLocalLedgerHoldsToVoucherList(prevAlive, merged)) as any;
       });
       if (collectionPath && !cancelled && loadEpoch === companyDataLoadEpochRef.current) {
         warmSqliteCollectionPathsRef.current.add(collectionPath);
@@ -1759,7 +1776,10 @@ export const VoucherProvider = ({
       void loadSqliteChunk(secondary);
     };
 
-    if (isExplicitLocalRegistryRow) {
+    // Pocket Ledger Server (PocketBase) companies: lists read the local SQLite mirror; the server pull
+    // updates it and bumps `pl_server_pull`, so no Firestore listeners / pulls for these.
+    const pocketBaseLedgerCompany = isPocketBaseCompany(companyId, companyRef.current);
+    if (isExplicitLocalRegistryRow || pocketBaseLedgerCompany) {
     if (!keepWarmUi) setLoadingIfChanged(true);
       // Tier-1: masters only — `vouchers` SQLite read (JSON parse) hazaar+ rows par EXE me 30–90s lagata; spinner tab tak band na ho.
       // Vouchers secondary chunk me: parties list pehle paint, totals snapshot/listeners ke baad refresh.
@@ -2040,6 +2060,8 @@ export const VoucherProvider = ({
               const decrypted = await Promise.all(
                 changedDocs.map(async (d) => {
                   const raw = { ...d.data(), id: d.id } as Record<string, unknown> & { id: string };
+                  // SDK pending (unacknowledged) write => not server-backed; stamp skips it (localMirrorServerMeta).
+                  if (d.metadata.hasPendingWrites) raw.__plSdkPendingWrite = true;
                   return { id: d.id, row: await decryptFirestoreCompanyDocIfNeeded(raw, cryptoCtx, companyId) };
                 })
               );
@@ -2089,10 +2111,10 @@ export const VoucherProvider = ({
               !isGroup &&
               (shouldUseLocalCompanyData ||
                 isCloudBackedCompany(companyRef.current as CloudBackedCompanyShape));
-            // Static/APK: Firestore snapshot sirf transport — pehle SQLite commit, phir UI sirf `listCompanyDocsFromBrowserDb` se (web cloud par seedha snapshot UI).
-            const staticSqliteFirst =
-              isStaticApkLedgerTransportMode() && persistSqliteFromSnap && !isGroup;
-            if (staticSqliteFirst) {
+            // SQLite is the UI source on web + EXE + APK. Firestore snapshot is transport only.
+            // Old web-live path painted `rowsForSetter` (server snapshot) → F5: local narration 1s, then revert.
+            const sqliteUiFirst = persistSqliteFromSnap && !isGroup;
+            if (sqliteUiFirst) {
               await mirrorCollectionDocsToBrowserDbSilent(companyId, path, dataForUi, {
                 cloudBackedOfflineCache: persistSqliteFromSnap && !shouldUseLocalCompanyData,
               });
@@ -2370,7 +2392,7 @@ export const VoucherProvider = ({
       unsubRef.current.forEach(u => u());
       unsubRef.current = [];
     };
-  }, [companyId, voucherListenerCompanyKey, user?.uid, user?.email, authLoading, localAuthEpoch, ledgerSyncModeEpoch, onlineSyncPrefsEpoch, ledgerBootstrapActive, voucherFormMasterScope, sqliteLedgerRouteHint.usesSqlite, sqliteLedgerRouteHint.ownerMatchesUser, company?.id, company?.storageOption, company?.syncPolicy, company?.syncedFromCloud, company?.ownerId, company?.ownerEmail, company?.sharedWithEmails, setLoadingIfChanged]);
+  }, [companyId, voucherListenerCompanyKey, user?.uid, user?.email, authLoading, localAuthEpoch, ledgerSyncModeEpoch, onlineSyncPrefsEpoch, ledgerBootstrapActive, voucherFormMasterScope, sqliteLedgerRouteHint.usesSqlite, sqliteLedgerRouteHint.ownerMatchesUser, company?.id, company?.storageOption, company?.syncPolicy, company?.syncedFromCloud, company?.ownerId, company?.ownerEmail, sharedWithEmailsKey, setLoadingIfChanged]);
 
   // Sidebar/route change: pehle se warm company pe missing masters hi SQLite se — full teardown/spinner mat.
   useEffect(() => {
@@ -2413,11 +2435,11 @@ export const VoucherProvider = ({
         if (cancelled || loadEpoch !== companyDataLoadEpochRef.current) return prev;
         const prevAlive = (prev as any[]).filter(isAliveDoc);
         if (!prevAlive.length || !hasWarmLedgerDataRef.current) {
-          return applyLocalLedgerHoldsToVoucherList(prevAlive, next as any[]) as any;
+          return keepPrevIfSameUiList(prev as any[], applyLocalLedgerHoldsToVoucherList(prevAlive, next as any[])) as any;
         }
         const merged = mergeEntityListsByIdOrKeepPrev(prevAlive, next as any[], orderByField) as any[];
         // Warm sqlite/lite projection `isApproved` drop karta tha — party approve ke baad bank/staff pink reh jata.
-        return applyLocalLedgerHoldsToVoucherList(prevAlive, merged) as any;
+        return keepPrevIfSameUiList(prev as any[], applyLocalLedgerHoldsToVoucherList(prevAlive, merged)) as any;
       });
       if (collectionPath && !cancelled && loadEpoch === companyDataLoadEpochRef.current) {
         warmSqliteCollectionPathsRef.current.add(collectionPath);
@@ -2544,11 +2566,11 @@ export const VoucherProvider = ({
         if (cancelled || loadEpoch !== companyDataLoadEpochRef.current) return prev;
         const prevAlive = (prev as any[]).filter(isAliveDoc);
         if (!prevAlive.length || !hasWarmLedgerDataRef.current) {
-          return applyLocalLedgerHoldsToVoucherList(prevAlive, next as any[]) as any;
+          return keepPrevIfSameUiList(prev as any[], applyLocalLedgerHoldsToVoucherList(prevAlive, next as any[])) as any;
         }
         const merged = mergeEntityListsByIdOrKeepPrev(prevAlive, next as any[], orderByField) as any[];
         // Warm sqlite/lite projection `isApproved` drop karta tha — party approve ke baad bank/staff pink reh jata.
-        return applyLocalLedgerHoldsToVoucherList(prevAlive, merged) as any;
+        return keepPrevIfSameUiList(prev as any[], applyLocalLedgerHoldsToVoucherList(prevAlive, merged)) as any;
       });
       if (collectionPath && !cancelled && loadEpoch === companyDataLoadEpochRef.current) {
         warmSqliteCollectionPathsRef.current.add(collectionPath);
@@ -2970,7 +2992,14 @@ export const VoucherProvider = ({
       mobilePullRefreshHoldRef.current = refreshHold;
 
       try {
-        if (isServerGateCompanyContext) {
+        if (isPocketBaseCompany(cid, company)) {
+          const { pullPocketBaseCompanyToLocal } = await import("@/lib/pocketbaseData/pbSync");
+          try {
+            await pullPocketBaseCompanyToLocal(cid);
+          } catch {
+            /* Offline: keep the cached collection for the final display pass. */
+          }
+        } else if (isServerGateCompanyContext) {
           const { refreshPlServerDisplayCacheCompany } = await import("@/lib/plServerDisplayCache");
           const plServerCollections = collections.filter(
             (coll): coll is CompanyBackupCollection => coll !== "quotations"

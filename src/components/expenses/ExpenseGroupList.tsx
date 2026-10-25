@@ -26,6 +26,9 @@ import {
   flattenExpenseGroupForest,
   sortExpenseGroupTreeNodes,
 } from "@/lib/expenseGroupTree";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
+import { stampLastVoucherMsOnGroupForest } from "@/lib/masterListLastVoucherMs";
 
 export function ExpenseGroupList({
   groups,
@@ -70,9 +73,11 @@ export function ExpenseGroupList({
 }) {
   void collapsible;
   const { formatCurrency } = useDate();
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled, setHideSettled } = useEntityListHideSettled();
   const { animatePresenceMode, rowMotionProps, markListScrolling, isRowAnimationEnabled, layoutHoldMs } =
     useMasterListRowMotion();
-  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [internalQuickFilter, setInternalQuickFilter] = useState<EntityListQuickFilter>("latest");
   const quickFilter = quickFilterProp ?? internalQuickFilter;
   const setQuickFilter = onQuickFilterChange ?? setInternalQuickFilter;
 
@@ -93,10 +98,16 @@ export function ExpenseGroupList({
       forest,
       searchTerm,
       quickFilter,
+      groupMembersByGroupId,
+      hideSettled
+    );
+    const stamped = stampLastVoucherMsOnGroupForest(
+      filtered,
+      lastVoucherMsById,
       groupMembersByGroupId
     );
-    return sortExpenseGroupTreeNodes(filtered, quickFilter);
-  }, [visibleGroups, searchTerm, quickFilter, groupMembersByGroupId]);
+    return sortExpenseGroupTreeNodes(filtered, quickFilter, stamped);
+  }, [visibleGroups, searchTerm, quickFilter, groupMembersByGroupId, lastVoucherMsById, hideSettled]);
 
   const flatForCount = useMemo(
     () => flattenExpenseGroupForest(groupForest),
@@ -158,7 +169,12 @@ export function ExpenseGroupList({
           </ul>
         </ScrollArea>
         {!hideQuickFilterBar ? (
-          <EntityListQuickFilterBar active={quickFilter} onChange={setQuickFilter} />
+          <EntityListQuickFilterBar
+            active={quickFilter}
+            onChange={setQuickFilter}
+            hideSettled={hideSettled}
+            onHideSettledChange={setHideSettled}
+          />
         ) : null}
       </motion.div>
     </TooltipProvider>

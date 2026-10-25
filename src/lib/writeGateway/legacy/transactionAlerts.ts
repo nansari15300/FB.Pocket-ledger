@@ -1,6 +1,7 @@
 "use client";
 
-import { collection, addDoc, serverTimestamp, getDoc, doc, getDocs, query, where } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, query, where } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore, firestoreNetworkDisabledByApi } from "@/lib/firebase";
 import type { Company } from "@/hooks/useCompany";
 import { getEffectiveNotificationSettings } from "@/lib/localUserNotificationSettings";

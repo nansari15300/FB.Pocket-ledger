@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
-import { getAdminDb } from "@/lib/firebaseAdmin";
 import type { PlanId } from "@/config/plans";
 import {
   isBillingGatewayAvailable,
@@ -14,6 +13,7 @@ import {
 import { applyNewSubscriptionCheckoutToFirestore } from "@/lib/payments/subscriptionCheckoutApply";
 import type { SubscriptionTermKey } from "@/lib/subscriptionPlanMath";
 import { SUBSCRIPTION_TERM_KEYS_FOR_CHECKOUT } from "@/lib/subscriptionPlanMath";
+import { resolveBillingCaller } from "@/lib/server/billingCaller";
 
 type Body = {
   /** eSewa redirect `data` query — base64 JSON decode client-side. */
@@ -25,19 +25,11 @@ type Body = {
  */
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization");
-    const authToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    if (!authToken) {
-      return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
+    const billingCaller = await resolveBillingCaller(req);
+    if (!billingCaller.ok) {
+      return NextResponse.json({ error: billingCaller.error }, { status: billingCaller.status });
     }
-
-    getAdminDb();
-    let decodedAuth: admin.auth.DecodedIdToken;
-    try {
-      decodedAuth = await admin.auth().verifyIdToken(authToken);
-    } catch {
-      return NextResponse.json({ error: "Invalid auth token" }, { status: 401 });
-    }
+    const decodedAuth = billingCaller.decoded;
 
     const body = (await req.json()) as Body;
     const decoded = body.decoded;
@@ -55,7 +47,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Payment not complete" }, { status: 400 });
     }
 
-    const db = getAdminDb();
+    const db = billingCaller.db;
     const gwSnap = await db.doc("app_settings/payment_gateways").get();
     const gwRaw = gwSnap.exists ? (gwSnap.data() as Record<string, unknown>) : {};
     const gwKeys = mergeGatewayKeysWithEnv(gwRaw as GatewayKeys);

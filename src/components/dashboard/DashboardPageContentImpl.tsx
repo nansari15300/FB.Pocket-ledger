@@ -51,6 +51,7 @@ import {
   BarChart3,
   Search,
 } from 'lucide-react';
+import { MasterListChromeChevronToggle } from "@/components/layout/MasterListChromeChevronToggle";
 import { cn } from '@/lib/utils';
 import { proDashboardRibbonClass } from '@/lib/proTheme';
 import { Input } from '@/components/ui/input';
@@ -385,7 +386,7 @@ const statCardData = [
   { title: 'Contra', icon: Landmark, type: 'contra', link: '/contra', isCredit: false },
   { title: 'Direct Income', icon: TrendingUp, type: 'direct_income', link: '/incomes', isCredit: true },
   { title: 'Direct Expense', icon: TrendingDown, type: 'direct_expense', link: '/incomes', isCredit: false },
-  { title: 'Payment In', icon: ArrowDownCircle, type: 'payment_in', link: '/payment-in', isCredit: true },
+  { title: 'Receipt', icon: ArrowDownCircle, type: 'payment_in', link: '/payment-in', isCredit: true },
   { title: 'Payment Out', icon: ArrowUpCircle, type: 'payment_out_excl_pay_salary', link: '/payment-out', isCredit: false },
   { title: 'Pay Salary', icon: HandCoins, type: 'pay_salary', link: '/add-salary', isCredit: false },
   { title: 'Notes', icon: StickyNote, type: 'note', link: '/notes', isCredit: true },
@@ -737,6 +738,30 @@ const BankCashSummary = () => {
 };
 
 export function DashboardPageContentImpl() {
+  /** Mobile Recent Transactions footer: chevron se buttons row show/hide (localStorage persist). */
+  const [recentFooterButtonsHidden, setRecentFooterButtonsHidden] = useState(false);
+  useEffect(() => {
+    try { if (window.localStorage.getItem("pl_mobile_recent_footer_hidden") === "1") setRecentFooterButtonsHidden(true); } catch {}
+  }, []);
+  const toggleRecentFooterButtonsHidden = useCallback(() => {
+    setRecentFooterButtonsHidden((prev) => {
+      const next = !prev;
+      try { window.localStorage.setItem("pl_mobile_recent_footer_hidden", next ? "1" : "0"); } catch {}
+      return next;
+    });
+  }, []);
+  /** Mobile Daybook footer: chevron se pager row (+ bottom tabs) show/hide (alag localStorage key). */
+  const [daybookFooterHidden, setDaybookFooterHidden] = useState(false);
+  useEffect(() => {
+    try { if (window.localStorage.getItem("pl_mobile_daybook_footer_hidden") === "1") setDaybookFooterHidden(true); } catch {}
+  }, []);
+  const toggleDaybookFooterHidden = useCallback(() => {
+    setDaybookFooterHidden((prev) => {
+      const next = !prev;
+      try { window.localStorage.setItem("pl_mobile_daybook_footer_hidden", next ? "1" : "0"); } catch {}
+      return next;
+    });
+  }, []);
   const { company, companyId, setCompanyId } = useCompany();
   const { visibleCard, setVisibleCard } = useDashboard();
   const dashboardRecentPipelineActive = dashboardTabLoadsRecentTransactionPipeline(visibleCard);
@@ -1624,6 +1649,18 @@ export function DashboardPageContentImpl() {
     }
     return sorted;
   }, [allRecentTransactions, recentUnapprovedOnly, includeNotesInTable, dashboardRecentPipelineActive]);
+
+  /** Mobile Recent footer count box: same predicate as Unapproved filter above (isApproved !== true, notes per toggle). Display only. */
+  const recentUnapprovedCount = useMemo(() => {
+    if (!dashboardRecentPipelineActive || !allRecentTransactions) return 0;
+    let n = 0;
+    for (const tx of allRecentTransactions as any[]) {
+      if (tx?.isApproved === true) continue;
+      if (!includeNotesInTable && tx?.type === 'note') continue;
+      n += 1;
+    }
+    return n;
+  }, [allRecentTransactions, includeNotesInTable, dashboardRecentPipelineActive]);
 
   const recentPoolBeforeLimit = useMemo(() => {
     const q = recentQuickSearchInput.trim().toLowerCase();
@@ -2565,24 +2602,6 @@ export function DashboardPageContentImpl() {
           visibleColumns={visibleColumns}
           transactionCardSearchHighlight={recentQuickSearchInput}
         />
-        {recentTransactionsCompact ? (
-          <MobileTransactionsPager
-            className="px-2 pt-2"
-            currentPage={recentSafePage}
-            totalItems={recentListTotal}
-            rowsPerPage={recentEffectiveRowsPerPage}
-            onRowsPerPageChange={(nextRows) => {
-              const n = Math.max(10, nextRows || 50);
-              setRecentRowsPerPage(n);
-              setRecentCurrentPage(1);
-            }}
-            onPageChange={setRecentCurrentPage}
-            edgeCounts={recentPagerEdgeCounts}
-            pagingMode="newest-first"
-            trimSummary
-            includeAllOption={false}
-          />
-        ) : null}
         </div>
       </CardContent>
     </Card>
@@ -2639,7 +2658,7 @@ export function DashboardPageContentImpl() {
             isPanelVisible={visibleCard === "daybook"}
             welcomeRibbonDateNav={!isMobile}
             dashboardEmbedded
-            footerPortalTarget={!isMobile ? daybookFooterSlot : null}
+            footerPortalTarget={daybookFooterSlot}
           />
         </div>
       )}
@@ -2742,6 +2761,8 @@ export function DashboardPageContentImpl() {
     !recentTransactionsCompact && visibleCard === "recent-transactions";
   const showRecentCompactBottomControls =
     recentTransactionsCompact && visibleCard === "recent-transactions";
+  /** Mobile Daybook: pager row footer me (welcome ke neeche, tabs ke upar) + floating chevron. */
+  const showDaybookMobileFooter = isMobile && visibleCard === "daybook";
   const welcomeDisplayName = user?.displayName || user?.email || "";
   const recentDesktopScrollContained =
     !recentTransactionsCompact && visibleCard === "recent-transactions";
@@ -2844,6 +2865,8 @@ export function DashboardPageContentImpl() {
             "box-border flex w-full max-w-full flex-col gap-0 overflow-hidden bg-background shadow-none",
             "min-w-full w-full max-w-none",
             "divide-y divide-border border-t border-border",
+            /* Mobile Recent: floating footer chevron toolbar ke upar dikhe (clip na ho). */
+            (showRecentCompactBottomControls || showDaybookMobileFooter) && "relative overflow-visible",
           )}
         >
           <DashboardWelcomeFooterBanner
@@ -2859,22 +2882,183 @@ export function DashboardPageContentImpl() {
             <div ref={setDaybookFooterSlot} data-pl-daybook-footer-slot="" className="w-full min-w-0 shrink-0 overflow-hidden empty:hidden" />
           ) : null}
 
+          {showDaybookMobileFooter ? (
+            <div
+              data-pl-daybook-mobile-footer=""
+              className={cn(
+                "w-full max-w-full box-border overflow-visible border-0 bg-gray-200 px-1 py-0 dark:bg-gray-800",
+                daybookFooterHidden ? "h-0" : "border-t border-gray-300 dark:border-gray-600",
+              )}
+            >
+              {/* Mobile Daybook footer: floating chevron (right, ribbon ke upar) -> DaybookReport ka pager (portal). Hidden => pager + bottom tabs hide. */}
+              <MasterListChromeChevronToggle
+                expanded={!daybookFooterHidden}
+                onClick={toggleDaybookFooterHidden}
+                variant="inline"
+                className="pl-mobile-ledger-footer-fab absolute bottom-[calc(100%+2px)] right-2 z-[45] mb-0 shrink-0 rounded-full shadow-md"
+                ariaLabelWhenExpanded="Hide footer controls"
+                ariaLabelWhenCollapsed="Show footer controls"
+              />
+              <div
+                ref={setDaybookFooterSlot}
+                data-pl-daybook-mobile-footer-slot=""
+                className={cn("flex w-full min-w-0 justify-center", daybookFooterHidden && "[&_[data-pl-daybook-mobile-footer-pager]]:hidden")}
+              />
+            </div>
+          ) : null}
+
           {showRecentCompactBottomControls ? (
-          <div data-pl-recent-txn-toolbar="" className="w-full max-w-full box-border space-y-1 overflow-x-hidden border-0 border-t border-gray-300 bg-gray-200 px-1 py-1 dark:border-gray-600 dark:bg-gray-800">
-            {/* Row 1: date change + rows + unapproved + clear */}
-            {/* Controls row: wrap allow karo so small screens par content clip na ho. */}
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <div className="flex min-w-0 items-center gap-2 h-8">
+            !recentFooterButtonsHidden ? (
+          <div data-pl-recent-txn-toolbar="" data-pl-recent-mobile-footer="" className="w-full max-w-full box-border space-y-0 overflow-visible border-0 border-t border-gray-300 bg-gray-200 px-1 py-0 dark:border-gray-600 dark:bg-gray-800">
+            {/* Mobile Recent footer (welcome ke neeche): floating chevron (right, pure footer ribbon ke upar; ribbon relative) -> Pager -> [clear X + Unapproved + Search]. Change date bottom tab bar me; Note mobile par hidden. Rows flush. */}
+                <MasterListChromeChevronToggle
+                  expanded={!recentFooterButtonsHidden}
+                  onClick={toggleRecentFooterButtonsHidden}
+                  variant="inline"
+                  className="pl-mobile-ledger-footer-fab absolute bottom-[calc(100%+2px)] right-2 z-[45] mb-0 shrink-0 rounded-full shadow-md"
+                  ariaLabelWhenExpanded="Hide footer controls"
+                  ariaLabelWhenCollapsed="Show footer controls"
+                />
+          <MobileTransactionsPager
+            className="px-0 pt-0"
+            currentPage={recentSafePage}
+            totalItems={recentListTotal}
+            rowsPerPage={recentEffectiveRowsPerPage}
+            onRowsPerPageChange={(nextRows) => {
+              const n = Math.max(10, nextRows || 50);
+              setRecentRowsPerPage(n);
+              setRecentCurrentPage(1);
+            }}
+            onPageChange={setRecentCurrentPage}
+            edgeCounts={recentPagerEdgeCounts}
+            pagingMode="newest-first"
+            trimSummary
+            includeAllOption={false}
+          />
+            <div className="flex h-[38px] w-full min-w-0 items-center gap-1" data-pl-recent-mobile-search-row="">
+              <div className="flex min-w-0 flex-1 basis-0 items-center gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={recentUnapprovedOnly ? "default" : "outline"}
+                  className="h-[38px] min-h-[38px] min-w-0 flex-1 whitespace-nowrap" data-pl-recent-mobile-unapproved=""
+                  disabled={recentUnapprovedCount === 0 && !recentUnapprovedOnly}
+                  onClick={() => {
+                    if (recentUnapprovedOnly) setRecentUnapprovedOnly(false);
+                    else applyRecentUnapprovedFilter();
+                  }}
+                >
+                  Unapproved
+                </Button>
+                {(isRecentFilterActive || recentUnapprovedOnly) && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-[38px] w-8 shrink-0"
+                    onClick={clearRecentFilters}
+                    aria-label="Clear Filters"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              <button
+                type="button"
+                data-pl-recent-mobile-unapproved-count=""
+                className={cn(
+                  "h-[38px] min-h-[38px] w-[calc(5ch+1rem)] shrink-0 rounded-md border px-2 text-center text-sm font-bold tabular-nums",
+                  /* Same pink pending/unapproved style as PendingApprovalListFilterBadge (party/master lists). */
+                  recentUnapprovedOnly
+                    ? "border-pink-600 bg-pink-600 text-white shadow-sm"
+                    : "border-pink-200 bg-pink-100 text-pink-900 hover:bg-pink-200/90 dark:border-pink-800 dark:bg-pink-950/60 dark:text-pink-100 dark:hover:bg-pink-900/50",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                )}
+                disabled={recentUnapprovedCount === 0 && !recentUnapprovedOnly}
+                aria-label={`Unapproved vouchers: ${recentUnapprovedCount}`}
+                onClick={() => {
+                  if (recentUnapprovedOnly) setRecentUnapprovedOnly(false);
+                  else applyRecentUnapprovedFilter();
+                }}
+              >
+                {recentUnapprovedCount}
+              </button>
+              <div className="relative h-[38px] min-w-0 flex-1 basis-0">
+                <Search
+                  className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden
+                />
+                <Input
+                  type="search"
+                  enterKeyHint="search"
+                  listChrome
+                  listChromeSearch
+                  placeholder="Search"
+                  value={recentQuickSearchInput}
+                  onChange={(e) => setRecentQuickSearchInput(e.target.value)}
+                  className="h-[38px] min-h-[38px] max-h-[38px] py-1 pl-8 pr-2 text-sm"
+                  aria-label="Search recent vouchers"
+                />
+              </div>
+            </div>
+          </div>
+            ) : (
+          <div
+            className="h-0 w-full border-0"
+            data-pl-recent-footer-chevron-fab=""
+          >
+                <MasterListChromeChevronToggle
+                  expanded={!recentFooterButtonsHidden}
+                  onClick={toggleRecentFooterButtonsHidden}
+                  variant="inline"
+                  className="pl-mobile-ledger-footer-fab absolute bottom-[calc(100%+2px)] right-2 z-[45] mb-0 shrink-0 rounded-full shadow-md"
+                  ariaLabelWhenExpanded="Hide footer controls"
+                  ariaLabelWhenCollapsed="Show footer controls"
+                />
+          </div>
+            )
+          ) : null}
+
+          {showRecentDesktopFixedLedgerFooter ? (
+            <div data-pl-recent-ledger-footer-fixed="" className="w-full min-w-0 shrink-0 overflow-hidden">
+              {recentDesktopLedgerFooter}
+            </div>
+          ) : null}
+
+        <div
+          data-pl-dashboard-footer-tabs=""
+          className={cn(
+            "grid w-full shrink-0 items-stretch gap-0.5 border-0 bg-background px-0",
+            showRecentCompactBottomControls ? "grid-cols-5" : "grid-cols-4",
+            isMobile ? "h-8" : "h-[38px]",
+            /* Mobile Recent: footer chevron hidden => bottom tabs bhi hide (sirf up-chevron dikhe). */
+            showRecentCompactBottomControls && recentFooterButtonsHidden && "hidden",
+            /* Mobile Daybook: same behaviour (alag key). */
+            showDaybookMobileFooter && daybookFooterHidden && "hidden",
+          )}
+        >
+          <div
+            data-pl-dashboard-footer-summary-chart-pair=""
+            className="col-span-1 flex min-h-0 min-w-0 overflow-hidden rounded-md border-2 border-pink-500 bg-pink-300 text-pink-950 dark:border-pink-400 dark:bg-pink-800 dark:text-pink-50"
+          >
+            {renderDashboardFooterTab(dashboardCards[0], "h-full min-w-0 flex-1", "left")}
+            {renderDashboardFooterTab(dashboardCards[1], "h-full min-w-0 flex-1", "right")}
+          </div>
+          {renderDashboardFooterTab(dashboardCards[2])}
+          {renderDashboardFooterTab(dashboardCards[3])}
+          {renderDashboardFooterTab(dashboardCards[4])}
+          {/* Mobile Recent: Change date tab (right end), existing BS/AD pickers reuse. */}
+          {showRecentCompactBottomControls ? (
+          <div data-pl-footer-tab="recent-change-date" className="col-span-1 flex min-h-0 min-w-0 overflow-hidden rounded-md border-2 border-violet-400 bg-violet-100 text-violet-950 dark:border-violet-600 dark:bg-violet-900 dark:text-violet-50">
                 {(dateSystem === 'BS' || dateSystem === 'Both') && (
                   <BsDatePicker
                     isRange
                     valueAD={recentDateRange}
                     onChangeAD={(range) => setRecentDateRange(range as DateRange | undefined)}
                     transactionDates={transactionDates}
-                    className="h-8 max-w-[8rem]"
+                    className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-0.5 text-[9px] font-medium"
                     hideTriggerIcon={true}
                     rangeEmptyLabel={"Change date"}
-                    children={<span className="min-w-0 truncate">Change date</span>}
+                    children={<span className="min-w-0 truncate text-[9px] font-medium leading-tight">Change date</span>}
                   />
                 )}
                 {(dateSystem === 'AD' || dateSystem === 'Both') && (
@@ -2887,9 +3071,9 @@ export function DashboardPageContentImpl() {
                       <Button
                         id="recent-date-bottom"
                         variant={"outline"}
-                        className="h-8 w-auto max-w-[8rem] min-w-0 shrink-0 justify-start text-left font-normal"
+                        className="h-full min-w-0 flex-1 justify-center rounded-none border-0 bg-transparent px-0.5 text-[9px] font-medium leading-tight shadow-none hover:bg-violet-200/70"
                       >
-                        <span className="min-w-0 truncate">Change date</span>
+                        <span className="min-w-0 truncate text-[9px] font-medium leading-tight">Change date</span>
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="end">
@@ -2929,109 +3113,7 @@ export function DashboardPageContentImpl() {
                   </Popover>
                 )}
               </div>
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 h-auto min-h-8">
-                <LedgerFooterColumnsMenu>
-                  <DropdownMenuContent align="start" className="w-52 p-2">
-                    {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[])
-                      .filter((key) => key !== 'runningBalance' && key !== 'status')
-                      .map((key) => (
-                        <DropdownMenuItem
-                          key={`m-${key}`}
-                          onSelect={(e) => e.preventDefault()}
-                          className="flex items-center gap-2 cursor-pointer"
-                        >
-                          <Checkbox
-                            id={`col-${key}-recent-m`}
-                            checked={visibleColumns[key] !== false}
-                            onCheckedChange={(c) => handleColumnVisibilityChange(key, Boolean(c))}
-                          />
-                          <label
-                            htmlFor={`col-${key}-recent-m`}
-                            className="text-sm font-medium flex-1 cursor-pointer"
-                          >
-                            {COLUMN_LABELS[key]}
-                          </label>
-                        </DropdownMenuItem>
-                      ))}
-                  </DropdownMenuContent>
-                </LedgerFooterColumnsMenu>
-                <LedgerFooterCheckboxPill
-                  id="show-notes-recent-m"
-                  checked={includeNotesInTable}
-                  disabled={notesPreferenceLockedOnMobile}
-                  onCheckedChange={(c) => setShowNotes(Boolean(c))}
-                  label="Note"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={recentUnapprovedOnly ? "default" : "outline"}
-                  className="h-8 whitespace-nowrap"
-                  onClick={() => {
-                    if (recentUnapprovedOnly) setRecentUnapprovedOnly(false);
-                    else applyRecentUnapprovedFilter();
-                  }}
-                >
-                  Unapproved
-                </Button>
-                {(isRecentFilterActive || recentUnapprovedOnly) && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0"
-                    onClick={clearRecentFilters}
-                    aria-label="Clear Filters"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
-            <div className="flex h-8 w-full min-w-0 items-center justify-end gap-2">
-              <div className="relative h-8 w-full max-w-[min(42vw,11rem)] shrink-0 sm:max-w-[11rem] sm:w-44">
-                <Search
-                  className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                  aria-hidden
-                />
-                <Input
-                  type="search"
-                  enterKeyHint="search"
-                  listChrome
-                  listChromeSearch
-                  placeholder="Search"
-                  value={recentQuickSearchInput}
-                  onChange={(e) => setRecentQuickSearchInput(e.target.value)}
-                  className="h-8 min-h-8 max-h-8 py-1 pl-8 pr-2 text-sm"
-                  aria-label="Search recent vouchers"
-                />
-              </div>
-            </div>
-          </div>
           ) : null}
-
-          {showRecentDesktopFixedLedgerFooter ? (
-            <div data-pl-recent-ledger-footer-fixed="" className="w-full min-w-0 shrink-0 overflow-hidden">
-              {recentDesktopLedgerFooter}
-            </div>
-          ) : null}
-
-        <div
-          data-pl-dashboard-footer-tabs=""
-          className={cn(
-            "grid w-full shrink-0 grid-cols-4 items-stretch gap-0.5 border-0 bg-background px-0",
-            isMobile ? "h-8" : "h-[38px]",
-          )}
-        >
-          <div
-            data-pl-dashboard-footer-summary-chart-pair=""
-            className="col-span-1 flex min-h-0 min-w-0 overflow-hidden rounded-md border-2 border-pink-500 bg-pink-300 text-pink-950 dark:border-pink-400 dark:bg-pink-800 dark:text-pink-50"
-          >
-            {renderDashboardFooterTab(dashboardCards[0], "h-full min-w-0 flex-1", "left")}
-            {renderDashboardFooterTab(dashboardCards[1], "h-full min-w-0 flex-1", "right")}
-          </div>
-          {renderDashboardFooterTab(dashboardCards[2])}
-          {renderDashboardFooterTab(dashboardCards[3])}
-          {renderDashboardFooterTab(dashboardCards[4])}
         </div>
         </div>
       </div>

@@ -32,6 +32,10 @@ import {
   listAvailableAnusuchi13FyKeys,
   matchesAnusuchi13ConfirmationFilter,
   formatAnusuchi13FyRangeLabel,
+  ANUSUCHI13_DEFAULT_THRESHOLD_KEY,
+  readAnusuchi13DefaultThreshold,
+  parseAnusuchi13ThresholdInput,
+  formatAnusuchi13ThresholdLabel,
 } from "@/lib/reports/anusuchi13Confirmation";
 import {
   readAnusuchi13ReportMemory,
@@ -41,12 +45,79 @@ import { ReportRegisterListHeading } from "@/components/reports/ReportRegisterLi
 import { LEDGER_HEADER_RIBBON_WRAP_CN } from "@/lib/ledgerHeaderChrome";
 import { ResizeWidthHandle, useResizablePixelWidth } from "@/components/layout/ResizablePaneWidth";
 import { masterListOrderKey, useMasterListDisplayRows, useMasterListRowMotion } from "@/hooks/useMasterListRowMotion";
+import usePermissions from "@/hooks/usePermissions";
+import { useToast } from "@/hooks/use-toast";
+import { persistCompanyRootSettingsPatch } from "@/lib/persistCompanyRootSettings";
+import { chromeProPillCn } from "@/lib/chromePillButton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export function Anusuchi13Report() {
   const isMobile = useIsMobile();
   const { formatCurrency, formatDateBySystem } = useDate();
-  const { company } = useCompany();
+  const { company, companyId, reloadLocalCompanyRegistry, triggerSync } = useCompany();
   const { setDetailRibbonContent } = useReportPage();
+  const { can } = usePermissions();
+  const { toast } = useToast();
+  /** Same gate as Settings > company settings (owner / admin). */
+  const canSetDefaultThreshold = can("configure_company_settings");
+  const companyDefaultThreshold = readAnusuchi13DefaultThreshold(company);
+  const [thresholdInput, setThresholdInput] = useState<string>(() => String(companyDefaultThreshold));
+  const thresholdTouchedRef = useRef(false);
+  const [confirmDefaultOpen, setConfirmDefaultOpen] = useState(false);
+  const [savingDefault, setSavingDefault] = useState(false);
+
+  // Company switch → typed value reset to that company's default.
+  useEffect(() => {
+    thresholdTouchedRef.current = false;
+    setThresholdInput(String(readAnusuchi13DefaultThreshold(company)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId]);
+
+  // Default changed (another user / sync) → follow it unless user is typing a temporary value.
+  useEffect(() => {
+    if (!thresholdTouchedRef.current) setThresholdInput(String(companyDefaultThreshold));
+  }, [companyDefaultThreshold]);
+
+  const parsedThreshold = parseAnusuchi13ThresholdInput(thresholdInput);
+  const activeThreshold = parsedThreshold ?? companyDefaultThreshold;
+  const thresholdLabel = formatAnusuchi13ThresholdLabel(activeThreshold);
+  const canSaveThresholdAsDefault =
+    canSetDefaultThreshold && parsedThreshold != null && parsedThreshold !== companyDefaultThreshold;
+
+  const handleSaveDefaultThreshold = useCallback(async () => {
+    if (!companyId || parsedThreshold == null) return;
+    setSavingDefault(true);
+    try {
+      await persistCompanyRootSettingsPatch({
+        companyId,
+        company: company as Parameters<typeof persistCompanyRootSettingsPatch>[0]["company"],
+        patch: { [ANUSUCHI13_DEFAULT_THRESHOLD_KEY]: parsedThreshold },
+        reloadLocalCompanyRegistry,
+        triggerSync,
+      });
+      thresholdTouchedRef.current = false;
+      setConfirmDefaultOpen(false);
+      toast({
+        title: "Default saved",
+        description: `Anusuchi 13 now lists parties with FY transaction ≥ ${formatAnusuchi13ThresholdLabel(parsedThreshold)} for all users.`,
+      });
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Could not save default",
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setSavingDefault(false);
+    }
+  }, [company, companyId, parsedThreshold, reloadLocalCompanyRegistry, toast, triggerSync]);
   const {
     vouchers: allVouchers,
     loading: vouchersLoading,
@@ -101,8 +172,15 @@ export function Anusuchi13Report() {
   );
 
   const partiesWithOneLacOrAbove = useMemo(
-    () => listAnusuchi13EligibleParties(processedParties, allVouchers, fyRange.start, fyRange.end),
-    [processedParties, allVouchers, fyRange.start, fyRange.end]
+    () =>
+      listAnusuchi13EligibleParties(
+        processedParties,
+        allVouchers,
+        fyRange.start,
+        fyRange.end,
+        activeThreshold
+      ),
+    [processedParties, allVouchers, fyRange.start, fyRange.end, activeThreshold]
   );
 
   const confirmationCounts = useMemo(
@@ -273,22 +351,109 @@ export function Anusuchi13Report() {
     </ul>
   );
 
+  const thresholdControls = (
+    <div className="flex shrink-0 items-center gap-1">
+      <Input
+        type="text"
+        inputMode="decimal"
+        aria-label="Minimum FY transaction amount"
+        title="Show parties with FY transaction at or above this amount"
+        placeholder={String(companyDefaultThreshold)}
+        className={cn(
+          // Same blue as app pills (chromeProPillCn) + pill shape; 1px border via pl-chrome-btn-drop.
+          chromeProPillCn,
+          "h-7 w-24 rounded-full px-3 text-xs tabular-nums placeholder:text-blue-400 focus-visible:border-blue-500"
+        )}
+        value={thresholdInput}
+        onChange={(e) => {
+          thresholdTouchedRef.current = true;
+          setThresholdInput(e.target.value);
+        }}
+      />
+      {canSetDefaultThreshold ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          disabled={!canSaveThresholdAsDefault || savingDefault}
+          title={
+            canSaveThresholdAsDefault
+              ? "Save this amount as the default for all users of this company"
+              : "This amount is already the default"
+          }
+          onClick={() => setConfirmDefaultOpen(true)}
+        >
+          Set as default
+        </Button>
+      ) : null}
+    </div>
+  );
+
+  const confirmDefaultDialog = (
+    <Dialog
+      open={confirmDefaultOpen}
+      onOpenChange={(open) => {
+        if (!savingDefault) setConfirmDefaultOpen(open);
+      }}
+    >
+      <DialogContent hideCloseButton className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Set default amount?</DialogTitle>
+          <DialogDescription>
+            Anusuchi 13 will list parties with FY transaction ≥{" "}
+            {parsedThreshold != null ? formatAnusuchi13ThresholdLabel(parsedThreshold) : thresholdLabel} by
+            default, for every user of this company. Current default:{" "}
+            {formatAnusuchi13ThresholdLabel(companyDefaultThreshold)}.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={savingDefault}
+            onClick={() => setConfirmDefaultOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            disabled={savingDefault || parsedThreshold == null}
+            onClick={() => void handleSaveDefaultThreshold()}
+          >
+            {savingDefault ? "Saving..." : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   const listHeader = (
     <>
+      {confirmDefaultDialog}
       <div
         className={cn(
           isMobile ? "p-4 border-b space-y-3 flex-shrink-0" : "px-3 pt-3 pb-2 border-b space-y-2 flex-shrink-0"
         )}
       >
         {isMobile ? (
-          <div className={cn(LEDGER_HEADER_RIBBON_WRAP_CN, "-mx-0 rounded-none border-x-0 px-2 py-1")}>
-            {ribbonElement}
-          </div>
+          <>
+            <div className={cn(LEDGER_HEADER_RIBBON_WRAP_CN, "-mx-0 rounded-none border-x-0 px-2 py-1")}>
+              {ribbonElement}
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">Min FY transaction</span>
+              {thresholdControls}
+            </div>
+          </>
         ) : (
-          <ReportRegisterListHeading>Anusuchi 13</ReportRegisterListHeading>
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1">
+            <ReportRegisterListHeading className="flex-1">Anusuchi 13</ReportRegisterListHeading>
+            {thresholdControls}
+          </div>
         )}
         <Card className="p-3 text-center">
-          <p className="text-xs text-muted-foreground">Parties with FY transaction ≥ 1 Lac</p>
+          <p className="text-xs text-muted-foreground">Parties with FY transaction ≥ {thresholdLabel}</p>
           <p className="text-xl font-bold">{partiesWithOneLacOrAbove.length}</p>
           <p className="text-[11px] text-muted-foreground mt-1">{fyKeyLabel}</p>
         </Card>
@@ -426,7 +591,7 @@ export function Anusuchi13Report() {
                 <CardContent>
                   {partiesWithOneLacOrAbove.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      No parties with FY transaction of one lac or above.
+                      No parties with FY transaction of {thresholdLabel} or above.
                     </p>
                   ) : null}
                 </CardContent>

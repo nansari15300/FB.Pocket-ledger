@@ -4,6 +4,7 @@
  * Multi-attachment full-screen viewer: PC par ← → arrows + keyboard; mobile par horizontal swipe.
  * Image slides: zoom ± / Fit + pan/pinch (`inAppImagePreview` jaisa).
  */
+import { isPbAttachmentRef, resolvePbAttachmentDisplay } from "@/lib/pocketbaseData/pbAttachments";
 import { isLocalFileRef, getBlobFromLocalFileRef } from "@/lib/localPendingFiles";
 import { tryGetBlobFromFirebaseStorageDownloadUrl } from "@/lib/storageGetBlobFromDownloadUrl";
 import {
@@ -52,6 +53,16 @@ async function resolveSlide(
 ): Promise<ResolvedSlide> {
   const u = String(url || "").trim();
   const noop = () => {};
+
+  // Pocket Ledger Server (PocketBase) link: server bytes -> blob URL (cached in pbAttachments).
+  if (isPbAttachmentRef(u)) {
+    const resolved = await resolvePbAttachmentDisplay(u);
+    if (!resolved.displayUrl) return { kind: "other", href: "", revoke: noop };
+    const pathOnly = u.toLowerCase();
+    const ct = String(resolved.contentType || "").toLowerCase();
+    const isPdf = kindHint === "pdf" || ct.includes("pdf") || pathLooksPdf(pathOnly);
+    return { kind: isPdf ? "pdf" : "image", src: resolved.displayUrl, revoke: noop };
+  }
 
   // EXE/APK: display sirf pl-attachments / blob — HTTPS transport download ke liye preload me.
   if (usesEmbeddedNativeAttachmentStorage()) {

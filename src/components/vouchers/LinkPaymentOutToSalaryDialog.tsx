@@ -352,7 +352,7 @@ export function LinkPaymentOutToSalaryDialog({
             </table>
           </div>
           <p className="text-sm font-medium text-muted-foreground shrink-0 pt-1 text-center">From Voucher</p>
-          <p className="text-sm text-muted-foreground shrink-0 -mt-0.5 hidden md:block text-center">Credit-side vouchers for same staff (Add Salary, Payment In, Opening Balance)</p>
+          <p className="text-sm text-muted-foreground shrink-0 -mt-0.5 hidden md:block text-center">Credit-side vouchers for same staff (Add Salary, Receipt, Opening Balance)</p>
           <div className="flex-1 min-h-0 border rounded-md overflow-auto scrollbar-slim-dim">
             {salaryVouchersWithOutstanding.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">No credit-side staff vouchers available to link.</p>
@@ -380,7 +380,7 @@ export function LinkPaymentOutToSalaryDialog({
                       const rowMax = row.outstanding;
                       const maxAllowed = Math.min(rowMax, remainingToLink + linked);
                       const cannotAddMore = remainingToLink <= 0 && linked === 0;
-                      const fromLabel = row.id === OPENING_BALANCE_VOUCHER_ID ? "Opening Balance" : row.sourceType === "payment_in" ? "Payment In" : "Add Salary";
+                      const fromLabel = row.id === OPENING_BALANCE_VOUCHER_ID ? "Opening Balance" : row.sourceType === "payment_in" ? "Receipt" : "Add Salary";
                       // Use print formatter inside string interpolation so Opening Balance never renders as [object Object].
                       const amountStr = row.id === OPENING_BALANCE_VOUCHER_ID
                         ? `${formatCurrencyForPrint(Number(row.netTotal ?? row.outstanding) || 0, { noSuffix: true })} ${row.isDr ? "Dr" : "Cr"}`

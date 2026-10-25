@@ -6,7 +6,8 @@ import { Loader2 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
-import { doc, setDoc, collection, serverTimestamp, onSnapshot, query, Timestamp } from "firebase/firestore";
+import { doc, setDoc, collection, serverTimestamp, query, Timestamp } from "firebase/firestore";
+import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";

@@ -34,12 +34,37 @@ export async function resolveVoucherAttachmentsBeforeSave(params: {
   voucherIdForFirebaseUpload?: string;
   onStorageLimitBlocked?: (message: string) => void;
 }): Promise<VoucherAttachmentsBeforeSaveResult | null> {
-  const filesForSave = await prepareVoucherAttachmentsForSave(params.files, {
-    companyId: params.companyId,
-    savePdfAsImage: params.savePdfAsImage,
-    lockedPdfFileUrls: readLockedPdfFileUrlsFromRow(params.lockedPdfSource),
-  });
+  // Edit-time recompress + re-upload of oversized HTTPS images is KEPT (user decision).
+  // Phase 2 hotfix: a compress / shared-rewrite failure must not block the save; keep the original list.
+  let filesForSave: (File | string)[] = params.files;
+  const plT0 = typeof performance !== "undefined" ? performance.now() : Date.now();
+  try {
+    // Safety cap: a WebView decode/encode that never settles must not leave "Saving..." spinning forever.
+    filesForSave = await Promise.race([
+      prepareVoucherAttachmentsForSave(params.files, {
+        companyId: params.companyId,
+        savePdfAsImage: params.savePdfAsImage,
+        lockedPdfFileUrls: readLockedPdfFileUrlsFromRow(params.lockedPdfSource),
+      }),
+      new Promise<never>((_, rej) =>
+        setTimeout(() => rej(new Error("prepare attachments timed out (120 s)")), 120_000)
+      ),
+    ]);
+  } catch (err) {
+    console.warn("[resolveVoucherAttachmentsBeforeSave] prepare failed, keeping original attachments", err);
+    filesForSave = params.files;
+  } finally {
+    try {
+      const { dismissAttachmentCompressionProgressToast, isAttachmentCompressionProgressActive } = await import(
+        "@/lib/attachmentCompressionUi"
+      );
+      if (isAttachmentCompressionProgressActive()) dismissAttachmentCompressionProgressToast();
+    } catch {
+      /* ignore */
+    }
+  }
 
+  console.info("[PL-DEBUG-SAVE] step=prepareAttachments(recompress/pdf)", Math.round(performance.now() - plT0), "ms");
   let fileUrls = normalizeFormFileUrlsForSave(
     filesForSave.filter((f): f is string => typeof f === "string")
   );
@@ -51,12 +76,26 @@ export async function resolveVoucherAttachmentsBeforeSave(params: {
   }
 
   const totalNewBytes = newFilesToUpload.reduce((sum, f) => sum + (f.size || 0), 0);
-  const limitCheck = await checkStorageLimit(
-    params.companyId,
-    params.company?.planId,
-    { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes },
-    params.company?.storageOption
-  );
+  let limitCheck: { allowed: boolean; message?: string } = { allowed: true };
+  let skipLimitCheck = false;
+  try {
+    // Quota pause: server limit read would retry resource-exhausted for seconds ("Saving..." spinner).
+    const { isServerQuotaHoldActive } = await import("@/lib/serverQuotaHold");
+    skipLimitCheck = isServerQuotaHoldActive() || totalNewBytes <= 0;
+  } catch {
+    /* ignore */
+  }
+  if (!skipLimitCheck) try {
+    limitCheck = await checkStorageLimit(
+      params.companyId,
+      params.company?.planId,
+      { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes },
+      params.company?.storageOption
+    );
+  } catch (e) {
+    // Limit check unreachable (quota / offline): do not block the save; files stage as local-pending below.
+    console.warn("[resolveVoucherAttachmentsBeforeSave] storage limit check failed", e);
+  }
   if (!limitCheck.allowed) {
     params.onStorageLimitBlocked?.(limitCheck.message ?? "Storage limit reached");
     return null;
@@ -85,8 +124,65 @@ export async function resolveVoucherAttachmentsBeforeSave(params: {
       }
     }
   } else {
-    for (const file of newFilesToUpload) {
-      if (fileUrls.length >= params.maxFileCount) break;
+    const up = await uploadVoucherFilesOrStageLocalPending({
+      companyId: params.companyId,
+      storageFolder: params.storageFolder,
+      existingFileUrls: fileUrls,
+      files: newFilesToUpload,
+      maxFileCount: params.maxFileCount,
+      existingVoucherId: params.isEditingAndConverting ? null : params.idArgForFirestore ?? null,
+      voucherIdForFirebaseUpload: params.voucherIdForFirebaseUpload,
+    });
+    fileUrls = up.fileUrls;
+    if (up.preGeneratedVoucherId) preGeneratedVoucherId = up.preGeneratedVoucherId;
+  }
+
+  return { fileUrls, preGeneratedVoucherId };
+}
+
+/** Phase 2 hotfix: storage limit check that never throws (unreachable server = allowed; files stage locally). */
+export async function checkStorageLimitSafe(
+  companyId: string,
+  planId: string | null | undefined,
+  bytes: { attachmentsBytes: number; storageBytes: number },
+  storageOption?: string | null
+): Promise<{ allowed: boolean; message?: string }> {
+  try {
+    const res = await checkStorageLimit(companyId, planId as never, bytes, storageOption as never);
+    return { allowed: res.allowed, message: res.message ?? undefined };
+  } catch (e) {
+    console.warn("[checkStorageLimitSafe] storage limit check failed - allowing save", e);
+    return { allowed: true };
+  }
+}
+
+/**
+ * Phase 2 hotfix (shared by every voucher form): direct Storage upload of new files; any failure (quota,
+ * billing, network) stages that file and the rest as persisted `local:` pending refs. The voucher always
+ * saves; PendingAttachmentSyncBridge uploads in background and patches the HTTPS URL.
+ */
+export async function uploadVoucherFilesOrStageLocalPending(params: {
+  companyId: string;
+  storageFolder: string;
+  existingFileUrls: string[];
+  files: File[];
+  maxFileCount?: number;
+  existingVoucherId: string | null;
+  voucherIdForFirebaseUpload?: string;
+  onUploaded?: (url: string, file: File) => void;
+}): Promise<{ fileUrls: string[]; preGeneratedVoucherId?: string }> {
+  let fileUrls = [...params.existingFileUrls];
+  let preGeneratedVoucherId: string | undefined;
+  const max = params.maxFileCount ?? Number.MAX_SAFE_INTEGER;
+  const failedUploads: File[] = [];
+  for (const file of params.files) {
+    if (fileUrls.length + failedUploads.length >= max) break;
+    if (failedUploads.length > 0) {
+      // Storage already failing: stage the rest locally without hammering the server.
+      failedUploads.push(file);
+      continue;
+    }
+    try {
       const url = await uploadVoucherAttachmentFileToFirebase({
         companyId: params.companyId,
         voucherType: params.storageFolder,
@@ -94,12 +190,39 @@ export async function resolveVoucherAttachmentsBeforeSave(params: {
         voucherId: params.voucherIdForFirebaseUpload,
       });
       fileUrls.push(url);
-      await incrementCompanyStorage(params.companyId, {
-        attachmentsBytes: file.size,
-        storageBytes: file.size,
-      });
+      params.onUploaded?.(url, file);
+      try {
+        await incrementCompanyStorage(params.companyId, {
+          attachmentsBytes: file.size,
+          storageBytes: file.size,
+        });
+      } catch {
+        /* usage counter only */
+      }
+    } catch (e) {
+      console.warn("[uploadVoucherFilesOrStageLocalPending] upload failed, staging file as local-pending", e);
+      try {
+        const { reportOnlineTriggerQuotaExceeded } = await import("@/lib/onlineTriggerLog");
+        reportOnlineTriggerQuotaExceeded(
+          String((e as { code?: string })?.code ?? "") + " " + String((e as { message?: string })?.message ?? "")
+        );
+      } catch {
+        /* ignore */
+      }
+      failedUploads.push(file);
     }
   }
-
+  if (failedUploads.length > 0) {
+    const { fileUrls: merged, preGeneratedVoucherId: preGen } = await appendLocalOnlyVoucherFilesToUrls({
+      companyId: params.companyId,
+      storageFolder: params.storageFolder,
+      existingFileUrls: fileUrls,
+      newFiles: failedUploads,
+      maxFileCount: Number.isFinite(max) ? max : fileUrls.length + failedUploads.length,
+      existingVoucherId: params.existingVoucherId,
+    });
+    fileUrls = merged;
+    if (preGen) preGeneratedVoucherId = preGen;
+  }
   return { fileUrls, preGeneratedVoucherId };
 }

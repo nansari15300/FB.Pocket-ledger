@@ -6,7 +6,7 @@ import {
   resolveGroupListMemberSearchText,
   sortGroupListMembers,
 } from "@/lib/groupListExpand";
-import { masterEntityTextMatchesSearch } from "@/lib/filterMasterEntityListRows";
+import { masterEntityTextMatchesSearch, shouldHideEntityListSettledRow } from "@/lib/filterMasterEntityListRows";
 import {
   isMasterEntityLegacyUngroupedGroupId,
   isMasterEntitySystemGroupId,
@@ -201,11 +201,26 @@ export function expenseGroupCreateChainGroupIds(slots: ExpenseGroupCreateChainSl
     .filter((id): id is string => Boolean(id));
 }
 
-function nodeMatchesQuickFilter(group: ExpenseGroup, quickFilter: string): boolean {
+function nodeMatchesQuickFilter(
+  group: ExpenseGroup,
+  quickFilter: string,
+  hideSettled?: boolean
+): boolean {
   const balRaw = group.balance;
   const bal = typeof balRaw === "number" && !Number.isNaN(balRaw) ? balRaw : null;
   const isSettled = bal !== null && Math.abs(bal) < 1e-6;
-  if (quickFilter === "default" || quickFilter === "name" || quickFilter === "date") return true;
+  if (shouldHideEntityListSettledRow(balRaw, hideSettled, quickFilter as EntityListQuickFilter)) {
+    return false;
+  }
+  if (
+    quickFilter === "default" ||
+    quickFilter === "latest" ||
+    quickFilter === "amount" ||
+    quickFilter === "amount_asc" ||
+    quickFilter === "name" ||
+    quickFilter === "date"
+  )
+    return true;
   if (quickFilter === "dr") return bal !== null && bal > 0;
   if (quickFilter === "cr") return bal !== null && bal < 0;
   if (quickFilter === "settled") return isSettled;
@@ -218,7 +233,8 @@ export function filterExpenseGroupForest(
   nodes: ExpenseGroupTreeNode[],
   searchTerm: string,
   quickFilter: string,
-  groupMembersByGroupId: Record<string, { name?: string; accountName?: string }[]>
+  groupMembersByGroupId: Record<string, { name?: string; accountName?: string }[]>,
+  hideSettled?: boolean
 ): ExpenseGroupTreeNode[] {
   const q = searchTerm.trim().toLowerCase();
 
@@ -240,7 +256,7 @@ export function filterExpenseGroupForest(
         masterEntityTextMatchesSearch(resolveGroupListMemberSearchText(m), searchTerm)
       );
     const selfMatch =
-      (nameMatch || memberMatch) && nodeMatchesQuickFilter(node.group, quickFilter);
+      (nameMatch || memberMatch) && nodeMatchesQuickFilter(node.group, quickFilter, hideSettled);
 
     const filteredChildren = node.children
       .map((c) => walk(c))
@@ -505,13 +521,16 @@ export function sumExpenseGroupForestLeafTotals(
 
 export function sortExpenseGroupTreeNodes(
   nodes: ExpenseGroupTreeNode[],
-  quickFilter: EntityListQuickFilter | string
+  quickFilter: EntityListQuickFilter | string,
+  lastVoucherMsById?: Map<string, number> | null
 ): ExpenseGroupTreeNode[] {
   const filter = quickFilter as EntityListQuickFilter;
-  const sorted = [...nodes].sort((a, b) => compareGroupListMembers(a.group, b.group, filter));
+  const sorted = [...nodes].sort((a, b) =>
+    compareGroupListMembers(a.group, b.group, filter, undefined, lastVoucherMsById)
+  );
   return sorted.map((n) => ({
     ...n,
-    children: sortExpenseGroupTreeNodes(n.children, filter),
+    children: sortExpenseGroupTreeNodes(n.children, filter, lastVoucherMsById),
   }));
 }
 
@@ -524,7 +543,8 @@ export type ExpenseGroupListBranchSortRow = {
 /** Income / Expenses system branch cards — same footer filter + sort as account rows. */
 export function sortExpenseGroupListBranches(
   rows: ExpenseGroupListBranchSortRow[],
-  quickFilter: EntityListQuickFilter
+  quickFilter: EntityListQuickFilter,
+  lastVoucherMsById?: Map<string, number> | null
 ): ExpenseGroupListBranchSortRow[] {
   type BranchSortEntry = ExpenseGroupListBranchSortRow & {
     id: string;
@@ -538,7 +558,7 @@ export function sortExpenseGroupListBranches(
   }));
 
   const filtered = filterGroupListMembersByQuickFilter(entries, quickFilter);
-  return sortGroupListMembers(filtered, quickFilter, (entry) => entry.name);
+  return sortGroupListMembers(filtered, quickFilter, (entry) => entry.name, lastVoucherMsById);
 }
 
 export const EXPENSE_GROUP_TREE_EXPAND_PREFIX = "exp-grp:";

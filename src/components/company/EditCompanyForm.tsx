@@ -8,17 +8,16 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import {
   doc,
-  updateDoc,
   Timestamp,
   serverTimestamp,
   deleteField,
-  getDoc,
   arrayUnion,
-  getDocs,
   query,
   collection,
   where,
 } from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
+import { updateCompanyRootFirestore } from "@/lib/writeGateway/companyRootFirestore";
 import { uploadCompanyLogo, tryDeleteStorageFileByUrl } from "@/lib/storage";
 import { compressImageForCompany, attachmentImageStillTooLargeToastFields } from "@/lib/attachmentCompressionUi";
 import { usePcFileDropZone } from "@/lib/attachmentPcFileDrop";
@@ -85,7 +84,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { isLocalOnlyMode } from "@/lib/localMode";
-import { isOfflineCompanyStorage } from "@/lib/companyUnlockGate";
+import { isOfflineCompanyStorage, shareEntryHasPassword } from "@/lib/companyUnlockGate";
 import { generateEncryptServerBackupSaltBase64, setBackupEncryptionSessionFromLogin } from "@/lib/serverBackupEncryption";
 import { useLivePlans, getPlanFromPlans } from "@/hooks/useLivePlans";
 import { resolveEffectiveAccountPlanId } from "@/lib/accountPlanForOwner";
@@ -550,7 +549,7 @@ export function EditCompanyForm({
               role,
               password: nextPassword,
             };
-            await updateDoc(companyRef, {
+            await updateCompanyRootFirestore(companyId, {
               sharedWith: updatedSharedWith,
               updatedAt: serverTimestamp(),
             });
@@ -567,7 +566,7 @@ export function EditCompanyForm({
               /* uid optional */
             }
             const sharedEmailLower = String(email || "").trim().toLowerCase();
-            await updateDoc(companyRef, {
+            await updateCompanyRootFirestore(companyId, {
               sharedWith: arrayUnion({
                 name,
                 email,
@@ -740,7 +739,7 @@ export function EditCompanyForm({
             firestoreMirrorPayload.encryptServerBackupSalt = deleteField();
           }
           try {
-            await updateDoc(companyRef, {
+            await updateCompanyRootFirestore(companyId, {
               ...firestoreMirrorPayload,
               updatedAt: serverTimestamp(),
             });
@@ -760,7 +759,7 @@ export function EditCompanyForm({
         triggerSync();
         setExistingLocalUsers(localCompanyUsersToPublicList(nextUsers));
       } else {
-        await updateDoc(companyRef, updateData);
+        await updateCompanyRootFirestore(companyId, updateData);
         // `companies` SQLite row: sirf Firestore update se purana naam reh jata tha (restore ke baad rename → UI naya, DB inspector purana)
         try {
           const localRow = await getLocalCompanyById(companyId, { includeDeleted: true });
@@ -969,7 +968,7 @@ export function EditCompanyForm({
     
     // Naya company password: shared users bina password ke ho to confirm dialog.
     if (values.password && String(values.password).trim()) {
-        const usersToUpdate = (company.sharedWith || []).filter(u => !u.password);
+        const usersToUpdate = (company.sharedWith || []).filter(u => !shareEntryHasPassword(u));
         if (usersToUpdate.length > 0) {
             setPasswordConfirmation({ newPasswordValue: values.password, usersToUpdate });
             return;
@@ -989,7 +988,7 @@ export function EditCompanyForm({
       const deviceLocalCo = isOfflineCompanyStorage(company);
       const existingLocal = await getLocalCompanyById(companyId, { includeDeleted: true });
       if (!deviceLocalCo) {
-        await updateDoc(doc(firestore, `companies/${companyId}`), {
+        await updateCompanyRootFirestore(companyId, {
           isDeleted: true,
           deletedAt: serverTimestamp(),
         });

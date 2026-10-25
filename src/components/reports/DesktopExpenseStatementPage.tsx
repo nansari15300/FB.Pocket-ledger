@@ -1,5 +1,6 @@
 "use client";
 
+import { voucherTypeDisplayText, voucherTypeSearchText } from "@/lib/voucherTypeDisplay";
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useFyScopedVouchers } from "@/hooks/useFyScopedVouchers";
 import { useDate } from "@/hooks/useDate";
@@ -75,7 +76,8 @@ import {
 import { Input } from "@/components/ui/input";
 import * as XLSX from "xlsx";
 import { RunningBalanceFullChart } from "@/components/reports/RunningBalanceFullChart";
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 
@@ -134,8 +136,8 @@ export default function DesktopExpenseStatementPage() {
       : "accounts"
   );
   const [listSearchTerm, setListSearchTerm] = useState("");
-  const [accountListQuickFilter, setAccountListQuickFilter] = useState<EntityListQuickFilter>("default");
-  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("default");
+  const [accountListQuickFilter, setAccountListQuickFilter] = useState<EntityListQuickFilter>("latest");
+  const [groupListQuickFilter, setGroupListQuickFilter] = useState<EntityListQuickFilter>("latest");
 
   const [selectedAccount, setSelectedAccount] = useState<ExpenseAccount | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<ExpenseGroup | null>(null);
@@ -363,7 +365,7 @@ export default function DesktopExpenseStatementPage() {
     return list.filter((t: any) => {
       const vno = (t.voucherNumber || "").toLowerCase();
       const narr = (t.narration || "").toLowerCase();
-      const type = (typeof t.type === "string" ? t.type.replace(/_/g, " ") : "").toLowerCase();
+      const type = voucherTypeSearchText(t.type);
       const amount = String(t.debit ?? t.credit ?? t.total ?? "").toLowerCase();
       return vno.includes(q) || narr.includes(q) || type.includes(q) || amount.includes(q);
     });
@@ -473,7 +475,7 @@ export default function DesktopExpenseStatementPage() {
         "Date (BS)": formatDateBS(d),
         "Date (AD)": formatDate(d),
         "Voucher No.": t.voucherNumber,
-        Type: t.type.replace(/_/g, " "),
+        Type: voucherTypeDisplayText(t.type),
         Narration: t.narration || "",
         Debit: t.debit,
         Credit: t.credit,

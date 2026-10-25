@@ -1,6 +1,7 @@
 "use client";
 
-import { addDoc, collection, getDocs, query, serverTimestamp, where } from "firebase/firestore";
+import { addDoc, collection, query, serverTimestamp, where } from "firebase/firestore";
+import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { buildPlServerGateInviteLink } from "@/lib/plServerGateInviteLink";
 import { dedupePlServerListingUrls, rewritePlServerListingUrlsPort } from "@/lib/plServerPublicHostUrl";

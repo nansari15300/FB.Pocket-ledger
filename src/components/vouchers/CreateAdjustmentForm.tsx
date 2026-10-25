@@ -1,11 +1,13 @@
 "use client";
 
+import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
 import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { collection, doc, getDocs, query, serverTimestamp, setDoc, where } from "firebase/firestore";
+import { collection, doc, query, serverTimestamp, setDoc, where } from "firebase/firestore";
+import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { toast } from "sonner";
 import { ArrowDown, ArrowUp, CheckCircle, FileText, History, Link2, Loader2, PlusCircle, Printer, Trash2 } from "lucide-react";
 
@@ -848,7 +850,7 @@ export function CreateAdjustmentForm({
       const newFiles = filesForSave.filter((f): f is File => f instanceof File);
       if (newFiles.length > 0) {
         const totalNewBytes = newFiles.reduce((s, f) => s + (f.size || 0), 0);
-        const limitCheck = await checkStorageLimit(
+        const limitCheck = await checkStorageLimitSafe(
           companyId,
           company?.planId,
           { attachmentsBytes: totalNewBytes, storageBytes: totalNewBytes },
@@ -880,18 +882,16 @@ export function CreateAdjustmentForm({
             }
           }
         } else {
-          for (const file of newFiles) {
-            if (fileUrls.length >= fileAttachmentLimits.maxFileCount) break;
-            const url = await uploadVoucherAttachmentFileToFirebase({
+          {
+            const up = await uploadVoucherFilesOrStageLocalPending({
               companyId,
-              voucherType: "adjustment",
-              file,
+              storageFolder: "adjustment",
+              existingFileUrls: fileUrls,
+              files: newFiles,
+              maxFileCount: fileAttachmentLimits.maxFileCount,
+              existingVoucherId: voucher?.id ?? null,
             });
-            fileUrls.push(url);
-            await incrementCompanyStorage(companyId, {
-              attachmentsBytes: file.size,
-              storageBytes: file.size,
-            });
+            fileUrls = up.fileUrls; // same as staging branch above: create path has no pre-generated id
           }
         }
       }
@@ -1649,6 +1649,7 @@ export function CreateAdjustmentForm({
       entityName={voucher?.voucherNumber || form.watch("voucherNumber") || "this adjustment"}
       onMoveToBin={handleDelete}
       onDeletePermanently={handlePermanentDelete}
+      localOnlyCheck={{ companyId, collectionName: "vouchers", docId: savedVoucherId }}
       busy={isLoading}
     />
     </>

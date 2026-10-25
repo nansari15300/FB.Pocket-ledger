@@ -35,7 +35,17 @@ export function shouldForceFirestoreWritesOnStaticOrApk(): boolean {
  * live web online companies: SQLite-first via online attachment strategy + outbox flush.
  */
 export function apkEmbeddedSqliteFirstWritesPreferred(): boolean {
-  return isFirebaseLedgerDeltaSqliteTransportMode();
+  if (isFirebaseLedgerDeltaSqliteTransportMode()) return true;
+  // User decision 2026-10-22: WEB behaves like EXE/APK - GLOBAL local-first writes for every company
+  // (SQLite-wasm company_docs + sync_outbox, files staged as local: pending, background sync + retries).
+  // Emergency kill switch (per browser): localStorage "pl_web_local_first_writes_off" = "1".
+  if (typeof window === "undefined") return false;
+  try {
+    if (window.localStorage.getItem("pl_web_local_first_writes_off") === "1") return false;
+  } catch {
+    /* ignore */
+  }
+  return true;
 }
 
 /** Voucher forms: duplicate check / backdate — Firestore `getDoc` offline mat. */

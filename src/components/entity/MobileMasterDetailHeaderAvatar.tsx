@@ -62,7 +62,7 @@ export function MobileMasterDetailHeaderAvatar({
           aria-label={`Preview ${label} avatar`}
         >
           <ResolvedEntityAvatar
-            className={cn(mdc.mobileHeaderAvatarBox, "rounded-lg text-sm font-semibold [&_img]:object-cover")}
+            className={cn(mdc.mobileHeaderAvatarBox, "rounded-none text-sm font-semibold [&_img]:object-cover [&_img]:rounded-none")}
             src={attachmentUrl ?? undefined}
             alt={label}
             fallbackText={initials}

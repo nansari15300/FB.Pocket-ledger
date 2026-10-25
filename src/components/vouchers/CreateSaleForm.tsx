@@ -109,14 +109,12 @@ import {
   collection,
   query,
   where,
-  getDocs,
-  getDoc,
   addDoc,
   serverTimestamp,
   doc,
-  onSnapshot,
   Timestamp,
 } from "firebase/firestore";
+import { getDocs, getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useRouter } from 'next/navigation';
 
@@ -4857,6 +4855,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
         entityName={voucher?.voucherNumber || form.watch("voucherNumber") || "this sale"}
         onMoveToBin={handleDelete}
         onDeletePermanently={handlePermanentDelete}
+        localOnlyCheck={{ companyId, collectionName: "vouchers", docId: savedVoucherId }}
         busy={isLoading}
       />
     </>

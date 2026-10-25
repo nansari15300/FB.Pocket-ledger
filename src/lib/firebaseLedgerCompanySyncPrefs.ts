@@ -1,6 +1,7 @@
 "use client";
 
 import { isFirebaseLedgerDataSyncDisabled } from "@/lib/firebaseLedgerDataSyncDisabled";
+import { isPocketBaseCompany } from "@/lib/pocketbaseData/pbCompanyRegistry";
 
 export const FIREBASE_LEDGER_COMPANY_SYNC_PREFS_KEY = "pl_firebase_ledger_company_sync_prefs_v1";
 export const FIREBASE_LEDGER_COMPANY_SYNC_PREFS_CHANGED_EVENT =
@@ -142,6 +143,23 @@ export function isFirebaseLedgerCompanyDataSyncEnabled(
   if (isFirebaseLedgerDataSyncDisabled()) return false;
   const registry = String(companyId || "").trim();
   if (!registry) return false;
+  // Pocket Ledger Server companies: online data is on PocketBase, never Firestore listeners/pulls.
+  if (isPocketBaseCompany(registry, company)) return false;
+  const auth = String(company?.authoritativeCompanyId || "").trim();
+  return dataSyncEntryEnabledForIds(registry, auth || undefined);
+}
+
+/**
+ * Same global switch + company Data tick as Firebase, for Pocket Ledger Server (PocketBase)
+ * companies: outbox push + server pull run only when this is true.
+ */
+export function isPocketBaseCompanyDataSyncEnabled(
+  companyId: string,
+  company?: { authoritativeCompanyId?: string } | null
+): boolean {
+  if (isFirebaseLedgerDataSyncDisabled()) return false;
+  const registry = String(companyId || "").trim();
+  if (!registry || !isPocketBaseCompany(registry, company)) return false;
   const auth = String(company?.authoritativeCompanyId || "").trim();
   return dataSyncEntryEnabledForIds(registry, auth || undefined);
 }

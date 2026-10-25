@@ -1,7 +1,8 @@
 /**
  * Purane target IC copies — source pehle approve ho chuka ho to `interCompanySourceApproved` backfill.
  */
-import { doc, getDoc } from "firebase/firestore";
+import { doc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import {
   interCompanyVoucherViewerSide,

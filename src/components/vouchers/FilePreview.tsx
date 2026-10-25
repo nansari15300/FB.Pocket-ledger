@@ -1,5 +1,7 @@
 "use client";
 
+import { isPbAttachmentRef } from "@/lib/pocketbaseData/pbAttachments";
+import { resolveCurrentAttachmentUrlAfterLoadError } from "@/lib/attachmentCurrentUrlFallback";
 import * as React from "react";
 import { useCallback, useEffect, useState, useRef } from "react";
 import Image from "next/image";
@@ -15,6 +17,7 @@ import {
   getAttachmentFormatLabel,
   getAttachmentFormatLabelFromHints,
   getAttachmentPreviewKindFromHints,
+  isNonImageBlobObjectUrl,
   sniffBlobKindForPreview,
 } from "@/lib/attachmentFormatLabel";
 import {
@@ -44,7 +47,6 @@ import { getBlobFromAttachmentRefPreferLocalFirst } from "@/lib/attachmentPrevie
 import { tryResolveInterCompanyPeerAttachmentUrl } from "@/lib/interCompany/interCompanyAttachmentPeerResolve";
 import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
-import { canResolveLocalFileRefsOnThisDevice } from "@/lib/canResolveLocalFileRefs";
 import { shouldUseAttachmentLazyLoad } from "@/lib/webAttachmentLazyLoadPolicy";
 import { usesEmbeddedNativeAttachmentStorage } from "@/lib/usesEmbeddedNativeAttachmentStorage";
 import {
@@ -943,6 +945,24 @@ export function FilePreview({
       : { url: null, type: "other", name: "loading...", size: null, formatLabel: "" }
   );
 
+  /** 404 / object-not-found: doc re-read (local → server) → current URL (recompress swap on another device). */
+  const tryCurrentDocUrlFallback = React.useCallback(() => {
+    const src = typeof normalizedPreviewFile === "string" ? String(normalizedPreviewFile).trim() : "";
+    if (!/^https?:\/\//i.test(src) || forceLocalAttachmentOnly) return;
+    const gUrls = attachmentGallery?.urls ?? [];
+    void resolveCurrentAttachmentUrlAfterLoadError({
+      companyId: pathCompanyId,
+      placeKey: attachmentReusePlaceKey,
+      badUrl: src,
+      siblingUrls: gUrls,
+      index: attachmentGallery ? gUrls.findIndex((u) => u === src) : undefined,
+    }).then((nextUrl) => {
+      if (!nextUrl) return;
+      setFileInfo((prev) => ({ ...prev, url: nextUrl }));
+      setIsLoading(false);
+    });
+  }, [normalizedPreviewFile, forceLocalAttachmentOnly, attachmentGallery, pathCompanyId, attachmentReusePlaceKey]);
+
   /**
    * Hang-safe KB badge: warm/early-return paths size skip karte the.
    * getMetadata/cache hamesha; HEAD/Range sirf jab Files network allow.
@@ -1511,7 +1531,13 @@ export function FilePreview({
           (wantsSharpPdf ? peekHoverCachedBlobUrl(sharedPdfPortalThumbKey(file)) : undefined) ||
           peekHoverCachedBlobUrl(sharedAttachmentCellThumbKey(file)) ||
           peekHoverCachedBlobUrl(sharedPdfCellThumbKey(file));
-        if (sharedCellThumb && !controller.signal.aborted && (await isUsableWarmedAttachmentDisplayUrl(sharedCellThumb))) {
+        if (
+          sharedCellThumb &&
+          !controller.signal.aborted &&
+          (await isUsableWarmedAttachmentDisplayUrl(sharedCellThumb)) &&
+          // Raw PDF blob under a thumb key (pending local: seed) => not an image; fall through to PDF raster path.
+          !(await isNonImageBlobObjectUrl(sharedCellThumb))
+        ) {
           const lbl = getAttachmentFormatLabel(file);
           const hintKind = getAttachmentPreviewKindFromHints(sourceFileName, contentType);
           const thumbType =
@@ -1810,7 +1836,7 @@ export function FilePreview({
       setIsLoading(true);
 
       if (typeof file === "string") {
-        if (/^https?:\/\//i.test(file) && !file.startsWith(LOCAL_FILE_PREFIX)) {
+        if ((/^https?:\/\//i.test(file) || isPbAttachmentRef(file)) && !file.startsWith(LOCAL_FILE_PREFIX)) {
           const staticResolved = await resolveStaticAttachmentDisplay(file, {
             localLedgerOnly,
             companyMode: attachmentMode,
@@ -3224,6 +3250,7 @@ export function FilePreview({
               onLoad={() => applyThumbSizeAfterImagePaint(viewFileInfo.url)}
               onError={() => {
                 const bad = viewFileInfo.url;
+                tryCurrentDocUrlFallback();
                 if (typeof normalizedPreviewFile === "string" && bad) {
                   forgetHoverBlobUrl(normalizedPreviewFile, bad);
                 }
@@ -3252,6 +3279,7 @@ export function FilePreview({
               onLoad={() => applyThumbSizeAfterImagePaint(viewFileInfo.url)}
               onError={() => {
                 const bad = viewFileInfo.url;
+                tryCurrentDocUrlFallback();
                 const source =
                   typeof normalizedPreviewFile === "string" ? String(normalizedPreviewFile).trim() : "";
                 void (async () => {
@@ -3595,14 +3623,6 @@ export function FilePreview({
         attachmentCompanyId={attachmentCompanyId}
       />
     );
-
-  if (
-    typeof normalizedPreviewFile === "string" &&
-    isLocalFileRef(normalizedPreviewFile) &&
-    !canResolveLocalFileRefsOnThisDevice()
-  ) {
-    return null;
-  }
 
   if (attachmentBlockedByCrossCompanyPolicy) {
     return (

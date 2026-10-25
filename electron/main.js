@@ -3076,6 +3076,32 @@ if (gotSingleInstanceLock) {
     }
   });
 
+  /** Batch real on-disk size (fs.stat, no file read) - Settings "Log of online trigger" Files size.
+   * Paths restricted to the app attachments folders via safeAttachmentRelativePath; max 1000 per call. */
+  ipcMain.handle("pl-attachment-stat-sizes", async (_event, relList) => {
+    try {
+      const list = Array.isArray(relList) ? relList.slice(0, 1000) : [];
+      const sizes = await Promise.all(
+        list.map(async (relRaw) => {
+          const rel = safeAttachmentRelativePath(relRaw);
+          if (!rel) return null;
+          for (const full of [path.join(attachmentsRootDir(), rel), path.join(legacyAttachmentsRootDir(), rel)]) {
+            try {
+              const st = await fs.promises.stat(full);
+              if (st.isFile()) return st.size;
+            } catch {
+              /* try next */
+            }
+          }
+          return null;
+        })
+      );
+      return { ok: true, sizes };
+    } catch (e) {
+      return { ok: false, error: String(e?.message || e) };
+    }
+  });
+
   ipcMain.handle("pl-attachment-exists", async (_event, relRaw) => {
     try {
       const rel = safeAttachmentRelativePath(relRaw);

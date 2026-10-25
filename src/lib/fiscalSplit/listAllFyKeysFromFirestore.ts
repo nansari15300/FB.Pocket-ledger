@@ -2,13 +2,13 @@
 
 import {
   collection,
-  getDocs,
   limit,
   orderBy,
   query,
   startAfter,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
+import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { startOfDay } from "date-fns";
 import { getAnusuchi13FyKey } from "@/lib/reports/anusuchi13Confirmation";

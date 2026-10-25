@@ -5,19 +5,17 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { STAFF_ENTITY_GROUPS_LABEL, STAFF_ENTITY_LABEL } from "@/lib/staffEntityDisplayName";
 import { PermissionRouteGuard } from "@/components/permission/PermissionRouteGuard";
 import {
-    collection,
-    query,
-    where,
-    onSnapshot,
-    updateDoc,
-    doc,
-    deleteDoc,
-    writeBatch,
-    getDoc,
-    getDocs,
-    serverTimestamp,
-    type QueryDocumentSnapshot,
+  collection,
+  query,
+  where,
+  updateDoc,
+  doc,
+  deleteDoc,
+  writeBatch,
+  serverTimestamp,
+  type QueryDocumentSnapshot,
 } from "firebase/firestore";
+import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -52,6 +50,7 @@ import { removeRecycleBinAlerts } from "@/lib/transactionAlerts";
 import { useLivePlans, getPlanFromPlans } from "@/hooks/useLivePlans";
 import { numericEntitlement, isAtOrOverEntitlementCap, type PlanId } from "@/config/plans";
 import { isLocalOnlyMode } from "@/lib/localMode";
+import { reportFirestoreListenFailure } from "@/lib/classifyFirestoreClientError";
 import {
     getLocalCompanyById,
     listLocalCompanies,
@@ -670,7 +669,7 @@ function RecycleBinContent() {
                             });
                         },
                         (error) => {
-                            console.error(`Error fetching from ${coll.path}:`, error);
+                            reportFirestoreListenFailure("recycle-bin", coll.path, error);
                             if (!initialLoadComplete) {
                                 setLoading(false);
                                 initialLoadComplete = true;

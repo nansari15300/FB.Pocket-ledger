@@ -62,7 +62,7 @@ export function SpecialAccountAccessControl({
               <TableHead>User</TableHead>
               <TableHead>Role</TableHead>
               <TableHead className="w-[5.5rem] min-w-[5.5rem] whitespace-nowrap text-center px-1">
-                Payment In
+                Receipt
               </TableHead>
               <TableHead className="w-[5.5rem] min-w-[5.5rem] whitespace-nowrap text-center px-1">
                 Payment Out

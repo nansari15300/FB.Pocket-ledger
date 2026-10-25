@@ -1,4 +1,5 @@
 "use client";
+import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
 import { STAFF_ENTITY_LABEL, STAFF_ENTITY_TYPE_KEY, STAFF_ENTITY_SEARCH_PLACEHOLDER, STAFF_ENTITY_ADD_BUTTON, staffEntityDisplayLabel } from "@/lib/staffEntityDisplayName";
 
@@ -92,15 +93,13 @@ import {
   collection,
   query,
   where,
-  getDocs,
-  getDoc,
   addDoc,
   serverTimestamp,
   doc,
   updateDoc,
-  onSnapshot,
   Timestamp,
 } from "firebase/firestore";
+import { getDocs, getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 import type { Party } from "@/components/party/types";
@@ -1961,7 +1960,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
 
       if (newFilesToUpload.length > 0) {
         const totalNewBytes = newFilesToUpload.reduce((sum, f) => sum + (f.size || 0), 0);
-        const limitCheck = await checkStorageLimit(companyId, company?.planId, {
+        const limitCheck = await checkStorageLimitSafe(companyId, company?.planId, {
           attachmentsBytes: totalNewBytes,
           storageBytes: totalNewBytes,
         }, company?.storageOption);
@@ -1997,18 +1996,17 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
             }
           }
         } else {
-          for (const file of newFilesToUpload) {
-            if (fileUrls.length >= fileAttachmentLimits.maxFileCount) break;
-            const url = await uploadVoucherAttachmentFileToFirebase({
+          {
+            const up = await uploadVoucherFilesOrStageLocalPending({
               companyId,
-              voucherType: "journal",
-              file,
+              storageFolder: "journal",
+              existingFileUrls: fileUrls,
+              files: newFilesToUpload,
+              maxFileCount: fileAttachmentLimits.maxFileCount,
+              existingVoucherId: isEditingAndConverting && voucher?.id ? null : idArgForFirestore ?? null,
             });
-            fileUrls.push(url);
-            await incrementCompanyStorage(companyId, {
-              attachmentsBytes: file.size,
-              storageBytes: file.size,
-            });
+            fileUrls = up.fileUrls;
+            if (up.preGeneratedVoucherId) preGeneratedVoucherId = up.preGeneratedVoucherId;
           }
         }
       }
@@ -3829,6 +3827,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
         entityName={voucher?.voucherNumber || "this journal"}
         onMoveToBin={handleDelete}
         onDeletePermanently={handlePermanentDelete}
+        localOnlyCheck={{ companyId, collectionName: "vouchers", docId: savedVoucherId }}
         busy={isLoading}
       />
     </>

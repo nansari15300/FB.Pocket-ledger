@@ -22,6 +22,8 @@ import {
   type EntityListQuickFilter,
 } from "@/components/entity/EntityListQuickFilterBar";
 import { filterAndSortMasterEntityListRows } from "@/lib/filterMasterEntityListRows";
+import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
+import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
 
 export type UnifiedPayee = {
   id: string;
@@ -53,15 +55,23 @@ function payeeAvatarFallback(payee: UnifiedPayee): { fallbackText?: string; fall
 export function filterPayeeListRows(
   payees: UnifiedPayee[],
   searchTerm: string,
-  quickFilter: EntityListQuickFilter
+  quickFilter: EntityListQuickFilter,
+  lastVoucherMsById?: Map<string, number> | null,
+  hideSettled?: boolean
 ): UnifiedPayee[] {
   return filterAndSortMasterEntityListRows(
     payees.map((p) => ({
       ...p,
       openingBalanceDate: p.entity?.openingBalanceDate,
+      createdAt: (p as { createdAt?: unknown }).createdAt ?? (p.entity as { createdAt?: unknown } | undefined)?.createdAt,
+      updatedAt: (p as { updatedAt?: unknown }).updatedAt ?? (p.entity as { updatedAt?: unknown } | undefined)?.updatedAt,
+      lastEditedAt:
+        (p as { lastEditedAt?: unknown }).lastEditedAt ??
+        (p.entity as { lastEditedAt?: unknown } | undefined)?.lastEditedAt,
     })),
     searchTerm,
-    quickFilter
+    quickFilter,
+    { lastVoucherMsById, hideSettled }
   );
 }
 
@@ -84,13 +94,15 @@ export function PayeeList({
 }) {
   const { formatCurrency } = useDate();
   const { company } = useCompany();
-  const [internalQuickFilter, setInternalQuickFilter] = React.useState<EntityListQuickFilter>("default");
+  const lastVoucherMsById = useLastVoucherMsByEntityId();
+  const { hideSettled, setHideSettled } = useEntityListHideSettled();
+  const [internalQuickFilter, setInternalQuickFilter] = React.useState<EntityListQuickFilter>("latest");
   const quickFilter = quickFilterProp ?? internalQuickFilter;
   const setQuickFilter = onQuickFilterChange ?? setInternalQuickFilter;
 
   const filteredPayees = React.useMemo(
-    () => filterPayeeListRows(payees, searchTerm, quickFilter),
-    [payees, searchTerm, quickFilter]
+    () => filterPayeeListRows(payees, searchTerm, quickFilter, lastVoucherMsById, hideSettled),
+    [payees, searchTerm, quickFilter, lastVoucherMsById, hideSettled]
   );
 
   const { animatePresenceMode, rowMotionProps, markListScrolling, isRowAnimationEnabled, layoutHoldMs } =
@@ -180,7 +192,12 @@ export function PayeeList({
         </ul>
       </ScrollArea>
       {!hideQuickFilterBar ? (
-        <EntityListQuickFilterBar active={quickFilter} onChange={setQuickFilter} />
+        <EntityListQuickFilterBar
+          active={quickFilter}
+          onChange={setQuickFilter}
+          hideSettled={hideSettled}
+          onHideSettledChange={setHideSettled}
+        />
       ) : null}
     </div>
   );

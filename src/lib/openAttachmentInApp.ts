@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchPbAttachmentBlob, isPbAttachmentRef } from "@/lib/pocketbaseData/pbAttachments";
 import { shouldUseInAppPdfPreviewOverlay } from "@/lib/shouldUseInAppPdfPreview";
 import { showInAppPdfPreview } from "@/lib/inAppPdfPreview";
 import { normalizeAttachmentUrlForDevicePreview } from "@/lib/attachmentHoldClipboard";
@@ -11,7 +12,7 @@ import {
 } from "@/lib/openPdfExternal";
 import { showInAppImagePreview } from "@/lib/inAppImagePreview";
 import { openAttachmentGalleryInApp } from "@/lib/inAppAttachmentGallery";
-import { showAppAlert } from "@/lib/appAlertDialog";
+import { showAppAlert, showAppConfirm } from "@/lib/appAlertDialog";
 import { tryGetBlobFromFirebaseStorageDownloadUrl } from "@/lib/storageGetBlobFromDownloadUrl";
 import {
   looksLikeFirebaseStorageObjectPath,
@@ -83,15 +84,19 @@ function isRemoteCacheableAttachmentSource(value: string): boolean {
 }
 
 function showInAppPdfOpenError(sourceUrl: string): void {
-  // Native/static flow: show clear English error and optional external-app open fallback.
-  if (typeof window !== "undefined") {
-    const shouldOpenExternally = window.confirm(
-      "PDF preview could not be loaded. Please check internet/CORS and try again.\n\nOpen in other app?"
-    );
-    if (shouldOpenExternally) {
-      window.open(sourceUrl, "_blank", "noopener,noreferrer");
-    }
-  }
+  // Native/static flow: show clear English error and optional external-app open fallback (in-app dialog, no browser popup).
+  if (typeof window === "undefined") return;
+  void showAppConfirm("PDF preview could not be loaded. Please check internet/CORS and try again.\n\nOpen in other app?", {
+    title: "PDF preview",
+    confirmLabel: "Open in other app",
+    cancelLabel: "Close",
+  })
+    .then((shouldOpenExternally) => {
+      if (shouldOpenExternally) window.open(sourceUrl, "_blank", "noopener,noreferrer");
+    })
+    .catch(() => {
+      /* dialog unavailable: nothing to open */
+    });
 }
 
 async function openInMemoryUrlAttachment(
@@ -362,6 +367,18 @@ export async function openAttachmentInApp(
   const u = normalizeAttachmentUrlForDevicePreview(String(url || "").trim());
   if (!u) return;
 
+  // Pocket Ledger Server (PocketBase) link: open the server bytes with the same in-app viewers.
+  if (isPbAttachmentRef(u)) {
+    const blob = await fetchPbAttachmentBlob(u);
+    if (blob) {
+      await openBlobAttachmentInApp(blob, { title: opts?.title, kind: opts?.kind });
+    } else {
+      const { showAppAlert } = await import("@/lib/appAlertDialog");
+      showAppAlert("This attachment could not be loaded from Pocket Ledger Server. Check the connection and try again.", "Attachment");
+    }
+    return;
+  }
+
   // STRICT (parked): PDF URL / label → hamesha PDF open path (portal JPEG raster se kind:image skip).
   // const pathOnlyForKind = u.split("?")[0].split("#")[0].toLowerCase();
   // const forcePdfKind =
@@ -589,6 +606,7 @@ export async function openAttachmentInApp(
           }
         }
       }
+      console.warn("[openAttachmentInApp] local attachment bytes not found", u);
       if (typeof window !== "undefined") {
         showAppAlert(
           "Attachment file not found on this device (cache may have been cleared). " +

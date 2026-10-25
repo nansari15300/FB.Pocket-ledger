@@ -10,10 +10,7 @@ import {
   deleteDoc,
   deleteField,
   doc,
-  getDoc,
-  getDocs,
   limit,
-  onSnapshot,
   query,
   runTransaction,
   serverTimestamp,
@@ -22,6 +19,7 @@ import {
   where,
   type Unsubscribe,
 } from "firebase/firestore";
+import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { auth, firestore } from "@/lib/firebase";
 import { upsertInterCompanyPublicCompanyProfile } from "@/lib/interCompany/interCompanyPublicCompanyProfile";
 

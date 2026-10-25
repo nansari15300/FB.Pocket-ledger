@@ -89,8 +89,8 @@ import {
 import {
   FIREBASE_SIGN_IN_REQUIRED_FOR_DRIVE_MSG,
   LOCAL_UNLOCK_ONLY_DRIVE_MSG,
-  getFirebaseAuthUserForApi,
-  hasRealFirebaseAuthSession,
+  getDriveApiUser,
+  hasDriveApiAuthSession,
   isLocalSyntheticAuthUid,
   isStoredDriveAuthError,
   waitForFirebaseAuthReady,
@@ -367,7 +367,7 @@ export function LocalCompanyCloudSyncSettings({ companyId, company, companyOptio
     void (async () => {
       await waitForFirebaseAuthReady();
       if (cancelled) return;
-      if (!hasRealFirebaseAuthSession()) return;
+      if (!hasDriveApiAuthSession()) return;
       if (!isStoredDriveAuthError(status.lastError)) return;
       await patchLocalCompanyCloudSyncFields(companyId, {
         cloudSyncStatus: "idle",
@@ -609,7 +609,7 @@ export function LocalCompanyCloudSyncSettings({ companyId, company, companyOptio
     }
     setBusy(true);
     try {
-      const firebaseUser = await getFirebaseAuthUserForApi();
+      const firebaseUser = await getDriveApiUser();
       markDriveOAuthReturnGrace(companyId);
       const { url } = await getGoogleDriveAuthUrl({
         returnPath: resolveDriveOAuthReturnPath(settingsViewHref("local_cloud_sync")),

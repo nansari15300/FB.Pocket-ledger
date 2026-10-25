@@ -4,7 +4,8 @@
  * Sirf reference/availability ke liye; is side ka apna posting leg entityId nahi badalta
  * (save pair logic same rehta hai — mirror sirf peer company ke masters me visible hota hai).
  */
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { doc, setDoc, updateDoc } from "firebase/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import type { InterCompanyEntityKind } from "@/components/inter-company/InterCompanyEntitySide";
 import { interCompanyAcNoForNewEntity } from "@/lib/interCompany/interCompanyAccountNo";
