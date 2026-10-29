@@ -9,6 +9,7 @@ import { LoadingSpinner } from '@/components/layout/LoadingSpinner';
 import { doc, getDoc, collection, query, getDocs, where } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { isPocketBaseAppSessionActive, readPocketBaseAppProfile, pocketBaseSessionUid } from "@/lib/pocketbaseData/pbAppSession";
 
 function PartyDetailsPageContent() {
   const params = useParams();
@@ -44,7 +45,14 @@ function PartyDetailsPageContent() {
   const fetchUserName = useCallback(async (userId: string): Promise<string> => {
     const existingName = vouchersUserNames?.[userId] || localUserNames[userId];
     if (existingName && existingName !== "Unknown" && existingName !== "N/A") return existingName;
-    try {
+    // Pocket Ledger Server session: no Firebase user, so Firestore would only fail ("client is offline").
+    if (isPocketBaseAppSessionActive()) {
+      const p = readPocketBaseAppProfile();
+      if (p && (userId === pocketBaseSessionUid(p) || userId === p.id)) {
+        const nm = p.name || p.email;
+        if (nm) return nm;
+      }
+    } else try {
       const q = query(collection(firestore, "users"), where("uid", "==", userId));
       const snap = await getDocs(q);
       let data = snap.docs[0]?.data();
@@ -59,7 +67,7 @@ function PartyDetailsPageContent() {
           if (!isUIDPattern) return displayName;
         }
       }
-    } catch (e) { console.error('[PartyDetailsPage] Error fetching userName for', userId, e); }
+    } catch (e) { if ((e as { code?: unknown } | null)?.code === "unavailable") { console.debug('[PartyDetailsPage] userName lookup skipped (offline) for', userId); } else { console.error('[PartyDetailsPage] Error fetching userName for', userId, e); } }
     return "N/A";
   }, [vouchersUserNames, localUserNames]);
 

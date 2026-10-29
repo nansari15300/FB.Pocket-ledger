@@ -1,4 +1,5 @@
 import type { CompanyListTab } from "@/lib/companyStorageKind";
+import { isPlServerPackedApp } from "@/lib/plServerPackedApp";
 
 /** Admin Add/Remove Features → Company tabs (Local / Server / Online). */
 export const COMPANY_STORAGE_TAB_FEATURE = {
@@ -35,6 +36,7 @@ export function isCompanySelectorTabFeatureEnabled(
 export function visibleCompanySelectorTabs(
   featureConfig: Record<string, boolean> | null | undefined
 ): CompanyListTab[] {
+  if (isPlServerPackedApp()) return ["server"];
   const visible = ALL_TABS.filter((tab) => isCompanySelectorTabFeatureEnabled(featureConfig, tab));
   return visible.length > 0 ? visible : [...ALL_TABS];
 }

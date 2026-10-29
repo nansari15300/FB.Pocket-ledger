@@ -1,6 +1,6 @@
 /**
  * Allocate a total amount across selected "in" voucher IDs (Payment In, Direct Income, Contra in) in order.
- * Used by Payment Out, Direct Expense, and Contra (pay-from side) when linking (Spend Wise).
+ * Used by Payment, Direct Expense, and Contra (pay-from side) when linking (Spend Wise).
  */
 import { getOpeningBalanceBaseAmount, SPEND_WISE_OPENING_BALANCE_ID } from "@/lib/spendWiseOpeningBalance";
 
@@ -27,7 +27,7 @@ export function allocatePaymentInAmounts(
     allVouchers.find((x: any) => x.id === id && isInVoucherForAccount(x, accountId));
   const getLinkable = (id: string) => {
     if (id === SPEND_WISE_OPENING_BALANCE_ID) {
-      // Spend-wise OB row on Payment Out side only consumes Dr opening balance.
+      // Spend-wise OB row on Payment side only consumes Dr opening balance.
       const base = getOpeningBalanceBaseAmount(accountOpeningBalance, "dr");
       const alreadyLinked = linkedAmountByPaymentInId.get(id) ?? 0;
       return Math.max(0, base - alreadyLinked);

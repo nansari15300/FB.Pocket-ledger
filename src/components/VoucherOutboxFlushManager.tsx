@@ -3,8 +3,8 @@
 /**
  * Local-first / embedded: flush pending `sync_outbox` rows to Firestore when the network is up, on focus, or on an interval (~8s).
  * Must also run on Capacitor with Firebase UI mode — previously the manager returned early when `isLocalOnlyMode` was false.
- * Pocket Ledger Server (PocketBase) companies: the same flush pushes their rows to the server, and a
- * throttled pull (~30s, change-log driven) brings other devices' changes into SQLite.
+ * Pocket Ledger Server (PocketBase) companies: the same flush pushes their rows to the server.
+ * Other devices' changes arrive via realtime SSE (Live/Delta); this poll is only a fallback.
  */
 
 import { useEffect } from "react";
@@ -15,13 +15,17 @@ import {
   FIREBASE_LEDGER_DATA_SYNC_CHANGED_EVENT,
   isFirebaseLedgerDataSyncDisabled,
 } from "@/lib/firebaseLedgerDataSyncDisabled";
-import { listPocketBaseCompanyIds } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { listActivePocketBaseCompanyIds } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { SELECTED_COMPANY_CHANGED_EVENT } from "@/lib/selectedCompanyStorage";
 
-/** PocketBase pull after a flush - module loaded only when this device has PocketBase companies. */
-function pullPocketBaseCompaniesInBackground(): void {
-  if (!listPocketBaseCompanyIds().length) return;
+/** PocketBase pull after a flush — SSE is primary; this poll is the fallback. */
+function pullPocketBaseCompaniesInBackground(opts?: { force?: boolean; visible?: boolean }): void {
+  if (!listActivePocketBaseCompanyIds().length) return;
   void import("@/lib/pocketbaseData/pbSync")
-    .then((m) => m.pullAllPocketBaseCompaniesThrottled(30_000))
+    .then((sync) => {
+      const minIntervalMs = opts?.force ? 0 : opts?.visible ? 2_000 : 8_000;
+      return sync.pullAllPocketBaseCompaniesThrottled(minIntervalMs, opts?.force ? { force: true } : undefined);
+    })
     .catch(() => {});
 }
 
@@ -78,6 +82,10 @@ export function VoucherOutboxFlushManager() {
     const onVisibleOrFocus = () => {
       if (document.visibilityState === "visible") {
         scheduleFlush(350);
+        pullPocketBaseCompaniesInBackground({ visible: true });
+      } else {
+        // Writer tab background: send queued rows before Chrome throttles timers.
+        scheduleFlush(0);
       }
     };
     const onDataSyncChanged = (event: Event) => {
@@ -91,6 +99,10 @@ export function VoucherOutboxFlushManager() {
     window.addEventListener("focus", onVisibleOrFocus);
     window.addEventListener(FIREBASE_LEDGER_DATA_SYNC_CHANGED_EVENT, onDataSyncChanged);
     document.addEventListener("visibilitychange", onVisibleOrFocus);
+    const onSelectedCompany = () => {
+      pullPocketBaseCompaniesInBackground({ force: true, visible: true });
+    };
+    window.addEventListener(SELECTED_COMPANY_CHANGED_EVENT, onSelectedCompany);
     if (typeof navigator !== "undefined" && navigator.onLine && !isFirebaseLedgerDataSyncDisabled()) scheduleFlush(FLUSH_AFTER_ONLINE_MS);
     /** Periodic retry jab awaited flush fail / queue baaki ho — 15s→8s taake web/exe cross-device kam late */
     const iv = setInterval(tick, 8_000);
@@ -102,6 +114,7 @@ export function VoucherOutboxFlushManager() {
       window.removeEventListener("focus", onVisibleOrFocus);
       window.removeEventListener(FIREBASE_LEDGER_DATA_SYNC_CHANGED_EVENT, onDataSyncChanged);
       document.removeEventListener("visibilitychange", onVisibleOrFocus);
+      window.removeEventListener(SELECTED_COMPANY_CHANGED_EVENT, onSelectedCompany);
       clearInterval(iv);
     };
   }, []);

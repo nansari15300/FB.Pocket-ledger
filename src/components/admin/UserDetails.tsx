@@ -1,6 +1,7 @@
 
 "use client";
 
+import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
 import { useState, useMemo, useCallback } from "react";
 import { doc, updateDoc, writeBatch, Timestamp, deleteField } from "firebase/firestore";
 import { firestore as db } from "@/lib/firebase";
@@ -140,6 +141,7 @@ export function UserDetails({ user, currentUser, allUsers, onUpdate, ownedCompan
                 });
                 return;
             }
+            if (adminServerWriteBlocked()) return;
             setIsUpdating(true);
             try {
                 const nowMs = Date.now();
@@ -206,6 +208,7 @@ export function UserDetails({ user, currentUser, allUsers, onUpdate, ownedCompan
     );
 
     const onChangeRole = async (uid: string, role: Role) => {
+        if (adminServerWriteBlocked()) return;
         if (currentUser?.role !== 'SuperAdmin') return;
         setIsUpdating(true);
         try {

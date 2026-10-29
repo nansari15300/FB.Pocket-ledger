@@ -8,6 +8,7 @@ import { firestore } from "@/lib/firebase";
 import { listLocalCompanies } from "@/lib/localCompanyStore";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { isLocalOnlyMode } from "@/lib/localMode";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 /** UI maxLength / validation — 1 prefix + 14 digits */
 export const INTER_COMPANY_AC_NO_LENGTH = 15;
@@ -194,6 +195,7 @@ export async function generateUniqueEntityInterCompanyAcNo(
   exclude?: InterCompanyAcNoExclude,
   maxAttempts = 12
 ): Promise<string> {
+  if (!isInterCompanySystemEnabled()) return "";
   for (let i = 0; i < maxAttempts; i++) {
     const candidate = generatePrefixedInterCompanyAcNo(kind);
     if (await isInterCompanyAcNoTakenLocally(candidate, exclude)) continue;

@@ -240,6 +240,51 @@ function proxyHttp(req, res) {
   req.pipe(upstream);
 }
 
+/**
+ * /pb/** -> Pocket Ledger Server (PocketBase) on this PC, prefix stripped.
+ * Lets phones / port-forwarded 3000 reach PocketBase without opening 8090.
+ * Streams both ways (SSE /pb/api/realtime included): no buffering, no timeouts.
+ */
+const pbTarget = new URL(process.env.PL_PB_PROXY_TARGET || "http://127.0.0.1:8090");
+
+function isPbPath(urlPath) {
+  return urlPath === "/pb" || urlPath.startsWith("/pb/");
+}
+
+function proxyPocketBase(req, res) {
+  const upstreamPath = (req.url || "/").replace(/^\/pb(?=\/|\?|$)/, "") || "/";
+  const headers = { ...req.headers, host: pbTarget.host };
+  const upstream = http.request(
+    {
+      hostname: pbTarget.hostname,
+      port: Number(pbTarget.port || 80),
+      path: upstreamPath.startsWith("/") ? upstreamPath : "/" + upstreamPath,
+      method: req.method,
+      headers,
+    },
+    (pres) => {
+      res.writeHead(pres.statusCode || 502, pres.headers);
+      if (typeof res.flushHeaders === "function") res.flushHeaders();
+      pres.pipe(res);
+    }
+  );
+  // long-lived SSE: never time out either side
+  upstream.setTimeout(0);
+  if (req.socket) req.socket.setTimeout(0);
+  upstream.on("error", (err) => {
+    if (!res.headersSent) res.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end(`[dev-gateway] Pocket Ledger Server not reachable on ${pbTarget.host}\n${err.message}`);
+  });
+  res.on("close", () => {
+    try {
+      upstream.destroy();
+    } catch {
+      /* noop */
+    }
+  });
+  req.pipe(upstream);
+}
+
 function proxyUpgrade(req, socket, head) {
   const headers = [
     `${req.method} ${req.url} HTTP/${req.httpVersion}`,
@@ -322,6 +367,10 @@ nextChild.on("exit", (code, signal) => {
 
 const gateway = http.createServer((req, res) => {
   const urlPath = (req.url || "/").split("?")[0] || "/";
+  if (isPbPath(urlPath)) {
+    proxyPocketBase(req, res);
+    return;
+  }
   const appRedirect = missingAppPrefixRedirect(req.url || "/");
   if (appRedirect) {
     res.writeHead(302, { Location: appRedirect, "Cache-Control": "no-store" });
@@ -359,6 +408,7 @@ gateway.listen(Number(publicPort), "0.0.0.0", () => {
   console.log(`[dev-gateway] Website  → http://localhost:${publicPort}/`);
   console.log(`[dev-gateway] App      → http://localhost:${publicPort}/app`);
   console.log(`[dev-gateway] Releases → http://localhost:${publicPort}/releases/`);
+  console.log(`[dev-gateway] PB proxy → http://localhost:${publicPort}/pb → ${pbTarget.origin}`);
   console.log(`[dev-gateway] Next int → http://127.0.0.1:${nextPort}/app`);
   if (lanIps.length) {
     console.log("[dev-gateway] LAN:");

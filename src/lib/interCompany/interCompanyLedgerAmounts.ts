@@ -1,6 +1,6 @@
 /**
  * Inter Company — party / bank / staff / tax / expense entity ledgers par Dr/Cr.
- * Source company copy = Payment Out; target copy = Payment In (payment_out / payment_in jaisa).
+ * Source company copy = Payment; target copy = Payment In (payment_out / payment_in jaisa).
  */
 import type { Context } from "@/components/vouchers/TransactionsTable";
 import type { InterCompanyEntityKind } from "@/components/inter-company/InterCompanyEntitySide";
@@ -113,7 +113,7 @@ export function interCompanyVoucherTouchesEntity(
   return false;
 }
 
-/** Source = Payment Out, target = Payment In; role missing ho to payee vs source/target id se infer */
+/** Source = Payment, target = Payment In; role missing ho to payee vs source/target id se infer */
 export function interCompanyPaymentDirection(
   transaction: Record<string, unknown>
 ): "out" | "in" | null {

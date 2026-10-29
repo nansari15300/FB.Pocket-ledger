@@ -11,6 +11,7 @@ import {
   readCompanyInterCompanyCode,
   resolveOrEnsureCompanyInterCompanyCode,
 } from "@/lib/interCompany/interCompanyCompanyCode";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 type Options = {
   /** true: valid code missing ho to owner/admin par naya generate */
@@ -46,7 +47,7 @@ export function useCompanyInterCompanyCode(options: Options = {}) {
 
   // Missing code — fetch / owner-admin ensure (sirf ek baar per company open)
   useEffect(() => {
-    if (!companyId || snapshotCode) return;
+    if (!isInterCompanySystemEnabled() || !companyId || snapshotCode) return;
     if (ensureStartedRef.current === companyId) return;
     ensureStartedRef.current = companyId;
 

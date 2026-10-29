@@ -64,7 +64,18 @@ export async function resolvePlansCatalogForEntitlements(): Promise<Record<PlanI
   if (!plansCatalogHydratePromise) {
     plansCatalogHydratePromise = (async () => {
       try {
-        const { doc, getDoc } = await import("firebase/firestore");
+        const { doc, getDoc: fsGetDoc } = await import("firebase/firestore");
+        const { isPocketBaseAppSessionActive } = await import("@/lib/pocketbaseData/pbAppSession");
+        let getDoc = fsGetDoc;
+        if (isPocketBaseAppSessionActive()) {
+          // Server login: Firestore is offline. Admin Panel (super admin) reads via the server; else defaults.
+          const seam = await import("@/lib/pocketbaseData/pbReadSeam");
+          if (!seam.isAdminServerDataActive()) {
+            plansCatalogHydratePromise = null;
+            return defaultPlansRecordFallback();
+          }
+          getDoc = seam.getDoc;
+        }
         const { firestore } = await import("@/lib/firebase");
         const { mergeAppSettingsPlansDoc } = await import("@/lib/mergeAppSettingsPlans");
         const snap = await getDoc(doc(firestore, "app_settings", "plans"));

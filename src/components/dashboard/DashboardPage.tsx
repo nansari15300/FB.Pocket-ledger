@@ -157,6 +157,7 @@ import { useTransactions, DAYBOOK_TRANSACTIONS_ENTITY } from '@/hooks/use-transa
 import { useFeatureAccess } from '@/hooks/use-feature-access';
 import { useIsMobile, useCalendarMonths } from '@/hooks/use-mobile';
 import { DASHBOARD_VIEW_DETAILS_TABLE_CN } from "@/lib/dashboardViewDetailsTableClass";
+import { pbSessionUserName, logUserNameLookupError } from "@/lib/pocketbaseData/userDisplayNameSession";
 import {
   DashboardWelcomeFooterBanner,
   dashboardWelcomeFooterReservePx,
@@ -232,7 +233,7 @@ function getTransactionAmounts(transaction: any) {
   return { debit, credit };
 }
 
-// Payment Out card: staff Pay To wale Pay Salary bucket me — yahan party/tax/expense/other payout
+// Payment card: staff Pay To wale Pay Salary bucket me — yahan party/tax/expense/other payout
 const statCardData = [
   { title: 'Sales', icon: ShoppingBag, type: 'sale', link: '/sale', isCredit: true },
   { title: 'Purchases', icon: ShoppingCart, type: 'purchase', link: '/purchase', isCredit: false },
@@ -242,7 +243,7 @@ const statCardData = [
   { title: 'Direct Income', icon: TrendingUp, type: 'direct_income', link: '/incomes', isCredit: true },
   { title: 'Direct Expense', icon: TrendingDown, type: 'direct_expense', link: '/incomes', isCredit: false },
   { title: 'Receipt', icon: ArrowDownCircle, type: 'payment_in', link: '/payment-in', isCredit: true },
-  { title: 'Payment Out', icon: ArrowUpCircle, type: 'payment_out_excl_pay_salary', link: '/payment-out', isCredit: false },
+  { title: 'Payment', icon: ArrowUpCircle, type: 'payment_out_excl_pay_salary', link: '/payment-out', isCredit: false },
   { title: 'Pay Salary', icon: HandCoins, type: 'pay_salary', link: '/add-salary', isCredit: false },
   { title: 'Notes', icon: StickyNote, type: 'note', link: '/notes', isCredit: true },
   { title: 'Production', icon: Factory, type: 'production', link: '/production', isCredit: true },
@@ -739,6 +740,8 @@ export default function DashboardPage() {
     async (userId: string): Promise<string> => {
         if (!userId) return "N/A";
         if (userNames[userId] && userNames[userId] !== "Unknown") return userNames[userId];
+        const pbName = pbSessionUserName(userId, "N/A");
+        if (pbName !== undefined) return pbName;
         try {
             // User doc ID may be name_uid format, so query by uid field first
             const q = query(collection(firestore, "users"), where("uid", "==", userId));
@@ -761,7 +764,7 @@ export default function DashboardPage() {
                     return displayName;
                 }
             }
-        } catch(e) { console.error(e) }
+        } catch(e) { logUserNameLookupError("Dashboard", userId, e) }
         return "N/A"; // Return N/A instead of Unknown
     }, [userNames]
   );
@@ -1847,7 +1850,7 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent className="p-4 pt-0 space-y-2">
                 <div className="flex items-baseline justify-between"><span className="text-xs text-muted-foreground">Receipt</span><span className="text-base font-bold text-green-600">{formatCurrency(cashFlowDetails.totalInflow, {noSuffix: true})} <span className="text-xs">Dr</span></span></div>
-                <div className="flex items-baseline justify-between"><span className="text-xs text-muted-foreground">Payment Out</span><span className="text-base font-bold text-red-600">{formatCurrency(cashFlowDetails.totalOutflow, {noSuffix: true})} <span className="text-xs">Cr</span></span></div>
+                <div className="flex items-baseline justify-between"><span className="text-xs text-muted-foreground">Payment</span><span className="text-base font-bold text-red-600">{formatCurrency(cashFlowDetails.totalOutflow, {noSuffix: true})} <span className="text-xs">Cr</span></span></div>
                 <div className="flex items-baseline justify-between pt-2 mt-2 border-t"><span className="text-sm font-bold">Net Flow</span><span className={cn('text-lg font-bold', (cashFlowDetails.totalInflow - cashFlowDetails.totalOutflow) >= 0 ? "text-green-600" : "text-red-600")}>{formatCurrency(Math.abs(cashFlowDetails.totalInflow - cashFlowDetails.totalOutflow), { noSuffix: true, duration: 2 })} <span className="text-xs">{(cashFlowDetails.totalInflow - cashFlowDetails.totalOutflow) >= 0 ? 'Dr' : 'Cr'}</span></span></div>
                 {isReportsEnabled && (
                     <div className="text-right pt-2">

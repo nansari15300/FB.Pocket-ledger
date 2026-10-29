@@ -188,7 +188,9 @@ export async function uploadPendingFileToPocketBase(input: {
   ownerColl: string;
   ownerAppId: string;
   deviceId: string;
+  signal?: AbortSignal;
 }): Promise<string | null> {
+  if (input.signal?.aborted) return null;
   const localId = input.localRef.slice("local:".length);
   if (!localId) return null;
   const appId = attachmentAppId(localId);
@@ -215,7 +217,9 @@ export async function uploadPendingFileToPocketBase(input: {
   fd.append("deviceId", input.deviceId.slice(0, 100));
   const typed = pending.blob.type ? pending.blob : new Blob([pending.blob], { type: contentType });
   fd.append("file", typed, fileName);
-  const rec = (await pbFormRequest("/api/collections/pl_attachments/records", fd)) as Record<string, unknown>;
+  const rec = (await pbFormRequest("/api/collections/pl_attachments/records", fd, "POST", {
+    signal: input.signal,
+  })) as Record<string, unknown>;
   const ref = refFromRecord(rec);
   if (ref) cachePut(ref, typed);
   return ref;
@@ -277,12 +281,14 @@ export async function convertLocalRefsForPocketBase(input: {
   data: Record<string, unknown>;
   deviceId: string;
   getPending: (localRef: string) => Promise<PendingLike | null>;
+  signal?: AbortSignal;
 }): Promise<PbAttachmentConversion> {
   const refs = new Set<string>();
   collectLocalRefs(input.data, refs);
   const converted = new Map<string, string>();
   const uploadedPendingIds: string[] = [];
   for (const localRef of refs) {
+    if (input.signal?.aborted) break;
     let pending: PendingLike | null = null;
     try {
       pending = await input.getPending(localRef);
@@ -296,6 +302,7 @@ export async function convertLocalRefsForPocketBase(input: {
       ownerColl: input.coll,
       ownerAppId: input.docId,
       deviceId: input.deviceId,
+      signal: input.signal,
     });
     if (!ref) {
       console.warn(`[sync] Attachment bytes not on this device for ${localRef} - keeping ref as-is`);

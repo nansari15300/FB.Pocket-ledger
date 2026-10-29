@@ -273,7 +273,7 @@ export function specialAccountAllowsPaymentIn(
   return specialAccountUseForIncludesUser(usage.in, userEmail || "");
 }
 
-/** Payment Out — usage table Payment Out column only (+ owner). */
+/** Payment — usage table Payment column only (+ owner). */
 export function specialAccountAllowsPaymentOut(
   account: { isSpecial?: boolean; useFor?: Partial<SpecialAccountUseFor> | null },
   userEmail: string | null | undefined,

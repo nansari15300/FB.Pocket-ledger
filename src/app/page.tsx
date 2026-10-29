@@ -1,6 +1,7 @@
 "use client";
 
 import { LoginForm } from '@/components/auth/LoginForm';
+import { CountryAppLoginHint } from '@/components/country/CountryAppLoginHint';
 import { SavedAccountsLoginPanel, hasSavedAccountsForLoginPanel } from '@/components/auth/SavedAccountsLoginPanel';
 import { useAuth } from '@/hooks/useAuth';
 import { useLivePlans } from '@/hooks/useLivePlans';
@@ -69,6 +70,9 @@ export default function LoginPage() {
           <p className="text-muted-foreground">
             Sign in to access your account.
           </p>
+          <div className="mt-2">
+            <CountryAppLoginHint />
+          </div>
         </div>
         {showSavedAccounts && savedAccountsAvailable ? (
           <SavedAccountsLoginPanel onBack={() => setShowSavedAccounts(false)} />

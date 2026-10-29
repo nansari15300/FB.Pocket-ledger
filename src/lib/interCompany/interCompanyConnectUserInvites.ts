@@ -21,6 +21,7 @@ import {
 } from "firebase/firestore";
 import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 import type {
   InterCompanyConnectMasterVisibility,
   InterCompanyConnectUserEntry,
@@ -230,6 +231,10 @@ export function subscribeConnectInvitesForEmail(
   onData: (hosts: InterCompanyConnectInviteHost[]) => void,
   onError?: (err: unknown) => void
 ): Unsubscribe {
+  if (!isInterCompanySystemEnabled()) {
+    onData([]);
+    return () => undefined;
+  }
   const normalized = normalizeEmail(email || "");
   if (!normalized) {
     onData([]);

@@ -3763,7 +3763,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           }
         }}
       />
-      {/* Staff-side Journal linking for debit card (to Cr sources): uses Payment Out → Salary linking behavior. */}
+      {/* Staff-side Journal linking for debit card (to Cr sources): uses Payment → Salary linking behavior. */}
       <LinkPaymentOutToSalaryDialog
         isOpen={!!activeJournalLinkContext && activeJournalLinkContext.kind === "staff" && activeJournalLinkContext.side === "debit"}
         onOpenChange={(open) => {

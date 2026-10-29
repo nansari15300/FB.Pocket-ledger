@@ -104,7 +104,7 @@ const ATTACHABLE_VOUCHER_TYPES = [
   { id: 'sale', label: 'Sale' },
   { id: 'purchase', label: 'Purchase' },
   { id: 'payment_in', label: 'Receipt' },
-  { id: 'payment_out', label: 'Payment Out' },
+  { id: 'payment_out', label: 'Payment' },
   { id: 'direct_income', label: 'Direct Income' },
   { id: 'direct_expense', label: 'Direct Expense' },
   { id: 'contra', label: 'Contra' },

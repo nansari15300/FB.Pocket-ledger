@@ -120,7 +120,18 @@ export async function ensureVoucherLoadSettingsHydrated(): Promise<VoucherLoadSe
   if (!voucherLoadHydratePromise) {
     voucherLoadHydratePromise = (async () => {
       try {
-        const { doc, getDoc } = await import("firebase/firestore");
+        const { doc, getDoc: fsGetDoc } = await import("firebase/firestore");
+        const { isPocketBaseAppSessionActive } = await import("@/lib/pocketbaseData/pbAppSession");
+        let getDoc = fsGetDoc;
+        if (isPocketBaseAppSessionActive()) {
+          // Server login: Firestore is offline. Admin Panel (super admin) reads via the server; else cache.
+          const seam = await import("@/lib/pocketbaseData/pbReadSeam");
+          if (!seam.isAdminServerDataActive()) {
+            voucherLoadHydratePromise = null;
+            return readCachedVoucherLoadSettings();
+          }
+          getDoc = seam.getDoc;
+        }
         const { firestore } = await import("@/lib/firebase");
         const snap = await getDoc(doc(firestore, VOUCHER_LOAD_SETTINGS_COLLECTION, VOUCHER_LOAD_SETTINGS_ID));
         const next = normalizeVoucherLoadSettings(snap.exists() ? snap.data() : undefined);

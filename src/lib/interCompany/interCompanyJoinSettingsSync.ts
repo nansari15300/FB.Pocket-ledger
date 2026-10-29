@@ -16,6 +16,7 @@ import {
   type InterCompanyLocalSettings,
 } from "@/lib/interCompany/interCompanyLocalStore";
 import { isPureLocalInterCompanyCompany } from "@/lib/interCompany/localInterCompanyPolicy";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 import {
   DEFAULT_PARTNER_MASK_IN_VIEW,
   DEFAULT_PARTNER_SEARCH_BY,
@@ -65,7 +66,7 @@ function docToLocalSettings(data: Record<string, unknown>): InterCompanyLocalSet
 export async function loadInterCompanyJoinSettings(
   companyId: string
 ): Promise<{ settings: InterCompanyLocalSettings; companyGroupId: string | null }> {
-  if (!companyId) {
+  if (!isInterCompanySystemEnabled() || !companyId) {
     return { settings: readInterCompanyLocalSettings(companyId), companyGroupId: null };
   }
   if (await isPureLocalInterCompanyCompany(companyId)) {
@@ -100,7 +101,7 @@ export function subscribeInterCompanyJoinSettings(
   onData: (payload: { settings: InterCompanyLocalSettings; companyGroupId: string | null }) => void,
   onError?: (err: unknown) => void
 ): Unsubscribe {
-  if (!companyId) return () => undefined;
+  if (!isInterCompanySystemEnabled() || !companyId) return () => undefined;
 
   let cancelled = false;
   let firestoreUnsub: Unsubscribe = () => undefined;
@@ -147,6 +148,7 @@ export async function saveInterCompanyJoinSettings(args: {
   companyGroupId?: string | null;
   updatedByUid: string;
 }): Promise<void> {
+  if (!isInterCompanySystemEnabled()) return;
   const { companyId, updatedByUid } = args;
   const settings: InterCompanyLocalSettings = {
     ...args.settings,

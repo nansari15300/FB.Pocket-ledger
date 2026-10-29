@@ -11,6 +11,7 @@ import { collectExpenseGroupScopeAccounts } from '@/lib/expenseGroupTree';
 import { doc, getDoc } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { masterDetailListHref } from '@/lib/masterDetailListPath';
+import { resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";
 
 export function ExpenseGroupDetailsClient() {
   const params = useParams();
@@ -28,11 +29,7 @@ export function ExpenseGroupDetailsClient() {
 
   const fetchUserName = useCallback(async (userId: string): Promise<string> => {
     if (userNames[userId]) return userNames[userId];
-    try {
-      const userDoc = await getDoc(doc(firestore, 'users', userId));
-      if (userDoc.exists()) return userDoc.data().displayName || userDoc.data().email || "Unknown";
-    } catch {}
-    return "Unknown";
+    return resolveUserDisplayName(userId, "Unknown");
   }, [userNames]);
 
   useEffect(() => {

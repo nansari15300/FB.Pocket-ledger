@@ -40,7 +40,7 @@ export interface LinkPaymentOutToSalaryDialogProps {
   paymentOutId: string | null;
   amountPaid: number;
   existingAllocations: Allocation[];
-  /** Staff opening balance, signed: Dr > 0 and Cr < 0. Payment Out can only settle credit-side OB here. */
+  /** Staff opening balance, signed: Dr > 0 and Cr < 0. Payment can only settle credit-side OB here. */
   staffOpeningBalance?: number;
   /** For "To Voucher" row (same layout as Link payment to this salary). */
   paymentOutVoucherNumber?: string | null;
@@ -79,7 +79,7 @@ export function LinkPaymentOutToSalaryDialog({
   }, [staffId, vouchers]);
 
   const staffOB = Number(staffOpeningBalance) || 0;
-  // Payment Out is debit-side, so only credit-side opening balance belongs in this dialog.
+  // Payment is debit-side, so only credit-side opening balance belongs in this dialog.
   const showOBRow = staffOB < 0;
   const obAmount = Math.abs(staffOB);
   const obOutstanding = Math.max(0, obAmount - totalAllocatedToOB);
@@ -146,7 +146,7 @@ export function LinkPaymentOutToSalaryDialog({
         const dB = b.date ? new Date((b.date as any)?.toDate?.() ?? b.date).getTime() : 0;
         return dA - dB;
       });
-    // Journal Dr / Payment Out → Cr IC vouchers (same staff).
+    // Journal Dr / Payment → Cr IC vouchers (same staff).
     const icCrRows = (vouchers as any[])
       .filter((v: any) => v.type === "inter_company")
       .map((v: any) => {

@@ -13,6 +13,7 @@ import { TAX_ENTITY_GROUP_PRESET } from '@/lib/masterEntityGroupFormPresets';
 import { isMasterEntitySystemGroupId, resolveTaxListGroupBucketId } from '@/lib/masterEntitySystemGroups';
 import { doc, getDoc } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
+import { resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";
 
 export function TaxGroupDetailsClient() {
   const params = useParams();
@@ -33,11 +34,7 @@ export function TaxGroupDetailsClient() {
 
   const fetchUserName = useCallback(async (userId: string): Promise<string> => {
     if (userNames[userId]) return userNames[userId];
-    try {
-      const userDoc = await getDoc(doc(firestore, 'users', userId));
-      if (userDoc.exists()) return userDoc.data().displayName || userDoc.data().email || 'Unknown';
-    } catch {}
-    return 'Unknown';
+    return resolveUserDisplayName(userId, "Unknown");
   }, [userNames]);
 
   useEffect(() => {

@@ -192,7 +192,7 @@ export const getTransactionAmounts = (
                 } else if (transaction.type === 'purchase') {
                     credit += taxableAmount;
                 } else if (transaction.type === 'payment_out' || transaction.type === 'direct_expense') {
-                    credit += amount; // Payment Out = Credit (money going out)
+                    credit += amount; // Payment = Credit (money going out)
                 } else if (transaction.type === 'payment_in' || transaction.type === 'direct_income') {
                     debit += amount; // Payment In = Debit (money coming in)
                 }
@@ -338,7 +338,7 @@ export const getTransactionAmounts = (
             if (transaction.type === 'direct_expense' && (transaction.toAccountId || transaction.expenseAccountId) === entity.id) {
                 debit += directExpenseMainAmount;
             }
-            // Payment Out mapped to expense accounts should debit the selected account.
+            // Payment mapped to expense accounts should debit the selected account.
             if (transaction.type === 'payment_out' && (transaction.expenseAccountId || transaction.toAccountId) === entity.id) {
                 debit += paymentOutPayeeAmount;
             }
@@ -653,7 +653,7 @@ export const getTransactionAmounts = (
               credit = ic.credit;
             } else {
               const side = interCompanyVoucherViewerSide(transaction);
-              // Fallback — Payment Out = Cr, Payment In = Dr (clearing)
+              // Fallback — Payment = Cr, Payment In = Dr (clearing)
               if (side === "source") credit = amount;
               else if (side === "target") debit = amount;
             }
@@ -1069,7 +1069,7 @@ export function useTransactions(
         
         if (transactionContext && entity.id === 'all') {
             // Pre-scoped `passedTransactions` (dashboard All Vouchers deep-link): list already matches card count — do not
-            // re-apply payment family filter (drops `pay_salary` type and breaks Pay Salary vs Payment Out parity).
+            // re-apply payment family filter (drops `pay_salary` type and breaks Pay Salary vs Payment parity).
             if (shouldUseScopedPassedTransactions) {
                 entityTransactions = [...(transactionsToProcess ?? [])];
             } else {
@@ -2098,7 +2098,7 @@ export function useTransactions(
                         outstanding = remaining;
                     }
                 }
-                // Inter Company — bill-wise: Payment Out (Dr) / Payment In (Cr) jaisa per-row outstanding + Paid/Unpaid/Settled
+                // Inter Company — bill-wise: Payment (Dr) / Payment In (Cr) jaisa per-row outstanding + Paid/Unpaid/Settled
                 if (isBillWiseContext && t.type === 'inter_company') {
                     const icDebit = Number(amounts.debit) || 0;
                     const icCredit = Number(amounts.credit) || 0;
@@ -2198,7 +2198,7 @@ export function useTransactions(
                         .filter((e: any) => (Number(e.credit) || 0) > 0 && !String(e.narration || '').includes('(Staff ID:'))
                         .reduce((s: number, e: any) => s + (Number(e.credit) || 0), 0);
                 };
-                // Staff ledger: Add Salary behaves like a bill – paid via Payment Out and/or Opening Balance; show Paid/Unpaid/Partial/Overdue.
+                // Staff ledger: Add Salary behaves like a bill – paid via Payment and/or Opening Balance; show Paid/Unpaid/Partial/Overdue.
                 if (isStaffContext && t.type === 'journal' && t.subType === 'add_salary') {
                     const staffAccountId = entity && 'id' in entity ? String((entity as any).id || '') : '';
                     const total = getAddSalaryNetTotal(t);
@@ -2211,7 +2211,7 @@ export function useTransactions(
                     isOverdue = result.isOverdue;
                     outstanding = result.outstanding;
                 }
-                // Staff ledger: Payment Out / Direct Expense – outstanding = amount not yet linked to salary (for bill-wise balance column)
+                // Staff ledger: Payment / Direct Expense – outstanding = amount not yet linked to salary (for bill-wise balance column)
                 if (isStaffContext && (t.type === 'payment_out' || t.type === 'direct_expense')) {
                     outstanding = getPaymentOutRemaining(t);
                 }
@@ -2545,7 +2545,7 @@ export function useTransactions(
                                 }
                             }
                         });
-                        // Spend-wise: Payment In ↔ Payment Out / Contra. Do not add to BillWise — party/staff billwise status shows only bill-wise link.
+                        // Spend-wise: Payment In ↔ Payment / Contra. Do not add to BillWise — party/staff billwise status shows only bill-wise link.
                         if (t.type === 'payment_in' || t.type === 'direct_income') {
                             for (const v of spendWisePayOutsByLinkedReceiptId.get(String(t.id)) ?? []) {
                                 if (v.type !== 'payment_out' && v.type !== 'direct_expense' && v.type !== 'contra') continue;
@@ -2682,7 +2682,7 @@ export function useTransactions(
             const obAmount = Math.abs(entityOB);
             let totalAllocatedToOB = 0;
             if (context === 'staff') {
-                // Staff OB: settled by Payment In/Direct Income (Dr OB) or Payment Out/Direct Expense (Cr OB), and by Add Salary (openingBalanceAllocated).
+                // Staff OB: settled by Payment In/Direct Income (Dr OB) or Payment/Direct Expense (Cr OB), and by Add Salary (openingBalanceAllocated).
                 const staffOBSettlementTypes = entityOB > 0
                     ? ['payment_in', 'direct_income']
                     : ['payment_out', 'direct_expense'];

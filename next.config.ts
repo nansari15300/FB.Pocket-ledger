@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import withSerwistInit from "@serwist/next";
 
 const isStaticBuild = process.env.STATIC_BUILD === "1";
+const isPlServerPack = process.env.PL_SERVER_PACK === "1";
 const isDevBuild = process.env.NODE_ENV !== "production";
 /**
  * Hosted web + local gateway: `WEB_APP_BASE_PATH=/app` → …/app/dashboard …
@@ -11,10 +12,13 @@ const isDevBuild = process.env.NODE_ENV !== "production";
  * - App Hosting: production non-static always `/app` (website at `/` via Firebase Hosting).
  *   Console env overrides that clear the yaml value must not drop the app back to `/`.
  * EXE/APK static export must stay at `/` (never set with STATIC_BUILD=1).
+ * Pocket Ledger Server pack (`PL_SERVER_PACK=1`): static export under `/app` so PocketBase
+ * can serve panel `/` + company UI `/app` from one process.
  * Opt out only with `WEB_APP_BASE_PATH=0`.
  */
 const rawWebAppBasePath = String(process.env.WEB_APP_BASE_PATH || "").trim();
 const webAppBasePath = (() => {
+  if (isPlServerPack) return "/app";
   if (isStaticBuild || rawWebAppBasePath === "0") return undefined;
   if (rawWebAppBasePath === "/app") return "/app";
   if (!isDevBuild) return "/app";
@@ -40,9 +44,12 @@ const baseConfig: NextConfig = {
   // Next.js 16: dev + prod default Turbopack; purana `webpack()` hata kar `turbopack.resolveAlias` — mix par "misconfiguration" fail
   // Dev me React 18 Strict Mode effect 2× run karta hai — kuch navigation side-effects zyada dikhte hain.
   reactStrictMode: false,
+  // Dev only: phone / port-forwarded access to the :3000 gateway (LAN + public IP).
+  ...(isDevBuild ? { allowedDevOrigins: ["192.168.1.64", "110.34.23.84"] } : {}),
   ...(webAppBasePath ? { basePath: webAppBasePath } : {}),
   env: {
     NEXT_PUBLIC_WEB_APP_BASE_PATH: webAppBasePath || "",
+    NEXT_PUBLIC_PL_SERVER_PACK: isPlServerPack ? "1" : "",
   },
   serverExternalPackages: ["googleapis", "google-auth-library"],
   // Pdf.js Turbopack me seedha bundle; SWC transpile se nested bundle clash kam

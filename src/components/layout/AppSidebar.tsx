@@ -8,6 +8,7 @@ import {
   Flame,
   LayoutDashboard,
   LogOut,
+  ArrowLeft,
   Landmark,
   Receipt,
   Settings,
@@ -17,7 +18,6 @@ import {
   Trash2,
   DollarSign,
   Banknote,
-  Shield,
   Loader2,
   ListTree,
   CreditCard,
@@ -41,6 +41,7 @@ import { isSuppressibleNewTransactionAlert } from "@/lib/transactionAlerts";
 import { IC_ALERTS_CHANGED } from "@/lib/interCompany/interCompanyAlerts";
 import { interCompanySystemJoinAlertVisibleForCompany } from "@/lib/interCompany/interCompanySystemJoinRequest";
 import { usePendingInterCompanySystemJoinCount } from "@/lib/interCompany/usePendingInterCompanySystemJoinCount";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 import { messagesSidebarNavBadgeClassName } from "@/lib/messagesChrome";
 import {
   COMPANY_STORAGE_TAB_FEATURE,
@@ -87,19 +88,18 @@ import { STAFF_ENTITY_LABEL } from "@/lib/staffEntityDisplayName";
 import { StaffEntityNavIcon } from "@/components/entity/StaffEntityIcon";
 import { collectStaffIdsTouchedByUnapprovedVoucher } from "@/lib/voucherTouchesStaffLedger";
 import { collectInterCompanyIdsForPendingApproval } from "@/lib/interCompany/interCompanyVoucherHydrate";
-import { getSuperAdminEmails } from "@/lib/superAdminEmails";
 import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
-import { isAdminPanelNavVisible } from "@/lib/adminDevPreview";
-import {
-  isAdminPanelCompanyLedgerMode,
-  leaveAdminPanelCompanyLedgerMode,
-} from "@/lib/adminPanelCompany/ledgerMode";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
 import { disarmDashboardRedirectGuard } from "@/lib/protectFromUnwantedDashboardRedirect";
 import { AppSidebarZoomControls } from "@/components/layout/AppSidebarZoomControls";
 import { DateConverterDialog } from "@/components/layout/DateConverterDialog";
 import { chromeProPillCn } from "@/lib/chromePillButton";
+import {
+  goBackToPlServer,
+  plServerBackToServerHref,
+} from "@/lib/adminData/plServerMyCompanyHandoff";
+import { isPackedMyCompanyOnly } from "@/lib/plServerPackedApp";
 
 
 type MenuItem = {
@@ -426,23 +426,25 @@ export function AppSidebar() {
         });
         alertsUnsubscribers.push(unsubAlerts);
 
-        const systemJoinAlertsQuery = query(
-          collection(firestore, "admin_notifications"),
-          where("recipientUserId", "==", id),
-          where("kind", "==", "ic_system_join_pending"),
-          where("isRead", "==", false)
-        );
-        const unsubIcSystemJoin = onSnapshot(systemJoinAlertsQuery, (snapshot) => {
-          const next = new Set<string>();
-          snapshot.docs.forEach((d) => {
-            if (interCompanySystemJoinAlertVisibleForCompany(d.data() as Record<string, unknown>, cid)) {
-              next.add(d.id);
-            }
+        if (isInterCompanySystemEnabled()) {
+          const systemJoinAlertsQuery = query(
+            collection(firestore, "admin_notifications"),
+            where("recipientUserId", "==", id),
+            where("kind", "==", "ic_system_join_pending"),
+            where("isRead", "==", false)
+          );
+          const unsubIcSystemJoin = onSnapshot(systemJoinAlertsQuery, (snapshot) => {
+            const next = new Set<string>();
+            snapshot.docs.forEach((d) => {
+              if (interCompanySystemJoinAlertVisibleForCompany(d.data() as Record<string, unknown>, cid)) {
+                next.add(d.id);
+              }
+            });
+            unreadIcSystemJoinsByRecipient[id] = next;
+            recomputeUnreadAlerts();
           });
-          unreadIcSystemJoinsByRecipient[id] = next;
-          recomputeUnreadAlerts();
-        });
-        alertsUnsubscribers.push(unsubIcSystemJoin);
+          alertsUnsubscribers.push(unsubIcSystemJoin);
+        }
       });
     }
 
@@ -507,6 +509,10 @@ export function AppSidebar() {
   }, [user?.email, user?.uid, myUserIds, companyId, company?.isOwned]);
   
   const displayName = user?.displayName || user?.email?.split('@')[0] || "User";
+  const [showBackToServer, setShowBackToServer] = useState(false);
+  useEffect(() => {
+    setShowBackToServer(isPackedMyCompanyOnly() && !!plServerBackToServerHref());
+  }, []);
 
   const handleLogout = () => {
     requestEmbeddedLogout();
@@ -520,26 +526,6 @@ export function AppSidebar() {
       .slice(0, 2)
       .join("");
   };
-  
-  const isSuperAdminByEmail = useMemo(() => {
-    const e = (user?.email || "").toLowerCase().trim();
-    if (!e) return false;
-    return getSuperAdminEmails().some((x) => (x || "").toLowerCase().trim() === e);
-  }, [user?.email]);
-  const isAdmin = customUser?.role === "SuperAdmin" || isSuperAdminByEmail;
-  /** SuperAdmin email/role only — localhost/dev pe bhi ordinary users ko mat dikhao */
-  const showAdminNavLink = isAdminPanelNavVisible(isAdmin, isStaticAppBuild());
-  const [adminPanelLedgerMode, setAdminPanelLedgerMode] = useState(false);
-  useEffect(() => {
-    const sync = () => setAdminPanelLedgerMode(isAdminPanelCompanyLedgerMode());
-    sync();
-    window.addEventListener("pl-admin-panel-company-mode", sync);
-    window.addEventListener("pl-company-switched", sync);
-    return () => {
-      window.removeEventListener("pl-admin-panel-company-mode", sync);
-      window.removeEventListener("pl-company-switched", sync);
-    };
-  }, []);
 
   // Default to showing when not explicitly off (so ticked/default = show without needing save). Alerts only for company owner.
   const transactionAlerts = effectiveNotificationSettings?.transactionAlerts;
@@ -722,13 +708,14 @@ export function AppSidebar() {
   }
 
   const userProfileSection = (
+      <div className="flex flex-col">
       <div className={cn("flex items-center gap-3", "p-2")}>
           <Avatar className="h-10 w-10">
             <AvatarImage src={user?.photoURL ?? undefined} alt={displayName ?? "User"} />
             <AvatarFallback>{getInitials(displayName ?? user?.email)}</AvatarFallback>
           </Avatar>
           {isOpen && (
-            <div className="flex flex-col overflow-hidden">
+            <div className="flex min-w-0 flex-col overflow-hidden">
                 <p className="truncate text-sm font-medium">
                 {displayName}
                 </p>
@@ -747,6 +734,22 @@ export function AppSidebar() {
             <LogOut />
           </Button>
         </div>
+        {showBackToServer ? (
+          <div className="px-2 pb-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 w-full gap-1.5"
+              title="Back to server"
+              onClick={() => goBackToPlServer()}
+            >
+              <ArrowLeft className="h-4 w-4 shrink-0" />
+              {isOpen ? <span className="truncate">Back to server</span> : null}
+            </Button>
+          </div>
+        ) : null}
+      </div>
   );
 
   const sidebarBrandPreviewUrl =
@@ -852,7 +855,7 @@ export function AppSidebar() {
             {/* flex-1: bachi hui sidebar height — mint nav yahi andar scroll (footer hamesha dikhayi de) */}
             <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
               {/* User request: Main + More ek hi mint/emerald chrome card — do alag pink/green boxes nahi */}
-              {(combinedDashboardNavItems.length > 0 || showAdminNavLink) && (
+              {combinedDashboardNavItems.length > 0 && (
                 <div className="pl-chrome-card app-chrome-top-ribbon pl-chrome-tone-emerald w-full shrink-0 p-2">
                   <SidebarMenu className="gap-0.5 py-1">
                     {combinedDashboardNavItems.map((item) => (
@@ -865,74 +868,6 @@ export function AppSidebar() {
                         ) : null}
                       </React.Fragment>
                     ))}
-                    {adminPanelLedgerMode && showAdminNavLink ? (
-                      <SidebarMenuItem>
-                        {useEmbeddedClientNav ? (
-                          <button
-                            type="button"
-                            className="w-full text-left appearance-none bg-transparent p-0 border-0 cursor-pointer"
-                            onClick={() => {
-                              leaveAdminPanelCompanyLedgerMode();
-                              navigateSidebarHref("/admin");
-                            }}
-                          >
-                            <SidebarMenuButton tooltip="Back to Admin Panel" data-theme-nav="admin">
-                              <Shield />
-                              {isOpen && <span>Back to Admin Panel</span>}
-                            </SidebarMenuButton>
-                          </button>
-                        ) : (
-                          <Link
-                            prefetch={false}
-                            href={appNavHref("/admin")}
-                            onClick={(e) => {
-                              leaveAdminPanelCompanyLedgerMode();
-                              onNavLinkClick(e, "/admin");
-                            }}
-                          >
-                            <SidebarMenuButton tooltip="Back to Admin Panel" data-theme-nav="admin">
-                              <Shield />
-                              {isOpen && <span>Back to Admin Panel</span>}
-                            </SidebarMenuButton>
-                          </Link>
-                        )}
-                      </SidebarMenuItem>
-                    ) : null}
-                    {showAdminNavLink && !adminPanelLedgerMode ? (
-                      <SidebarMenuItem>
-                        {useEmbeddedClientNav ? (
-                          <button
-                            type="button"
-                            className="w-full text-left appearance-none bg-transparent p-0 border-0 cursor-pointer"
-                            onClick={() => navigateSidebarHref("/admin")}
-                          >
-                            <SidebarMenuButton
-                              isActive={pathname === "/admin" || pathname.startsWith("/admin/")}
-                              tooltip="Admin Panel"
-                              data-theme-nav="admin"
-                            >
-                              <Shield />
-                              {isOpen && <span>Admin Panel</span>}
-                            </SidebarMenuButton>
-                          </button>
-                        ) : (
-                          <Link
-                            prefetch={false}
-                            href={appNavHref("/admin")}
-                            onClick={(e) => onNavLinkClick(e, "/admin")}
-                          >
-                            <SidebarMenuButton
-                              isActive={pathname === "/admin" || pathname.startsWith("/admin/")}
-                              tooltip="Admin Panel"
-                              data-theme-nav="admin"
-                            >
-                              <Shield />
-                              {isOpen && <span>Admin Panel</span>}
-                            </SidebarMenuButton>
-                          </Link>
-                        )}
-                      </SidebarMenuItem>
-                    ) : null}
                   </SidebarMenu>
                 </div>
               )}

@@ -100,6 +100,7 @@ import { RunningBalanceFullChart } from "@/components/reports/RunningBalanceFull
 import { Combobox } from "@/components/ui/combobox";
 import { motion, AnimatePresence } from "framer-motion";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { isPocketBaseAppSessionActive, readPocketBaseAppProfile, pocketBaseSessionUid } from "@/lib/pocketbaseData/pbAppSession";
 
 type UnifiedAccount = {
   id: string;
@@ -256,7 +257,14 @@ function AccountsStatementPageContent({ onPartySelectionChange, mode = "account"
     const existingName = vouchersUserNames?.[userId] || userNames[userId];
     if (existingName && existingName !== "Unknown" && existingName !== "N/A") return existingName;
     
-    try {
+    // Pocket Ledger Server session: no Firebase user, so Firestore would only fail ("client is offline").
+    if (isPocketBaseAppSessionActive()) {
+      const p = readPocketBaseAppProfile();
+      if (p && (userId === pocketBaseSessionUid(p) || userId === p.id)) {
+        const nm = p.name || p.email;
+        if (nm) return nm;
+      }
+    } else try {
       // User doc ID may be name_uid format (e.g. manishshah46_AaCbiR708nhGe28Ltf2I7YZzpNv1), so query by uid field first
       const q = query(collection(firestore, "users"), where("uid", "==", userId));
       const snap = await getDocs(q);
@@ -279,7 +287,7 @@ function AccountsStatementPageContent({ onPartySelectionChange, mode = "account"
         }
       }
     } catch (e) {
-      console.error('[AccountSummary] Error fetching userName for', userId, e);
+      if ((e as { code?: unknown } | null)?.code === "unavailable") { console.debug('[AccountSummary] userName lookup skipped (offline) for', userId); } else { console.error('[AccountSummary] Error fetching userName for', userId, e); }
     }
     return "N/A";
   }, [vouchersUserNames, userNames]);

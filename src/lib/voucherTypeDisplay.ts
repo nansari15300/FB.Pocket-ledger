@@ -5,9 +5,10 @@
  */
 const VOUCHER_TYPE_DISPLAY_OVERRIDES: Record<string, string> = {
   payment_in: "receipt",
+  payment_out: "payment",
 };
 
-/** Lower-case display text for a voucher type id ("payment_in" -> "receipt", "payment_out" -> "payment out"). */
+/** Lower-case display text for a voucher type id ("payment_in" -> "receipt", "payment_out" -> "payment"). */
 export function voucherTypeDisplayText(type: unknown): string {
   if (typeof type !== "string") return type == null ? "" : String(type);
   return VOUCHER_TYPE_DISPLAY_OVERRIDES[type] ?? type.replace(/_/g, " ");

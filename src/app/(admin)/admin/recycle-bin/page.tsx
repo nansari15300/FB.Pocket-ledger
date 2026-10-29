@@ -1,6 +1,7 @@
 
 "use client";
 
+import { ADMIN_SERVER_UNAVAILABLE_MESSAGE, adminServerWriteBlocked, isAdminServerMode } from "@/lib/adminData/adminServerMode";
 import { useState, useEffect, useMemo } from "react";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { collection, query, where, updateDoc, doc, deleteDoc, serverTimestamp, deleteField } from "firebase/firestore";
@@ -58,6 +59,7 @@ export default function AdminRecycleBinPage() {
      * Fallback sirf tab jab server admin config unavailable ho (503), taaki true delete guarantee rahe.
      */
     const hardDeleteCompanyAsSuperAdmin = async (companyId: string): Promise<{ success: boolean; error?: string }> => {
+        if (isAdminServerMode()) return { success: false, error: ADMIN_SERVER_UNAVAILABLE_MESSAGE };
         if (!user) return { success: false, error: "Authentication required to delete." };
         const serverRes = await adminPermanentDeleteCompanyOnServer({
             companyId,
@@ -209,6 +211,7 @@ export default function AdminRecycleBinPage() {
             i => !i.movedToAdminRecycleAt && i.deletedAt && (now - new Date(i.deletedAt).getTime() >= maxAge)
         );
         if (toMove.length === 0) return;
+        if (isAdminServerMode()) return;
         (async () => {
             for (const item of toMove) {
                 try {
@@ -270,6 +273,7 @@ export default function AdminRecycleBinPage() {
     };
     
     const handleRestore = async (item: DeletedItem) => {
+        if (adminServerWriteBlocked()) return;
         setIsProcessing(true);
 
         if (item.isRootCollection && user) {
@@ -313,6 +317,7 @@ export default function AdminRecycleBinPage() {
     };
 
     const handlePermanentDelete = async (item: DeletedItem) => {
+        if (adminServerWriteBlocked()) return;
         setIsProcessing(true);
         try {
             if (item.isRootCollection) {

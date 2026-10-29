@@ -252,6 +252,7 @@ const VOUCHER_TAB_LABELS: Partial<Record<VoucherType, string>> = {
   inter_company: "Inter Company",
   adjustment: "Adjustment",
   payment_in: "Receipt",
+  payment_out: "Payment",
 };
 function voucherTabLabel(key: VoucherType): string {
   return VOUCHER_TAB_LABELS[key] ?? key.replace(/_/g, " ");
@@ -352,7 +353,7 @@ function shapeVoucherForActiveEditTab(voucher: Record<string, unknown> | undefin
     next.taxAccountId = "";
     next.allocations = [];
   }
-  // Same out-side form: Payment Out ↔ Direct Expense
+  // Same out-side form: Payment ↔ Direct Expense
   if (stored === "direct_expense" && activeTab === "payment_out") {
     next.expenseAccountId = "";
     next.toAccountId = "";
@@ -856,7 +857,7 @@ async function remapVoucherReferencesByName(
       mapped = sourceName ? targetMap.get(sourceName) || null : null;
       if (!mapped && sourceName) {
         unmatchedNames.push(masterRowCanonicalName(src as Record<string, unknown>) || id);
-        // Granular mismatch: Payment Out Copy account/party sirf zarurat par dikhe (`account_bank` ≠ generic `account`).
+        // Granular mismatch: Payment Copy account/party sirf zarurat par dikhe (`account_bank` ≠ generic `account`).
         if (cname === "items") unmatchedCategories.add("item");
         else if (cname === "parties") unmatchedCategories.add("party");
         else if (cname === "staff") unmatchedCategories.add("staff");
@@ -918,7 +919,7 @@ function mapMismatchCategoryToCollections(category: string): CollectionName[] {
   if (category === "tax") return ["taxes"];
   if (category === "staff") return ["staff"];
   if (category === "party") return ["parties"];
-  // Payment Out: From Bank sirf bank_accounts; Expense ledger sirf expense_accounts — generic "account" dono dekhe.
+  // Payment: From Bank sirf bank_accounts; Expense ledger sirf expense_accounts — generic "account" dono dekhe.
   if (category === "account_bank") return ["bank_accounts"];
   if (category === "account_expense") return ["expense_accounts"];
   if (category === "account") return ["bank_accounts", "expense_accounts"];
@@ -1141,7 +1142,7 @@ function VoucherDialogContent({
   showSaveAndApproveOnCreate?: boolean,
   onApprove?: () => void,
   isApproving?: boolean,
-  /** Sale/Purchase/Payment Out/Direct Expense: report effective has-links so dialog locks fields as soon as user links (or enables after unlink). */
+  /** Sale/Purchase/Payment/Direct Expense: report effective has-links so dialog locks fields as soon as user links (or enables after unlink). */
   onEffectiveLinksChange?: (hasLinks: boolean | undefined) => void,
   onClearEffectiveLinksOnTabChange?: () => void,
   ledgerScopeCompanyId?: string,

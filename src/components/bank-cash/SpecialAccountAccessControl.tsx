@@ -65,7 +65,7 @@ export function SpecialAccountAccessControl({
                 Receipt
               </TableHead>
               <TableHead className="w-[5.5rem] min-w-[5.5rem] whitespace-nowrap text-center px-1">
-                Payment Out
+                Payment
               </TableHead>
               <TableHead className="w-[6.25rem] min-w-[6.25rem] whitespace-nowrap text-center px-1 pr-2">
                 View Balance

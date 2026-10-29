@@ -9,6 +9,7 @@
  */
 
 import { DEFAULT_POCKETBASE_SERVER_URL, readCachedOnlineDataServerSettings } from "@/lib/onlineDataServer";
+import { isPlServerPackedApp, plServerPackedSameOrigin } from "@/lib/plServerPackedApp";
 
 const AUTH_KEY = "pl_pb_data_auth_v1";
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -35,11 +36,37 @@ export class PocketBaseRequestError extends Error {
 
 export function normalizePocketBaseUrl(raw: unknown): string {
   const s = String(raw || "").trim().replace(/\/+$/, "");
-  return s || DEFAULT_POCKETBASE_SERVER_URL;
+  return viaDevGatewayProxy(s || DEFAULT_POCKETBASE_SERVER_URL);
 }
 
-/** URL from `app_settings/online_data_server` (cached locally). */
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "0.0.0.0", "[::1]", "::1"]);
+
+/**
+ * Dev gateway only (`npm run dev`, port 3000): when the app is opened from another device
+ * (LAN IP / port-forwarded public IP), a "this PC" server URL (127.0.0.1:8090) would point at
+ * the phone itself. Use the gateway's same-origin `/pb` proxy instead. Localhost pages,
+ * Electron/Capacitor (localhost / file:) and hosted builds are unchanged.
+ */
+function viaDevGatewayProxy(url: string): string {
+  if (typeof window === "undefined" || process.env.NEXT_PUBLIC_PL_DEV_LOCAL_SERVER !== "1") return url;
+  try {
+    const loc = window.location;
+    if (loc.protocol !== "http:" && loc.protocol !== "https:") return url;
+    if (!loc.hostname || LOOPBACK_HOSTS.has(loc.hostname.toLowerCase())) return url;
+    const u = new URL(url);
+    if (!LOOPBACK_HOSTS.has(u.hostname.toLowerCase())) return url;
+    return `${loc.origin}/pb`;
+  } catch {
+    return url;
+  }
+}
+
+/** URL from `app_settings/online_data_server` (cached locally). Packed My Company = this PocketBase. */
 export function getPocketBaseServerUrl(): string {
+  if (isPlServerPackedApp()) {
+    const origin = plServerPackedSameOrigin();
+    if (origin) return origin;
+  }
   return normalizePocketBaseUrl(readCachedOnlineDataServerSettings().pocketbaseUrl);
 }
 
@@ -77,6 +104,10 @@ export function readPocketBaseAuth(): PocketBaseAuthState | null {
 /** Fired when the app user signs in to / out of the server (not on token renewal). */
 export const PL_PB_AUTH_CHANGED_EVENT = "pl-pb-auth-changed";
 
+export function applyPocketBaseAuthState(state: PocketBaseAuthState, notify = true): void {
+  writePocketBaseAuth(state, notify);
+}
+
 function writePocketBaseAuth(state: PocketBaseAuthState | null, notify = false): void {
   if (typeof window === "undefined") return;
   const had = notify || !state ? !!window.localStorage.getItem(AUTH_KEY) : true;
@@ -107,9 +138,27 @@ export function getValidPocketBaseAuth(): PocketBaseAuthState | null {
 async function rawRequest(
   url: string,
   path: string,
-  init: { method?: string; body?: unknown; token?: string; timeoutMs?: number; asBlob?: boolean } = {}
+  init: {
+    method?: string;
+    body?: unknown;
+    token?: string;
+    timeoutMs?: number;
+    asBlob?: boolean;
+    signal?: AbortSignal;
+  } = {}
 ): Promise<unknown> {
   const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const abortFromOuter = () => {
+    try {
+      ctrl?.abort();
+    } catch {
+      /* ignore */
+    }
+  };
+  if (ctrl && init.signal) {
+    if (init.signal.aborted) ctrl.abort();
+    else init.signal.addEventListener("abort", abortFromOuter, { once: true });
+  }
   const timer = ctrl ? setTimeout(() => ctrl.abort(), init.timeoutMs || REQUEST_TIMEOUT_MS) : null;
   try {
     const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
@@ -146,6 +195,11 @@ async function rawRequest(
     );
   } finally {
     if (timer) clearTimeout(timer);
+    try {
+      init.signal?.removeEventListener("abort", abortFromOuter);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -283,7 +337,7 @@ export class PocketBaseNotSignedInError extends PocketBaseRequestError {
 /** Authenticated request to the configured server. */
 export async function pbRequest(
   path: string,
-  init: { method?: string; body?: unknown; timeoutMs?: number } = {}
+  init: { method?: string; body?: unknown; timeoutMs?: number; signal?: AbortSignal } = {}
 ): Promise<unknown> {
   const a0 = getValidPocketBaseAuth();
   if (!a0) throw new PocketBaseNotSignedInError();
@@ -297,12 +351,23 @@ export async function pbRequest(
 }
 
 /** Multipart create (file upload). Longer timeout for big files. */
-export async function pbFormRequest(path: string, form: FormData, method = "POST"): Promise<unknown> {
+export async function pbFormRequest(
+  path: string,
+  form: FormData,
+  method = "POST",
+  opts?: { signal?: AbortSignal; timeoutMs?: number }
+): Promise<unknown> {
   const a0 = getValidPocketBaseAuth();
   if (!a0) throw new PocketBaseNotSignedInError();
   const a = await refreshIfNeeded(a0);
   try {
-    return await rawRequest(a.url, path, { method, body: form, token: a.token, timeoutMs: 120_000 });
+    return await rawRequest(a.url, path, {
+      method,
+      body: form,
+      token: a.token,
+      timeoutMs: opts?.timeoutMs ?? 120_000,
+      signal: opts?.signal,
+    });
   } catch (e) {
     if (e instanceof PocketBaseRequestError && e.status === 401) writePocketBaseAuth(null);
     throw e;

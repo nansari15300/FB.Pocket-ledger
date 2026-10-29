@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { InterCompanyEntityDetail } from "@/lib/interCompany/interCompanyEntityTypes";
 import { fetchInterCompanyEntitiesForCompany } from "@/lib/interCompany/fetchInterCompanyEntities";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 export type { InterCompanyEntityDetail };
 
@@ -33,7 +34,7 @@ export function useInterCompanyEntities(
   }, [seedKey, seedEntities]);
 
   useEffect(() => {
-    if (!companyId) {
+    if (!isInterCompanySystemEnabled() || !companyId) {
       setEntities([]);
       setLoading(false);
       return;

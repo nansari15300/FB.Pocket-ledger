@@ -250,11 +250,11 @@ export default function DesktopExpenseStatementPage() {
 
     if (accountId && processedExpenseAccounts.length > 0) {
       const acc = processedExpenseAccounts.find((a) => a.id === accountId);
-      setSelectedAccount((prev) => (prev?.id === acc?.id ? prev : acc || null));
+      setSelectedAccount((prev) => (acc ? acc : prev));
       setSelectedGroup((prev) => (prev !== null ? null : prev));
     } else if (groupId && processedExpenseGroups.length > 0) {
       const grp = processedExpenseGroups.find((g) => g.id === groupId);
-      setSelectedGroup((prev) => (prev?.id === grp?.id ? prev : grp || null));
+      setSelectedGroup((prev) => (grp ? grp : prev));
       setSelectedAccount((prev) => (prev !== null ? null : prev));
     } else if (processedExpenseAccounts.length > 0) {
       const first = processedExpenseAccounts[0];

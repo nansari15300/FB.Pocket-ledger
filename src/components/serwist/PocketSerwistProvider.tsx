@@ -11,6 +11,7 @@ import { SerwistProvider } from "@serwist/next/react";
 import type { ReactNode } from "react";
 import { useEffect, useSyncExternalStore } from "react";
 import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
+import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
 import { publicAssetUrl } from "@/lib/webAppBasePath";
 
 function isPocketLedgerSwCacheName(name: string): boolean {
@@ -43,7 +44,9 @@ function useDisableSerwistForLocalBrowsing(): boolean {
 }
 
 export function PocketSerwistProvider({ children }: { children: ReactNode }) {
-  const disable = useDisableSerwistForLocalBrowsing();
+  // Static export (packed `/app`, EXE, APK) never ships `sw.js` — Serwist is disabled at build.
+  // Registering it on np.pocket-ledger.com 404s with no MIME type and floods the console.
+  const disable = useDisableSerwistForLocalBrowsing() || isStaticAppBuild();
   /** EXE: navigation par history patch + SW message kam — real bug reports page duplicate `replace` tha, yeh extra guard. */
   const cacheOnNavigation = !isElectronDesktopApp();
 

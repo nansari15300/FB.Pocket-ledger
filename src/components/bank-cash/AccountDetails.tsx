@@ -108,7 +108,6 @@ import {
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
   LEDGER_HEADER_PILL_ROW_CN,
   LEDGER_TXN_PAGE_ROOT_CN,
-  LEDGER_TXN_TABLE_HOST_CN,
 } from "@/lib/ledgerHeaderChrome";
 import { LedgerTxnScrollColumn } from "@/components/vouchers/LedgerTxnScrollColumn";
 import { ReportHeaderSummaryCards } from "@/components/reports/ReportStatementSummaryCards";
@@ -286,21 +285,20 @@ export function AccountDetails({
   const calendarMonthsAuto = useCalendarMonths();
   const calendarMonths = singleMonthCalendar ? 1 : calendarMonthsAuto;
   // Floating day-stepper sits just above the fixed Total/Closing summary inside the table host.
-  const dayStepperHostRef = useRef<HTMLDivElement | null>(null);
   const [dayStepperBottomPx, setDayStepperBottomPx] = useState(12);
   const hasDayStepper = !!dayStepper;
   useEffect(() => {
-    if (!hasDayStepper) return;
-    const host = dayStepperHostRef.current;
-    if (!host || typeof ResizeObserver === "undefined") return;
+    if (!hasDayStepper || typeof ResizeObserver === "undefined") return;
+    const page = document.querySelector<HTMLElement>("[data-pl-ledger-txn-page]");
+    if (!page) return;
     const measure = () => {
-      const sum = host.querySelector<HTMLElement>("[data-pl-ledger-txn-fixed-summary]");
+      const sum = page.querySelector<HTMLElement>("[data-pl-ledger-txn-fixed-summary]");
       setDayStepperBottomPx((sum?.offsetHeight ?? 0) + 12);
     };
     measure();
     const ro = new ResizeObserver(measure);
-    ro.observe(host);
-    const sum = host.querySelector<HTMLElement>("[data-pl-ledger-txn-fixed-summary]");
+    ro.observe(page);
+    const sum = page.querySelector<HTMLElement>("[data-pl-ledger-txn-fixed-summary]");
     if (sum) ro.observe(sum);
     return () => ro.disconnect();
   }, [hasDayStepper]);
@@ -309,7 +307,7 @@ export function AccountDetails({
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
-  const { vouchers, processedParties, processedStaff, processedExpenseAccounts, journalAccountNames } = useVouchers();
+  const { vouchers, processedAccounts, processedParties, processedStaff, processedExpenseAccounts, journalAccountNames } = useVouchers();
   const { user } = useAuth();
   const { can } = usePermissions();
   const effectiveBalanceMode = "statement" as const;
@@ -357,9 +355,10 @@ export function AccountDetails({
   }, [dateRange]);
 
   const account = useMemo(() => {
-    if (!allAccounts) return initialAccount;
-    return allAccounts.find(p => p.id === initialAccount.id) || initialAccount;
-  }, [allAccounts, initialAccount]);
+    const list = allAccounts?.length ? allAccounts : processedAccounts;
+    if (!list?.length) return initialAccount;
+    return list.find((row) => row.id === initialAccount.id) || initialAccount;
+  }, [allAccounts, processedAccounts, initialAccount]);
 
   const isSpecialAccountOwner = userIsSpecialAccountOwner(
     String(user?.email || user?.uid || ""),
@@ -1904,6 +1903,8 @@ export function AccountDetails({
             scrollOnlyTransactions
             closingBalanceRowActions={accountClosingBalanceRowActions}
             closingBalanceActions={accountClosingBalanceActions}
+            highlightPendingApproval
+            disableLayoutAnimation
             blinkMode={spendWiseBlinkMode}
             spendWiseGroupPrint={spendWiseGroupPrint}
             {...bankDepositWithdrawColumnLabels}
@@ -2234,13 +2235,11 @@ export function AccountDetails({
         </div>
           }
           table={
-          <div ref={dayStepperHostRef} className={cn(LEDGER_TXN_TABLE_HOST_CN, dayStepper && "relative", spendWiseView && "p-[2px]")}>
-            {/* Bank/Cash pages use their own Statement/Spend-wise toggle, so keep the shared bill-wise mode from taking over here. */}
             <MasterAccountFreezeTxnShell
               overlay={accountFreezeOverlay}
+              className={cn(hasDayStepper && "relative", spendWiseView && "p-[2px]")}
             >
             <TransactionsTable
-              key={`account-${account.id}-${effectiveBalanceMode}-${bankDrCrPerspective}`}
               transactions={displayPaginatedTransactions}
               context="account"
               contextId={account.id}
@@ -2289,12 +2288,13 @@ export function AccountDetails({
               isBalanceMasked={showMaskedBalance}
               scrollOnlyTransactions
               closingBalanceRowActions={accountClosingBalanceRowActions}
-            closingBalanceActions={accountClosingBalanceActions}
+              closingBalanceActions={accountClosingBalanceActions}
+              highlightPendingApproval
+              disableLayoutAnimation
               blinkMode={spendWiseBlinkMode}
               spendWiseGroupPrint={spendWiseGroupPrint}
               {...bankDepositWithdrawColumnLabels}
             />
-            </MasterAccountFreezeTxnShell>
             {dayStepper ? (
               <div
                 data-pl-day-stepper-float=""
@@ -2323,7 +2323,7 @@ export function AccountDetails({
                 </button>
               </div>
             ) : null}
-          </div>
+            </MasterAccountFreezeTxnShell>
           }
           footer={
         <LedgerDesktopFooter

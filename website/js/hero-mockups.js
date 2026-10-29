@@ -100,12 +100,12 @@
   </aside>
   <div class="pl-mock-main">
     <div class="pl-mock-toolbar">
-      <b>Add Sale</b><b>Add Purchase</b><b>Payment In</b><b>Payment Out</b><b>Journal</b><b>Add Party</b>
+      <b>Add Sale</b><b>Add Purchase</b><b>Receipt</b><b>Payment</b><b>Journal</b><b>Add Party</b>
     </div>
     <div class="pl-mock-dash-grid">
       <div class="pl-mock-dash-card c-blue"><h4>Auto Recurring</h4><p>12,48,500</p><small>Inflow · Outflow · Balance</small></div>
       <div class="pl-mock-dash-card c-green"><h4>Outstanding</h4><p>8,65,200</p><small>To Receive · To Pay</small></div>
-      <div class="pl-mock-dash-card c-orange"><h4>Cash Flow</h4><p>4,22,800</p><small>Payment In · Out</small></div>
+      <div class="pl-mock-dash-card c-orange"><h4>Cash Flow</h4><p>4,22,800</p><small>Receipt · Payment</small></div>
       <div class="pl-mock-dash-card c-purple"><h4>Tax Summary</h4><p>1,18,400</p><small>Paid · Received</small></div>
       <div class="pl-mock-dash-card c-teal span-2"><h4>Bank &amp; Cash</h4><p>15,42,600</p><small>Bank 14,80,000 · Cash 62,600</small></div>
       <div class="pl-mock-dash-card c-pink"><h4>Sales</h4><p>6,24,000</p><small>32 vouchers</small></div>
@@ -124,7 +124,7 @@
     <div class="pl-mock-sidebar-foot">Demo Trading Co.</div>
   </aside>
   <div class="pl-mock-main">
-    <div class="pl-mock-toolbar"><b>Add Salary</b><b>Pay Salary</b><b>Payment Out</b><b>Journal</b></div>
+    <div class="pl-mock-toolbar"><b>Add Salary</b><b>Pay Salary</b><b>Payment</b><b>Journal</b></div>
     <div class="pl-mock-staff-body">
       <div class="pl-mock-staff-list">
         <h4>Staff · 5,97,000 Cr</h4>

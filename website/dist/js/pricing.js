@@ -161,14 +161,20 @@
       SHARED_FEATURES.map(function (feature) { return renderFeatureRow(feature, plans, false, "shared"); }).join("");
     var subscribe = '<tr class="pricing-subscribe-row"><th scope="row">Subscribe</th>' + plans.map(function (plan) {
       return '<td class="' + planColumnClass(plan) + '">' +
-        '<a class="btn ' + (plan.highlight ? "btn-primary" : "btn-outline") + ' pricing-subscribe" href="/app/billing">Subscribe</a>' +
+        '<a class="btn ' + (plan.highlight ? "btn-primary" : "btn-outline") +
+        ' pricing-subscribe" href="/app/billing" title="Subscribe on this Pocket Ledger site">Subscribe</a>' +
       "</td>";
     }).join("") + "</tr>";
     grid.innerHTML =
       '<table class="pricing-table"><thead><tr><th class="pricing-feature-head">Features' +
       '<small>Per company: users, vouchers, attachments, storage and registered devices. Per owner account: company slots.</small>' +
       "</th>" + header + "</tr></thead><tbody>" + prices + savings + rows + subscribe + "</tbody></table>";
-    if (status) status.textContent = "Live plan comparison from Pocket Ledger billing.";
+    if (status) {
+      var rec = window.PLCountry && PLCountry.get && PLCountry.get();
+      status.textContent = rec
+        ? (rec.name + " runs its own plans and payment on this country site. pocket-ledger.com is not responsible for this subdomain.")
+        : "Plans and payment on this site. Country sites bill separately under their own terms — main is not responsible for those subdomains.";
+    }
   }
   function setTerm(term) {
     state.term = term === "yearly" ? "yearly" : "monthly";

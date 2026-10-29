@@ -788,7 +788,7 @@ export function SalaryForm({
       return;
     }
     if (linkSourcesOldestFirst.length === 0) {
-      sonnerToast.info("No payment outs or journal vouchers with remaining amount to link.");
+      sonnerToast.info("No payments or journal vouchers with remaining amount to link.");
       return;
     }
     setAutoLinkSaving(true);
@@ -3400,8 +3400,8 @@ async function processAndSave(data: SalaryFormValues, saveAndNew: boolean = fals
             <p className="text-sm font-medium text-muted-foreground shrink-0 pt-1 text-center">From Voucher</p>
             <p className="text-sm text-muted-foreground shrink-0 -mt-0.5 hidden md:block text-center">
               {isTaxBillWiseLinkMode
-                ? `Payment outs & journal vouchers (same tax · ${salaryLinkTaxLabel}) (only linkable or already selected)`
-                : "Payment outs & journal vouchers (same staff Dr) (only linkable or already selected)"}
+                ? `Payments & journal vouchers (same tax · ${salaryLinkTaxLabel}) (only linkable or already selected)`
+                : "Payments & journal vouchers (same staff Dr) (only linkable or already selected)"}
             </p>
             <div className="flex-1 min-h-0 border rounded-md overflow-auto scrollbar-slim-dim">
               {paymentOutsForLinkDialog.length === 0 ? (
@@ -3409,10 +3409,10 @@ async function processAndSave(data: SalaryFormValues, saveAndNew: boolean = fals
                   {isTaxBillWiseLinkMode
                     ? taxAccountIdsFromSalary.length === 0
                       ? "Select a tax account on salary lines first."
-                      : `No payment outs or journal vouchers for ${salaryLinkTaxLabel} to link or edit.`
+                      : `No payments or journal vouchers for ${salaryLinkTaxLabel} to link or edit.`
                     : staffIdsFromSalary.length === 0
                       ? "Add staff in Salary Details first."
-                      : "No payment outs or journal vouchers for this staff to link or edit."}
+                      : "No payments or journal vouchers for this staff to link or edit."}
                 </p>
               ) : (
                 <div className="min-w-0 overflow-x-auto">
@@ -3467,7 +3467,7 @@ async function processAndSave(data: SalaryFormValues, saveAndNew: boolean = fals
                                 ? "Opening Balance"
                                 : row.sourceType === "journal"
                                   ? "journal voucher"
-                                  : "payment out"}
+                                  : "payment"}
                             </td>
                             <td className="p-2 text-right font-medium text-green-600 whitespace-nowrap align-middle tabular-nums">{formatCurrencyForPrint(rowAmount, { noSuffix: true })} Dr</td>
                             <td className="p-2 text-right text-muted-foreground whitespace-nowrap align-middle tabular-nums">{formatCurrencyForPrint(otherLinked, { noSuffix: true })} Dr</td>

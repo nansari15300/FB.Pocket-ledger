@@ -1070,7 +1070,7 @@ export function ExpenseAccountDetails({
   );
   }
 
-  const reportStickyTitle = mobileReportStickyTitle ?? (context === "payment-out" ? "Payment Out" : "Report");
+  const reportStickyTitle = mobileReportStickyTitle ?? (context === "payment-out" ? "Payment" : "Report");
 
   const handleExcelLedger = useCallback(() => {
     const rows = searchFilteredTransactions.map((t: Record<string, unknown>) => {

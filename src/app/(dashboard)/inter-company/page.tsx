@@ -5,11 +5,12 @@
  * Alerts "Go to" se `?icTab=join&companyId=` par Join ribbon khulta hai.
  */
 import { useEffect, useMemo, useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import type { InterCompanyRibbonTab } from "@/components/inter-company/InterCompanyRibbonNav";
 import { useCompany } from "@/hooks/useCompany";
 import { Loader2 } from "lucide-react";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 export default function InterCompanyPage() {
   return (
@@ -27,10 +28,11 @@ export default function InterCompanyPage() {
 }
 
 function InterCompanyPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { companyId, loading, setCompanyId, allCompanies } = useCompany();
   const [open, setOpen] = useState(true);
-
+  const icEnabled = isInterCompanySystemEnabled();
   const urlCompanyId = String(searchParams.get("companyId") || "").trim();
   const urlIcTab = String(searchParams.get("icTab") || "").trim();
 
@@ -45,13 +47,19 @@ function InterCompanyPageContent() {
     return undefined;
   }, [urlIcTab]);
 
+  useEffect(() => {
+    if (!icEnabled) router.replace("/dashboard");
+  }, [icEnabled, router]);
+
   // Alert deep link — target company select karo taaki Join requests sahi company ke liye dikhein
   useEffect(() => {
-    if (!urlCompanyId) return;
+    if (!icEnabled || !urlCompanyId) return;
     if (allCompanies.some((c) => c.id === urlCompanyId) && companyId !== urlCompanyId) {
       setCompanyId(urlCompanyId);
     }
-  }, [urlCompanyId, allCompanies, companyId, setCompanyId]);
+  }, [icEnabled, urlCompanyId, allCompanies, companyId, setCompanyId]);
+
+  if (!icEnabled) return null;
 
   if (loading && !companyId) {
     return (

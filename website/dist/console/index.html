@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Country server — Pocket Ledger</title>
+  <meta name="description" content="This country’s Pocket Ledger server view. This country site runs its own plans and terms." />
+  <link rel="stylesheet" href="/styles.css?v=20261028-195200" />
+  <link rel="stylesheet" href="/css/color-mode.css?v=20261028-195200" />
+  <link rel="stylesheet" href="/css/country-gate.css?v=20261028-195200" />
+  <script src="/js/color-mode.js?v=20261028-195200"></script>
+  <script src="/js/countries.js?v=20261028-181900"></script>
+  <script src="/js/country-gate.js?v=20261028-195200"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="/home/">
+        <span class="brand-mark" aria-hidden="true"></span>
+        Pocket Ledger
+      </a>
+      <div class="nav-scroll">
+        <nav class="nav-links" aria-label="Main">
+          <a href="/home/">Home</a>
+          <a href="/home/#pricing">Pricing</a>
+          <a href="/downloads/">Downloads</a>
+          <a href="/company/">Company</a>
+          <a href="/console/" aria-current="page">Country server</a>
+        </nav>
+        <div class="marketing-auth-actions">
+          <span data-pl-site-chrome></span>
+          <a class="btn btn-primary btn-sm" href="/app" data-i18n="goto_app">Go to App</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="pl-console">
+    <div class="wrap">
+      <h1 id="consoleTitle">Country server</h1>
+      <p class="pl-console-lead" id="consoleLead">
+        This page will show this country’s Pocket Ledger Server data. Live numbers appear after main links this country server.
+      </p>
+
+      <div class="pl-console-grid">
+        <article class="pl-console-card">
+          <h2>Server</h2>
+          <div class="pl-stat" id="statServer">Not linked</div>
+          <p>This country’s Pocket Ledger Server. Plans and payment for people on this site stay on this country web.</p>
+        </article>
+        <article class="pl-console-card">
+          <h2>Companies</h2>
+          <div class="pl-stat" id="statCompanies">—</div>
+          <p>Count from this country server when it is connected.</p>
+        </article>
+        <article class="pl-console-card">
+          <h2>Users</h2>
+          <div class="pl-stat" id="statUsers">—</div>
+          <p>People on this country server.</p>
+        </article>
+        <article class="pl-console-card">
+          <h2>Storage</h2>
+          <div class="pl-stat" id="statStorage">—</div>
+          <p>Books and files on this country server.</p>
+        </article>
+      </div>
+
+      <article class="pl-console-card">
+        <h2>Subscription — this country</h2>
+        <p>
+          This country site runs its own plans, prices and payment.
+          <span id="mainHost">pocket-ledger.com</span> also bills users who stay on main.
+          This subdomain’s terms are its own — Pocket Ledger main is not responsible for this country site.
+        </p>
+        <div class="pl-console-actions">
+          <a class="btn btn-primary" href="/app/billing">Open country billing</a>
+          <a class="btn btn-outline" href="/home/#pricing">View prices</a>
+          <a class="btn btn-outline" href="/terms/">Country terms</a>
+        </div>
+      </article>
+    </div>
+  </main>
+
+  <script>
+    (function () {
+      function ready() {
+        var rec = window.PLCountry && PLCountry.get();
+        if (!rec) {
+          location.replace("/?next=console");
+          return;
+        }
+        var title = document.getElementById("consoleTitle");
+        var lead = document.getElementById("consoleLead");
+        if (title) title.textContent = rec.name + " server";
+        if (lead) {
+          lead.textContent = rec.host +
+            " — this country site runs its own web, billing and terms. pocket-ledger.com is not responsible for this subdomain.";
+        }
+        document.title = rec.name + " server — Pocket Ledger";
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready);
+      else ready();
+    })();
+  </script>
+  <script src="/js/languages-iso.js?v=20261028-195200"></script>
+  <script src="/js/i18n-web.js?v=20261029-i18nmt"></script>
+  <script src="/js/i18n-translate.js?v=20261029-i18nmt"></script>
+  <script src="/js/intro.js?v=20261028-195200"></script>
+  <script src="/js/version.js?v=20261028-195200"></script>
+  <script src="/js/site-chrome.js?v=20261028-195200"></script>
+</body>
+</html>

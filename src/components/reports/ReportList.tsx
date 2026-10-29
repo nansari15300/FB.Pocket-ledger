@@ -11,6 +11,7 @@ import { HighlightText } from "@/lib/highlightQueryInText";
 import { MasterListRow } from "@/components/ui/master-list-row";
 import { masterListSelectedCn, masterListUnselectedCn } from "@/lib/listSelectionChrome";
 import { MASTER_LIST_GROUP_ICON_CN, masterListShellCn } from "@/lib/masterListChrome";
+import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
 
 interface ReportListProps {
   reports: Report[];
@@ -76,16 +77,7 @@ export function ReportList({
                         <div className={MASTER_LIST_GROUP_ICON_CN}>
                           <ReportIcon className="h-4 w-4 shrink-0" />
                         </div>
-                        {(pendingByReportId?.[report.id] ?? 0) > 0 && (
-                          /* Account/Staff list avatar jaisa pink diamond badge - icon ke top-right corner par */
-                          <span
-                            className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center bg-pink-500 text-white text-[10px] font-bold origin-center"
-                            style={{ transform: "rotate(45deg) translate(25%, -25%)" }}
-                            aria-label={`${pendingByReportId?.[report.id]} pending approval`}
-                          >
-                            <span style={{ transform: "rotate(-45deg)" }}>{pendingByReportId?.[report.id]}</span>
-                          </span>
-                        )}
+                        <MasterListPendingBadge count={pendingByReportId?.[report.id] ?? 0} />
                       </div>
                       <p
                         className={cn(

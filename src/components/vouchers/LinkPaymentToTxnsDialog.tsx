@@ -76,15 +76,15 @@ export interface LinkPaymentToTxnsDialogProps {
   existingAllocations?: Allocation[];
   paymentInId?: string | null;
   paymentOutId?: string | null;
-  /** When variant=payment_in: optionally link to Payment Out (same account). */
+  /** When variant=payment_in: optionally link to Payment (same account). */
   accountId?: string | null;
   /** When variant=payment_in: show Payment In voucher details at top. */
   paymentInVoucherNumber?: string | null;
   paymentInDate?: unknown;
-  /** When variant=payment_out: show Payment Out voucher details at top. */
+  /** When variant=payment_out: show Payment voucher details at top. */
   paymentOutVoucherNumber?: string | null;
   paymentOutDate?: unknown;
-  /** Party opening balance, signed: Dr > 0 (show in Payment In), Cr < 0 (show in Payment Out). */
+  /** Party opening balance, signed: Dr > 0 (show in Payment In), Cr < 0 (show in Payment). */
   partyOpeningBalance?: number;
   /** Bill-wise ledger: opening row par jo remaining linkable hai — Journal link dialog me OB row ke liye. */
   partyOpeningBalanceOutstanding?: number;
@@ -339,7 +339,7 @@ export function LinkPaymentToTxnsDialog({
     });
   };
 
-  // Payment In links to Sales (same party) and Payment Outs (contra). Show Opening Balance when OB is Dr (> 0).
+  // Payment In links to Sales (same party) and Payments (contra). Show Opening Balance when OB is Dr (> 0).
   const combinedInList = useMemo(() => {
     if (variant !== "payment_in" || !vouchers?.length || !partyId) return [];
     // Match party by explicit partyId OR by journal entry account id so manual journals become linkable.
@@ -451,7 +451,7 @@ export function LinkPaymentToTxnsDialog({
       return {
         id: v.id,
         date: v.date,
-        type: "Payment Out" as const,
+        type: "Payment" as const,
         refNo: (v as any).voucherNumber ?? "—",
         total,
         outstanding,
@@ -530,7 +530,7 @@ export function LinkPaymentToTxnsDialog({
     return combined;
   }, [variant, effectiveAccountId, accountIdStr, partyId, vouchers, vouchersForAllocations, partyOB, showOBInPaymentIn, obOutstandingIn, totalConsumedFromOB, obAllocatedToOthers, obAmount, existingAllocations, currentVoucherIdStr, isJournalLinkDialog, partyOpeningBalanceOutstanding, currentVoucherAllocToOB, billWiseObRemaining]);
 
-  // Payment Out links to Purchases (same party) and Payment Ins (contra). Show Opening Balance when OB is Cr (< 0).
+  // Payment links to Purchases (same party) and Payment Ins (contra). Show Opening Balance when OB is Cr (< 0).
   const combinedOutList = useMemo(() => {
     if (variant !== "payment_out" || !vouchers?.length || !partyId) return [];
     // Match party by explicit partyId OR by journal entry account id so manual journals become linkable.
@@ -652,7 +652,7 @@ export function LinkPaymentToTxnsDialog({
       };
     });
     const paymentInsFiltered = paymentIns.filter((p) => p.outstanding > 0 || hasExistingAllocOut(p.id));
-    // Payment Out should link against Cr-side journals for the same party.
+    // Payment should link against Cr-side journals for the same party.
     const journalCrRows = (vouchers as any[])
       .filter((v) => {
         if (isCurrentVoucher(v) || !isEntryBasedBillWiseVoucher(v)) return false;
@@ -678,7 +678,7 @@ export function LinkPaymentToTxnsDialog({
       })
       .filter((row): row is NonNullable<typeof row> => !!row);
     const journalsCrFiltered = journalCrRows.filter((j) => j.outstanding > 0 || hasExistingAllocOut(j.id));
-    // Dr source (Payment Out / Journal Dr) → Cr IC vouchers same party.
+    // Dr source (Payment / Journal Dr) → Cr IC vouchers same party.
     const icCrRows = (vouchers as any[])
       .filter((v) => !isCurrentVoucher(v) && v.type === "inter_company")
       .map((v) => {
@@ -951,7 +951,7 @@ export function LinkPaymentToTxnsDialog({
         <DialogHeader className="flex-shrink-0 space-y-0.5 text-center sm:text-center">
           <p className="text-xs text-muted-foreground leading-tight">Link for bill wise (1)</p>
           <DialogTitle className="text-xl leading-tight">
-            {dialogTitleOverride ?? (isOut ? "Link Payment Out to Linkable Cr Txns" : "Link Receipt to Linkable Dr Txns")}
+            {dialogTitleOverride ?? (isOut ? "Link Payment to Linkable Cr Txns" : "Link Receipt to Linkable Dr Txns")}
           </DialogTitle>
           <div className="flex flex-wrap items-center justify-center gap-4 text-sm pt-1 hidden md:flex">
             <span className="text-muted-foreground">{isOut ? "Paid" : "Received"}: <strong className="text-foreground">{formatCurrency(received, { noSuffix: true })}</strong></span>
@@ -995,7 +995,7 @@ export function LinkPaymentToTxnsDialog({
           <div className="flex-1 min-h-0 border rounded-md overflow-auto scrollbar-slim-dim">
             {targetList.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">
-                {isOut ? "No purchases or receipts for this party." : "No sales or payment out for this party."}
+                {isOut ? "No purchases or receipts for this party." : "No sales or payment for this party."}
               </p>
             ) : (
               <div className="min-w-0 overflow-x-auto">

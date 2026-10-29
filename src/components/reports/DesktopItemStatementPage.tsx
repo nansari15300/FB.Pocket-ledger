@@ -187,11 +187,11 @@ export default function DesktopItemStatementPage() {
 
     if (itemId && processedItems.length > 0) {
       const item = processedItems.find((p) => p.id === itemId);
-      setSelectedItem((prev) => (prev?.id === item?.id ? prev : item || null));
+      setSelectedItem((prev) => (item ? item : prev));
       setSelectedGroup((prev) => (prev !== null ? null : prev));
     } else if (groupId && processedItemGroups.length > 0) {
       const group = processedItemGroups.find((g) => g.id === groupId);
-      setSelectedGroup((prev) => (prev?.id === group?.id ? prev : group || null));
+      setSelectedGroup((prev) => (group ? group : prev));
       setSelectedItem((prev) => (prev !== null ? null : prev));
     } else if (processedItems.length > 0) {
       const first = processedItems[0];

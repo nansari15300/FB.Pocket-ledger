@@ -19,6 +19,10 @@ export type Party = {
   phone?: string;
   whatsapp?: boolean;
   email?: string;
+  /** Packed My Company — subscriber / agent row. */
+  type?: string;
+  /** Packed My Company — companies owned (or referred) by this party. */
+  companyCount?: number;
   isDeleted?: boolean;
   /** Owner freeze — no new vouchers; visible disabled in dropdowns. */
   isFrozen?: boolean;

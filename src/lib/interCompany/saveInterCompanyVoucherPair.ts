@@ -96,7 +96,7 @@ export type SaveInterCompanyPairInput = {
   sourceEntityId: string;
   targetEntityKind: InterCompanyEntityKind;
   targetEntityId: string;
-  /** Source-only — Payment Out style other charge (not synced to target). */
+  /** Source-only — Payment style other charge (not synced to target). */
   otherChargeAccountId?: string;
   otherChargeAmount?: number;
   otherChargeKind?: InterCompanyEntityKind | null;

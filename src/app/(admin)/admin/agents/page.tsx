@@ -1,6 +1,7 @@
 
 "use client";
 
+import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { collection, query, doc, updateDoc } from "firebase/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
@@ -77,6 +78,7 @@ export default function AgentsPage() {
   }, []);
 
   const handleUpdateStatus = async (application: Application, status: 'approved' | 'rejected') => {
+    if (adminServerWriteBlocked()) return;
     setUpdatingId(application.id);
     try {
       await updateDoc(doc(firestore, "distributor_applications", application.id), { status });

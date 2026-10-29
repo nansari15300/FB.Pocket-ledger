@@ -91,6 +91,7 @@ import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
 import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
 import { resolveCompanyIsOwnedForUser } from "@/lib/companyOnlineIntegrity";
 import { isDeviceLocalCompany, isServerGateCompany, stampPureLocalDeviceCompanyRow } from "@/lib/companyStorageKind";
+import { filterPackedMyCompanyRows } from "@/lib/plServerPackedApp";
 import { listLocalCompanies } from "@/lib/localCompanyStore";
 import { highestPlanIdAmongOwnedCompanies, resolveEffectiveAccountPlanId, resolvePlanIdForActiveCompany } from "@/lib/accountPlanForOwner";
 import {
@@ -115,6 +116,7 @@ import { doc } from "firebase/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { GlobalFileHoverPreviewSwitch } from "@/components/layout/GlobalFileHoverPreviewSwitch";
+import { HeaderAppearanceMenu } from "@/components/layout/HeaderAppearanceMenu";
 import { useFileHoverPreview } from "@/contexts/FileHoverPreviewContext";
 import { CopyLedgerHeaderButton } from "@/components/ledger/CopyLedgerHeaderButton";
 import { ShareForReconciliationHeaderButton } from "@/components/reconciliation/ShareForReconciliationHeaderButton";
@@ -528,10 +530,10 @@ function HeaderActions() {
         </PermissionButton>
       </AddVoucherDialog>}
 
-      {/* ✅ Payment Out */}
+      {/* ✅ Payment */}
       <AddVoucherDialog defaultTab="payment_out" voucher={undefined} isOpen={openPaymentOut} onOpenChange={setOpenPaymentOut}>
         <PermissionButton permission="create_records" variant="chromePill" size="sm" className={buttonClass} onClick={() => setOpenPaymentOut(true)} data-theme-btn="payment-out">
-          <ArrowLeft className="mr-1 h-4 w-4" /> Payment Out
+          <ArrowLeft className="mr-1 h-4 w-4" /> Payment
         </PermissionButton>
       </AddVoucherDialog>
 
@@ -1786,11 +1788,13 @@ function HeaderCompanyPickerIsland({
     };
     addRows(unfilteredHeaderCompanies);
     addRows(registryRows);
-    return filterSharedOnlyCompaniesForSuperAdminInMainApp(
-      Array.from(byId.values()),
-      user,
-      isSuperAdminUser,
-      pathname
+    return filterPackedMyCompanyRows(
+      filterSharedOnlyCompaniesForSuperAdminInMainApp(
+        Array.from(byId.values()),
+        user,
+        isSuperAdminUser,
+        pathname
+      )
     );
   }, [unfilteredHeaderCompanies, allCompaniesRegistry, contextCompanies, user, isSuperAdminUser, pathname]);
   const showLoadingSkeleton =
@@ -2475,6 +2479,7 @@ export function DesktopAppHeader() {
               <div className="ml-2 flex shrink-0 items-center gap-1">
                 <PlServerCompanyConnectionStatus />
                 <DriveCloudSyncHeaderIndicator />
+                <HeaderAppearanceMenu />
                 <UserProfileButton />
               </div>
           </div>
@@ -2532,6 +2537,7 @@ export function DesktopAppHeader() {
               <UserProfileButton />
               <CopyLedgerHeaderButton />
               <ShareForReconciliationHeaderButton />
+              <HeaderAppearanceMenu />
               <GlobalFileHoverPreviewSwitch />
               <ScreenControls />
             </div>

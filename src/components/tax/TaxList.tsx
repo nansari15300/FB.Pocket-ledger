@@ -8,6 +8,7 @@ import { Receipt } from "lucide-react";
 import { useDate } from "@/hooks/useDate";
 import { masterListOrderKey, useMasterListDisplayRows, useMasterListRowMotion } from "@/hooks/useMasterListRowMotion";
 import { MasterListNameTooltip } from "@/components/entity/MasterListNameTooltip";
+import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
 import { MasterAccountFreezeListBadge } from "@/components/masterAccountFreeze/MasterAccountFreezeListBadge";
 import { readMasterAccountFrozen } from "@/lib/masterAccountFreeze/types";
 import { Tooltip, TooltipProvider, TooltipContent, TooltipTrigger } from "../ui/tooltip";
@@ -130,15 +131,7 @@ export function TaxList({
                                   fallbackSlot={<Receipt className="h-4 w-4" />}
                                 />
                               </EntityFileAttachmentHover>
-                              {(pendingApprovalByTaxId[tax.id] ?? 0) > 0 && (
-                                <span
-                                  className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center bg-pink-500 text-white text-[10px] font-bold origin-center"
-                                  style={{ transform: "rotate(45deg) translate(25%, -25%)" }}
-                                  aria-label={`${pendingApprovalByTaxId[tax.id]} pending approval`}
-                                >
-                                  <span style={{ transform: "rotate(-45deg)" }}>{pendingApprovalByTaxId[tax.id]}</span>
-                                </span>
-                              )}
+                              <MasterListPendingBadge count={pendingApprovalByTaxId[tax.id] ?? 0} />
                             </div>
                             <div className="flex min-w-0 flex-col">
                             <MasterListNameTooltip

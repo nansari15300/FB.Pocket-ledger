@@ -16,6 +16,7 @@ import { useDate } from "@/hooks/useDate";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsTextTruncated } from "@/hooks/useIsTextTruncated";
 import { MasterAccountFreezeListBadge } from "@/components/masterAccountFreeze/MasterAccountFreezeListBadge";
+import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
 import type { GroupListMemberMoveProps } from "@/hooks/useGroupListAccountMove";
 
 type GroupListMemberRowProps = {
@@ -134,15 +135,7 @@ export function GroupListMemberRow({
         <div className="pl-master-list-row-leading">
           <div className="relative flex-shrink-0">
             {leading}
-            {pendingCount > 0 && (
-              <span
-                className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center bg-pink-500 text-[10px] font-bold text-white origin-center"
-                style={{ transform: "rotate(45deg) translate(25%, -25%)" }}
-                aria-label={`${pendingCount} pending approval`}
-              >
-                <span style={{ transform: "rotate(-45deg)" }}>{pendingCount}</span>
-              </span>
-            )}
+            <MasterListPendingBadge count={pendingCount} />
           </div>
           <div className="flex min-w-0 flex-col">
             {nameEl}

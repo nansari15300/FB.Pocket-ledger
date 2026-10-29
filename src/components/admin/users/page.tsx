@@ -9,7 +9,13 @@ import { Input } from '@/components/ui/input'
 import { Search, Users, UserCheck, UserX } from 'lucide-react'
 import { UserList } from '@/components/admin/UserList'
 import { UserDetails } from '@/components/admin/UserDetails'
-import { collection, getDocs, onSnapshot, query, doc, DocumentData } from 'firebase/firestore'
+import {
+  collection,
+  query,
+  doc,
+  DocumentData,
+} from 'firebase/firestore';
+import { getDocs, onSnapshot } from '@/lib/pocketbaseData/pbReadSeam';
 import { firestore as db } from '@/lib/firebase'
 import type { Company } from '@/app/(admin)/admin/companies/page';
 import type { Role } from "@/utils/rbac";

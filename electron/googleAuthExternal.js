@@ -1,5 +1,8 @@
 const http = require("http");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
+const { spawn } = require("child_process");
 
 /** Firebase web OAuth client — `src/lib/firebase.ts` FIREBASE_WEB_OAUTH_CLIENT_ID se match. */
 const FIREBASE_WEB_CLIENT_ID =
@@ -35,7 +38,8 @@ function callbackPageHtml() {
         body: JSON.stringify({ id_token: idToken, state: state, error: err }),
       })
         .then(function () {
-          msg.textContent = "Sign-in complete. Close this browser tab and return to Pocket Ledger.";
+          msg.textContent = "Sign-in complete. This tab can be closed.";
+          try { window.close(); } catch (e) {}
         })
         .catch(function () {
           msg.textContent = "Could not finish sign-in. Close this tab and try again in the app.";
@@ -128,19 +132,62 @@ function buildGoogleAuthUrl(redirectUri, sessionId, options = {}) {
     scope: "openid email profile",
     nonce: sessionId,
     state: sessionId,
+    // Account list of already-signed-in Chrome users. Do not set authuser=-1:
+    // Google treats that as "Use another account" and shows email/password.
     prompt: "select_account",
   });
   const loginHint = String(options.loginHint || "").trim();
   if (loginHint) {
     params.set("login_hint", loginHint);
-  } else if (options.forceAccountPicker !== false) {
-    params.set("authuser", "-1");
   }
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
+function windowsChromePath() {
+  const names = [
+    ["LOCALAPPDATA", "Google\\Chrome\\Application\\chrome.exe"],
+    ["PROGRAMFILES", "Google\\Chrome\\Application\\chrome.exe"],
+    ["PROGRAMFILES(X86)", "Google\\Chrome\\Application\\chrome.exe"],
+  ];
+  for (const [env, rel] of names) {
+    const root = process.env[env];
+    if (!root) continue;
+    const exe = path.join(root, rel);
+    if (fs.existsSync(exe)) return exe;
+  }
+  return null;
+}
+
 /**
- * System browser (Chrome/Edge) me Google login — account chooser (select_account).
+ * Open Google OAuth in the real Chrome profile (logged-in Google IDs).
+ * `shell.openExternal` can land in Edge / a blank profile without those sessions.
+ * @param {{ openExternal: (url: string) => Promise<void> }} shell
+ */
+function openInSystemBrowser(shell, url) {
+  try {
+    if (process.platform === "win32") {
+      const chrome = windowsChromePath();
+      if (chrome) {
+        const child = spawn(chrome, [url], {
+          detached: true,
+          stdio: "ignore",
+          windowsHide: true,
+        });
+        child.on("error", () => {
+          void shell.openExternal(url);
+        });
+        child.unref();
+        return Promise.resolve();
+      }
+    }
+  } catch {
+    /* fallback */
+  }
+  return shell.openExternal(url);
+}
+
+/**
+ * System browser (Chrome) me Google login — logged-in account select.
  * @param {{ openExternal: (url: string) => Promise<void> }} shell
  * @param {{ loginHint?: string }} [options]
  */
@@ -158,7 +205,7 @@ async function signInWithGoogleExternal(shell, options = {}) {
   });
 
   const authUrl = buildGoogleAuthUrl(redirectUri, sessionId, options);
-  await shell.openExternal(authUrl);
+  await openInSystemBrowser(shell, authUrl);
   return promise;
 }
 

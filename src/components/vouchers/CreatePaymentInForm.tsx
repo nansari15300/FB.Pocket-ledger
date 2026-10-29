@@ -355,7 +355,7 @@ export function CreatePaymentInForm({
   const [isCreateStaffOpen, setIsCreateStaffOpen] = useState(false);
   const [isCreateAccountOpen, setIsCreateAccountOpen] = useState(false);
   const [isCreateExpenseAccountOpen, setIsCreateExpenseAccountOpen] = useState(false);
-  /** Copy-draft: create dialog ke turant pehle hint text (Payment Out jaisa UX). */
+  /** Copy-draft: create dialog ke turant pehle hint text (Payment jaisa UX). */
   const [copyAccountCreateHint, setCopyAccountCreateHint] = useState<string>("");
   const [files, setFiles] = useState<(File|string)[]>([]);
   /** `FilePreview` ko stable prop — har render `.filter` naya array = blob effect dubara + thumb flash (static APK tick). */
@@ -415,7 +415,7 @@ export function CreatePaymentInForm({
   /** Last voucher id we reset form for — skip reset when same doc updates (liveVoucher) and user has edits. */
   const lastResetVoucherIdRef = useRef<string | null>(null);
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
-  /** Open Link Pay dialog (spend wise: select which Payment Out / Contra / DE link to this Payment In). */
+  /** Open Link Pay dialog (spend wise: select which Payment / Contra / DE link to this Payment In). */
   const [isLinkPaymentOutDialogOpen, setIsLinkPaymentOutDialogOpen] = useState(false);
   // Keep link sections collapsed by default on add/non-linked edit; auto-open if this voucher already has links.
   const [showLinkSections, setShowLinkSections] = useState(false);
@@ -526,7 +526,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       ),
     [expenseAccounts, incomeAccountId]
   );
-  /** Save & Copy To: red helpers + Prefilled dialogs — Payment Out (`CreatePaymentOutForm`) ke samaan. */
+  /** Save & Copy To: red helpers + Prefilled dialogs — Payment (`CreatePaymentOutForm`) ke samaan. */
   const copyDraftMasterHelpersEnabled = Boolean(copySaveTargetCompanyId && onCopyMissingCategory);
   const copyPayeeMasterCategoryArg = (): "party" | "staff" | "tax" | "account_expense" => {
     if (payeeType === "party") return "party";
@@ -872,7 +872,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     }).filter(Boolean) as Date[];
   }, [allVouchers]);
 
-  // Outgoing: RCPT allocated to Sale/Payment Out/Journal. Incoming: Journal allocated to RCPT (from Journal form Link to Dr).
+  // Outgoing: RCPT allocated to Sale/Payment/Journal. Incoming: Journal allocated to RCPT (from Journal form Link to Dr).
   const linkedToRows = useMemo(() => {
     const all = allVouchers ?? [];
     const currentId = isCopiedDraftFirstInsert ? null : (voucher?.id ?? savedVoucherId);
@@ -888,7 +888,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
         voucherNumber: target?.voucherNumber ?? target?.voucher_number ?? "—",
         amount: getAllocationTotal(a),
         date: date && !isNaN(date.getTime()) ? date : null,
-        typeLabel: target?.type === "payment_out" ? "Payment Out" : target?.type === "direct_expense" ? "Direct Expense" : target?.type === "journal" ? "Journal" : target?.type === "contra" ? "Contra" : "Voucher",
+        typeLabel: target?.type === "payment_out" ? "Payment" : target?.type === "direct_expense" ? "Direct Expense" : target?.type === "journal" ? "Journal" : target?.type === "contra" ? "Contra" : "Voucher",
       };
     });
     // Incoming: journals that allocated TO this RCPT (Journal form Link to Dr → RCPT). Same party filter.
@@ -1057,7 +1057,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       const amount = Number(v.total ?? v.amount ?? 0) || 0;
       const amounts = v.linkedPaymentInAmounts && typeof v.linkedPaymentInAmounts === "object" ? v.linkedPaymentInAmounts : {};
       const linked = amounts[currentVoucherId] != null ? Number(amounts[currentVoucherId]) : amount / (v.linkedPaymentInIds?.length || 1);
-      const typeLabel = v.type === "payment_out" ? "Payment Out" : v.type === "direct_expense" ? "Direct Expense" : "Contra";
+      const typeLabel = v.type === "payment_out" ? "Payment" : v.type === "direct_expense" ? "Direct Expense" : "Contra";
       const to = getSpendWiseOutflowPartyLabel(v, paymentOutDialogNames);
       return {
         id: v.id,
@@ -1175,14 +1175,14 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
         const amt = Number(v.total ?? v.amount ?? 0) || 0;
         const linked = pendingLinkedPaymentOut.amountsByVoucherId[id] ?? 0;
         const to = getSpendWiseOutflowPartyLabel(v, paymentOutDialogNames);
-        return { id: v.id, voucherNumber: v.voucherNumber ?? "—", date, amount: amt, linked, typeLabel: v.type === "payment_out" ? "Payment Out" : v.type === "direct_expense" ? "Direct Expense" : "Contra", from: to, to };
+        return { id: v.id, voucherNumber: v.voucherNumber ?? "—", date, amount: amt, linked, typeLabel: v.type === "payment_out" ? "Payment" : v.type === "direct_expense" ? "Direct Expense" : "Contra", from: to, to };
       })
       .filter(Boolean);
     const typed = rows as { id: string; voucherNumber: string; date: Date | null; amount: number; linked: number; typeLabel: string; from: string }[];
     return typed.sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0));
   }, [pendingLinkedPaymentOut, spendWiseLinkedToMeRows, allVouchers, accountId, paymentOutDialogNames, accountOpeningBalance]);
 
-  /** RCPT spend-wise gate: jitna PI amount hai utna opposite (PO/contra) se link ho — sirf tab Save roko jab linkable vouchers hon aur ye match pending ho; sirf count>0 se busy bank par Save permanently band na ho (copy/other company baad jaise Payment Out bug). */
+  /** RCPT spend-wise gate: jitna PI amount hai utna opposite (PO/contra) se link ho — sirf tab Save roko jab linkable vouchers hon aur ye match pending ho; sirf count>0 se busy bank par Save permanently band na ho (copy/other company baad jaise Payment bug). */
   const linkedSpendWiseTotalForRcptGate = displayLinkedToMeRows.reduce((s, r) => s + r.linked, 0);
   const spendWiseAmountMatchedForRcpt = amountReceived > 0 && linkedSpendWiseTotalForRcptGate >= amountReceived;
   const showSpendWiseRcptGateMode = showSpendWiseOppositeSection && amountReceived > 0;
@@ -1190,7 +1190,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     spendWiseLinkRequired && spendWiseLinkableCount > 0 && showSpendWiseRcptGateMode && !spendWiseAmountMatchedForRcpt;
   const linkPayOthersDisabled = saveDisabledByBillWise || saveDisabledBySpendWise;
 
-  /** Current Payment In as it appears on the opposite voucher (Payment Out / Contra / Direct Expense) — one row for the two-card "From Voucher" layout. */
+  /** Current Payment In as it appears on the opposite voucher (Payment / Contra / Direct Expense) — one row for the two-card "From Voucher" layout. */
   const formDate = form.watch("date");
   const formVoucherNumber = form.watch("voucherNumber") || voucher?.voucherNumber || "—";
   const currentVoucherAsOnOppositeRows = useMemo(() => {
@@ -2980,7 +2980,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     <Button type="button" variant="outline" size="sm" onClick={() => setShowLinkSections(true)}>Show Link</Button>
                   </div>
                 )}
-                {/* 1. Link for bill wise — full width, above spend wise (same order as Payment Out) */}
+                {/* 1. Link for bill wise — full width, above spend wise (same order as Payment) */}
                 {/* Bill-wise link card gets its own pink tone to visually separate from spend-wise card. */}
                 {shouldShowBillWiseSection && (
                   <div
@@ -3162,7 +3162,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                                 {/* From Voucher card: show correct column label (bank/cash account comes from) */}
                                 <th className="text-left p-2 font-medium whitespace-nowrap">From</th>
                                 <th className="text-right p-2 font-medium whitespace-nowrap">Amount</th>
-                                {/* Match Payment Out spend-wise columns for consistency */}
+                                {/* Match Payment spend-wise columns for consistency */}
                                 <th className="text-right p-2 font-medium whitespace-nowrap">Linked on others</th>
                                 <th className="text-right p-2 font-medium whitespace-nowrap">Linked on current</th>
                                 <th className="text-center p-2 font-medium whitespace-nowrap">Status</th>
@@ -3177,7 +3177,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                                     <td className="p-2 font-medium whitespace-nowrap">{row.voucherNumber}</td>
                                     <td className="p-2 whitespace-nowrap">{row.from}</td>
                                     <td className="p-2 text-right font-medium text-green-600 whitespace-nowrap">{formatCurrency(row.amount, { noSuffix: true, noAnimation: true })} Dr</td>
-                                    {/* Payment In's opposite preview has no per-voucher "others"; keep 0 so layout matches Payment Out */}
+                                    {/* Payment In's opposite preview has no per-voucher "others"; keep 0 so layout matches Payment */}
                                     <td className="p-2 text-right text-muted-foreground whitespace-nowrap">{formatCurrency(0, { noSuffix: true, noAnimation: true })} Dr</td>
                                     <td className="p-2 text-right text-muted-foreground whitespace-nowrap">{formatCurrency(row.linked, { noSuffix: true, noAnimation: true })} Dr</td>
                                     <td className="p-2 text-center whitespace-nowrap">
@@ -3216,7 +3216,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                           </div>
                         </div>
                       )}
-                      {/* Left card: Link Pay Out — on Payment In we link Payment Out (and Contra/DE) to this receipt */}
+                      {/* Left card: Link Pay Out — on Payment In we link Payment (and Contra/DE) to this receipt */}
                       {shouldShowSpendWiseSection && (
                         <div className="pt-2 border-t flex flex-wrap gap-2 items-center">
                           <Button type="button" className={cn("w-fit", BTN_SAVE_CLASS)} onClick={() => setIsLinkPaymentOutDialogOpen(true)}>

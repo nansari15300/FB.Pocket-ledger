@@ -56,7 +56,7 @@ export interface LinkPaymentOutToPaymentInDialogProps {
   accountOpeningBalance?: number;
 }
 
-/** Out-flow vouchers for this account: Payment Out, Direct Expense, Contra (from this account). */
+/** Out-flow vouchers for this account: Payment, Direct Expense, Contra (from this account). */
 function isOutVoucherForAccount(v: any, accountId: string): boolean {
   return (
     (v.type === "payment_out" && v.accountId === accountId) ||
@@ -180,7 +180,7 @@ export function LinkPaymentOutToPaymentInDialog({
 
   const selectedTotal = Object.values(tentativeLinkedByRowId).reduce((s, v) => s + v, 0);
   const needsMore = requiredAmount > 0 && selectedTotal < requiredAmount;
-  /** When selected total >= required amount, disable unchecked rows (like Contra / Payment Out link dialog). */
+  /** When selected total >= required amount, disable unchecked rows (like Contra / Payment link dialog). */
   const selectionFull = requiredAmount > 0 && selectedTotal >= requiredAmount;
   // Show live RCPT status in the current-voucher summary while user selects linked payments.
   const currentVoucherStatus = React.useMemo(() => {
@@ -254,9 +254,9 @@ export function LinkPaymentOutToPaymentInDialog({
         <DialogHeader className="shrink-0 space-y-0.5">
           {/* Keep spend-wise popup header consistent across all link dialogs. */}
           <p className="text-xs text-muted-foreground leading-tight">Link for spend wise</p>
-          <DialogTitle>Select Payment Out / Direct Expense / Contra (out){accountName ? ` from ${accountName}` : ""}</DialogTitle>
+          <DialogTitle>Select Payment / Direct Expense / Contra (out){accountName ? ` from ${accountName}` : ""}</DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Tick which Payment Out, Direct Expense or Contra (out) vouchers this receipt is paying. Amount will be linked to selected vouchers.
+            Tick which Payment, Direct Expense or Contra (out) vouchers this receipt is paying. Amount will be linked to selected vouchers.
           </p>
           {requiredAmount > 0 && (
             <div className="flex flex-wrap items-center gap-4 text-sm pt-1">
@@ -308,13 +308,13 @@ export function LinkPaymentOutToPaymentInDialog({
         )}
         <p className="text-sm font-medium text-muted-foreground shrink-0">
           {/* Show account in section title so user can identify which account's vouchers are listed. */}
-          To Voucher{accountName ? ` - Account: ${accountName}` : ""} — Payment Out / Direct Expense / Contra (out) of this account (only linkable or already selected)
+          To Voucher{accountName ? ` - Account: ${accountName}` : ""} — Payment / Direct Expense / Contra (out) of this account (only linkable or already selected)
         </p>
         <div className="min-h-0 border rounded-md overflow-x-auto">
           {displayList.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
                 {paymentOutList.length === 0
-                  ? "No Payment Out, Direct Expense or Contra (out) found for this account."
+                  ? "No Payment, Direct Expense or Contra (out) found for this account."
                   : "No linkable amount remaining."}
               </p>
             ) : (

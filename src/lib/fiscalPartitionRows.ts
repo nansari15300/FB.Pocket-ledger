@@ -1,5 +1,6 @@
 import { startOfDay } from "date-fns";
 import { buildFiscalMergePartitionBannerLabel } from "@/lib/fiscalYearLabel";
+import { parseFirestoreDateFieldToJsDate } from "@/lib/voucherDateNormalize";
 
 /** Sirf fiscal fields — `useCompany` import avoid (heavy / circular risk). */
 type FiscalCompanyLike = {
@@ -24,11 +25,10 @@ function rowSortTime(t: any): number | null {
   if (!t || t.type === FISCAL_YEAR_PARTITION_ROW_TYPE || (t as any)._spendWiseSpacer) return null;
   // Opening row ke paas reliable date nahi → transition detect mat karo is se
   if (t.type === "opening_balance") return null;
-  const raw = t.date;
-  if (!raw) return null;
-  const d =
-    raw instanceof Date ? raw : typeof raw.toDate === "function" ? raw.toDate() : new Date(raw);
-  if (!(d instanceof Date) || isNaN(d.getTime())) return null;
+  // Save/live patch ke baad `date` SQLite JSON `{__fsTs, seconds}` ho sakta hai —
+  // `new Date(object)` Invalid hota, divider is row ko skip karke voucher pichle FY me dikhata tha.
+  const d = parseFirestoreDateFieldToJsDate(t?.date);
+  if (!d || isNaN(d.getTime())) return null;
   return startOfDay(d).getTime();
 }
 

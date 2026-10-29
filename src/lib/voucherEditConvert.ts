@@ -84,7 +84,7 @@ const VOUCHER_EDIT_CONVERT_TYPE_LABEL: Record<string, string> = {
   sale: "Sale",
   purchase: "Purchase",
   payment_in: "Receipt",
-  payment_out: "Payment Out",
+  payment_out: "Payment",
   direct_income: "Direct Income",
   direct_expense: "Direct Expense",
   contra: "Contra",

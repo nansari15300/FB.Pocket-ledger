@@ -543,7 +543,7 @@ export function LinkAdvancesToVoucherDialog({
     if (String((v as any).partyId ?? "") !== String(targetPartyId)) return sum;
     return sum + (Number((v as any).openingBalanceAllocated) || 0);
   }, 0);
-  // Dr OB (partyOB > 0) is consumed when Payment In links to it; Cr OB when Payment Out links. So count correct payment type.
+  // Dr OB (partyOB > 0) is consumed when Payment In links to it; Cr OB when Payment links. So count correct payment type.
   const payTypesOB = partyOB > 0 ? ["payment_in", "direct_income"] : ["payment_out", "direct_expense"];
   const totalConsumedFromOBByPayments = (vouchers as any[]).reduce((sum, v) => {
     if (!payTypesOB.includes(v.type) || String((v as any).partyId ?? "") !== String(targetPartyId)) return sum;
@@ -709,7 +709,7 @@ export function LinkAdvancesToVoucherDialog({
     const next: Record<string, number> = {};
     for (const a of allocations) next[a.voucherId] = a.amount;
     setLinkedAmounts(next);
-    toast.success(mode === "sale" ? "Amount allocated to receipts (oldest first)." : "Amount allocated to payment outs (oldest first).");
+    toast.success(mode === "sale" ? "Amount allocated to receipts (oldest first)." : "Amount allocated to payments (oldest first).");
   };
 
   const handleReset = () => {
@@ -934,7 +934,7 @@ export function LinkAdvancesToVoucherDialog({
                       const linked = linkedAmounts[row.id] ?? 0;
                       const allocatedToOthers = (row as { allocatedToOthers?: number }).allocatedToOthers ?? 0;
                       const otherLinked = allocatedToOthers;
-                      const rowType = row.id === OPENING_BALANCE_VOUCHER_ID || row.type === "opening_balance" ? "Opening Balance" : row.type === "payment_in" || row.type === "direct_income" ? "receipt" : row.type === "payment_out" || row.type === "direct_expense" ? "payment out" : row.type === "purchase" || row.type === "purchase_service" ? "purchase" : row.type === "sale" || row.type === "sale_service" ? "sale" : row.type;
+                      const rowType = row.id === OPENING_BALANCE_VOUCHER_ID || row.type === "opening_balance" ? "Opening Balance" : row.type === "payment_in" || row.type === "direct_income" ? "receipt" : row.type === "payment_out" || row.type === "direct_expense" ? "payment" : row.type === "purchase" || row.type === "purchase_service" ? "purchase" : row.type === "sale" || row.type === "sale_service" ? "sale" : row.type;
                       const isOBRow = row.id === OPENING_BALANCE_VOUCHER_ID;
                       // Cap by linkable amount (remaining), not full amount — OB row bhi linkable se cap hona chahiye.
                       const rowMax = row.remaining;

@@ -57,7 +57,7 @@ export function readInterCompanyOwnFileUrls(
   return dedupeAttachmentUrls(normalizeFileUrlsField(voucher.fileUrls));
 }
 
-/** Is voucher copy par logged-in company source (sent) ya target (received) — Payment Out / In label ke liye */
+/** Is voucher copy par logged-in company source (sent) ya target (received) — Payment / In label ke liye */
 export function interCompanyVoucherViewerSide(
   voucher: Record<string, unknown> | null | undefined
 ): "source" | "target" | null {

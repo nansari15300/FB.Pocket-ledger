@@ -20,6 +20,7 @@ import { resolveCompanyIsOwnedForUser } from "@/lib/companyOnlineIntegrity";
 import { activateOnlineGateForCompanyPicker } from "@/lib/gates/gateClientDefaults";
 import { isLocalSelectorCompanyRow, stampPureLocalDeviceCompanyRow, isDeviceLocalCompany } from "@/lib/companyStorageKind";
 import { normalizeRowForLocalDriveSyncUi } from "@/lib/localCloudSync/companyConfig";
+import { filterPackedMyCompanyRows } from "@/lib/plServerPackedApp";
 
 /** Device-local SQLite rows — online Firestore picker list me merge (Drive restore / join ke baad). */
 function mergeDeviceLocalCompaniesIntoMap(
@@ -194,11 +195,13 @@ function SelectCompanyPageContent() {
       companyMap.set(newlyCreatedCompany.id, newlyCreatedCompany);
     }
     mergeDeviceLocalCompaniesIntoMap(companyMap, sqliteLocalRows, user);
-    return filterSharedOnlyCompaniesForSuperAdminInMainApp(
-      Array.from(companyMap.values()),
-      user ? { uid: user.uid, email: user.email } : null,
-      isSuperAdminUser,
-      "/company"
+    return filterPackedMyCompanyRows(
+      filterSharedOnlyCompaniesForSuperAdminInMainApp(
+        Array.from(companyMap.values()),
+        user ? { uid: user.uid, email: user.email } : null,
+        isSuperAdminUser,
+        "/company"
+      )
     );
 }, [user, newlyCreatedCompany, allCompaniesRegistry, contextCompanies, isSuperAdminUser, sqliteLocalRows]);
 

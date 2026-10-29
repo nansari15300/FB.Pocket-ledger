@@ -10,6 +10,7 @@ import { DollarSign, Lock } from "lucide-react";
 import { useDate } from "@/hooks/useDate";
 import { masterListOrderKey, useMasterListDisplayRows, useMasterListRowMotion } from "@/hooks/useMasterListRowMotion";
 import { MasterListNameTooltip } from "@/components/entity/MasterListNameTooltip";
+import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
 import { MasterAccountFreezeListBadge } from "@/components/masterAccountFreeze/MasterAccountFreezeListBadge";
 import { readMasterAccountFrozen } from "@/lib/masterAccountFreeze/types";
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from "../ui/tooltip";
@@ -160,15 +161,7 @@ export function ExpenseAccountList({
                                 }
                               />
                             </EntityFileAttachmentHover>
-                            {(pendingApprovalByAccountId[account.id] ?? 0) > 0 && (
-                              <span
-                                className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center bg-pink-500 text-white text-[10px] font-bold origin-center rounded-full"
-                                style={{ transform: "rotate(45deg) translate(25%, -25%)" }}
-                                aria-label={`${pendingApprovalByAccountId[account.id]} pending approval`}
-                              >
-                                <span style={{ transform: "rotate(-45deg)" }}>{pendingApprovalByAccountId[account.id]}</span>
-                              </span>
-                            )}
+                            <MasterListPendingBadge count={pendingApprovalByAccountId[account.id] ?? 0} />
                           </div>
                           <div className="flex min-w-0 flex-col">
                           <MasterListNameTooltip

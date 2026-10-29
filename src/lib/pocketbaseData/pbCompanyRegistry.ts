@@ -6,6 +6,7 @@
  */
 
 import { ONLINE_DATA_SERVER_POCKETBASE_ID } from "@/lib/onlineDataServer";
+import { readSelectedCompanyId } from "@/lib/selectedCompanyStorage";
 
 const IDS_KEY = "pl_pb_company_ids_v1";
 
@@ -86,6 +87,26 @@ export function isPocketBaseCompany(companyId: string | null | undefined, compan
 
 export function listPocketBaseCompanyIds(): string[] {
   return Array.from(load());
+}
+
+/**
+ * The company this tab is showing. Idle PocketBase pull / live apply use only this id
+ * so unselected companies stay on their last SQLite snapshot.
+ */
+export function activePocketBaseCompanyId(): string {
+  const selected = String(readSelectedCompanyId() || "").trim();
+  if (!selected) return "";
+  return isPocketBaseCompanyId(selected) ? selected : "";
+}
+
+export function listActivePocketBaseCompanyIds(): string[] {
+  const id = activePocketBaseCompanyId();
+  return id ? [id] : [];
+}
+
+export function isActivePocketBaseCompanyId(companyId: string | null | undefined): boolean {
+  const id = String(companyId || "").trim();
+  return !!id && id === activePocketBaseCompanyId();
 }
 
 /**

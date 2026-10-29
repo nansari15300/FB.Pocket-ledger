@@ -62,7 +62,7 @@ export const ocrAdapters = {
   }),
   /** Payment In + Direct Income (same form). Party only when payee type is Party. */
   paymentIn: (): OcrFormAdapter => pay("buyer", "payment_in"),
-  /** Payment Out + Direct Expense (same form). Expense payee: party skipped, amount/date/narration still filled. */
+  /** Payment + Direct Expense (same form). Expense payee: party skipped, amount/date/narration still filled. */
   paymentOut: (): OcrFormAdapter => pay("seller", "payment_out"),
   contra: (): OcrFormAdapter => ({ voucherType: "contra", partySide: "seller", date: "date", amount: "amount", narration: "narration", autoPost: false }),
   journal: (): OcrFormAdapter => ({ voucherType: "journal", partySide: "seller", date: "date", narration: "narration", autoPost: false }),

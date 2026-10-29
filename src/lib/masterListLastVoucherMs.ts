@@ -17,11 +17,11 @@ function startOfLocalDayMs(ms: number): number {
   return d.getTime();
 }
 
-/** Ledger voucher time: voucher date; same calendar day pe createdAt clock. */
+/** Ledger voucher time: voucher date; same calendar day pe createdAt clock. lastEditedAt/updatedAt skip — approve must not reshuffle Latest. */
 export function voucherLastActivityMs(v: Record<string, unknown> | null | undefined): number {
   if (!v) return 0;
   const dateMs = toDateMs(v.date);
-  const clockMs = toDateMs(v.createdAt) || toDateMs(v.lastEditedAt) || toDateMs(v.updatedAt);
+  const clockMs = toDateMs(v.createdAt);
   if (!dateMs) return clockMs;
   if (!clockMs) return dateMs;
   if (startOfLocalDayMs(dateMs) === startOfLocalDayMs(clockMs)) return Math.max(dateMs, clockMs);

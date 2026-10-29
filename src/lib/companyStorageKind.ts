@@ -8,6 +8,7 @@ import {
   isPlServerSharedCompanyRow,
 } from "@/lib/plServerAccessContext";
 import { isPlRemoteServerClientMode, isPlSharingServerPortOrigin } from "@/lib/plRemoteServerClient";
+import { filterPackedMyCompanyRows, isPlServerPackedApp } from "@/lib/plServerPackedApp";
 
 export type CompanyStorageRow = {
   id?: string;
@@ -304,6 +305,19 @@ export function partitionCompaniesForUnlockDialog(companies: Company[]): Selecto
 /** Mutual-exclusive Local vs Online buckets for company picker / settings dropdowns. */
 export function partitionCompaniesForSelector(companies: Company[]): SelectorCompanyBuckets {
   const rows = dedupeCompaniesById(companies.filter((c): c is Company => c != null && Boolean(c?.id)));
+  if (isPlServerPackedApp()) {
+    const packed = filterPackedMyCompanyRows(rows);
+    return {
+      localOwnedCompanies: [],
+      sharedLocalCompanies: [],
+      serverSharedCompanies: packed,
+      cloudOwnedCompanies: [],
+      sharedCloudCompanies: [],
+      localTabCompanies: [],
+      onlineTabCompanies: [],
+      serverTabCompanies: packed,
+    };
+  }
   const gateId = getPlServerContextGateId();
   const owned = rows.filter((c) => c.isOwned);
   const nonServerRows = rows.filter((c) => !isServerSelectorCompanyRow(c, gateId));

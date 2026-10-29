@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Terms — Pocket Ledger</title>
+  <meta name="description" content="Each Pocket Ledger country site has its own terms. pocket-ledger.com is not responsible for a country subdomain." />
+  <link rel="stylesheet" href="/styles.css?v=20261028-195200" />
+  <link rel="stylesheet" href="/css/color-mode.css?v=20261028-195200" />
+  <link rel="stylesheet" href="/css/country-gate.css?v=20261028-195200" />
+  <script src="/js/color-mode.js?v=20261028-195200"></script>
+  <script src="/js/countries.js?v=20261028-181900"></script>
+  <script src="/js/country-gate.js?v=20261028-195200"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="/home/">
+        <span class="brand-mark" aria-hidden="true"></span>
+        Pocket Ledger
+      </a>
+      <div class="nav-scroll">
+        <nav class="nav-links" aria-label="Main">
+          <a href="/home/">Home</a>
+          <a href="/home/#pricing">Pricing</a>
+          <a href="/downloads/">Downloads</a>
+          <a href="/company/">Company</a>
+          <a href="/terms/" aria-current="page">Terms</a>
+        </nav>
+        <div class="marketing-auth-actions">
+          <span data-pl-site-chrome></span>
+          <a class="btn btn-primary btn-sm" href="/app" data-i18n="goto_app">Go to App</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="page-hero">
+      <div class="wrap">
+        <h1 id="termsTitle">Terms</h1>
+        <p id="termsLead">Each Pocket Ledger site has its own terms. A country subdomain is not pocket-ledger.com’s responsibility.</p>
+      </div>
+    </section>
+    <section class="section">
+      <div class="wrap">
+        <article class="content-block" id="termsBody">
+          <h2>Separate sites</h2>
+          <p>
+            <strong>pocket-ledger.com</strong> is the main site. It can take subscriptions for people who stay on main.
+          </p>
+          <p>
+            A country site such as <strong>np.pocket-ledger.com</strong> is a separate web. It runs its own books,
+            plans, payment and terms for people who use that country site.
+          </p>
+          <h2>Responsibility</h2>
+          <p>
+            Terms on a country subdomain belong to that country site. Pocket Ledger main is not responsible for
+            that subdomain’s service, billing, data, or disputes.
+          </p>
+          <p>
+            Terms on pocket-ledger.com apply only to the main site — not to country subdomains.
+          </p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-row">
+      <div>
+        © Pocket Ledger Solutions Pvt. Ltd.<br />
+        <span class="footer-sub">Each country site has its own terms</span>
+      </div>
+      <div class="footer-links">
+        <a href="/home/">Home</a>
+        <a href="/company/">Company</a>
+        <a href="/app">Go to App</a>
+      </div>
+    </div>
+  </footer>
+  <script>
+    (function () {
+      function ready() {
+        var rec = window.PLCountry && PLCountry.get && PLCountry.get();
+        if (!rec) return;
+        function esc(s) {
+          return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+        var title = document.getElementById("termsTitle");
+        var lead = document.getElementById("termsLead");
+        var body = document.getElementById("termsBody");
+        if (title) title.textContent = rec.name + " terms";
+        if (lead) {
+          lead.textContent = rec.host + " has its own terms. pocket-ledger.com is not responsible for this country site.";
+        }
+        if (body) {
+          body.innerHTML =
+            "<h2>This country site</h2>" +
+            "<p>These terms apply to <strong>" + esc(rec.host) + "</strong> (" + esc(rec.name) +
+            "). This country web runs on its own — including plans and payment.</p>" +
+            "<h2>Not main’s responsibility</h2>" +
+            "<p><strong>pocket-ledger.com</strong> also bills users who stay on main. It is not responsible for this subdomain’s service, billing, data, or disputes.</p>" +
+            "<p>Main terms do not cover " + esc(rec.host) + ".</p>";
+        }
+        document.title = rec.name + " terms — Pocket Ledger";
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready);
+      else ready();
+    })();
+  </script>
+  <script src="/js/languages-iso.js?v=20261028-195200"></script>
+  <script src="/js/i18n-web.js?v=20261029-i18nmt"></script>
+  <script src="/js/i18n-translate.js?v=20261029-i18nmt"></script>
+  <script src="/js/intro.js?v=20261028-195200"></script>
+  <script src="/js/version.js?v=20261028-195200"></script>
+  <script src="/js/site-chrome.js?v=20261028-195200"></script>
+</body>
+</html>

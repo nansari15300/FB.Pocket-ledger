@@ -430,7 +430,7 @@ function billWiseAllocatedToTargetFromMaps(
 
 /**
  * Bill-wise: kitna amount target (sale/purchase) par allocate ho chuka hai.
- * Payment Out/In + target.allocations dono record ho sakte hain — sum se double-count na ho (Link dialog = max).
+ * Payment/In + target.allocations dono record ho sakte hain — sum se double-count na ho (Link dialog = max).
  */
 export function getBillWiseAllocatedToTarget(
   targetVoucher: any,
@@ -494,7 +494,7 @@ export function getOutflowBillWiseLinkAmount(v: any): number {
 }
 
 /**
- * Payment Out party/staff bill-wise linkable amount — payee leg only.
+ * Payment party/staff bill-wise linkable amount — payee leg only.
  * Other charge (expense account) is excluded from party bill-wise linking.
  */
 export function getPaymentOutPartyLinkAmount(v: any): number {

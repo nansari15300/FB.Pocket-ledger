@@ -15,6 +15,7 @@ import {
 } from "@/lib/interCompany/interCompanyAccountNo";
 import { getCompanyDocFromBrowserDb, upsertCompanyDocInBrowserDb } from "@/lib/localCompanyDocMirror";
 import { isLocalOnlyMode } from "@/lib/localMode";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 async function mirrorEntityAcNoToLocal(
   companyId: string,
@@ -40,7 +41,7 @@ export async function ensureEntityInterCompanyAcNo(
   kind: InterCompanyEntityKind,
   entityId: string
 ): Promise<string> {
-  if (!companyId || !entityId) return "";
+  if (!isInterCompanySystemEnabled() || !companyId || !entityId) return "";
   const collectionName = firestoreCollectionForEntityKind(kind);
   const exclude = { kind: kind as InterCompanyAcEntityKind, companyId, entityId };
 

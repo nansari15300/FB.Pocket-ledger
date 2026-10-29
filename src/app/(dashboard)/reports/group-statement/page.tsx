@@ -30,6 +30,7 @@ import { ReportRegisterListHeading } from "@/components/reports/ReportRegisterLi
 import { masterListSelectedCn, masterListUnselectedCn } from "@/lib/listSelectionChrome";
 import { format } from "date-fns";
 import { getAllSystemGroupNames } from "@/lib/system-group-names";
+import { isPocketBaseAppSessionActive, readPocketBaseAppProfile, pocketBaseSessionUid } from "@/lib/pocketbaseData/pbAppSession";
 
 type GroupStatementPageProps = {
   onPartySelectionChange?: (isParty: boolean) => void;
@@ -75,7 +76,14 @@ export default function GroupStatementPage({ onPartySelectionChange }: GroupStat
     const existingName = vouchersUserNames?.[userId] || userNames[userId];
     if (existingName && existingName !== "Unknown" && existingName !== "N/A") return existingName;
     
-    try {
+    // Pocket Ledger Server session: no Firebase user, so Firestore would only fail ("client is offline").
+    if (isPocketBaseAppSessionActive()) {
+      const p = readPocketBaseAppProfile();
+      if (p && (userId === pocketBaseSessionUid(p) || userId === p.id)) {
+        const nm = p.name || p.email;
+        if (nm) return nm;
+      }
+    } else try {
       // User doc ID may be name_uid format (e.g. manishshah46_AaCbiR708nhGe28Ltf2I7YZzpNv1), so query by uid field first
       const q = query(collection(firestore, "users"), where("uid", "==", userId));
       const snap = await getDocs(q);
@@ -98,7 +106,7 @@ export default function GroupStatementPage({ onPartySelectionChange }: GroupStat
         }
       }
     } catch (e) {
-      console.error('[GroupSummary] Error fetching userName for', userId, e);
+      if ((e as { code?: unknown } | null)?.code === "unavailable") { console.debug('[GroupSummary] userName lookup skipped (offline) for', userId); } else { console.error('[GroupSummary] Error fetching userName for', userId, e); }
     }
     return "N/A";
   }, [vouchersUserNames, userNames]);

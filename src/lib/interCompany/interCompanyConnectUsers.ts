@@ -12,6 +12,7 @@ import { getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import type { InterCompanyEntityKind } from "@/components/inter-company/InterCompanyEntitySide";
 import { isPureLocalInterCompanyCompany } from "@/lib/interCompany/localInterCompanyPolicy";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 function normalizeConnectUserEmail(email: string | null | undefined): string {
   return String(email || "").trim().toLowerCase();
@@ -190,7 +191,7 @@ export function subscribeInterCompanyConnectUsers(
   onData: (users: InterCompanyConnectUserEntry[]) => void,
   onError?: (err: unknown) => void
 ): Unsubscribe {
-  if (!companyId) {
+  if (!isInterCompanySystemEnabled() || !companyId) {
     onData([]);
     return () => undefined;
   }

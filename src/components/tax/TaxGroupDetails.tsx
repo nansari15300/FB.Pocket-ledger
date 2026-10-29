@@ -140,6 +140,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { doc, getDoc } from 'firebase/firestore';
 import { firestore } from "@/lib/firebase";
+import { resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";
 
 
 const getInitials = (name: string) => {
@@ -318,13 +319,7 @@ export function TaxGroupDetails({
   
   const fetchUserName = useCallback(async (userId: string): Promise<string> => {
     if (userNames && userNames[userId]) return userNames[userId];
-    try {
-        const userDoc = await getDoc(doc(firestore, 'users', userId));
-        if (userDoc.exists()) {
-            return userDoc.data().displayName || userDoc.data().email || "Unknown";
-        }
-    } catch (e) {}
-    return "Unknown";
+    return resolveUserDisplayName(userId, "Unknown");
   }, [userNames]);
 
   // useTransactions ko har render par naya entity object mat do — loop + ScrollArea ref storm avoid.

@@ -11,9 +11,14 @@ import {
   THEME_STORAGE_KEY,
   PRIMARY_STORAGE_KEY,
 } from "@/lib/proTheme";
+import {
+  APP_PRIMARY_CLASS_NAMES,
+  APP_THEME_CLASS_NAMES,
+  isDarkAppTheme,
+} from "@/lib/appThemes";
 
-type Theme = "theme-pure-white" | "theme-vagawa" | "theme-soft-green" | "theme-dim-soft-green" | "theme-soft-blue" | "theme-sky-blue" | "theme-soft-yellow" | "theme-soft-pink" | "theme-colorfull" | "theme-pro";
-type PrimaryColor = "primary-pure-white" | "primary-vagawa" | "primary-soft-green" | "primary-dim-soft-green" | "primary-soft-blue" | "primary-sky-blue" | "primary-soft-yellow" | "primary-soft-pink" | "primary-colorfull" | "primary-pro";
+type Theme = (typeof APP_THEME_CLASS_NAMES)[number] | "theme-vagawa";
+type PrimaryColor = (typeof APP_PRIMARY_CLASS_NAMES)[number] | "primary-vagawa";
 
 
 type ThemeContextType = {
@@ -25,30 +30,8 @@ type ThemeContextType = {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 // Theme swap par body ka pura className wipe na ho; sirf known theme/primary classes replace karo.
-const THEME_CLASS_NAMES: Theme[] = [
-  "theme-pure-white",
-  "theme-vagawa",
-  "theme-soft-green",
-  "theme-dim-soft-green",
-  "theme-soft-blue",
-  "theme-sky-blue",
-  "theme-soft-yellow",
-  "theme-soft-pink",
-  "theme-colorfull",
-  "theme-pro",
-];
-const PRIMARY_CLASS_NAMES: PrimaryColor[] = [
-  "primary-pure-white",
-  "primary-vagawa",
-  "primary-soft-green",
-  "primary-dim-soft-green",
-  "primary-soft-blue",
-  "primary-sky-blue",
-  "primary-soft-yellow",
-  "primary-soft-pink",
-  "primary-colorfull",
-  "primary-pro",
-];
+const THEME_CLASS_NAMES: Theme[] = [...APP_THEME_CLASS_NAMES, "theme-vagawa"];
+const PRIMARY_CLASS_NAMES: PrimaryColor[] = [...APP_PRIMARY_CLASS_NAMES, "primary-vagawa"];
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   // SSR + first paint: Pro — localStorage read se pehle Light mat likho.
@@ -74,9 +57,10 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     if (!themeHydrated) return;
     // Startup flicker fix: static dashboard load par body reset (blank frame) ki jagah targeted class replace karo.
-    document.body.classList.remove(...THEME_CLASS_NAMES, ...PRIMARY_CLASS_NAMES);
+    document.body.classList.remove(...THEME_CLASS_NAMES, ...PRIMARY_CLASS_NAMES, "dark");
     // Root layout jaisa typography + theme; base classes stable rakhkar sirf active theme apply karo.
     document.body.classList.add("font-body", "antialiased", theme, primaryColor);
+    if (isDarkAppTheme(theme)) document.body.classList.add("dark");
     localStorage.setItem(THEME_STORAGE_KEY, theme);
     localStorage.setItem(PRIMARY_STORAGE_KEY, primaryColor);
   }, [theme, primaryColor, themeHydrated]);

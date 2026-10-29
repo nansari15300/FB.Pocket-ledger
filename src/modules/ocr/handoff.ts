@@ -25,7 +25,7 @@ export function takeOcrHandoff(): OcrHandoff | null {
   return p && Date.now() - p.at < 15000 ? p : null;
 }
 
-/** Same bucket = no mismatch (Payment In ≈ Direct Income, Payment Out ≈ Direct Expense). */
+/** Same bucket = no mismatch (Payment In ≈ Direct Income, Payment ≈ Direct Expense). */
 export function sameVoucherBucket(current: string, detected: string) {
   const b = (t: string) => (t === "direct_income" ? "payment_in" : t === "direct_expense" ? "payment_out" : t);
   return b(current) === b(detected);

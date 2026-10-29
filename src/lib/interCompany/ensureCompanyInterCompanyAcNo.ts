@@ -11,6 +11,7 @@ import {
 } from "@/lib/interCompany/interCompanyAccountNo";
 import { getLocalCompanyById, upsertLocalCompany } from "@/lib/localCompanyStore";
 import { isLocalOnlyMode } from "@/lib/localMode";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 /** Local SQLite row par A/c No mirror — online company bina local row ke bhi chal sakti hai. */
 async function mirrorInterCompanyAcNoToLocal(companyId: string, acNo: string): Promise<void> {
@@ -32,7 +33,7 @@ async function mirrorInterCompanyAcNoToLocal(companyId: string, acNo: string): P
  * Company select / open par bhi call ho sakta hai — party edit zaroori nahi.
  */
 export async function ensureCompanyInterCompanyAcNo(companyId: string): Promise<string> {
-  if (!companyId) return "";
+  if (!isInterCompanySystemEnabled() || !companyId) return "";
 
   try {
     const local = await getLocalCompanyById(companyId, { includeDeleted: true });

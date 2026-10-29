@@ -72,6 +72,7 @@ import { getDocs, getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase"; // device-limit overlay: companies/{id}/devices + users lookup
 import { Settings, Monitor, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isPbOnlySession } from "@/lib/pocketbaseData/userDisplayNameSession";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -261,7 +262,8 @@ function DeviceLimitOverlay() {
   }, []);
 
   useEffect(() => {
-    if (!companyId || (!deviceLimitReached && !kickedAndBlocked)) {
+    // Server-only session: no Firebase user, Firestore devices listener would only fail.
+    if (!companyId || (!deviceLimitReached && !kickedAndBlocked) || isPbOnlySession()) {
       setActiveDevices((prev) => (prev.length === 0 ? prev : []));
       return;
     }
@@ -290,7 +292,7 @@ function DeviceLimitOverlay() {
   const userIdsKey = useMemo(() => activeDevices.map((d) => d.userId).filter(Boolean).sort().join(","), [activeDevices]);
 
   useEffect(() => {
-    if (!isCompanyOwner || activeDevices.length === 0) return;
+    if (!isCompanyOwner || activeDevices.length === 0 || isPbOnlySession()) return;
     const userIds = [...new Set(activeDevices.map((d) => d.userId).filter(Boolean))];
     let cancelled = false;
     const map: Record<string, string> = {};
@@ -313,6 +315,8 @@ function DeviceLimitOverlay() {
       })
     ).then(() => {
       if (!cancelled) setUserNames((prev) => ({ ...prev, ...map }));
+    }).catch(() => {
+      /* user names are optional */
     });
     return () => { cancelled = true; };
   }, [isCompanyOwner, userIdsKey]);

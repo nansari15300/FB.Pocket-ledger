@@ -1,6 +1,6 @@
 "use client";
 
-import { voucherTypeDisplayText } from "@/lib/voucherTypeDisplay";
+import { voucherTypeDisplayText, voucherTypeSearchText } from "@/lib/voucherTypeDisplay";
 import * as React from "react";
 import { TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -820,7 +820,7 @@ export const getOppositeAccountLabel = (
       if (t.type === "sale") return getName(t.salesAccountId || "sales_account") || "Sales Account";
       if (t.type === "purchase") return getName(t.purchaseAccountId || "purchase_account") || "Purchase Account";
       if (t.type === "payment_in") return getName(t.accountId) || "Receipt";
-      if (t.type === "payment_out") return getName(t.accountId) || getName(t.fromAccountId) || "Payment Out";
+      if (t.type === "payment_out") return getName(t.accountId) || getName(t.fromAccountId) || "Payment";
       if (t.type === "direct_income") return getName(t.accountId) || "Direct Income";
       if (t.type === "direct_expense") return getName(t.fromAccountId) || getName(t.accountId) || "Direct Expense";
       if (t.type === "contra") return getName(t.fromAccountId) || getName(t.toAccountId);
@@ -1024,7 +1024,7 @@ export const getOppositeAccountLabel = (
       names[t.toAccountId] ||
       t.payeeName ||
       getName(t.accountId) ||
-      "Payment Out"
+      "Payment"
     );
   }
   if (t.type === "contra") return getName(t.toAccountId) || getName(t.fromAccountId);
@@ -1053,6 +1053,7 @@ export function getTransactionQuickSearchHaystack(
     t?.voucherNumberOut,
     t?.voucherNumberIn,
     getDisplayType(t),
+    voucherTypeSearchText(t?.type),
     t?.narration,
     typeof t?.partyName === "string" ? t.partyName : "",
     typeof t?.payeeName === "string" ? t.payeeName : "",

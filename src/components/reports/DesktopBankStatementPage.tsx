@@ -281,11 +281,11 @@ export default function DesktopBankStatementPage() {
 
     if (accountId && processedAccounts.length > 0) {
       const account = processedAccounts.find((a) => a.id === accountId);
-      setSelectedAccount((prev) => (prev?.id === account?.id ? prev : account || null));
+      setSelectedAccount((prev) => (account ? account : prev));
       setSelectedGroup((prev) => (prev !== null ? null : prev));
     } else if (groupId && processedAccountGroups.length > 0) {
       const group = processedAccountGroups.find((g) => g.id === groupId);
-      setSelectedGroup((prev) => (prev?.id === group?.id ? prev : group || null));
+      setSelectedGroup((prev) => (group ? group : prev));
       setSelectedAccount((prev) => (prev !== null ? null : prev));
     } else if (processedAccounts.length > 0) {
       const first = processedAccounts[0];
@@ -565,7 +565,7 @@ export default function DesktopBankStatementPage() {
       }
       const voucherCards = [...voucherTypeTotals.entries()].map(([label, amount]) => {
         const normalized = label.toLowerCase();
-        const color = /(purchase|payment out|money out|expense|salary|withdraw|tds purchase)/.test(normalized)
+        const color = /(purchase|payment out|payment|money out|expense|salary|withdraw|tds purchase)/.test(normalized)
           ? "text-red-600"
           : "text-green-600";
         const isTax = /(^|[^a-z])(tds|vat)([^a-z]|$)/.test(normalized);

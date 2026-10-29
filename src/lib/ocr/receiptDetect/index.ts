@@ -102,13 +102,13 @@ export function classifyReceipt(p: ParsedReceipt, o: ClassifyOptions): Classifie
   if (s) {
     const base = { master, ...ids, counterParty: cpName, otherCharge: charge, narration: narration(cpName) };
     if (master.kind === "party") return { ...base, voucherType: "payment_out", payeeType: "party", candidates: ["payment_out"], typeConfidence: master.score, reason: `Sender own; beneficiary matches party "${master.name}"` };
-    if (master.kind === "staff") return { ...base, voucherType: "payment_out", payeeType: "staff", candidates: ["payment_out"], typeConfidence: master.score, reason: `Sender own; beneficiary matches staff "${master.name}" (Payment Out, payee type Staff)` };
+    if (master.kind === "staff") return { ...base, voucherType: "payment_out", payeeType: "staff", candidates: ["payment_out"], typeConfidence: master.score, reason: `Sender own; beneficiary matches staff "${master.name}" (Payment, payee type Staff)` };
     return { ...base, voucherType: "direct_expense", candidates: ["direct_expense", "payment_out"], typeConfidence: 0.5, reason: cpName ? `Sender own; "${cpName}" matches no party/staff/own bank` : "Sender own; no beneficiary name" };
   }
   if (bOwn)
     return { voucherType: null, candidates: ["payment_in", "direct_income"], typeConfidence: 0.5, ownSideConfidence: master.score, master, ...ids, counterParty: null, otherCharge: undefined, narration: narration(), reason: "Beneficiary own bank/company (money in); sender not own and has no name on connectIPS -> Receipt or Direct Income" };
   // Neither side matched by account no.: a named beneficiary that is NOT us means the money went OUT from us
-  // (connectIPS slip is the sender's copy). Party/staff match is decisive; otherwise Payment Out first, Direct Expense next.
+  // (connectIPS slip is the sender's copy). Party/staff match is decisive; otherwise Payment first, Direct Expense next.
   if (cpName) {
     const base = { master, ...ids, counterParty: cpName, otherCharge: charge, narration: narration(cpName) };
     const note = "sender account not in own Bank/Cash list";

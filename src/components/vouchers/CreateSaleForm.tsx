@@ -586,7 +586,7 @@ export function CreateSaleForm({
   const [billWiseLinkLegKey, setBillWiseLinkLegKey] = useState<string>("");
   /** Link dialog Done already persisted — skip post-save apply + dirty flag. */
   const billWiseLinksPersistedOnDialogRef = useRef(false);
-  /** Edit hydrate + line calc settle hone se pehle Save mat enable (Payment Out / Journal jaisa). */
+  /** Edit hydrate + line calc settle hone se pehle Save mat enable (Payment / Journal jaisa). */
   const [editBaselineHydrated, setEditBaselineHydrated] = useState(() => !voucher?.id);
   const editBaselineVoucherIdRef = useRef<string | null>(null);
   const resetLinksOnCopyTargetChange = useCallback(() => {
@@ -2320,7 +2320,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     voucher?.systemGenerated,
   ]);
 
-  // Pending party ab listener ke baad list me — ref clear (Payment Out jaisa create-party race fix).
+  // Pending party ab listener ke baad list me — ref clear (Payment jaisa create-party race fix).
   useEffect(() => {
     const pend = pendingPartyIdUntilInPartiesListRef.current;
     if (!pend) return;
@@ -4202,7 +4202,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
 
                   {/* Bill wise link — totals ke baad narration/files; yahan sirf link UI */}
                   <div className="col-span-2 flex flex-col gap-[15px] w-full">
-                    {/* Link for bill wise — same table/style as Payment Out (header bold black, table alignment, Amount green). Shown for both new and edit so user can link before/after save. */}
+                    {/* Link for bill wise — same table/style as Payment (header bold black, table alignment, Amount green). Shown for both new and edit so user can link before/after save. */}
                     {shouldShowLinkButton && (
                       <div className="pb-1.5">
                         {/* Add mode: keep link sections collapsed until user explicitly opens via Show Link. */}
@@ -4580,7 +4580,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                         <SalePurchaseTotalsSummaryAmount value={total || 0} className="text-green-600 font-bold" />
                       </div>
                     </div>
-                    {/* Container 2: Link for bill wise — same table/style as Payment Out (header bold black, table alignment, Amount green). Shown for both new and edit so user can link before/after save. */}
+                    {/* Container 2: Link for bill wise — same table/style as Payment (header bold black, table alignment, Amount green). Shown for both new and edit so user can link before/after save. */}
                     {shouldShowLinkButton && (
                       <div className="pb-1">
                         {/* Edit (without links) and add mode: expose links on demand only. */}

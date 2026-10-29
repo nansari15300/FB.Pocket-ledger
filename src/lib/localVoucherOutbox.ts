@@ -30,10 +30,7 @@ import {
   shouldAutoFlushOutboxAfterEnqueue,
 } from "@/lib/apkOnlineFirestoreWritePolicy";
 import { isFirebaseLedgerDataSyncDisabled } from "@/lib/firebaseLedgerDataSyncDisabled";
-import {
-  isFirebaseLedgerCompanyDataSyncEnabled,
-  isPocketBaseCompanyDataSyncEnabled,
-} from "@/lib/firebaseLedgerCompanySyncPrefs";
+import { isFirebaseLedgerCompanyDataSyncEnabled } from "@/lib/firebaseLedgerCompanySyncPrefs";
 import { isPocketBaseCompany, isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { mirrorCompanyDocToBrowserDb, getCompanyDocFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { getLocalCompanyById, type LocalCompanyDoc } from "@/lib/localCompanyStore";
@@ -511,6 +508,7 @@ export async function canSyncCompanyToServer(companyId: string): Promise<boolean
   const localCompany = await getLocalCompanyById(companyId, { includeDeleted: true });
   if (!localCompany) return false;
   if ((localCompany as { plServerShared?: boolean }).plServerShared === true) return false;
+  if (isPocketBaseCompany(companyId, localCompany)) return true;
   const c = localCompany as Record<string, unknown>;
   const soRaw = c.storageOption;
   const storageOption =
@@ -1152,9 +1150,16 @@ export async function flushVoucherOutbox(options?: FlushVoucherOutboxOptions): P
       } while (flushVoucherOutboxQueued);
       return last;
     } finally {
+      const queuedAfter = flushVoucherOutboxQueued;
+      const followAfter = flushVoucherOutboxFollowUpOptions;
       flushVoucherOutboxInFlight = null;
       outboxRowInFlightKey = null;
-      flushVoucherOutboxFollowUpOptions = undefined;
+      if (queuedAfter) {
+        // Enqueue landed after the while-check; without this the row sat until writer refresh.
+        void flushVoucherOutbox(followAfter);
+      } else {
+        flushVoucherOutboxFollowUpOptions = undefined;
+      }
     }
   })();
   return flushVoucherOutboxInFlight;
@@ -1254,9 +1259,18 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
 
   let ok = 0;
   let failed = 0;
+  /** One SSE pause for every PocketBase row in this flush — per-row drop/reconnect starved voucher POSTs. */
+  let pbPushPaused = false;
+  const pausePbForThisFlush = async () => {
+    if (pbPushPaused) return;
+    const { pausePocketBaseRealtimeForPush } = await import("@/lib/pocketbaseData/pbRealtime");
+    await pausePocketBaseRealtimeForPush();
+    pbPushPaused = true;
+  };
   /** Yield to the UI every N network attempts so a large outbox cannot freeze the tab. */
   const YIELD_EVERY = 4;
   let attemptsSinceYield = 0;
+  try {
   for (const row of rows) {
     outboxRowInFlightKey = null;
     const denyKey = outboxPermissionKey(row.company_id, row.collection_name);
@@ -1300,6 +1314,30 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
         continue;
       }
       const data = outboxJsonParse(row.payload);
+      // Pocket Ledger Server (PocketBase) company: push this row there instead of Firestore.
+      if (isPocketBaseCompany(row.company_id, reg)) {
+        const { getValidPocketBaseAuth } = await import("@/lib/pocketbaseData/pbClient");
+        // Not signed in to the server yet: keep the row for later.
+        if (!getValidPocketBaseAuth()) continue;
+        try {
+          const pbData = data as Record<string, unknown>;
+          if (row.collection_name === "vouchers") {
+            delete pbData[PL_CLIENT_OFFLINE_FIRST_PERSIST_MS];
+            coerceVoucherDocumentDate(pbData);
+          }
+          const { pushOutboxRowToPocketBase } = await import("@/lib/pocketbaseData/pbSync");
+          // Only the writer POST needs the SSE slot — never drop the reader device's live feed.
+          await pausePbForThisFlush();
+          await pushOutboxRowToPocketBase({ ...row, payload: outboxJsonStringify(pbData) });
+          await deleteOutboxRow(row.outbox_id, row.company_id);
+          ok++;
+        } catch (pbErr) {
+          console.warn("[flushVoucherOutbox] Pocket Ledger Server push failed", row.collection_name, row.doc_id, pbErr);
+          await markOutboxRowAttemptFailed(row.outbox_id, row.company_id, pbErr, "failed");
+          failed++;
+        }
+        continue;
+      }
       const rowSyncAllowed = await canSyncCompanyCollectionToServer(
         row.company_id,
         row.collection_name,
@@ -1321,30 +1359,6 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
           ));
         if (dropPureLocalRow) {
           await deleteOutboxRow(row.outbox_id, row.company_id);
-        }
-        continue;
-      }
-      // Pocket Ledger Server (PocketBase) company: push this row there instead of Firestore.
-      if (isPocketBaseCompany(row.company_id, reg)) {
-        const regRow = reg as { authoritativeCompanyId?: string };
-        if (!isPocketBaseCompanyDataSyncEnabled(row.company_id, regRow)) continue;
-        const { getValidPocketBaseAuth } = await import("@/lib/pocketbaseData/pbClient");
-        // Not signed in to the server yet: keep the row for later.
-        if (!getValidPocketBaseAuth()) continue;
-        try {
-          const pbData = data as Record<string, unknown>;
-          if (row.collection_name === "vouchers") {
-            delete pbData[PL_CLIENT_OFFLINE_FIRST_PERSIST_MS];
-            coerceVoucherDocumentDate(pbData);
-          }
-          const { pushOutboxRowToPocketBase } = await import("@/lib/pocketbaseData/pbSync");
-          await pushOutboxRowToPocketBase({ ...row, payload: outboxJsonStringify(pbData) });
-          await deleteOutboxRow(row.outbox_id, row.company_id);
-          ok++;
-        } catch (pbErr) {
-          console.warn("[flushVoucherOutbox] Pocket Ledger Server push failed", row.collection_name, row.doc_id, pbErr);
-          await markOutboxRowAttemptFailed(row.outbox_id, row.company_id, pbErr, "failed");
-          failed++;
         }
         continue;
       }
@@ -1733,6 +1747,16 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
       failed++;
       // One bad row should not block the entire outbox forever; keep flushing remaining rows.
       continue;
+    }
+  }
+  } finally {
+    if (pbPushPaused) {
+      try {
+        const { resumePocketBaseRealtimeAfterPush } = await import("@/lib/pocketbaseData/pbRealtime");
+        resumePocketBaseRealtimeAfterPush();
+      } catch {
+        /* stream reconnect is best-effort */
+      }
     }
   }
   return { ok, failed };

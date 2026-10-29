@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { masterFormRowClassName } from "@/lib/masterFormPillChrome";
 import { MasterFormInterCompanyAcNoSlot } from "@/components/inter-company/MasterFormInterCompanyAcNoSlot";
 import type { InterCompanyEntityKind } from "@/components/inter-company/InterCompanyEntitySide";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 /** Har master form — mobile+ par 2 column; `pl-master-form-row` = pill height + align (`globals.css`) */
 export const masterFormTwoColClass =
@@ -53,6 +54,16 @@ export function MasterFormNameAcNoRow({
   /** e.g. bank minus-balance checkbox — mobile par naam ke neeche, A/c No ke upar */
   betweenNameAndAcNoRow?: ReactNode;
 }) {
+  if (!isInterCompanySystemEnabled()) {
+    return (
+      <div className={cn(masterFormTwoColClass, "col-span-full sm:col-span-full")}>
+        <div className="min-w-0 col-span-full">{nameField}</div>
+        {betweenNameAndAcNoRow ? (
+          <div className="col-span-full min-w-0">{betweenNameAndAcNoRow}</div>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div
       className={cn(

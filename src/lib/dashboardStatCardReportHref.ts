@@ -2,7 +2,7 @@ import { appNavHref } from "@/lib/appNavHref";
 
 /**
  * Dashboard voucher summary card → Reports deep-link (`/reports?report=…&allVouchers=1`).
- * `voucherScope` Payment Out report me subset filter (Pay Salary vs baaki Payment Out).
+ * `voucherScope` Payment report me subset filter (Pay Salary vs baaki Payment).
  * Static export (`trailingSlash`): `appNavHref` — bina slash ke `/reports?…` par SW/host full reload / 404 fallback ho sakta tha.
  */
 export function dashboardStatCardReportHref(statType: string): string | null {
@@ -34,7 +34,7 @@ export function dashboardStatCardReportHref(statType: string): string | null {
       q.set("report", "payment-in");
       q.set("voucherScope", "paymentInOnly");
       break;
-    // Direct Expense card = only `direct_expense` vouchers, not all Payment Out family.
+    // Direct Expense card = only `direct_expense` vouchers, not all Payment family.
     case "direct_expense":
       q.set("report", "payment-out");
       q.set("voucherScope", "directExpenseOnly");

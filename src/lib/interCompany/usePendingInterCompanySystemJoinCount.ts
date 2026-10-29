@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { subscribeIncomingSystemJoinRequests } from "@/lib/interCompany/interCompanySystemJoinRequest";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 /** Selected company par pending Inter Com System join requests — ribbon / header badge */
 export function usePendingInterCompanySystemJoinCount(args: {
@@ -13,7 +14,7 @@ export function usePendingInterCompanySystemJoinCount(args: {
   const [count, setCount] = useState(0);
 
   useEffect(() => {
-    if (!ownerUserId || !companyId) {
+    if (!isInterCompanySystemEnabled() || !ownerUserId || !companyId) {
       setCount(0);
       return;
     }

@@ -233,11 +233,11 @@ export default function DesktopStaffStatementPage() {
 
     if (staffId && processedStaff.length > 0) {
       const staff = processedStaff.find((p) => p.id === staffId);
-      setSelectedStaff(prev => (prev?.id === staff?.id ? prev : staff || null));
+      setSelectedStaff((prev) => (staff ? staff : prev));
       setSelectedGroup(prev => (prev !== null ? null : prev));
     } else if (groupId && processedStaffGroups.length > 0) {
       const group = processedStaffGroups.find((g) => g.id === groupId);
-      setSelectedGroup(prev => (prev?.id === group?.id ? prev : group || null));
+      setSelectedGroup((prev) => (group ? group : prev));
       setSelectedStaff(prev => (prev !== null ? null : prev));
     } else if (processedStaff.length > 0) {
       const first = processedStaff[0];

@@ -191,7 +191,7 @@ export function useLinkPaymentToTxnsLinkableCount(
       const outstanding = getOutstanding(total, allocated);
       return outstanding > 0 || hasExistingAllocOut(v.id);
     });
-    // Payment Out links to Cr-side journals for the selected party.
+    // Payment links to Cr-side journals for the selected party.
     const journalsCrFiltered = (vouchers as any[]).filter((v) => {
       if (!isEntryBasedBillWiseVoucher(v) || !voucherTouchesParty(v)) return false;
       const partyAmount = getJournalPartyAmount(v);

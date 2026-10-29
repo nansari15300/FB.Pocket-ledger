@@ -1062,7 +1062,7 @@ export function BalanceSheetPage() {
         totalDebit += amount;
         totalCredit += amount;
       } else if (v.type === 'payment_out') {
-        // Payment Out: Debit Party/Staff, Credit Account
+        // Payment: Debit Party/Staff, Credit Account
         voucherDebit = amount;
         voucherCredit = amount;
         totalDebit += amount;

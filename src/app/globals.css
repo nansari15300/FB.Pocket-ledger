@@ -127,7 +127,7 @@ html[data-pl-app-ui-zoom-shell="android-zoom"] .min-h-dvh {
   }
   /** Profile — pill-blue circle fill (name card / Adjust Balance jaisa) */
   .pl-ledger-header-avatar {
-    --pl-ledger-header-avatar-size: 3.5rem;
+    --pl-ledger-header-avatar-size: 3.75rem;
     position: relative;
     flex: 0 0 auto;
     flex-shrink: 0;
@@ -147,7 +147,7 @@ html[data-pl-app-ui-zoom-shell="android-zoom"] .min-h-dvh {
   .pl-ledger-header-avatar > span:not([class*="avatar-pen"]),
   .pl-ledger-header-avatar > button[data-pl-mobile-header-avatar] {
     border: 1px solid rgb(147 197 253) !important; /* blue-300 ring */
-    border-radius: 0.375rem !important;
+    border-radius: 0.5rem !important;
     box-sizing: border-box;
     overflow: hidden;
   }
@@ -388,10 +388,10 @@ html[data-pl-app-ui-zoom-shell="android-zoom"] .min-h-dvh {
     color: hsl(var(--muted-foreground));
   }
   .pl-master-list-row {
-    @apply grid w-full max-w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 overflow-hidden;
+    @apply grid w-full max-w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 overflow-visible;
   }
   .pl-master-list-row-leading {
-    @apply flex min-w-0 items-center gap-2 overflow-hidden;
+    @apply flex min-w-0 items-stretch gap-2 overflow-visible;
     --pl-master-profile-ink: rgb(74 222 128);
   }
   [data-pl-master-list-chrome] [data-pl-list-row][data-pl-ic-company-row] .pl-master-list-row-leading {
@@ -424,6 +424,37 @@ html[data-pl-app-ui-zoom-shell="android-zoom"] .min-h-dvh {
   }
   [data-pl-master-list-chrome] [data-pl-list-row][data-pl-ic-company-row] .pl-master-list-row-leading .pl-master-list-avatar-fallback {
     background-color: rgb(219 234 254) !important;
+  }
+  /** List profile — square matching name-block height, rounded corners (not a circle) */
+  [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading > .relative,
+  [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading .pl-master-list-group-icon,
+  [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading .pl-master-list-item-avatar {
+    align-self: stretch;
+    flex: 0 0 auto;
+    height: auto !important;
+    width: auto !important;
+    min-height: 1.75rem;
+    min-width: 1.75rem;
+    aspect-ratio: 1 / 1;
+    border-radius: 0.5rem !important;
+  }
+  /* Avatar wrap must stay overflow-visible so the pending diamond can sit on top of the card. */
+  [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading > .relative {
+    overflow: visible;
+  }
+  [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading .pl-master-list-group-icon,
+  [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading .pl-master-list-item-avatar {
+    overflow: hidden;
+  }
+  [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading .pl-master-list-avatar,
+  [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading .pl-master-list-avatar-fallback,
+  [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading [class*="rounded-full"] {
+    height: 100% !important;
+    width: 100% !important;
+    max-height: none !important;
+    max-width: none !important;
+    border-radius: 0.5rem !important;
+    overflow: hidden;
   }
   /** Master list group icon box — normal green / IC blue (avatar jaisa) */
   [data-pl-master-list-chrome] [data-pl-list-row]:not([data-pl-ic-company-row]) .pl-master-list-row-leading .pl-master-list-group-icon {
@@ -495,9 +526,37 @@ html[data-pl-app-ui-zoom-shell="android-zoom"] .min-h-dvh {
   .pl-master-list-ul {
     @apply flex flex-col gap-[3px] px-[2px] pb-2 pt-[3px];
   }
-  /* List row: unselected halka border — globals.css theme hover/selected se control */
+  /* List row: unselected halka border — globals.css theme hover/selected se control.
+     overflow-visible: pending diamond sits on top of the card instead of clipping. */
   .pl-master-list-item {
-    @apply min-w-0 max-w-full overflow-hidden cursor-pointer rounded-md p-1 transition-[border-color,background-color] duration-200;
+    @apply relative min-w-0 max-w-full overflow-visible cursor-pointer rounded-md p-1 transition-[border-color,background-color] duration-200;
+  }
+  .pl-master-list-pending-badge {
+    position: absolute;
+    top: -6px;
+    left: -4px;
+    z-index: 6;
+    display: flex;
+    width: 1rem;
+    height: 1rem;
+    align-items: center;
+    justify-content: center;
+    background-color: rgb(236 72 153);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    pointer-events: none;
+    transform: rotate(45deg);
+    transform-origin: center;
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.9);
+  }
+  .pl-master-list-pending-badge > span {
+    transform: rotate(-45deg);
+  }
+  .pl-master-list-ul > *:has(.pl-master-list-pending-badge) {
+    position: relative;
+    z-index: 2;
   }
   /* Master–detail list: tabs/search/buttons compact — `data-pl-master-list-chrome` (ResponsiveMasterDetail + listView) */
   /* Row 1/2: fallback — asli sizing `tabs.tsx` listChrome + `Input listChrome` + Button size=list */
@@ -1037,17 +1096,17 @@ body {
     --border: 0 0% 0%;
     --input: 0 0% 0%;
   /* Pro: dim slate-blue — bright #3b82f6 buttons/tabs se softer */
-    --pl-pro-blue: 218 85% 43%; /* panel --accent #1055c9 */
-    --pl-pro-blue-hover: 218 86% 35%; /* panel --accent-hover #0d47a8 */
-    --ring: 218 85% 43%;
+    --pl-pro-blue: 215 28% 44%;
+    --pl-pro-blue-hover: 215 28% 38%;
+    --ring: 215 28% 44%;
     --sidebar-background: var(--app-chrome);
     --sidebar-foreground: 218 31% 15%;
-    --sidebar-primary: 218 85% 43%;
+    --sidebar-primary: 215 28% 44%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 218 70% 95%; /* panel --accent-soft #e8effb */
     --sidebar-accent-foreground: 218 31% 15%;
     --sidebar-border: 0 0% 0%;
-    --sidebar-ring: 218 85% 43%;
+    --sidebar-ring: 215 28% 44%;
     --header-bg: var(--app-chrome);
     --list-page-bg: 220 38% 97%;
     --details-header-bg: 220 38% 97%;
@@ -1056,7 +1115,96 @@ body {
     --row-odd-bg: 220 14% 99.5%;
     --row-even-bg: 220 14% 97%;
   }
-  .primary-pro { --primary: 218 85% 43%; --primary-foreground: 0 0% 100%; --ring: 218 85% 43%; } /* panel --accent #1055c9 */
+  .primary-pro { --primary: 215 28% 44%; --primary-foreground: 0 0% 100%; --ring: 215 28% 44%; }
+
+  /* Pocket Ledger Server panel themes (style.css Light / Medium / Gray / Dark) */
+  .theme-pl-light {
+    --background: 220 38% 97%; /* #f4f6fa */
+    --app-chrome: 0 0% 100%;
+    --foreground: 218 31% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 218 31% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 218 31% 15%;
+    --muted: 210 20% 97%;
+    --muted-foreground: 217 14% 41%;
+    --border: 218 26% 92%;
+    --input: 218 26% 92%;
+    --header-bg: var(--app-chrome);
+    --list-page-bg: 220 38% 97%;
+    --details-header-bg: 220 38% 97%;
+    --sidebar-background: var(--app-chrome);
+    --sidebar-foreground: 218 31% 15%;
+    --sidebar-border: 218 26% 92%;
+  }
+  .primary-pl-light { --primary: 221 85% 43%; --primary-foreground: 0 0% 100%; --ring: 221 85% 43%; }
+
+  .theme-pl-gray {
+    --background: 0 0% 85%; /* #d9d9d9 */
+    --app-chrome: 0 0% 90%; /* #e6e6e6 */
+    --foreground: 0 0% 11%;
+    --card: 0 0% 90%;
+    --card-foreground: 0 0% 11%;
+    --popover: 0 0% 90%;
+    --popover-foreground: 0 0% 11%;
+    --muted: 0 0% 88%;
+    --muted-foreground: 0 0% 28%;
+    --border: 0 0% 74%;
+    --input: 0 0% 74%;
+    --header-bg: var(--app-chrome);
+    --list-page-bg: 0 0% 85%;
+    --details-header-bg: 0 0% 85%;
+    --sidebar-background: var(--app-chrome);
+    --sidebar-foreground: 0 0% 11%;
+    --sidebar-border: 0 0% 74%;
+  }
+  .primary-pl-gray { --primary: 221 85% 43%; --primary-foreground: 0 0% 100%; --ring: 221 85% 43%; }
+
+  .theme-pl-medium {
+    --background: 0 0% 23%; /* #3a3a3a */
+    --app-chrome: 0 0% 27%; /* #444 */
+    --foreground: 0 0% 94%;
+    --card: 0 0% 27%;
+    --card-foreground: 0 0% 94%;
+    --popover: 0 0% 27%;
+    --popover-foreground: 0 0% 94%;
+    --muted: 0 0% 29%;
+    --muted-foreground: 0 0% 80%;
+    --border: 0 0% 35%;
+    --input: 0 0% 35%;
+    --header-bg: var(--app-chrome);
+    --list-page-bg: 0 0% 23%;
+    --details-header-bg: 0 0% 23%;
+    --sidebar-background: var(--app-chrome);
+    --sidebar-foreground: 0 0% 94%;
+    --sidebar-border: 0 0% 35%;
+    --pl-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.16);
+    --pl-card-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.26), 0 10px 24px rgba(0, 0, 0, 0.22);
+  }
+  .primary-pl-medium { --primary: 218 85% 62%; --primary-foreground: 0 0% 100%; --ring: 218 85% 62%; }
+
+  .theme-pl-dark {
+    --background: 217 30% 8%; /* #0f141c */
+    --app-chrome: 217 28% 13%;
+    --foreground: 217 35% 93%;
+    --card: 217 28% 13%;
+    --card-foreground: 217 35% 93%;
+    --popover: 217 30% 8%;
+    --popover-foreground: 217 35% 93%;
+    --muted: 217 27% 15%;
+    --muted-foreground: 217 17% 70%;
+    --border: 218 26% 21%;
+    --input: 218 26% 21%;
+    --header-bg: var(--app-chrome);
+    --list-page-bg: 217 30% 8%;
+    --details-header-bg: 217 30% 8%;
+    --sidebar-background: var(--app-chrome);
+    --sidebar-foreground: 217 35% 93%;
+    --sidebar-border: 218 26% 21%;
+    --pl-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.25);
+    --pl-card-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.35), 0 10px 24px rgba(0, 0, 0, 0.3);
+  }
+  .primary-pl-dark { --primary: 218 85% 62%; --primary-foreground: 0 0% 100%; --ring: 218 85% 62%; }
 
   .dark {
     --background: 217 30% 8%; /* panel dark --bg #0f141c */
@@ -1768,6 +1916,18 @@ body.theme-pro header button[data-pl-header-preview-info]:hover svg {
 }
 [data-pl-closing-balance-card] {
   overflow: visible !important;
+}
+/* Entity ledger desktop closing ribbon: one stable row (party/bank). Wrap↔unwrap was jiggling vs v-scroll pad. */
+html body [data-pl-ledger-txn-page] [data-pl-ledger-txn-fixed-summary] [data-pl-closing-balance-card],
+html body [data-pl-ledger-txn-page] [data-pl-ledger-txn-fixed-summary] [data-pl-closing-balance-card] > div,
+html body [data-pl-ledger-txn-page] [data-pl-ledger-txn-fixed-summary] [data-pl-closing-balance-actions],
+html body [data-pl-ledger-txn-page] [data-pl-ledger-txn-fixed-summary] [data-pl-closing-balance-actions] > div,
+html body [data-pl-ledger-txn-page] [data-pl-ledger-txn-fixed-summary] [data-pl-closing-balance-row-actions] {
+  flex-wrap: nowrap !important;
+  max-width: none !important;
+}
+html body [data-pl-ledger-txn-page] [data-pl-ledger-txn-fixed-summary] [data-pl-closing-balance-actions] {
+  flex: 0 0 auto !important;
 }
 /* Mobile txn list: Adjust Balance + Closing Balance ek row; Freeze / Send neeche */
 [data-pl-mobile-closing-balance-stack][data-pl-closing-balance-card] [data-pl-closing-balance-actions] {
@@ -2756,10 +2916,11 @@ button.day_selected.is-today.has-transactions {
    * `!important` taaki `body.theme-*` wale harsh black admin par override na kar dein.
    */
   html.pl-admin-route {
-    --border: 152 28% 84% !important;
-    --input: 152 24% 80% !important;
-    --sidebar-border: 214 22% 88% !important;
-    --ring: 152 32% 62% !important;
+    /* HSL channels for `hsl(var(--border))` — theme bg se halka line, black nahi */
+    --border: 152 18% 90% !important;
+    --input: 152 16% 88% !important;
+    --sidebar-border: 152 16% 88% !important;
+    --ring: 152 28% 70% !important;
   }
   html.pl-admin-route .border-2 {
     border-width: 1px;
@@ -2767,7 +2928,7 @@ button.day_selected.is-today.has-transactions {
   html.pl-admin-route table thead tr,
   html.pl-admin-route table tbody tr {
     border-bottom-width: 1px !important;
-    border-bottom-color: hsl(152 22% 84% / 0.85) !important;
+    border-bottom-color: color-mix(in srgb, hsl(var(--background)) 82%, hsl(var(--foreground)) 18%) !important;
   }
   /* Spend-wise: cards ke beech gap / inner sep par admin global border mat lagao */
   html.pl-admin-route [data-theme-table="transactions"] tbody tr.spend-wise-gap-row,
@@ -13631,5 +13792,124 @@ html body [data-pl-recent-mobile-footer] [data-pl-recent-mobile-unapproved] {
   html body.theme-pro {
     --pl-card-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 4px rgba(16, 24, 40, 0.05);
     --pl-card-shadow-hover: 0 2px 6px rgba(16, 24, 40, 0.07);
+  }
+}
+
+/*
+ * Admin panel pages — 15px container rhythm + 1px lines.
+ * Black theme borders → page/card background se thoda light tint (color-mix).
+ * File end par rakha taaki theme-pro `#000 !important` table/input/hr rules haar jayein.
+ */
+html.pl-admin-route {
+  --pl-admin-gap: 15px;
+  /* Background/card hue, halka (black nahi). Thoda foreground taaki white card par line gayab na ho. */
+  --pl-admin-line: color-mix(in srgb, hsl(var(--background)) 86%, hsl(var(--foreground)) 14%);
+  --pl-admin-line-on-card: color-mix(in srgb, hsl(var(--card)) 84%, hsl(var(--foreground)) 16%);
+}
+html.pl-admin-route .border-2:not(.rounded-full):not([role="switch"]) {
+  border-width: 1px !important;
+}
+
+html.pl-admin-route body[class*="theme-"] [data-sidebar],
+html.pl-admin-route body[class*="theme-"] [data-sidebar] .border-r,
+html.pl-admin-route body[class*="theme-"] header,
+html.pl-admin-route body[class*="theme-"] header.border-b,
+html.pl-admin-route body[class*="theme-"] main .border:not(.border-0):not(.border-none):not(.border-transparent):not(.rounded-full):not([role="switch"]),
+html.pl-admin-route body[class*="theme-"] main .border-t:not(.border-0),
+html.pl-admin-route body[class*="theme-"] main .border-b:not(.border-0),
+html.pl-admin-route body[class*="theme-"] main .border-l:not(.border-0),
+html.pl-admin-route body[class*="theme-"] main .border-r:not(.border-0),
+html.pl-admin-route body[class*="theme-"] main .border-x:not(.border-0),
+html.pl-admin-route body[class*="theme-"] main .border-y:not(.border-0),
+html.pl-admin-route body[class*="theme-"] main .border-2:not(.rounded-full):not([role="switch"]),
+html.pl-admin-route body[class*="theme-"] main .rounded-xl.border,
+html.pl-admin-route body[class*="theme-"] main hr,
+html.pl-admin-route body[class*="theme-"] main table:not([data-pl-manage-sharing-users-table]):not([data-pl-manage-sharing-limits-table]):not(.pl-special-account-usage-table):not([data-pl-online-trigger-log-inner]),
+html.pl-admin-route body[class*="theme-"] main table:not([data-pl-manage-sharing-users-table]):not([data-pl-manage-sharing-limits-table]):not(.pl-special-account-usage-table):not([data-pl-online-trigger-log-inner]) th,
+html.pl-admin-route body[class*="theme-"] main table:not([data-pl-manage-sharing-users-table]):not([data-pl-manage-sharing-limits-table]):not(.pl-special-account-usage-table):not([data-pl-online-trigger-log-inner]) td,
+html.pl-admin-route body[class*="theme-"] main table:not([data-pl-manage-sharing-users-table]):not([data-pl-manage-sharing-limits-table]):not(.pl-special-account-usage-table):not([data-pl-online-trigger-log-inner]) tr,
+html.pl-admin-route body[class*="theme-"] main input:not([type="checkbox"]):not([type="radio"]):not([data-pl-mlc-search-input]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]),
+html.pl-admin-route body[class*="theme-"] main textarea:not(.pl-company-profile-field):not([data-pl-manage-share-field]),
+html.pl-admin-route body[class*="theme-"] main select:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-online-trigger-page-size]),
+html.pl-admin-route body[class*="theme-"] main button[role="combobox"]:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-mobile-txn-pager-select]) {
+  border-width: 1px !important;
+  border-color: var(--pl-admin-line) !important;
+}
+
+/* Same :not() chain as theme-pro `#000` card rules — warna black specificity jeet jati hai */
+html.pl-admin-route body[class*="theme-"] main .rounded-lg.border:not([data-pl-list-row]):not(.pl-dashboard-tone-card):not([data-pl-footer-drcr-balance-card]):not([data-pl-mlc-search-input]):not([data-pl-mobile-transaction-card]):not([data-pl-company-profile-chrome]):not(.pl-company-profile-bordered-panel):not([data-pl-mobile-header-avatar-no-photo]):not([data-pl-mobile-header-avatar]):not([data-pl-online-trigger-log]),
+html.pl-admin-route body[class*="theme-"] main .rounded-md.border:not([data-tds-verify-badge]):not([data-pl-list-row]):not(.pl-dashboard-tone-card):not([data-pl-footer-drcr-balance-card]):not([data-pl-mlc-search-input]):not([data-pl-ledger-txn-search]):not([data-pl-mobile-txn-pager-select]):not([data-pl-online-trigger-view-btn]):not([data-pl-online-trigger-view-menu]):not([data-pl-copied]):not(.pl-mlc-pending-badge):not([data-pl-mobile-transaction-card]):not([data-pl-company-profile-chrome]):not(.pl-company-profile-bordered-panel):not([data-pl-mobile-header-avatar-no-photo]):not([data-pl-mobile-header-avatar]):not([data-pl-online-trigger-table]):not([data-pl-online-trigger-page-size]),
+html.pl-admin-route body[class*="theme-"] main .rounded-lg.border.bg-card:not([data-pl-list-row]):not(.pl-dashboard-tone-card):not([data-pl-mobile-transaction-card]):not([data-pl-company-profile-chrome]):not(.pl-company-profile-bordered-panel):not([data-pl-online-trigger-log]),
+html.pl-admin-route body[class*="theme-"] main .rounded-lg.border.bg-card.shadow-sm:not([data-pl-list-row]):not(.pl-dashboard-tone-card):not([data-pl-mobile-transaction-card]):not([data-pl-company-profile-chrome]):not(.pl-company-profile-bordered-panel):not([data-pl-online-trigger-log]),
+html.pl-admin-route body[class*="theme-"] main .border-2:not(.pl-dashboard-tone-card):not(.pl-dashboard-footer-tab):not([data-pl-mobile-transaction-card]),
+html.pl-admin-route body[class*="theme-"] main .pl-card-3d.rounded-lg.border {
+  border-width: 1px !important;
+  border-color: var(--pl-admin-line-on-card) !important;
+}
+
+html.pl-admin-route body[class*="theme-"] main .border-primary,
+html.pl-admin-route body[class*="theme-"] main [class*="border-primary"] {
+  border-color: hsl(var(--primary)) !important;
+}
+
+html.pl-admin-route body[class*="theme-"] main .border-0,
+html.pl-admin-route body[class*="theme-"] main .border-none,
+html.pl-admin-route body[class*="theme-"] main .border-transparent {
+  border-width: 0 !important;
+}
+
+html.pl-admin-route body[class*="theme-"] main table[data-pl-subscription-payments-table] th,
+html.pl-admin-route body[class*="theme-"] main table[data-pl-subscription-payments-table] td,
+html.pl-admin-route body[class*="theme-"] main table[data-pl-subscription-payments-table] tbody tr > td {
+  box-shadow: inset 0 -1px 0 0 var(--pl-admin-line) !important;
+}
+
+/* Container ↔ container + outer line ↔ inner container: 15px */
+html.pl-admin-route main > div[class*="space-y-"] > :not([hidden]) ~ :not([hidden]) {
+  margin-top: var(--pl-admin-gap) !important;
+}
+html.pl-admin-route main > div[class*="gap-"] {
+  gap: var(--pl-admin-gap) !important;
+}
+html.pl-admin-route main .flex.flex-col[class*="gap-"] {
+  gap: var(--pl-admin-gap) !important;
+}
+html.pl-admin-route main .pl-card-3d > [class*="space-y-"] > :not([hidden]) ~ :not([hidden]) {
+  margin-top: var(--pl-admin-gap) !important;
+}
+html.pl-admin-route main .pl-card-3d [class*="grid"][class*="gap-"] {
+  gap: var(--pl-admin-gap) !important;
+}
+html.pl-admin-route main .pl-master-list-ul {
+  gap: var(--pl-admin-gap) !important;
+  padding: var(--pl-admin-gap) !important;
+}
+html.pl-admin-route main .pl-card-3d > .p-6,
+html.pl-admin-route main .pl-card-3d > [class*="p-6"],
+html.pl-admin-route main .pl-card-3d > .p-4,
+html.pl-admin-route main .pl-card-3d > [class*="p-4"] {
+  padding-left: var(--pl-admin-gap) !important;
+  padding-right: var(--pl-admin-gap) !important;
+  padding-bottom: var(--pl-admin-gap) !important;
+  padding-top: var(--pl-admin-gap) !important;
+}
+html.pl-admin-route main .pl-card-3d > [class*="pt-0"] {
+  padding-top: 0 !important;
+}
+html.pl-admin-route main .rounded-lg.border.p-2,
+html.pl-admin-route main .rounded-lg.border.p-3,
+html.pl-admin-route main .rounded-md.border.p-2,
+html.pl-admin-route main .rounded-md.border.p-3,
+html.pl-admin-route main .rounded-xl.border.p-4 {
+  padding: var(--pl-admin-gap) !important;
+}
+
+@media (min-width: 3840px) and (hover: hover) and (pointer: fine) {
+  html.pl-admin-route body[class*="theme-"] main table,
+  html.pl-admin-route body[class*="theme-"] main table td,
+  html.pl-admin-route body[class*="theme-"] main table th,
+  html.pl-admin-route body[class*="theme-"] main table tr {
+    border-width: 1px !important;
+    border-color: var(--pl-admin-line) !important;
   }
 }

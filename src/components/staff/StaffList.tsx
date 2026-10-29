@@ -9,6 +9,7 @@ import { useDate } from "@/hooks/useDate";
 import { masterListOrderKey, useMasterListDisplayRows, useMasterListRowMotion } from "@/hooks/useMasterListRowMotion";
 import { MasterListRow } from "@/components/ui/master-list-row";
 import { MasterListNameTooltip } from "@/components/entity/MasterListNameTooltip";
+import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
 import { MasterAccountFreezeListBadge } from "@/components/masterAccountFreeze/MasterAccountFreezeListBadge";
 import { readMasterAccountFrozen } from "@/lib/masterAccountFreeze/types";
 import { StaffAccountFallbackIcon } from "@/components/entity/StaffEntityIcon";
@@ -145,15 +146,7 @@ export function StaffList({
                           fallbackSlot={<StaffAccountFallbackIcon staff={staffMember} />}
                         />
                       </EntityFileAttachmentHover>
-                      {(pendingApprovalByStaffId[staffMember.id] ?? 0) > 0 && (
-                        <span
-                          className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center bg-pink-500 text-white text-[10px] font-bold origin-center"
-                          style={{ transform: "rotate(45deg) translate(25%, -25%)" }}
-                          aria-label={`${pendingApprovalByStaffId[staffMember.id]} pending approval`}
-                        >
-                          <span style={{ transform: "rotate(-45deg)" }}>{pendingApprovalByStaffId[staffMember.id]}</span>
-                        </span>
-                      )}
+                      <MasterListPendingBadge count={pendingApprovalByStaffId[staffMember.id] ?? 0} />
                     </div>
                     <div className="flex min-w-0 flex-col">
                     <MasterListNameTooltip

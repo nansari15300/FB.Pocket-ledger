@@ -30,7 +30,7 @@ const LINK_SECTION_INFO = {
       "When links are correct, your pending balance, settled status and follow-up report stay accurate.",
     ],
     billWise: [
-      "Bill wise is used to settle sales and purchase bills against Receipt or Payment Out vouchers.",
+      "Bill wise is used to settle sales and purchase bills against Receipt or Payment vouchers.",
       "Tap \"Link to Txns\" to select exact bills manually, or use \"Auto Link\" for quick suggestions (oldest 1st).",
       "Always check Total linked and Balance. If balance is zero, that bill-side payment is fully settled.",
     ],
@@ -43,8 +43,8 @@ const LINK_SECTION_INFO = {
       // Keep Contra examples focused on tracing where transferred money was finally used.
       "1. What is a Contra voucher? Contra is the voucher where you transfer money between your own Bank/Cash accounts. No customer or supplier is involved. Example: Bank → Cash or Cash → Bank. So money moves only between your own accounts.",
       "But to track from which voucher number of that same outgoing account the money was given, use \"Contra in to Other out\" and link the voucher where money was used.",
-      // Example line clarifies voucher-number tracing in spend-wise view across Payment Out/Contra Out/Direct Expense.
-      "2. Example: From Contra in Voucher No. 001, Rs 50 was spent. You can track in which Payment Out / Contra Out / Direct Expense voucher number that amount was used. If that used voucher number is linked with Contra in voucher 001, the bank page spend-wise view clearly shows where that individual inflow amount went.",
+      // Example line clarifies voucher-number tracing in spend-wise view across Payment/Contra Out/Direct Expense.
+      "2. Example: From Contra in Voucher No. 001, Rs 50 was spent. You can track in which Payment / Contra Out / Direct Expense voucher number that amount was used. If that used voucher number is linked with Contra in voucher 001, the bank page spend-wise view clearly shows where that individual inflow amount went.",
     ],
   },
   hi: {
@@ -58,7 +58,7 @@ const LINK_SECTION_INFO = {
       "सही linking रहने पर pending balance, settled status और follow-up report सभी सही आते हैं।",
     ],
     billWise: [
-      "Bill wise का उपयोग Sales/Purchase bills को Receipt या Payment Out से settle करने के लिए होता है।",
+      "Bill wise का उपयोग Sales/Purchase bills को Receipt या Payment से settle करने के लिए होता है।",
       "\"Link to Txns\" से आप manually सही bills चुन सकते हैं, और \"Auto Link\" से system suggest करता है (oldest 1st)।",
       "Total linked और Balance जरूर देखें। Balance zero मतलब bill-side payment पूरी तरह settled है।",
     ],
@@ -72,7 +72,7 @@ const LINK_SECTION_INFO = {
       "1. Contra voucher क्या होता है? Contra वह voucher है जिसमें आप अपने ही Bank/Cash accounts के बीच पैसा transfer करते हैं। इसमें बाहर का कोई customer या supplier शामिल नहीं होता। जैसे: Bank → Cash या Cash → Bank। यानी पैसा सिर्फ अपने accounts के बीच जाता है।",
       "लेकिन जिस account से पैसा गया, उसी account के किस voucher number से पैसा दिया गया, यह track करने के लिए \"Contra in to Other out\" में उस voucher को link करें जहां पैसा use हुआ है।",
       // यह उदाहरण spend-wise view में exact voucher number tracking को स्पष्ट करता है।
-      "2. उदाहरण: Voucher No. Contra in 001 से Rs 50 खर्च हुआ। यह amount Payment Out / Contra Out / Direct Expense के किस voucher number में use/खर्च हुआ, इसे track किया जा सकता है। यदि उस used/खर्च voucher number को Contra in voucher 001 से link किया जाए, तो bank page के spend-wise view में individual inflow का पैसा कहां गया, यह साफ दिखता है।",
+      "2. उदाहरण: Voucher No. Contra in 001 से Rs 50 खर्च हुआ। यह amount Payment / Contra Out / Direct Expense के किस voucher number में use/खर्च हुआ, इसे track किया जा सकता है। यदि उस used/खर्च voucher number को Contra in voucher 001 से link किया जाए, तो bank page के spend-wise view में individual inflow का पैसा कहां गया, यह साफ दिखता है।",
     ],
   },
   ne: {
@@ -86,7 +86,7 @@ const LINK_SECTION_INFO = {
       "सही linking भएपछि pending balance, settled status र follow-up report सबै भरपर्दो हुन्छन्।",
     ],
     billWise: [
-      "Bill wise ले Sales/Purchase bills लाई Receipt वा Payment Out सँग settle गर्न सहयोग गर्छ।",
+      "Bill wise ले Sales/Purchase bills लाई Receipt वा Payment सँग settle गर्न सहयोग गर्छ।",
       "\"Link to Txns\" बाट तपाईंले bills manually छान्न सक्नुहुन्छ, र \"Auto Link\" ले छिटो सुझाव दिन्छ (oldest 1st)।",
       "Total linked र Balance अनिवार्य जाँच गर्नुहोस्। Balance zero भए bill-side payment पूर्ण settle भएको हो।",
     ],
@@ -101,7 +101,7 @@ const LINK_SECTION_INFO = {
       "1. Contra voucher के हो? Contra त्यो voucher हो जसमा तपाईंले आफ्नै Bank/Cash accounts बीच पैसा स्थानान्तरण गर्नुहुन्छ। बाहिर कोही ग्राहक वा सप्लायर समावेश हुँदैन। जस्तै: Bank → Cash वा Cash → Bank। यानी पैसा आफ्नै accounts बीच मात्र जान्छ।",
       "तर जुन account बाट पैसा जान्छ, त्यो same account को कुन voucher number बाट दियो भन्ने track गर्न \"Contra in to Other out\" मा पैसा प्रयोग भएको voucher लाई link गर्नुपर्छ।",
       // यो उदाहरणले spend-wise view मा प्रयोग भएको exact voucher number track गर्ने तरिका देखाउँछ।
-      "2. उदाहरण: Voucher No. Contra in 001 बाट Rs 50 खर्च भयो। त्यो amount Payment Out / Contra Out / Direct Expense को कुन voucher number मा प्रयोग/खर्च भयो, track गर्न सकिन्छ। यदि त्यो used/खर्च voucher number लाई Contra in voucher 001 सँग link गरियो भने, bank page को spend-wise view मा individual inflow को रकम कहाँ गयो भन्ने स्पष्ट देखिन्छ।",
+      "2. उदाहरण: Voucher No. Contra in 001 बाट Rs 50 खर्च भयो। त्यो amount Payment / Contra Out / Direct Expense को कुन voucher number मा प्रयोग/खर्च भयो, track गर्न सकिन्छ। यदि त्यो used/खर्च voucher number लाई Contra in voucher 001 सँग link गरियो भने, bank page को spend-wise view मा individual inflow को रकम कहाँ गयो भन्ने स्पष्ट देखिन्छ।",
     ],
   },
 } as const;
@@ -168,12 +168,12 @@ export function LinkSectionInfoDialog({
     if (isOpen) setTab("en");
   }, [isOpen]);
 
-  // Exactly 4 boxes: General, Bill wise, Payment In/Direct Income → Payment Out/Direct Exp, Contra (special) contra to Contra & contra to other; 30px gap.
+  // Exactly 4 boxes: General, Bill wise, Payment In/Direct Income → Payment/Direct Exp, Contra (special) contra to Contra & contra to other; 30px gap.
   const renderLanguageContent = (lang: "en" | "hi" | "ne") => (
     <div className="flex flex-col gap-[30px]">
       <SectionBox title="General" paragraphs={LINK_SECTION_INFO[lang].general} />
       <SectionBox title="Bill wise" paragraphs={LINK_SECTION_INFO[lang].billWise} />
-      <SectionBox title="Spend wise: Receipt / Direct Income / contra in → Payment Out / Direct Expense / contra out" paragraphs={LINK_SECTION_INFO[lang].spendWise} />
+      <SectionBox title="Spend wise: Receipt / Direct Income / contra in → Payment / Direct Expense / contra out" paragraphs={LINK_SECTION_INFO[lang].spendWise} />
       {/* Keep Contra heading concise and aligned with current linking flow wording. */}
       <SectionBox title="Contra In to other out" paragraphs={LINK_SECTION_INFO[lang].contra} />
     </div>

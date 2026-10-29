@@ -28,7 +28,7 @@ const ROUTE_PREFIX_LABELS: { prefix: string; label: string }[] = [
   { prefix: "/incomes", label: "Income & Expense" },
   { prefix: "/party", label: "Parties" },
   { prefix: "/payment-in", label: "Receipt" },
-  { prefix: "/payment-out", label: "Payment Out" },
+  { prefix: "/payment-out", label: "Payment" },
   { prefix: "/journal", label: "Journal" },
   { prefix: "/inter-company", label: "Inter Company" },
   { prefix: "/add-salary", label: "Add Salary" },

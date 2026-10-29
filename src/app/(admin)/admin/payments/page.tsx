@@ -1,10 +1,15 @@
 
 "use client";
 
+import { ADMIN_SERVER_VIEW_UNAVAILABLE_MESSAGE, isAdminServerMode } from "@/lib/adminData/adminServerMode";
 import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { useAdminAccess } from '@/hooks/useAdminAccess';
 import { useAuth } from '@/hooks/useAuth';
-import { collection, query, onSnapshot } from 'firebase/firestore';
+import {
+  collection,
+  query,
+} from 'firebase/firestore';
+import { onSnapshot } from '@/lib/pocketbaseData/pbReadSeam';
 import { firestore } from '@/lib/firebase';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -1251,6 +1256,7 @@ export default function PaymentsPage() {
         (async () => {
             setLoading(true);
             try {
+                if (isAdminServerMode()) throw new Error(ADMIN_SERVER_VIEW_UNAVAILABLE_MESSAGE);
                 const token = await firebaseUser.getIdToken();
                 const res = await fetch(appApiUrl("/api/admin/subscription-payments"), {
                     headers: { Authorization: `Bearer ${token}` },

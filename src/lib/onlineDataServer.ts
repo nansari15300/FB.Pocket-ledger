@@ -133,13 +133,8 @@ export async function ensureOnlineDataServerSettingsHydrated(opts?: {
   if (!onlineDataServerHydratePromise) {
     onlineDataServerHydratePromise = (async () => {
       try {
-        // Server login (pl_users, no Firebase session): the account lives on Pocket Ledger Server,
-        // so new companies go there too. Not cached as hydrated (a later Firebase login re-reads).
-        const { isPocketBaseAppSessionActive } = await import("@/lib/pocketbaseData/pbAppSession");
-        if (isPocketBaseAppSessionActive()) {
-          onlineDataServerHydratePromise = null;
-          return { ...readCachedOnlineDataServerSettings(), serverId: ONLINE_DATA_SERVER_POCKETBASE_ID };
-        }
+        // Login type (email / Google / Pocket Ledger Server account) does not pick the backend.
+        // SuperAdmin Settings (Firebase vs Pocket Ledger Server) is the only source.
         const { doc, getDoc } = await import("firebase/firestore");
         const { firestore } = await import("@/lib/firebase");
         const snap = await Promise.race([

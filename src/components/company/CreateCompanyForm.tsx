@@ -51,6 +51,7 @@ import { pocketLedgerStorageDocFields } from "@/lib/firebaseStoragePaths";
 import { generateUniqueInterCompanyAccountNo } from "@/lib/interCompany/interCompanyAccountNo";
 import { generateUniqueInterCompanyCompanyCode } from "@/lib/interCompany/interCompanyCompanyCode";
 import { CompanyInterCompanyCodeField } from "@/components/inter-company/CompanyInterCompanyCodeField";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 import { useLivePlans, getPlanFromPlans } from "@/hooks/useLivePlans";
 import { isAtOrOverEntitlementCap, isUnlimitedEntitlementCap, type PlanId } from "@/config/plans";
 import { planCompanyCapWithAddOns } from "@/lib/planAddOns";
@@ -465,11 +466,12 @@ export function CreateCompanyForm({
     try {
       const companyId = generateCompanyId(values.companyName);
       // Inter-company: unique A/c No + 12-char alphanumeric Company Code
-      const interCompanyAccountNo = await generateUniqueInterCompanyAccountNo(companyId);
-      const interCompanyCompanyCode = await generateUniqueInterCompanyCompanyCode(
-        companyId,
-        values.companyName
-      );
+      const interCompanyAccountNo = isInterCompanySystemEnabled()
+        ? await generateUniqueInterCompanyAccountNo(companyId)
+        : "";
+      const interCompanyCompanyCode = isInterCompanySystemEnabled()
+        ? await generateUniqueInterCompanyCompanyCode(companyId, values.companyName)
+        : "";
       let logoUrl: string | null = null;
 
       if (fileToUpload && canAddAvatar && user?.uid) {
@@ -804,7 +806,7 @@ export function CreateCompanyForm({
             )}
           />
 
-          <CompanyInterCompanyCodeField mode="create" />
+          {isInterCompanySystemEnabled() ? <CompanyInterCompanyCodeField mode="create" /> : null}
 
           <FormField
             control={form.control}

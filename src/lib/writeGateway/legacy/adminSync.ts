@@ -1,6 +1,7 @@
 import { doc, setDoc } from "firebase/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
+import { isPocketBaseAppSessionActive } from "@/lib/pocketbaseData/pbAppSession";
 import type { User } from "firebase/auth";
 
 /**
@@ -13,6 +14,8 @@ export async function ensureAdminSync(
   role: string | undefined
 ): Promise<void> {
   if (!authUser || (role !== "SuperAdmin" && role !== "CompanyAdmin")) return;
+  // Server login: Firestore is off for this session (writes would hang); the server holds the user.
+  if (isPocketBaseAppSessionActive()) return;
 
   const uidDocRef = doc(firestore, "users", authUser.uid);
   await setDoc(

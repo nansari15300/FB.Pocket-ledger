@@ -557,6 +557,14 @@ When the human asks for PL Server fixes (including “make PL like online”):
 
 Human explicitly requested online attachment/sync fixes (Aug 2026) — that overrides the casual “do not touch online sync” freeze for **attachment pipeline + outbox hydrate + form parity** only, scoped to `ledgerModes/online/` and minimal wiring.
 
+## Pocket Main + Sub server (together)
+
+Owner **Main** (`main-server`, `:8099`) and customer **Sub** (`sub-server`, `:8090`) are two processes. Reuse sub `pb_public` for chrome + `languages.js` + lazy `i18n/*.js`; Main APIs and license/ads keys stay in `main-server`. Rule: `.cursor/rules/pl-main-sub-together.mdc`.
+
+## Parked: Tauri 2 desktop EXE (do not start)
+
+Low-end Electron RAM — later **Tauri 2** (same React UI **inside** the app window / WebView2). See `docs/PARKED_TAURI2_DESKTOP.md` and `.cursor/rules/parked-tauri2-desktop.mdc`. **Do not migrate** unless the human asks in that message. Long chats (~2–3 hours of work): **one short reminder**, not every reply.
+
 ## Cursor note
 
 Cursor rules under `.cursor/rules/` should stay aligned with this `AGENTS.md`.

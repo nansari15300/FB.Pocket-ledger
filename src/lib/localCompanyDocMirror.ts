@@ -1357,28 +1357,56 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
           const incomingMs = mirrorDocEditTimeMs(payload);
           const localTs = mirrorDocTimestampFields(existing);
           const remoteTs = mirrorDocTimestampFields(payload);
-          if (existingMs > incomingMs) {
-            await options?.onLocalNewer?.(id, existing, payload);
-            skipped += 1;
-            mirrorMergeSkipLog({
-              companyId,
-              collection: collectionName,
-              id,
-              reason: "local_newer",
-              localUpdatedAt: localTs.lastEditedAt ?? localTs.updatedAt ?? localTs.createdAt,
-              remoteUpdatedAt: remoteTs.lastEditedAt ?? remoteTs.updatedAt ?? remoteTs.createdAt,
-              localEditTimeMs: existingMs,
-              remoteEditTimeMs: incomingMs,
-              localDeleted: mirrorDocDeletedFlag(existing),
-              remoteDeleted: mirrorDocDeletedFlag(payload),
-              localOfflineFirstPersistMs: localTs.offlineFirstPersistMs,
-              remoteOfflineFirstPersistMs: remoteTs.offlineFirstPersistMs,
-            });
-            continue;
+          const incomingDeleted = mirrorDocDeletedFlag(payload);
+          const existingDeleted = mirrorDocDeletedFlag(existing);
+          const remoteApproveOntoLocal =
+            collectionName === "vouchers" &&
+            payload.isApproved === true &&
+            existing.isApproved !== true;
+          const voucherApprovalDiffers =
+            collectionName === "vouchers" &&
+            (existing.isApproved === true) !== (payload.isApproved === true);
+          // Delete wins: a remote tombstone must hide the row even if local timestamps look newer.
+          // Remote approve is an exception: PocketBase used to push isApproved without bumping
+          // lastEditedAt, so the other device treated it as stale and kept the pink row.
+          if (existingMs > incomingMs && !(incomingDeleted && !existingDeleted)) {
+            if (remoteApproveOntoLocal) {
+              payload = {
+                ...existing,
+                isApproved: true,
+                approvedByUserId: payload.approvedByUserId ?? existing.approvedByUserId,
+                approvedByUserName: payload.approvedByUserName ?? existing.approvedByUserName,
+                approvedAt: payload.approvedAt ?? existing.approvedAt,
+                approvalUpdatedAt: payload.approvalUpdatedAt ?? existing.approvalUpdatedAt,
+              };
+            } else {
+              await options?.onLocalNewer?.(id, existing, payload);
+              skipped += 1;
+              mirrorMergeSkipLog({
+                companyId,
+                collection: collectionName,
+                id,
+                reason: "local_newer",
+                localUpdatedAt: localTs.lastEditedAt ?? localTs.updatedAt ?? localTs.createdAt,
+                remoteUpdatedAt: remoteTs.lastEditedAt ?? remoteTs.updatedAt ?? remoteTs.createdAt,
+                localEditTimeMs: existingMs,
+                remoteEditTimeMs: incomingMs,
+                localDeleted: mirrorDocDeletedFlag(existing),
+                remoteDeleted: mirrorDocDeletedFlag(payload),
+                localOfflineFirstPersistMs: localTs.offlineFirstPersistMs,
+                remoteOfflineFirstPersistMs: remoteTs.offlineFirstPersistMs,
+              });
+              continue;
+            }
           }
           const livePullPaused = isPlServerLivePullPaused(companyId);
           const incomingWinsTimestampTie = options?.mergePreferNewerTieBreak === "incoming";
-          if (existingMs === incomingMs && incomingWinsTimestampTie && mirrorDocsEqualForTimestampTie(existing, payload)) {
+          if (
+            existingMs === incomingMs &&
+            incomingWinsTimestampTie &&
+            mirrorDocsEqualForTimestampTie(existing, payload) &&
+            !voucherApprovalDiffers
+          ) {
             skipped += 1;
             if (collectionName === "vouchers") {
               await upsertVoucherProjection(companyId, collectionName, id, payload);
@@ -1401,7 +1429,12 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
             });
             continue;
           }
-          if (existingMs === incomingMs && !incomingWinsTimestampTie && (tiePrefersLocal || livePullPaused)) {
+          if (
+            existingMs === incomingMs &&
+            !incomingWinsTimestampTie &&
+            (tiePrefersLocal || livePullPaused) &&
+            !voucherApprovalDiffers
+          ) {
             skipped += 1;
             mirrorMergeSkipLog({
               companyId,

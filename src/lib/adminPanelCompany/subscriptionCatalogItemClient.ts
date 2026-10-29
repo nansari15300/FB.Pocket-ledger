@@ -26,10 +26,19 @@ export async function fetchAdminPanelSubscriptionCatalogFields(
   const plansById = await resolvePlansCatalogForEntitlements();
   let addonOffer = readDeviceUserAddOnOfferFromPlansDoc(null);
   try {
-    const { doc, getDoc } = await import("firebase/firestore");
+    const { doc, getDoc: fsGetDoc } = await import("firebase/firestore");
+    const { isPocketBaseAppSessionActive } = await import("@/lib/pocketbaseData/pbAppSession");
+    let getDoc = fsGetDoc;
+    let skip = false;
+    if (isPocketBaseAppSessionActive()) {
+      // Server login: Firestore is offline. Admin Panel (super admin) reads via the server; else cache defaults.
+      const seam = await import("@/lib/pocketbaseData/pbReadSeam");
+      if (seam.isAdminServerDataActive()) getDoc = seam.getDoc;
+      else skip = true;
+    }
     const { firestore } = await import("@/lib/firebase");
-    const snap = await getDoc(doc(firestore, "app_settings", "plans"));
-    if (snap.exists()) {
+    const snap = skip ? null : await getDoc(doc(firestore, "app_settings", "plans"));
+    if (snap && snap.exists()) {
       const raw = snap.data() as Record<string, unknown>;
       addonOffer = readDeviceUserAddOnOfferFromPlansDoc(raw);
       const list = mergeAppSettingsPlansDoc(raw);

@@ -23,6 +23,7 @@ import { compressImageForCompany, attachmentImageStillTooLargeToastFields } from
 import { usePcFileDropZone } from "@/lib/attachmentPcFileDrop";
 import { FilePreview } from "../vouchers/FilePreview";
 import { CompanyInterCompanyCodeField } from "@/components/inter-company/CompanyInterCompanyCodeField";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 import { isAdminPanelCompanyLocalId } from "@/lib/adminPanelCompany/ledgerMode";
 import { adminPanelCompanyStorageLabel } from "@/lib/adminPanelCompany/patchCompanyProfile";
 
@@ -1069,7 +1070,7 @@ export function EditCompanyForm({
                     </FormItem>
                 )}
                 />
-                <CompanyInterCompanyCodeField mode="edit" />
+                {isInterCompanySystemEnabled() ? <CompanyInterCompanyCodeField mode="edit" /> : null}
                 <FormField
                 control={form.control}
                 name="pan"

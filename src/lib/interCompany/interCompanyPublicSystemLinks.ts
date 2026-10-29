@@ -19,6 +19,7 @@ import {
   parseInterCompanyGroupCompanyOwners,
   type InterCompanyGroupDoc,
 } from "@/lib/interCompany/interCompanyGroups";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 export type InterCompanyPublicSystemLink = {
   id: string;
@@ -117,7 +118,7 @@ export function subscribeLinkedPublicInterCompanySystems(
   onData: (systems: InterCompanyGroupDoc[]) => void,
   onError?: (err: unknown) => void
 ): Unsubscribe {
-  if (!userId) {
+  if (!isInterCompanySystemEnabled() || !userId) {
     onData([]);
     return () => undefined;
   }

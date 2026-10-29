@@ -1,5 +1,5 @@
 /**
- * connectIPS receipt -> Payment Out form values (pure). Used by useVoucherOcr only on the Payment Out tab.
+ * connectIPS receipt -> Payment form values (pure). Used by useVoucherOcr only on the Payment tab.
  * Payee (Dr): Beneficiary Account Name vs party / staff / tax names only.
  * From (Cr): own Bank/Cash only, from Customer Account Details (bank -> branch -> masked acc no.) + "paid from <x>" in Particulars/Remarks.
  */

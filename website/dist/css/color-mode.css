@@ -1,0 +1,682 @@
+/* Pocket Ledger website: header Light/Dark switch + mobile header row.
+ * Separate file (loaded after styles.css) so styles.css stays untouched. Desktop header layout unchanged. */
+
+/* Desktop: the scroll wrapper is layout-neutral (its children act as direct .nav children). */
+.nav-scroll {
+  display: contents;
+}
+.site-header .brand,
+.site-header .btn,
+.site-header .nav-links a {
+  white-space: nowrap;
+}
+
+/* Light/Dark button: compact icon-only pill (sun in Light, moon in Dark) */
+.pl-mode-toggle.btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  flex-shrink: 0;
+}
+.pl-mode-toggle svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+.pl-mode-toggle .pl-icon-moon { display: none; }
+html.dark .pl-mode-toggle .pl-icon-sun { display: none; }
+html.dark .pl-mode-toggle .pl-icon-moon { display: block; }
+
+/* Mobile / tablet: logo + Pocket Ledger, menu, switch and Admin Panel / Sign out / Open App = one row that scrolls sideways */
+@media (max-width: 860px) {
+  body {
+    overflow-x: clip;
+  }
+  /* the whole header row (brand first) is the sideways scroll strip */
+  .site-header .nav {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 0.6rem;
+    min-height: 60px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    padding: 4px 0;
+  }
+  .site-header .nav::-webkit-scrollbar {
+    display: none;
+  }
+  .site-header .brand {
+    flex-shrink: 0;
+  }
+  .nav-scroll {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex: 0 0 auto;
+  }
+  .nav-scroll > .nav-links {
+    display: flex;
+    flex-shrink: 0;
+    gap: 0.9rem;
+    font-size: 0.88rem;
+    padding-right: 0.3rem;
+  }
+  .nav-scroll > .marketing-auth-actions {
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+  }
+  .nav-scroll > .btn,
+  .nav-scroll > .marketing-auth-actions > .btn {
+    flex-shrink: 0;
+  }
+  /* no lift inside the scrolling row (avoids clipped buttons) */
+  .nav-scroll .btn:hover {
+    transform: none;
+  }
+}
+@media (max-width: 430px) {
+  .site-header .nav {
+    gap: 0.45rem;
+  }
+  .site-header .brand {
+    gap: 0.45rem;
+    font-size: 0.95rem;
+  }
+  .site-header .brand-mark {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+  }
+  .nav-scroll .btn-sm {
+    padding: 0.45rem 0.8rem;
+    font-size: 0.84rem;
+  }
+  .pl-mode-toggle.btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+  }
+}
+
+/* ---- Dark mode = Pocket Ledger Server Medium theme (same colours) ---- */
+html.dark {
+  color-scheme: dark;
+  --accent: #4d8af0;
+  --accent-hover: #6a9ef3;
+  --accent-soft: #3d4b62;
+  --accent-ink: #fff;
+  --bg: #3a3a3a;
+  --surface: #444444;
+  --surface-2: #4a4a4a;
+  --border: #5a5a5a;
+  --border-strong: #666666;
+  --text: #f0f0f0;
+  --text-2: #cdcdcd;
+  --text-3: #a3a3a3;
+  --ok: #4ade80;
+  --ok-soft: #3a4d40;
+  --warn: #fbbf24;
+  --warn-soft: #524934;
+  --bad: #f87171;
+  --bad-soft: #573e3e;
+  --navy: #f0f0f0;
+  --navy-deep: #3a3a3a;
+  --sky: #4d8af0;
+  --sky-soft: #3d4b62;
+  --ink: #f0f0f0;
+  --muted: #cdcdcd;
+  --line: #5a5a5a;
+  --white: #f0f0f0;
+  --paper: #3a3a3a;
+  --shadow: 0 1px 2px rgba(0,0,0,.2), 0 2px 8px rgba(0,0,0,.16);
+}
+/* from styles_now.css */
+html.dark body {
+  color: #f0f0f0;
+  background: #3a3a3a;
+}
+html.dark .hero {
+  background: #3a3a3a;
+  color: #f0f0f0;
+}
+html.dark .hero p,
+html.dark .hero-note { color: #cdcdcd; }
+html.dark .eyebrow { background: #3d4b62; }
+html.dark .site-header {
+  background: rgba(68, 68, 68, 0.94);
+  border-bottom: 1px solid #5a5a5a;
+}
+html.dark .brand {
+  color: #f0f0f0;
+}
+html.dark .nav-links {
+  color: #cdcdcd;
+}
+html.dark .nav-links a:hover {
+  color: #f0f0f0;
+}
+html.dark .marketing-settings-panel {
+  background: #4a4a4a;
+}
+html.dark .marketing-settings-card {
+  border: 1px solid #5a5a5a;
+  background: #444444;
+}
+html.dark .marketing-settings-card p {
+  color: #cdcdcd;
+}
+html.dark .btn-outline {
+  background: #444444;
+  color: #f0f0f0;
+  border: 1px solid #5a5a5a;
+}
+html.dark .marketing-notice {
+  background: #524934;
+}
+html.dark .marketing-notice p {
+  color: #f0f0f0;
+}
+html.dark .mock-app {
+  background: #444444;
+  color: #f0f0f0;
+}
+html.dark .mock-top {
+  background: #4a4a4a;
+  border-bottom: 1px solid #5a5a5a;
+}
+html.dark .mock-row {
+  border-bottom: 1px solid #5a5a5a;
+}
+html.dark .pill-ok {
+  background: #3a4d40;
+  color: #4ade80;
+}
+html.dark .pill-warn {
+  background: #524934;
+  color: #fbbf24;
+}
+html.dark .trust-card {
+  background: #444444;
+}
+html.dark .trust-lead {
+  color: #cdcdcd;
+}
+html.dark .trust-server-banner {
+  background: linear-gradient(135deg, rgba(77, 138, 240, 0.12) 0%, rgba(58, 58, 58, 0.95) 100%);
+}
+html.dark .trust-server-banner h3 {
+  color: #6a9ef3;
+}
+html.dark .trust-server-banner p {
+  color: #f0f0f0;
+}
+html.dark .trust-pillar {
+  border: 1px solid #5a5a5a;
+  background: rgba(68, 68, 68, 0.85);
+}
+html.dark .trust-pillar h3 {
+  color: #f0f0f0;
+}
+html.dark .trust-pillar p {
+  color: #cdcdcd;
+}
+html.dark .trust-close {
+  color: #f0f0f0;
+}
+html.dark .section.alt {
+  background: #3a3a3a;
+}
+html.dark .section .lead {
+  color: #cdcdcd;
+}
+html.dark .card {
+  background: #444444;
+  border: 1px solid #5a5a5a;
+}
+html.dark .card p {
+  color: #cdcdcd;
+}
+html.dark .icon-dot {
+  background: #4a4a4a;
+}
+html.dark .feature-list-lead {
+  color: #cdcdcd;
+}
+html.dark .feature-rows-scroll {
+  border: 1px solid #5a5a5a;
+  background: #444444;
+}
+html.dark .feature-rows {
+  border: 0;
+  background: transparent;
+}
+html.dark .feature-rows li {
+  border-bottom: 1px solid #5a5a5a;
+}
+html.dark .feature-rows li::before {
+  color: #cdcdcd;
+}
+html.dark .feature-name {
+  color: #f0f0f0;
+}
+html.dark .feature-desc {
+  color: #cdcdcd;
+}
+html.dark .pricing-section {
+  background: #3a3a3a;
+}
+html.dark .pricing-toggle {
+  border: 1px solid #5a5a5a;
+  background: #444444;
+}
+html.dark .pricing-term {
+  color: #cdcdcd;
+}
+html.dark .pricing-status {
+  color: #cdcdcd;
+}
+html.dark .price-card {
+  border: 1px solid #5a5a5a;
+  background: #444444;
+}
+html.dark .price-tagline {
+  color: #cdcdcd;
+}
+html.dark .price-value {
+  color: #f0f0f0;
+}
+html.dark .price-interval {
+  color: #cdcdcd;
+}
+html.dark .price-features {
+  color: #f0f0f0;
+}
+html.dark .price-features li::before {
+  color: #4ade80;
+}
+html.dark .pricing-note {
+  color: #cdcdcd;
+}
+html.dark .videos-section {
+  background: #3a3a3a;
+}
+html.dark .videos-status {
+  color: #cdcdcd;
+}
+html.dark .videos-search input {
+  border: 1px solid #5a5a5a;
+  background: #444444;
+  color: #f0f0f0;
+}
+html.dark .video-category-filter {
+  border: 1px solid #5a5a5a;
+  background: #444444;
+  color: #f0f0f0;
+}
+html.dark .video-category-filter span {
+  color: #cdcdcd;
+}
+html.dark .videos-category-card {
+  border: 1px solid #5a5a5a;
+  background: rgba(68, 68, 68, 0.70);
+}
+html.dark .videos-category-head span {
+  color: #cdcdcd;
+}
+html.dark .videos-card-search input {
+  border: 1px solid #5a5a5a;
+  background: #444444;
+  color: #f0f0f0;
+}
+html.dark .videos-empty {
+  color: #cdcdcd;
+}
+html.dark .video-card {
+  border: 1px solid #5a5a5a;
+  background: #444444;
+}
+html.dark .video-play {
+  background: rgba(68, 68, 68, 0.92);
+  color: #f0f0f0;
+}
+html.dark .video-category {
+  color: #cdcdcd;
+}
+html.dark .video-engagement {
+  border-top: 1px solid #5a5a5a;
+  background: #444444;
+}
+html.dark .video-stat,
+html.dark .video-like,
+html.dark .video-rate-count {
+  color: #cdcdcd;
+}
+html.dark .video-modal-engage .video-engagement {
+  border: 1px solid #5a5a5a;
+}
+html.dark .video-modal-card {
+  background: #444444;
+}
+html.dark .pricing-table-scroll {
+  background: #444444;
+}
+html.dark .pricing-table {
+  color: #f0f0f0;
+}
+html.dark .pricing-table thead th {
+  background: #4a4a4a;
+}
+html.dark .pricing-table .pricing-plan-pro,
+html.dark .pricing-table .pricing-plan-pro-plus {
+  background: linear-gradient(90deg, rgba(58, 77, 64, 0.50), rgba(68, 68, 68, 0.80));
+}
+html.dark .pricing-table thead .is-highlighted {
+  background: linear-gradient(135deg, #3a4d40, #3a4d40);
+}
+html.dark .pricing-save-row th,
+html.dark .pricing-save-row td {
+  color: #4ade80;
+}
+html.dark .pricing-table td.is-off {
+  background: rgba(58, 58, 58, 0.72);
+}
+html.dark .pricing-bool.is-yes {
+  color: #4ade80;
+}
+html.dark .logo-strip {
+  border-bottom: 1px solid #5a5a5a;
+}
+html.dark .page-hero {
+  background: #3a3a3a;
+  border-bottom: 1px solid #5a5a5a;
+}
+html.dark .page-hero p {
+  color: #cdcdcd;
+}
+html.dark .content-block {
+  background: #444444;
+  border: 1px solid #5a5a5a;
+}
+html.dark .company-page .company-hero {
+  background: #3a3a3a;
+  border-bottom: 1px solid #5a5a5a;
+}
+html.dark .company-logo-card {
+  background: #444444;
+}
+html.dark .company-brand-name {
+  color: #f0f0f0;
+}
+html.dark .company-brand-tag {
+  color: #cdcdcd;
+}
+html.dark .company-hero-lead {
+  color: #cdcdcd;
+}
+html.dark .company-card {
+  background: #444444;
+  border: 1px solid #5a5a5a;
+}
+html.dark .company-card h2 {
+  color: #f0f0f0;
+}
+html.dark .company-card p {
+  color: #cdcdcd;
+}
+html.dark .company-card .btn-outline {
+  color: #f0f0f0;
+}
+html.dark .company-fact-label {
+  color: #cdcdcd;
+}
+html.dark .company-fact-value {
+  color: #f0f0f0;
+}
+html.dark .company-card-address {
+  background: linear-gradient(135deg, rgba(74, 74, 74, 0.65) 0%, #444444 100%);
+}
+html.dark .company-address {
+  background: rgba(68, 68, 68, 0.85);
+  color: #f0f0f0;
+}
+html.dark .company-services {
+  color: #cdcdcd;
+}
+html.dark .footer-sub {
+  color: #cdcdcd;
+}
+html.dark .download-item {
+  border: 1px solid #5a5a5a;
+  background: #444444;
+}
+html.dark .version-select {
+  border: 1px solid #5a5a5a;
+  background: #444444;
+  color: #f0f0f0;
+}
+html.dark .download-auth-banner {
+  border: 1px solid #5a5a5a;
+  background: #4a4a4a;
+}
+html.dark .download-auth-banner.is-signed-in {
+  background: #3a4d40;
+}
+html.dark .download-auth-banner.is-signed-out {
+  background: #524934;
+}
+html.dark .download-auth-banner span {
+  color: #f0f0f0;
+}
+html.dark footer {
+  border-top: 1px solid #5a5a5a;
+  color: #cdcdcd;
+  background: #3a3a3a;
+}
+html.dark .cta-band {
+  background: #444444;
+  color: #f0f0f0;
+  border: 1px solid #5a5a5a;
+}
+html.dark .cta-band p { color: #cdcdcd; }
+/* from index.html */
+html.dark .login-status.err {
+  color: #f87171;
+}
+html.dark .login-status.ok {
+  color: #4ade80;
+}
+/* from index.html */
+/* from index.html */
+/* from index.html */
+
+/* hand tweaks: switch button + header in Dark */
+html.dark .pl-mode-toggle.btn { background: #444444; color: #fbbf24; border: 1px solid #5a5a5a; }
+html.dark .site-header { border-bottom: 1px solid #5a5a5a; }
+html.dark input::placeholder, html.dark textarea::placeholder { color: #a3a3a3; }
+
+/* Gray = server gray (light neutrals, dark text). No html.dark. */
+html[data-theme="gray"] {
+  color-scheme: light;
+  --accent: #1055c9;
+  --accent-hover: #0d47a8;
+  --accent-soft: #d3dff3;
+  --bg: #d9d9d9;
+  --surface: #e6e6e6;
+  --surface-2: #ededed;
+  --border: #bdbdbd;
+  --border-strong: #a6a6a6;
+  --text: #1c1c1c;
+  --text-2: #474747;
+  --text-3: #666666;
+  --navy: #1c1c1c;
+  --navy-deep: #d9d9d9;
+  --sky: #1055c9;
+  --sky-soft: #d3dff3;
+  --ink: #1c1c1c;
+  --muted: #474747;
+  --line: #bdbdbd;
+  --white: #e6e6e6;
+  --paper: #d9d9d9;
+  --shadow: 0 1px 2px rgba(0,0,0,.06), 0 2px 8px rgba(0,0,0,.06);
+}
+html[data-theme="gray"] body { background: #d9d9d9; color: #1c1c1c; }
+html[data-theme="gray"] .site-header { background: rgba(230, 230, 230, 0.94); border-bottom: 1px solid #bdbdbd; }
+html[data-theme="gray"] .hero { background: #d9d9d9; color: #1c1c1c; }
+html[data-theme="gray"] footer { background: #d9d9d9; border-top: 1px solid #bdbdbd; color: #474747; }
+
+/* Dark = server dark (deeper than Medium). Overrides html.dark hardcoded Medium greys. */
+html[data-theme="dark"] {
+  --accent: #4d8af0;
+  --accent-hover: #6a9ef3;
+  --accent-soft: #1b2a45;
+  --bg: #0f141c;
+  --surface: #171e29;
+  --surface-2: #1c2431;
+  --border: #273142;
+  --border-strong: #354155;
+  --text: #e6ebf3;
+  --text-2: #a6b0c0;
+  --text-3: #7a8598;
+  --navy: #e6ebf3;
+  --navy-deep: #0f141c;
+  --sky: #4d8af0;
+  --sky-soft: #1b2a45;
+  --ink: #e6ebf3;
+  --muted: #a6b0c0;
+  --line: #273142;
+  --white: #e6ebf3;
+  --paper: #0f141c;
+}
+html[data-theme="dark"] body,
+html[data-theme="dark"] .hero,
+html[data-theme="dark"] footer { background: #0f141c; color: #e6ebf3; }
+html[data-theme="dark"] .site-header { background: rgba(23, 30, 41, 0.94); border-bottom: 1px solid #273142; }
+html[data-theme="dark"] .btn-outline { background: #171e29; color: #e6ebf3; border-color: #273142; }
+html[data-theme="dark"] .pl-mode-toggle.btn { background: #171e29; color: #fbbf24; border-color: #273142; }
+
+/* Header chrome: language + 4-theme cycle */
+.pl-site-chrome {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+.pl-site-chrome .btn { flex-shrink: 0; }
+.pl-theme-seg {
+  display: inline-flex;
+  border: 1px solid var(--line, #d7e0ea);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface, #fff);
+}
+.pl-theme-seg button {
+  border: 0;
+  background: transparent;
+  color: var(--muted, #5b6b7c);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 650;
+  padding: 0.35rem 0.55rem;
+  cursor: pointer;
+}
+.pl-theme-seg button.is-active {
+  background: var(--sky, #2f80ed);
+  color: #fff;
+}
+@media (max-width: 860px) {
+  .pl-theme-seg button { padding: 0.35rem 0.42rem; font-size: 0.72rem; }
+}
+.pl-lang-pop {
+  position: absolute;
+  z-index: 50;
+  right: 0;
+  top: calc(100% + 6px);
+  width: min(18rem, calc(100vw - 2rem));
+  max-height: 6in;
+  overflow: auto;
+  background: var(--surface, #fff);
+  color: var(--ink, #142033);
+  border: 1px solid var(--line, #d7e0ea);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(11, 31, 58, 0.16);
+  padding: 0.7rem;
+}
+.pl-lang-pop[hidden] { display: none !important; }
+.pl-lang-pop label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin: 0.35rem 0 0.25rem;
+}
+.pl-lang-pop select, .pl-lang-pop input {
+  width: 100%;
+  height: 36px;
+  border: 1px solid var(--line, #d7e0ea);
+  border-radius: 8px;
+  padding: 0 0.5rem;
+  font: inherit;
+  background: var(--paper, #fff);
+  color: inherit;
+}
+.pl-lang-pop select[size] {
+  height: auto;
+  min-height: 9.5rem;
+  padding: 0.25rem;
+}
+.pl-chrome-wrap { position: relative; display: inline-flex; }
+
+/* Intro ⓘ / Hide — same pattern as Pocket Ledger Server */
+.intro-box { margin: 6px 0 0; min-width: 0; }
+.intro-box.intro-empty { display: none; }
+.intro-i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  padding: 2px;
+  margin: -2px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  box-shadow: none;
+  color: var(--muted, #5b6b7c);
+  font-size: inherit;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: middle;
+  opacity: 0.85;
+}
+.intro-i svg { width: 1.15em; height: 1.15em; }
+.intro-i:hover, .intro-i:focus-visible { color: var(--sky, #2f80ed); opacity: 1; }
+.intro-body { display: none; }
+html.pl-intros-on .intro-i { display: none; }
+html.pl-intros-on .intro-body { display: block; }
+.intro-body > .intro, .intro-body > [data-intro] { display: inline; margin: 0; }
+.intro-hide {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 18px;
+  padding: 0 6px;
+  margin-inline-start: 6px;
+  border: 1px solid var(--line, #d7e0ea);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted, #5b6b7c);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.intro-hide:hover { border-color: var(--sky, #2f80ed); color: var(--sky, #2f80ed); }
+.pl-web-version { font-size: 0.78rem; color: var(--muted, #5b6b7c); }
+.site-login-data {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+  color: var(--muted, #5b6b7c);
+}

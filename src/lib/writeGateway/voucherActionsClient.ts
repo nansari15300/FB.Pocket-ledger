@@ -92,7 +92,10 @@ import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
 import { assertCompanyAllowsLedgerMutations } from "@/lib/security/offlinePlanWriteGate";
 import { ADMIN_PANEL_COMPANY_LOCAL_ID } from "@/lib/adminPanelCompany/constants";
 import { isFirebaseLedgerDataSyncDisabled } from "@/lib/firebaseLedgerDataSyncDisabled";
-import { isFirebaseLedgerCompanyDataSyncEnabled } from "@/lib/firebaseLedgerCompanySyncPrefs";
+import {
+  isFirebaseLedgerCompanyDataSyncEnabled,
+  isPocketBaseCompanyDataSyncEnabled,
+} from "@/lib/firebaseLedgerCompanySyncPrefs";
 import { isOnlineCompanyLedgerCloudSyncAllowed } from "@/lib/onlineCompanySelectorSyncPolicy";
 import { isOfflineCompanyStorage } from "@/lib/companyUnlockGate";
 import { hydrateVoucherLocalAttachmentsForServer } from "@/lib/hydrateVoucherLocalAttachmentsForServer";
@@ -122,6 +125,7 @@ import { isLocalFileRef, getPendingPayloadForLocalRef, LOCAL_FILE_PREFIX } from 
 import { isDriveFileRef } from "@/lib/legacyDriveFileRef";
 import { resolveAuthoritativeFirestoreCompanyId } from "@/lib/resolveAuthoritativeFirestoreCompanyId";
 import { voucherDeleteDebugLog } from "@/lib/voucherDeletePreCheck";
+import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 
 /** Edit save: transient `blob:` preview URLs ya khali `fileUrls` se `local:` / Drive refs mat hatao. */
 function persistableVoucherAttachmentUrls(raw: unknown): string[] {
@@ -850,13 +854,18 @@ export async function patchVoucherFields(
   beginApkLedgerAsyncWriteShield({ pinCompanyId: companyId });
   if (isSoftDeleteLedgerPatch(partial)) {
     const localRow = await getCompanyDocFromBrowserDb(companyId, "vouchers", voucherId).catch(() => null);
-    const onServer = await firestoreCompanyDocExists(companyId, "vouchers", voucherId);
-    if (!localRow && !onServer) return;
-    // Never-synced local voucher => permanent local delete (no Firestore / recycle bin).
-    const { tryHardDeleteNeverSyncedDoc } = await import("@/lib/localOnlyHardDelete");
-    const hd = await tryHardDeleteNeverSyncedDoc(companyId, "vouchers", voucherId);
-    if (hd === "cancelled") throw new Error("Delete cancelled");
-    if (hd === "hard") return;
+    // PocketBase: skip Firestore getDoc (15s hang behind live SSE) and local-only hard delete
+    // (that path thinks PB vouchers are "never synced" because they are not in Firestore).
+    if (isPocketBaseCompanyId(companyId)) {
+      if (!localRow) return;
+    } else {
+      const onServer = await firestoreCompanyDocExists(companyId, "vouchers", voucherId);
+      if (!localRow && !onServer) return;
+      const { tryHardDeleteNeverSyncedDoc } = await import("@/lib/localOnlyHardDelete");
+      const hd = await tryHardDeleteNeverSyncedDoc(companyId, "vouchers", voucherId);
+      if (hd === "cancelled") throw new Error("Delete cancelled");
+      if (hd === "hard") return;
+    }
   }
   const sqliteFirst =
     options?.forceSqliteFirst === true || (await shouldUseLocalVoucherPipeline(companyId));
@@ -928,17 +937,36 @@ export async function patchVoucherFields(
     }
     await flushOrQueuePlServerVoucherAttachmentsAfterLocalSave(companyId, payload);
 
+    // PocketBase recycle-bin: small merge tombstone — full-doc SET was slow and could be
+    // rejected as stale, so other devices never saw the delete.
+    const outboxPayload =
+      isSoftDeleteLedgerPatch(partial) && isPocketBaseCompanyId(companyId)
+        ? (removeUndefined({
+            id: voucherId,
+            isDeleted: true,
+            deletedAt: payload.deletedAt,
+            deletedBy: payload.deletedBy,
+            updatedAt: payload.updatedAt,
+            lastEditedAt: payload.lastEditedAt,
+          }) as Record<string, unknown>)
+        : payload;
+
     // Ledger Firebase sync off — SQLite tombstone kaafi; Firestore/outbox mat chalao.
-    if (isFirebaseLedgerDataSyncDisabled() || !isFirebaseLedgerCompanyDataSyncEnabled(companyId)) {
-      await enqueueVoucherOutbox(companyId, "update", voucherId, payload);
+    if (
+      isFirebaseLedgerDataSyncDisabled() ||
+      (!isFirebaseLedgerCompanyDataSyncEnabled(companyId) &&
+        !isPocketBaseCompanyDataSyncEnabled(companyId) &&
+        !isPocketBaseCompanyId(companyId))
+    ) {
+      await enqueueVoucherOutbox(companyId, "update", voucherId, outboxPayload);
       return;
     }
 
     const canSync = await canSyncCompanyToServer(companyId);
 
     // SQLite-first: local DB turant; cloud mirror background outbox flush (web/EXE/APK same).
-    if (canSync) {
-      await enqueueVoucherOutbox(companyId, "update", voucherId, payload);
+    if (canSync || isPocketBaseCompanyId(companyId)) {
+      await enqueueVoucherOutbox(companyId, "update", voucherId, outboxPayload);
       if (shouldAutoFlushOutboxAfterEnqueue()) {
         void flushVoucherOutbox().catch((e) => {
           console.warn("[patchVoucherFields] background flush after outbox enqueue failed", e);
@@ -947,7 +975,7 @@ export async function patchVoucherFields(
       return;
     }
 
-    await enqueueVoucherOutbox(companyId, "update", voucherId, payload);
+    await enqueueVoucherOutbox(companyId, "update", voucherId, outboxPayload);
     return;
   }
   try {
@@ -1006,11 +1034,14 @@ export async function softDeleteVoucherMoveToRecycleBin(
   options?: { forceSqliteFirst?: boolean }
 ): Promise<void> {
   {
-    // Never-synced local voucher => permanent local delete; no recycle alert / history.
-    const { tryHardDeleteNeverSyncedDoc } = await import("@/lib/localOnlyHardDelete");
-    const hd = await tryHardDeleteNeverSyncedDoc(companyId, "vouchers", voucherId);
-    if (hd === "cancelled") throw new Error("Delete cancelled");
-    if (hd === "hard") return;
+    // PocketBase: voucher lives on the server, not Firestore — local-only hard delete
+    // would hide it here and never write a tombstone for other devices.
+    if (!isPocketBaseCompanyId(companyId)) {
+      const { tryHardDeleteNeverSyncedDoc } = await import("@/lib/localOnlyHardDelete");
+      const hd = await tryHardDeleteNeverSyncedDoc(companyId, "vouchers", voucherId);
+      if (hd === "cancelled") throw new Error("Delete cancelled");
+      if (hd === "hard") return;
+    }
   }
   const reg = await getLocalCompanyById(companyId, { includeDeleted: true });
   const fsCompanyId = String((reg as { authoritativeCompanyId?: string } | null)?.authoritativeCompanyId || companyId).trim();
@@ -1033,11 +1064,19 @@ export async function softDeleteVoucherMoveToRecycleBin(
   let voucherNumber = "";
   let voucherType = "";
   try {
-    const vSnap = await getDoc(doc(firestore, `companies/${fsCompanyId}/vouchers`, voucherId));
-    if (vSnap.exists()) {
-      const v = vSnap.data() as Record<string, unknown>;
-      voucherNumber = String(v.voucherNumber ?? "");
-      voucherType = String(v.type ?? "");
+    const localV = (await getCompanyDocFromBrowserDb(companyId, "vouchers", voucherId).catch(() => null)) as
+      | Record<string, unknown>
+      | null;
+    if (localV) {
+      voucherNumber = String(localV.voucherNumber ?? "");
+      voucherType = String(localV.type ?? "");
+    } else if (!isPocketBaseCompanyId(companyId)) {
+      const vSnap = await getDoc(doc(firestore, `companies/${fsCompanyId}/vouchers`, voucherId));
+      if (vSnap.exists()) {
+        const v = vSnap.data() as Record<string, unknown>;
+        voucherNumber = String(v.voucherNumber ?? "");
+        voucherType = String(v.type ?? "");
+      }
     }
   } catch {
     /* alert optional */
@@ -1286,10 +1325,12 @@ async function saveVoucherOfflineLocalCreate(
   // Online company: background flush so other devices get `_pl_change_log` without re-save.
   if (
     !isFirebaseLedgerDataSyncDisabled() &&
-    isFirebaseLedgerCompanyDataSyncEnabled(companyId) &&
+    (isFirebaseLedgerCompanyDataSyncEnabled(companyId) ||
+      isPocketBaseCompanyDataSyncEnabled(companyId) ||
+      isPocketBaseCompanyId(companyId)) &&
     shouldAutoFlushOutboxAfterEnqueue()
   ) {
-    const canSync = await canSyncCompanyToServer(companyId);
+    const canSync = (await canSyncCompanyToServer(companyId)) || isPocketBaseCompanyId(companyId);
     if (canSync) {
       void flushVoucherOutbox().catch((e) => {
         console.warn("[saveVoucherOfflineLocalCreate] background flush after create failed", e);
@@ -1479,7 +1520,23 @@ async function approveVoucherLocalPersist(
   const resolved = await resolveVoucherSnapshotForLocalWrite(companyId, voucherId);
   if (!resolved) throw new Error("Voucher not found.");
   const { voucher, writeCompanyId } = resolved;
-  if ((voucher as Record<string, unknown>)?.["isApproved"] === true) return;
+  if ((voucher as Record<string, unknown>)?.["isApproved"] === true) {
+    // Already white locally — still push so PocketBase / other devices get isApproved
+    // (prior flush often reused the old lastEditedAt and the other device skipped it).
+    const retryPayload = removeUndefined({
+      ...voucher,
+      id: voucherId,
+      isApproved: true,
+      approvalUpdatedAt: Timestamp.now(),
+    }) as Record<string, unknown>;
+    coerceVoucherDocumentDate(retryPayload);
+    await enqueueVoucherOutbox(writeCompanyId, "update", voucherId, retryPayload);
+    if (interCompanyVoucherViewerSide(retryPayload) === "source") {
+      await syncInterCompanySourceApprovedToPeerTarget(retryPayload);
+    }
+    await approveInterCompanyPeerCopy(retryPayload, approvedByUserId, approvedByName, options);
+    return;
+  }
   await assertInterCompanyTargetApproveAllowed(voucher as Record<string, unknown>);
   // Firebase-mode offline me `getEffectiveHistorySettings` Firestore pe ja sakta — yahan defaults safe.
   const { enabled: historyEnabled, limit: historyLimit } = isLocalOnlyMode()
@@ -1505,6 +1562,7 @@ async function approveVoucherLocalPersist(
   };
   const newHistory = historyEnabled ? [approvalEntry, ...existingHistory].slice(0, historyLimit) : existingHistory;
   const icLegPatch = buildInterCompanyApprovalPatch(voucher as Record<string, unknown>);
+  const nowTs = Timestamp.now();
   const payload = removeUndefined({
     ...voucher,
     ...icLegPatch,
@@ -1512,14 +1570,15 @@ async function approveVoucherLocalPersist(
     isApproved: true,
     approvedByUserId,
     approvedByUserName: approverName,
-    approvedAt: Timestamp.now(),
+    approvedAt: nowTs,
+    approvalUpdatedAt: nowTs,
     history: newHistory,
   }) as Record<string, unknown>;
   coerceVoucherDocumentDate(payload);
-  // Approve All: har upsert pe collection bump UI ko stale list se overwrite karta tha (sirf pehli row pink hat'ti).
+  // Live patch already painted. SQLite notify + lastEditedAt stamp re-sorts the account list.
   await upsertCompanyDocInBrowserDb(writeCompanyId, "vouchers", voucherId, payload, {
-    notify: options?.skipUiNotify === true ? false : undefined,
-    skipCloudSyncEnqueue: options?.skipUiNotify === true ? true : undefined,
+    notify: false,
+    skipCloudSyncEnqueue: true,
   });
   await enqueueVoucherOutbox(writeCompanyId, "update", voucherId, payload);
   if (interCompanyVoucherViewerSide(payload) === "source") {
@@ -1569,12 +1628,13 @@ async function unapproveVoucherLocalPersist(
     approvedByUserId: null,
     approvedByUserName: null,
     approvedAt: null,
+    approvalUpdatedAt: Timestamp.now(),
     history: newHistory,
   }) as Record<string, unknown>;
   coerceVoucherDocumentDate(payload);
   await upsertCompanyDocInBrowserDb(writeCompanyId, "vouchers", voucherId, payload, {
-    notify: options?.skipUiNotify === true ? false : undefined,
-    skipCloudSyncEnqueue: options?.skipUiNotify === true ? true : undefined,
+    notify: false,
+    skipCloudSyncEnqueue: true,
   });
   await enqueueVoucherOutbox(writeCompanyId, "update", voucherId, payload);
 }
@@ -1746,7 +1806,7 @@ export async function saveVoucher(
     }
   }
 
-  // `Date`/string → `Timestamp`: outbox JSON + bilink partial merge dono mein stable `date` (Payment Out "new" khali column fix).
+  // `Date`/string → `Timestamp`: outbox JSON + bilink partial merge dono mein stable `date` (Payment "new" khali column fix).
   coerceVoucherDocumentDate(cleanVoucherData as Record<string, unknown>);
   const voucherRef = voucherId ? doc(firestore, voucherPath, voucherId) : null;
   if (cleanVoucherData.lineItems) {
@@ -1866,6 +1926,15 @@ export async function saveVoucher(
     await enqueueVoucherOutbox(writeCompanyIdLocal, "update", voucherId!, mergedLocal);
     scheduleBrowserDbPersistAfterWrite();
     void flushPendingBrowserDbSave();
+    if (
+      !isFirebaseLedgerDataSyncDisabled() &&
+      (isPocketBaseCompanyDataSyncEnabled(writeCompanyIdLocal) || isPocketBaseCompanyId(writeCompanyIdLocal)) &&
+      shouldAutoFlushOutboxAfterEnqueue()
+    ) {
+      void flushVoucherOutbox().catch((e) => {
+        console.warn("[saveVoucher] PocketBase background flush after sqlite-first update failed", e);
+      });
+    }
     dispatchSavedVoucherAttachmentUrls(writeCompanyIdLocal, voucherId!, mergedLocal, {
       previousUrls: voucherEditAttachmentCtx?.baselineUrls,
     });
@@ -2228,7 +2297,7 @@ export async function saveVoucher(
 }
 
 /**
- * Client-only: Update only spend-wise link fields on a voucher (Payment Out / Contra / Direct Expense).
+ * Client-only: Update only spend-wise link fields on a voucher (Payment / Contra / Direct Expense).
  * Used when linking from Payment In "Link Pay" so we don't overwrite the whole voucher.
  */
 export async function updateVoucherSpendWiseLinks(
@@ -2353,7 +2422,7 @@ export async function updateVoucherSpendWiseLinks(
 }
 
 /**
- * Bill-wise bilateral sync: when a Payment In or Payment Out is saved with allocations (Link to Dr/Cr),
+ * Bill-wise bilateral sync: when a Payment In or Payment is saved with allocations (Link to Dr/Cr),
  * update each target voucher so it has the reverse allocation. So RCPT→Sale and PYMT→Purchase (and Payment↔Payment) show on both sides.
  */
 export async function syncBillWiseAllocationsToTargetVouchers(
@@ -2972,6 +3041,7 @@ export async function approveVoucherWithHistory(
     isApproved: true,
     approvedByUserId,
     approvedByUserName: approverName,
+    approvalUpdatedAt: Timestamp.now(),
   };
 
   // Live + SQLite-first: local row ho to local approve; warna Firestore (live) pe try.
@@ -2986,17 +3056,8 @@ export async function approveVoucherWithHistory(
   beginApkLedgerAsyncWriteShield({ pinCompanyId: companyId });
 
   try {
-  // Save & Approve create already embeds isApproved — skip FS race ("Voucher not found").
-  if (localResolved?.voucher?.isApproved === true) {
-    await approveInterCompanyPeerCopy(
-      localResolved.voucher as Record<string, unknown>,
-      approvedByUserId,
-      approvedByName,
-      options
-    );
-    return;
-  }
   // Prefer SQLite whenever the row exists (new create often not on Firestore yet).
+  // Already-approved local row still goes through persist so PocketBase gets a timestamp bump + outbox push.
   if (localResolved) {
     await approveVoucherLocalPersist(companyId, voucherId, approvedByUserId, approvedByName, {
       skipUiNotify,
@@ -3144,6 +3205,7 @@ export async function unapproveVoucherWithHistory(
     approvedByUserId: null,
     approvedByUserName: null,
     approvedAt: null,
+    approvalUpdatedAt: Timestamp.now(),
   };
 
   const localResolved = await resolveVoucherSnapshotForLocalWrite(companyId, voucherId);
@@ -3273,6 +3335,7 @@ export async function approveVouchersWithHistoryBatch(
     isApproved: true,
     approvedByUserId,
     approvedByUserName: approverName,
+    approvalUpdatedAt: Timestamp.now(),
   };
 
   const rollbackById = new Map<string, Record<string, unknown>>();

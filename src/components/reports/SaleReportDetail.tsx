@@ -18,6 +18,7 @@ import { doc } from "firebase/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useLiveMasterSelection } from "@/hooks/useLiveMasterSelection";
 import { Button } from "@/components/ui/button";
 import { useSearchParams } from "next/navigation";
 import { ReportRegisterMobileListChrome } from "@/components/reports/ReportRegisterMobileListChrome";
@@ -32,7 +33,8 @@ export function SaleReportDetail() {
   const { companyId } = useCompany();
   const { formatCurrency, formatCurrencyForPrint } = useDate();
   const { vouchers: allVouchers, loading: vouchersLoading, processedParties } = useFyScopedVouchers();
-  const [selectedParty, setSelectedParty] = useState<Party | null>(null);
+  const [selectedPartyRaw, setSelectedParty] = useState<Party | null>(null);
+  const selectedParty = useLiveMasterSelection(selectedPartyRaw, setSelectedParty, processedParties);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState("");

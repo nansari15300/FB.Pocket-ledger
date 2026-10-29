@@ -1,5 +1,6 @@
 "use client";
 
+import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { doc, setDoc } from "firebase/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
@@ -143,6 +144,7 @@ export function BillingRegionalSettings() {
   };
 
   const save = async () => {
+    if (adminServerWriteBlocked()) return;
     setSaving(true);
     try {
       await setDoc(

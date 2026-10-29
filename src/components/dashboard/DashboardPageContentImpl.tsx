@@ -187,6 +187,7 @@ import {
 } from "@/lib/receivablesPayablesDialogUi";
 import { useServerReceivablesPayablesSummary } from "@/hooks/useServerReceivablesPayablesSummary";
 import { RecurringAutoSummaryCard } from "@/components/dashboard/RecurringAutoSummaryCard";
+import { pbSessionUserName, logUserNameLookupError } from "@/lib/pocketbaseData/userDisplayNameSession";
 import {
   DashboardWelcomeFooterBanner,
   dashboardWelcomeFooterReservePx,
@@ -387,7 +388,7 @@ const statCardData = [
   { title: 'Direct Income', icon: TrendingUp, type: 'direct_income', link: '/incomes', isCredit: true },
   { title: 'Direct Expense', icon: TrendingDown, type: 'direct_expense', link: '/incomes', isCredit: false },
   { title: 'Receipt', icon: ArrowDownCircle, type: 'payment_in', link: '/payment-in', isCredit: true },
-  { title: 'Payment Out', icon: ArrowUpCircle, type: 'payment_out_excl_pay_salary', link: '/payment-out', isCredit: false },
+  { title: 'Payment', icon: ArrowUpCircle, type: 'payment_out_excl_pay_salary', link: '/payment-out', isCredit: false },
   { title: 'Pay Salary', icon: HandCoins, type: 'pay_salary', link: '/add-salary', isCredit: false },
   { title: 'Notes', icon: StickyNote, type: 'note', link: '/notes', isCredit: true },
   { title: 'Production', icon: Factory, type: 'production', link: '/production', isCredit: true },
@@ -1151,6 +1152,8 @@ export function DashboardPageContentImpl() {
     if (!userId) return "N/A";
     const cached = userNamesRef.current[userId];
     if (cached && cached !== "Unknown") return cached;
+    const pbName = pbSessionUserName(userId, "N/A");
+    if (pbName !== undefined) return pbName;
     try {
       // User doc ID may be name_uid format, so query by uid field first
       const q = query(collection(firestore, "users"), where("uid", "==", userId));
@@ -1176,7 +1179,7 @@ export function DashboardPageContentImpl() {
         }
       }
     } catch (e) {
-      console.error(e);
+      logUserNameLookupError("Dashboard", userId, e);
     }
     return "N/A"; // Return N/A instead of Unknown
   }, []);

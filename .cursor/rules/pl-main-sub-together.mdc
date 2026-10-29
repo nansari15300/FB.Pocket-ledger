@@ -1,0 +1,25 @@
+---
+description: Pocket Main + Sub server — work together, reuse chrome/i18n, split APIs
+alwaysApply: true
+---
+
+# Main + Sub (same job, two folders)
+
+Paths: `C:\Balgram\PocketLedger-Server\sub-server` (`:8090` PocketBase) and `...\main-server` (`:8099` Go). Customer runtime = **sub only**. Owner panel = **main**. Do not nest a second sub-server copy inside main.
+
+## Reuse (kam code)
+
+- **Look / language list:** one source = `sub-server/pb_public` (`style.css`, `shared-ui.css`, `languages.js`, `i18n/*.js`, `PLSwitch`). Main Go already serves `/languages.js` and `/i18n/` from that folder. Do not copy those files into `main-server/public`.
+- **Main-only strings** (Licenses, etc.) live in `main-server/public/i18n.js`. `PL_I18N.register` **merges** so a lazy sub file cannot wipe license keys.
+- **No ads on Main.** Do not add Ad Settings, AdMob, or `/api/app-settings/ads` to `main-server`. Company / sub-server ad code stays in the app and `sub-server` only.
+- **Language UI:** both panels list **all** ISO codes via `PL_LANGUAGES` (`languages.js`). Built-in tables: en / hi / ne. Other codes: `PL_I18N.load` → `pb_public/i18n/<code>.js`, missing keys → English. Same `pl_server_ui_lang` / `pl_server_intro_lang` keys.
+
+## Split (alag chale)
+
+- Sub data = PocketBase + `pb_hooks`. Main data = Go + `main-server/data`. Do not point Main pages at customer collections.
+- New panel page: copy **HTML chrome** from sub `index.html` if needed; **save/load** on Main APIs (`/api/...` on `:8099`).
+- Do not mount full sub `app.js` on `:8099`. Do not edit Next.js `src/` for this panel.
+
+## When one request touches both
+
+Change shared chrome/i18n in **sub** first, then only Main glue (index, Go fallback, Main-only keys). Keep both processes running; Ctrl+F5 each port.

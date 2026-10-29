@@ -60,9 +60,9 @@ type Props = {
   fieldsDisabled?: boolean;
   /** Target-copy edit: source company current login nahi — peer company ka real row */
   isPeerSourceCompany?: boolean;
-  /** Edit: is copy role=source — sender ne khola → Payment Out badge */
+  /** Edit: is copy role=source — sender ne khola → Payment badge */
   showPaymentOutBadge?: boolean;
-  /** Revert accept — header par blue Reverted pill (Payment Out ke left) */
+  /** Revert accept — header par blue Reverted pill (Payment ke left) */
   showRevertedBadge?: boolean;
   companyBankAccountId?: string;
   onCompanyBankAccountIdChange?: (id: string) => void;

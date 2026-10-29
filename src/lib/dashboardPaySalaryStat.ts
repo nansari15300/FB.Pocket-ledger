@@ -1,7 +1,7 @@
 /**
- * Dashboard summary cards: "Pay Salary" = dedicated type + Payment Out jahan **Pay To = Staff**
+ * Dashboard summary cards: "Pay Salary" = dedicated type + Payment jahan **Pay To = Staff**
  * (`payeeType === 'staff'` ya legacy `staffId` bina party/tax/expense/other payee).
- * "Payment Out" card is bucket se in vouchers ko hata kar double-count rokta hai.
+ * "Payment" card is bucket se in vouchers ko hata kar double-count rokta hai.
  */
 export function voucherCountsAsDashboardPaySalary(v: {
   type?: string;
@@ -24,7 +24,7 @@ export function voucherCountsAsDashboardPaySalary(v: {
   return true;
 }
 
-/** General Payment Out card: staff / pay-salary payouts isme nahi — wo `Pay Salary` card mein. */
+/** General Payment card: staff / pay-salary payouts isme nahi — wo `Pay Salary` card mein. */
 export function voucherCountsAsDashboardPaymentOutExcludingPaySalary(v: {
   type?: string;
   subType?: string;

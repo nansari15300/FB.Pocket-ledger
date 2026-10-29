@@ -6,6 +6,7 @@ import {
   type CompanyStorageRow,
 } from "@/lib/companyStorageKind";
 import { planAllowsInterCompanyVoucher } from "@/lib/planSyncEntitlements";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 type CompanyRow = (CompanyStorageRow & { isOwned?: boolean }) | null | undefined;
 
@@ -17,6 +18,7 @@ export function isInterCompanyVoucherFeatureDisabled(options: {
   can?: (permission: Permission) => boolean;
 }): boolean {
   const { company, planId, livePlan, can } = options;
+  if (!isInterCompanySystemEnabled()) return true;
   if (company && (isDeviceLocalCompany(company) || isServerGateCompany(company))) return true;
   if (!planAllowsInterCompanyVoucher(planId, livePlan)) return true;
   if (company?.isOwned === false && can && !can("create_inter_company_voucher")) return true;

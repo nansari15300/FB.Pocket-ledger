@@ -34,6 +34,8 @@ export default {
     // Admin master-detail grids — content scan se admin exclude (build-static race); classes yahan safelist.
     'md:grid-cols-[360px_1fr]',
     'md:grid-cols-[320px_1fr]',
+    // Admin settings page spacing (/admin/settings): 30px on PC, 3px side gap on phone.
+    'px-[3px]', 'gap-3', 'md:gap-[30px]', 'md:p-[30px]',
   ],
   content: [
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',

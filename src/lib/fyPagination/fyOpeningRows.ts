@@ -3,6 +3,7 @@ import {
   FISCAL_YEAR_PARTITION_ROW_TYPE,
   type FiscalMergePartitionEntry,
 } from "@/lib/fiscalPartitionRows";
+import { parseFirestoreDateFieldToJsDate } from "@/lib/voucherDateNormalize";
 import { fyOpeningRowDateFromBoundaryMs } from "@/lib/fyPagination/ledgerOpeningMeta";
 import type { FyPartitionOpeningStatus } from "@/lib/fyPagination/openingSnapshotStatus";
 import { buildFyPartitionOpeningPillLabel } from "@/lib/fiscalYearLabel";
@@ -19,11 +20,8 @@ function rowSortTime(t: any): number | null {
     return null;
   }
   if (t.type === "opening_balance") return null;
-  const raw = t.date;
-  if (!raw) return null;
-  const d =
-    raw instanceof Date ? raw : typeof raw.toDate === "function" ? raw.toDate() : new Date(raw);
-  if (!(d instanceof Date) || isNaN(d.getTime())) return null;
+  const d = parseFirestoreDateFieldToJsDate(t?.date);
+  if (!d || isNaN(d.getTime())) return null;
   return startOfDay(d).getTime();
 }
 

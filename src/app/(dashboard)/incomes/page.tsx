@@ -30,6 +30,7 @@ import { type EntityListQuickFilter } from "@/components/entity/EntityListQuickF
 import { useDate } from "@/hooks/useDate";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useVouchers } from "@/hooks/useVouchers";
+import { useLiveMasterSelection } from "@/hooks/useLiveMasterSelection";
 import { collectInterCompanyIdsForPendingApproval } from "@/lib/interCompany/interCompanyVoucherHydrate";
 import { useResponsiveListLayout } from "@/hooks/useResponsiveListLayout";
 import { ResponsiveMasterDetail } from "@/components/layout/ResponsiveMasterDetail";
@@ -216,7 +217,12 @@ function IncomeExpensePageContent() {
   // Feature config ko local cache se bhi read karo so offline UI consistent rahe.
   const { featureConfig } = useCachedFeatureConfig({});
 
-  const selectedAccount = activeView === 'accounts' ? selected as ExpenseAccount : null;
+  const selectedAccountRaw = activeView === "accounts" ? (selected as ExpenseAccount) : null;
+  const selectedAccount = useLiveMasterSelection(
+    selectedAccountRaw,
+    setSelected,
+    processedExpenseAccounts
+  );
   const selectedGroupRaw = activeView === 'groups' ? selected as ExpenseGroup : null;
   const mobileIncomesSelectionLabelClassName = useMemo(() => {
     if (!selected) return undefined;
@@ -225,7 +231,7 @@ function IncomeExpensePageContent() {
   const mobileIncomesSelectionLabel = useMemo((): ReactNode => {
     if (!selected) return null;
     if (activeView !== "groups") {
-      const name = (selected as ExpenseAccount).name;
+      const name = selectedAccount?.name ?? (selected as ExpenseAccount).name;
       return name && String(name).trim() ? String(name).trim() : null;
     }
     const group = selected as ExpenseGroup;
@@ -246,6 +252,7 @@ function IncomeExpensePageContent() {
     activeView,
     groupMemberFilterId,
     processedExpenseAccounts,
+    selectedAccount,
     mobileIncomesSelectionLabelClassName,
   ]);
   const incomesMasterDetailTitle = activeView === "groups" ? "Income & Expense Groups" : "Income & Expense";
@@ -297,6 +304,7 @@ function IncomeExpensePageContent() {
     );
   }, [initialProcessedExpenseGroups, companyId, CORE_EXPENSE_GROUP_IDS]);
 
+  useLiveMasterSelection(selectedGroupRaw, setSelected, processedExpenseGroups);
   const selectedGroup = useMemo(
     () =>
       selectedGroupRaw

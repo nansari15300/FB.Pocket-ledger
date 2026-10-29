@@ -1,6 +1,6 @@
 "use client";
 
-import { isPbAttachmentRef } from "@/lib/pocketbaseData/pbAttachments";
+import { fetchPbAttachmentBlob, isPbAttachmentRef } from "@/lib/pocketbaseData/pbAttachments";
 import { resolveCurrentAttachmentUrlAfterLoadError } from "@/lib/attachmentCurrentUrlFallback";
 import * as React from "react";
 import { useCallback, useEffect, useState, useRef } from "react";
@@ -381,6 +381,10 @@ export async function prewarmPdfThumbnailsForGallery(
         const res = await fetch(u, { signal });
         if (!res.ok) continue;
         pdfFile = await res.blob();
+      } else if (isPbAttachmentRef(u)) {
+        const lb = (await tryOfflineCachedAttachmentBlobMultiKey(u)) || (await fetchPbAttachmentBlob(u));
+        if (!lb || lb.size === 0) continue;
+        pdfFile = lb;
       } else if (u.startsWith("http") || u.startsWith("blob:")) {
         // Full warm sync ne IndexedDB me jo PDF cache kiya ho — gallery hover turant
         let pdfFileHttp: Blob | null = null;
@@ -1328,6 +1332,15 @@ export function FilePreview({
               return null;
             }
             pdfFile = blob;
+          } else if (isPbAttachmentRef(pdfUrl)) {
+            const blob =
+              (await tryOfflineCachedAttachmentBlobMultiKey(pdfUrl)) ||
+              (await fetchPbAttachmentBlob(pdfUrl));
+            if (!blob || blob.size <= 0) {
+              setIsPdfLoading(false);
+              return null;
+            }
+            pdfFile = blob;
           } else if (pdfUrl.startsWith("data:")) {
             // Local unassigned gallery: PDF `localStorage` me data URL — pehle yahan branch na thi to sirf lal PDF icon
             const response = await fetch(pdfUrl, { signal });
@@ -1913,6 +1926,26 @@ export function FilePreview({
             formatLabel,
           });
           setIsLoading(false);
+
+          // `pbatt:` / https PDF: this branch returns before the shared generatePdfThumbnail
+          // call. Probe below also skips PocketBase (localLedgerOnly + Firebase cache helper),
+          // so tile stayed on the red PDF icon. Raster from bytes we already have, else fetch.
+          if (resolvedType === "pdf") {
+            const PDF_THUMB_DEBOUNCE_MS = 120;
+            pdfThumbDebounceTimer = setTimeout(() => {
+              if (controller.signal.aborted) return;
+              const blob = staticResolved.blob;
+              const asFile =
+                blob && blob.size > 0
+                  ? new File(
+                      [blob],
+                      resolvedName.toLowerCase().endsWith(".pdf") ? resolvedName : `${resolvedName || "file"}.pdf`,
+                      { type: blob.type || "application/pdf" }
+                    )
+                  : undefined;
+              void generatePdfThumbnail(file, asFile, resolvedStoragePath, controller.signal);
+            }, PDF_THUMB_DEBOUNCE_MS);
+          }
 
           // Web: inline peek (dedicated effect bhi chalta hai) — warm path skip cover.
           if (!resolvedSize && typeof file === "string") {

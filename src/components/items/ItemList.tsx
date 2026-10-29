@@ -23,6 +23,7 @@ import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
 import { useEntityListHideSettled } from "@/components/entity/entityListHideSettled";
 import { masterListShellCn, masterListRowUnselectedCn, MASTER_LIST_ITEM_AVATAR_CN, MASTER_LIST_AVATAR_FALLBACK_CN } from "@/lib/masterListChrome";
 import { EntityFileAttachmentHover } from "@/components/entity/EntityFileAttachmentHover";
+import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
 import { trimEntityFileUrlForPreview } from "@/lib/trimEntityFileUrlForPreview";
 import { ResolvedEntityAvatar } from "@/components/entity/ResolvedEntityAvatar";
 import { usePrewarmVisibleAttachments } from "@/hooks/usePrewarmVisibleAttachments";
@@ -219,15 +220,7 @@ export function ItemList({
                             fallbackSlot={<Package />}
                           />
                         </EntityFileAttachmentHover>
-                        {(pendingApprovalByItemId[item.id] ?? 0) > 0 && (
-                          <span
-                            className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center bg-pink-500 text-white text-[10px] font-bold origin-center"
-                            style={{ transform: "rotate(45deg) translate(25%, -25%)" }}
-                            aria-label={`${pendingApprovalByItemId[item.id]} pending approval`}
-                          >
-                            <span style={{ transform: "rotate(-45deg)" }}>{pendingApprovalByItemId[item.id]}</span>
-                          </span>
-                        )}
+                        <MasterListPendingBadge count={pendingApprovalByItemId[item.id] ?? 0} />
                       </div>
                       <MasterListNameTooltip
                         measureKey={item.name}

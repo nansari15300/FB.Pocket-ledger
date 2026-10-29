@@ -50,6 +50,7 @@
     "Reference src",
     "public/sw.js",
     "public/sw.js.map",
-    "electron/dist"
+    "electron/dist",
+    "PocketLedger-Server"
   ]
 }

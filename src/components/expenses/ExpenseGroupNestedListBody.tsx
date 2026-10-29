@@ -21,6 +21,7 @@ import {
 } from "@/lib/groupListExpand";
 import { groupListMemberAvatarFromRow } from "@/components/entity/GroupListMemberAvatar";
 import { MasterListGroupIcon } from "@/components/entity/MasterListGroupIcon";
+import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
 import type { ExpenseAccount, ExpenseGroup } from "@/components/expenses/types";
 import type { ExpenseGroupListBranch, ExpenseGroupTreeNode } from "@/lib/expenseGroupTree";
 import {
@@ -293,15 +294,7 @@ function ExpenseGroupTreeNodeRow({
       <div className="pl-master-list-row-leading">
         <div className="relative flex-shrink-0">
           {groupLeading}
-          {groupPending > 0 && (
-            <span
-              className="absolute top-0 right-0 flex h-4 w-4 origin-center items-center justify-center bg-pink-500 text-[10px] font-bold text-white"
-              style={{ transform: "rotate(45deg) translate(25%, -25%)" }}
-              aria-label={`${groupPending} pending approval`}
-            >
-              <span style={{ transform: "rotate(-45deg)" }}>{groupPending}</span>
-            </span>
-          )}
+          <MasterListPendingBadge count={groupPending} />
         </div>
         <GroupListExpandNameRow
           name={group.name}
@@ -548,15 +541,7 @@ function ExpenseGroupSystemBranchRow({
           <MasterListGroupIcon>
             <Users className="h-5 w-5" />
           </MasterListGroupIcon>
-          {branchPending > 0 && (
-            <span
-              className="absolute top-0 right-0 flex h-4 w-4 origin-center items-center justify-center bg-pink-500 text-[10px] font-bold text-white"
-              style={{ transform: "rotate(45deg) translate(25%, -25%)" }}
-              aria-label={`${branchPending} pending approval`}
-            >
-              <span style={{ transform: "rotate(-45deg)" }}>{branchPending}</span>
-            </span>
-          )}
+          <MasterListPendingBadge count={branchPending} />
         </div>
         <GroupListExpandNameRow
           name={branchLabel}

@@ -1,0 +1,29 @@
+# Auto-deploy the Next.js production app to the Pocket Ledger PC.
+# Runs on the self-hosted runner (D:\PocketLedger-Prod\runner) and calls
+# D:\PocketLedger-Prod\deploy.ps1: fetch main -> npm ci -> npm run build ->
+# restart service PocketLedgerWeb (127.0.0.1:3002). A failed build leaves the running app as is.
+# Does not touch Firebase, Cloud Run, DNS, PocketBase or the dev servers.
+name: Deploy to production PC
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-pc-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, windows, pocketledger-prod]
+    timeout-minutes: 45
+    steps:
+      - name: Build and restart PocketLedgerWeb
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File "D:\PocketLedger-Prod\deploy.ps1" -Sha "${{ github.sha }}"
+          exit $LASTEXITCODE

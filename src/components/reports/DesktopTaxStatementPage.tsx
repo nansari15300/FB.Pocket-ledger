@@ -227,11 +227,11 @@ export default function DesktopTaxStatementPage() {
 
     if (taxId && processedTaxes.length > 0) {
       const tax = processedTaxes.find((p) => p.id === taxId);
-      setSelectedTax((prev) => (prev?.id === tax?.id ? prev : tax || null));
+      setSelectedTax((prev) => (tax ? tax : prev));
       setSelectedGroup((prev) => (prev !== null ? null : prev));
     } else if (groupId && processedTaxGroups.length > 0) {
       const group = processedTaxGroups.find((g) => g.id === groupId);
-      setSelectedGroup((prev) => (prev?.id === group?.id ? prev : group || null));
+      setSelectedGroup((prev) => (group ? group : prev));
       setSelectedTax((prev) => (prev !== null ? null : prev));
     } else if (processedTaxes.length > 0) {
       const first = processedTaxes[0];

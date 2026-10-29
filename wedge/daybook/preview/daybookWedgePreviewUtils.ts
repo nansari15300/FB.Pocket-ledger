@@ -30,11 +30,11 @@ const sampleRows = [
   {
     id: "1",
     voucherNumber: "PYMT - 0266",
-    typeLabel: "payment out",
+    typeLabel: "payment",
     partyLine: "Ansarul Hak",
     amountLine: "1,00,000",
     sortKey: new Date(SAMPLE_TODAY_ISO).setHours(10, 30, 0, 0),
-    titleLine: "PYMT - 0266 · payment out · Ansarul Hak",
+    titleLine: "PYMT - 0266 · payment · Ansarul Hak",
     narrationLine: "Narration : 1,00,000",
     metaLine: "08-21-2026 · 2083-05-05 • 10:30 AM",
     balanceLine: "Bal: 1,53,26,422.80Cr",

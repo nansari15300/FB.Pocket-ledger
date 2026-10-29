@@ -152,8 +152,8 @@ export const LEDGER_HEADER_IDENTITY_CN =
   "pl-ledger-header-identity flex items-start gap-1";
 /** Profile avatar wrap — pen badge overlay */
 export const LEDGER_HEADER_AVATAR_CN = "pl-ledger-header-avatar";
-/** Ledger + mobile merged header profile tile (global 3.5rem square) */
-export const LEDGER_HEADER_AVATAR_BOX_CN = "h-[3.5rem] w-[3.5rem] shrink-0";
+/** Ledger + mobile merged header profile tile — square, same height as name card (3.75rem) */
+export const LEDGER_HEADER_AVATAR_BOX_CN = "h-[3.75rem] w-[3.75rem] shrink-0";
 export const LEDGER_HEADER_AVATAR_TRIGGER_CN = cn("inline-flex", LEDGER_HEADER_AVATAR_BOX_CN);
 export const LEDGER_HEADER_AVATAR_IMAGE_CN = cn(
   LEDGER_HEADER_AVATAR_BOX_CN,
@@ -191,10 +191,10 @@ export const LEDGER_HEADER_TITLE_CN =
 export const LEDGER_HEADER_BALANCE_CN =
   "pl-ledger-header-balance text-base font-bold";
 
-/** Closing Balance footer card: pills wrap instead of overlapping the total. */
+/** Closing Balance footer card: one row (H-scroll instead of wrap/unwrap height jiggle). */
 export const LEDGER_CLOSING_BALANCE_CARD_ROW_CN =
-  "flex w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5";
+  "flex w-full min-w-0 flex-nowrap items-center gap-x-2";
 export const LEDGER_CLOSING_BALANCE_ACTIONS_CN =
-  "flex min-w-0 max-w-full flex-[1_1_12rem] flex-wrap items-center gap-2";
+  "flex shrink-0 flex-nowrap items-center gap-2";
 export const LEDGER_CLOSING_BALANCE_TOTAL_CN =
-  "ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5";
+  "ml-auto flex shrink-0 flex-nowrap items-center justify-end gap-1.5";

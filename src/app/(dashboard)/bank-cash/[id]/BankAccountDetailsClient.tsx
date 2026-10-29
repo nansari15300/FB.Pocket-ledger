@@ -9,6 +9,7 @@ import { LoadingSpinner } from '@/components/layout/LoadingSpinner';
 import { doc, getDoc } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";
 
 function BankAccountDetailsPageContent() {
   const params = useParams();
@@ -46,13 +47,7 @@ function BankAccountDetailsPageContent() {
 
   const fetchUserName = useCallback(async (userId: string): Promise<string> => {
     if (userNames[userId]) return userNames[userId];
-    try {
-      const userDoc = await getDoc(doc(firestore, 'users', userId));
-      if (userDoc.exists()) {
-        return userDoc.data().displayName || userDoc.data().email || 'Unknown';
-      }
-    } catch (e) {}
-    return 'Unknown';
+    return resolveUserDisplayName(userId, "Unknown");
   }, [userNames]);
 
   useEffect(() => {

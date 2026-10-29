@@ -19,7 +19,7 @@ export type VoucherAttachmentsBeforeSaveResult = {
 };
 
 /**
- * Payment Out / Journal shared path: add-time compress → save par sirf zarurat par recompress → local stage ya Firebase upload.
+ * Payment / Journal shared path: add-time compress → save par sirf zarurat par recompress → local stage ya Firebase upload.
  */
 export async function resolveVoucherAttachmentsBeforeSave(params: {
   companyId: string;

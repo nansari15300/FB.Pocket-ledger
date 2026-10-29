@@ -48,9 +48,9 @@ export interface LinkPaymentInToPaymentOutDialogProps {
   onConfirm: (ids: string[]) => void;
   /** Names for party/staff/tax/income for particulars. */
   names?: Record<string, string>;
-  /** Required amount (Payment Out amount). When set, shows "Choose more" if selected total < this. */
+  /** Required amount (Payment amount). When set, shows "Choose more" if selected total < this. */
   requiredAmount?: number;
-  /** When editing, exclude this Payment Out from "already linked" sum so we don't double-count. */
+  /** When editing, exclude this Payment from "already linked" sum so we don't double-count. */
   currentVoucherId?: string | null;
   /** When editing, amount already linked by this voucher to each Payment In id (so Linked column shows total including current). */
   currentVoucherLinkedAmounts?: Record<string, number>;
@@ -62,7 +62,7 @@ export interface LinkPaymentInToPaymentOutDialogProps {
   accountName?: string | null;
   /** When displayOnly is true: show "in voucher" or "payment out" in title. */
   displayOnlyVariant?: 'in' | 'out';
-  /** When provided (e.g. from Payment Out form), show current voucher (Payment Out) at top — "To Voucher (current voucher)". */
+  /** When provided (e.g. from Payment form), show current voucher (Payment) at top — "To Voucher (current voucher)". */
   currentVoucherSummary?: { voucherNumber: string; date: Date | null; from: string; amount: number; linkedTotal: number };
   /** When true, show all account vouchers in table (even if linkable is 0) for visibility/debug clarity. */
   showAllRows?: boolean;
@@ -307,7 +307,7 @@ export function LinkPaymentInToPaymentOutDialog({
       >
         <DialogHeader className="shrink-0 space-y-0.5">
           <p className="text-xs text-muted-foreground leading-tight">Link for spend wise</p>
-          <DialogTitle className="leading-tight">{displayOnly ? `Current voucher ${displayOnlyVariant === 'out' ? 'payment out' : 'in voucher'}${accountName ? ` from ${accountName}` : ""}` : `Select Receipt / Direct Income / Contra (in)${accountName ? ` from ${accountName}` : ""}`}</DialogTitle>
+          <DialogTitle className="leading-tight">{displayOnly ? `Current voucher ${displayOnlyVariant === 'out' ? 'payment' : 'in voucher'}${accountName ? ` from ${accountName}` : ""}` : `Select Receipt / Direct Income / Contra (in)${accountName ? ` from ${accountName}` : ""}`}</DialogTitle>
           {!displayOnly && (
           <p className="text-sm text-muted-foreground hidden md:block">
             Tick which Receipt, Direct Income or Contra (in) vouchers this payment is spending from. Amount will be linked from selected vouchers.
@@ -324,7 +324,7 @@ export function LinkPaymentInToPaymentOutDialog({
           )}
         </DialogHeader>
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-slim-dim flex flex-col gap-2">
-        {/* To Voucher (current voucher): the Payment Out we're editing — show at top like Payment In dialog. */}
+        {/* To Voucher (current voucher): the Payment we're editing — show at top like Payment In dialog. */}
         {currentVoucherSummary && !displayOnly && (
           <div className="space-y-1.5 rounded-lg border bg-muted/30 p-3 shrink-0">
             <p className="text-sm font-medium text-muted-foreground">

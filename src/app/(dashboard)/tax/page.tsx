@@ -26,7 +26,7 @@ import { CreateTaxDialog } from "@/components/tax/CreateTaxDialog";
 import { CreateTaxGroupDialog } from "@/components/tax/CreateTaxGroupDialog";
 import { PermissionButton } from "@/components/permission";
 import { useVouchers } from "@/hooks/useVouchers";
-import { resolveMasterListSelection } from "@/lib/masterEntityLiveUpdate";
+import { useLiveMasterSelection } from "@/hooks/useLiveMasterSelection";
 import usePermissions from "@/hooks/usePermissions";
 import type { Tax, TaxGroup } from "@/components/tax/types";
 import { collectInterCompanyIdsForPendingApproval } from "@/lib/interCompany/interCompanyVoucherHydrate";
@@ -188,10 +188,7 @@ function TaxPageContent() {
   const [groupMemberFilterId, setGroupMemberFilterId] = useState<string | null>(null);
 
   const selectedTaxRaw = activeView === 'taxes' ? selected as Tax : null;
-  const selectedTax = useMemo(
-    () => resolveMasterListSelection(selectedTaxRaw, processedTaxes),
-    [selectedTaxRaw, processedTaxes]
-  );
+  const selectedTax = useLiveMasterSelection(selectedTaxRaw, setSelected, processedTaxes);
   const selectedGroupRaw = activeView === 'groups' ? selected as TaxGroup : null;
   const handleTaxUpdated = useCallback((patch?: Partial<Tax>) => {
     if (!patch?.id || !selectedTaxRaw || selectedTaxRaw.id !== patch.id) return;
@@ -208,7 +205,7 @@ function TaxPageContent() {
   const mobileTaxSelectionLabel = useMemo((): ReactNode => {
     if (!selected) return null;
     if (activeView !== "groups") {
-      const name = (selected as Tax).name;
+      const name = selectedTax?.name ?? (selected as Tax).name;
       return name && String(name).trim() ? String(name).trim() : null;
     }
     const group = selected as TaxGroup;
@@ -224,7 +221,7 @@ function TaxPageContent() {
     }
     const name = group.name;
     return name && String(name).trim() ? String(name).trim() : null;
-  }, [selected, activeView, groupMemberFilterId, processedTaxes, mobileTaxSelectionLabelClassName]);
+  }, [selected, selectedTax, activeView, groupMemberFilterId, processedTaxes, mobileTaxSelectionLabelClassName]);
   const taxMasterDetailTitle = activeView === "groups" ? "Tax Group" : "Tax";
   const taxShellTitle = useMemo(
     () => mobileEntityDetailShellTitle(isMobile, Boolean(selected), taxMasterDetailTitle, "Tax details"),
@@ -255,6 +252,7 @@ function TaxPageContent() {
   }, [initialProcessedTaxGroups, companyId]);
   processedTaxGroupsRef.current = processedTaxGroups;
 
+  useLiveMasterSelection(selectedGroupRaw, setSelected, processedTaxGroups);
   const selectedGroup = useMemo(
     () =>
       selectedGroupRaw

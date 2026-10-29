@@ -40,6 +40,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { toast } from "sonner";
 import type { Account } from "@/components/bank-cash/types";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { isPbOnlySession, resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";
 
 function ContraReportPageContent() {
     const { vouchers, loading, processedAccounts } = useVouchers();
@@ -122,6 +123,8 @@ function ContraReportPageContent() {
     const fetchAccountName = React.useCallback(async (accountId: string): Promise<string> => {
         if (!companyId || !accountId) return 'Unknown Account';
         if (journalAccountNames[accountId]) return journalAccountNames[accountId];
+        // Server-only session: no Firebase user; names come from local data (journalAccountNames).
+        if (isPbOnlySession()) return 'Unknown Account';
 
         const collectionsToSearch = ['parties', 'bank_accounts', 'staff', 'items', 'expense_accounts', 'taxes', 'users'];
         const nameFields = ['name', 'accountName', 'name', 'name', 'name', 'name', 'displayName'];
@@ -145,13 +148,7 @@ function ContraReportPageContent() {
     
     const fetchUserName = useCallback(async (userId: string): Promise<string> => {
         if (userNames[userId]) return userNames[userId];
-        try {
-            const userDoc = await getDoc(doc(firestore, 'users', userId));
-            if (userDoc.exists()) {
-                return userDoc.data().displayName || userDoc.data().email || "Unknown";
-            }
-        } catch (e) {}
-        return "Unknown";
+        return resolveUserDisplayName(userId, "Unknown");
     }, [userNames]);
 
     useEffect(() => {

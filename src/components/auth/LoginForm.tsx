@@ -171,9 +171,6 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
   const [rememberEmail, setRememberEmail] = useState(() => readRememberEmailEnabled());
   /** Server-only login: no Firebase sign-in, Firestore stays off for the whole session. */
   const [serverOnlyLogin, setServerOnlyLogin] = useState(() => readServerOnlyLoginEnabled());
-  /** Blocks browser autofill into empty fields when "Remember email" is off (readonly until focus). */
-  const [emailAutofillGuard, setEmailAutofillGuard] = useState(() => !readRememberEmailEnabled());
-  const [passwordAutofillGuard, setPasswordAutofillGuard] = useState(() => !readRememberEmailEnabled());
   const [showServerAddress, setShowServerAddress] = useState(false);
   const [serverAddress, setServerAddress] = useState("");
   /** "Login as recovery mode?" (desktop app, super admin email only; never remembered). */
@@ -183,6 +180,9 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
   const [otpBusy, setOtpBusy] = useState(false);
   const [otpError, setOtpError] = useState("");
   const [nowMs, setNowMs] = useState(() => Date.now());
+  /** Browsers may autofill after paint; setters stay so login never crashes. Fields stay typeable (no readOnly). */
+  const [, setEmailAutofillGuard] = useState(false);
+  const [, setPasswordAutofillGuard] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
   // Post-login: `resolvePostAuthCompanyRoute` — web = remember/empty → `/company`; static/APK = last company → `/dashboard`.
@@ -505,42 +505,40 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
           withTimeout(pocketBaseSignIn(values.email, values.password), SERVER_SIGN_IN_TIMEOUT_MS),
           signInWithEmailAndPassword(auth, values.email, values.password),
         ]);
-        if (olderRes.status === "rejected") {
-          if (serverRes.status !== "fulfilled") {
-            const olderCode = String((olderRes.reason as { code?: unknown })?.code || "");
-            const serverStatus =
-              serverRes.reason instanceof PocketBaseRequestError ? serverRes.reason.status : 0;
-            const approval = pocketBaseApprovalState(serverRes.reason);
-            // Both failed: wrong password is the usual cause; say so when either side said so.
-            throw Object.assign(new Error("SIGN_IN_FAILED"), {
-              code:
-                approval === "pending"
-                  ? "pl-account-pending"
-                  : approval === "rejected"
-                  ? "pl-account-rejected"
-                  : approval === "otp"
-                  ? "pl-account-otp"
-                  : serverStatus === 403
-                  ? "pl-account-disabled"
-                  : olderCode === "auth/invalid-credential" || serverStatus === 400
-                  ? "auth/invalid-credential"
-                  : olderCode || "sign-in-failed",
-            });
-          }
+        if (olderRes.status === "rejected" && serverRes.status !== "fulfilled") {
+          const olderCode = String((olderRes.reason as { code?: unknown })?.code || "");
+          const serverStatus =
+            serverRes.reason instanceof PocketBaseRequestError ? serverRes.reason.status : 0;
+          const approval = pocketBaseApprovalState(serverRes.reason);
+          throw Object.assign(new Error("SIGN_IN_FAILED"), {
+            code:
+              approval === "pending"
+                ? "pl-account-pending"
+                : approval === "rejected"
+                ? "pl-account-rejected"
+                : approval === "otp"
+                ? "pl-account-otp"
+                : serverStatus === 403
+                ? "pl-account-disabled"
+                : olderCode === "auth/invalid-credential" || serverStatus === 400
+                ? "auth/invalid-credential"
+                : olderCode || "sign-in-failed",
+          });
+        }
+        if (serverRes.status === "fulfilled") {
           try {
             await startPocketBaseAppSession();
           } catch (e) {
             pocketBaseSignOut();
-            throw Object.assign(new Error(e instanceof Error ? e.message : "SIGN_IN_FAILED"), {
-              code: "pl-server-profile",
-            });
+            if (olderRes.status !== "fulfilled") {
+              throw Object.assign(new Error(e instanceof Error ? e.message : "SIGN_IN_FAILED"), {
+                code: "pl-server-profile",
+              });
+            }
           }
-          serverOnly = true;
-        } else {
-          // Older account signed in: no server-only session (the server token, if any, stays for
-          // Pocket Ledger Server companies).
-          clearPocketBaseAppSession();
         }
+        if (olderRes.status === "rejected") serverOnly = true;
+        // Books show/save from Settings (Firebase vs Pocket Ledger Server), not from email vs Google.
       }
 
       // Logout save-account: isi session ka password memory me (plain storage nahi).
@@ -752,12 +750,7 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
                   <Input
                     placeholder="name@example.com"
                     {...field}
-                    readOnly={emailAutofillGuard}
                     autoComplete={rememberEmail ? "username" : "off"}
-                    onFocus={(e) => {
-                      setEmailAutofillGuard(false);
-                      field.onFocus?.(e);
-                    }}
                   />
                 </FormControl>
                 <FormMessage />
@@ -775,14 +768,9 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
                     type="password"
                     placeholder="••••••••"
                     {...field}
-                    readOnly={passwordAutofillGuard}
                     autoComplete={
                       isSignUp ? "new-password" : rememberEmail ? "current-password" : "new-password"
                     }
-                    onFocus={(e) => {
-                      setPasswordAutofillGuard(false);
-                      field.onFocus?.(e);
-                    }}
                   />
                 </FormControl>
                 <FormMessage />
@@ -801,15 +789,9 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
                   localStorage.setItem(REMEMBER_EMAIL_ENABLED_KEY, next ? "1" : "0");
                   if (next) {
                     const saved = localStorage.getItem(REMEMBER_EMAIL_KEY);
-                    form.setValue("email", saved ?? "");
-                    setEmailAutofillGuard(false);
-                    setPasswordAutofillGuard(false);
+                    if (saved) form.setValue("email", saved);
                   } else {
-                    form.setValue("email", "");
-                    form.setValue("password", "");
                     localStorage.removeItem(REMEMBER_EMAIL_KEY);
-                    setEmailAutofillGuard(true);
-                    setPasswordAutofillGuard(true);
                   }
                 } catch (_) {}
               }}
@@ -838,7 +820,8 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
                 Pocket Ledger Server login only
               </label>
               <p className="text-xs text-muted-foreground">
-                Signs in to the Pocket Ledger Server only. Firebase companies stay hidden in this session.
+                Signs in to the Pocket Ledger Server only. Where books show and save still follows Settings
+                (Firebase or Pocket Ledger Server), not email vs Google.
               </p>
               {canRecover ? (
                 <>

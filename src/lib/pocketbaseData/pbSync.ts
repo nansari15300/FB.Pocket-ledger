@@ -8,7 +8,7 @@
  * Direct mutation wrappers (setDoc/updateDoc/deleteDoc/addDoc on `companies/{id}/...`)
  *   -> `pbWriteAppDoc` for PocketBase companies.
  * Read path: `pullPocketBaseCompanyToLocal` -> SQLite mirror (`company_docs`), driven by the
- *   server change log (`pl_change_log`), so an idle poll is one small request.
+ *   server change log (`pl_change_log`). Idle poll / live apply: selected company only.
  *
  * Rows: one per app document, key = (company, app_id[, kind | coll]); the full document is
  * in `data` (timestamps encoded as `{__fsTs, seconds, nanoseconds}` like the outbox).
@@ -31,8 +31,11 @@ import {
   pbTargetForAppCollection,
   PB_DATA_COLLECTIONS,
 } from "@/lib/pocketbaseData/pbMapping";
-import { listPocketBaseCompanyIds } from "@/lib/pocketbaseData/pbCompanyRegistry";
-import { isPocketBaseCompanyDataSyncEnabled } from "@/lib/firebaseLedgerCompanySyncPrefs";
+import {
+  isActivePocketBaseCompanyId,
+  listActivePocketBaseCompanyIds,
+  listPocketBaseCompanyIds,
+} from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { isPocketBaseAppSessionActive } from "@/lib/pocketbaseData/pbAppSession";
 
 type PbRecord = Record<string, unknown> & { id: string };
@@ -233,6 +236,17 @@ export function pbDeviceId(): string {
   }
 }
 
+/** Relation field from a realtime/API record (`"xyz"` or `{ id: "xyz" }`). */
+export function pocketBaseCompanyRecId(rec: Record<string, unknown> | null | undefined): string {
+  const c = rec?.company;
+  if (typeof c === "string" && c.trim()) return c.trim();
+  if (c && typeof c === "object") {
+    const id = (c as { id?: unknown }).id;
+    if (typeof id === "string" && id.trim()) return id.trim();
+  }
+  return "";
+}
+
 /* ------------------------------------------------------------------ */
 /* company                                                             */
 /* ------------------------------------------------------------------ */
@@ -259,6 +273,25 @@ function rememberCompanyRec(appCompanyId: string, recId: string | null): void {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * App company id for a server company record id (from the local cache only, no request).
+ * `someUnmapped`: a candidate company has no cached record id yet (used by the live feed).
+ */
+export function appCompanyIdForPocketBaseRecord(
+  recId: string,
+  candidates: string[]
+): { appCompanyId: string | null; someUnmapped: boolean } {
+  const m = readCompanyRecMap();
+  const url = getValidPocketBaseAuth()?.url || "";
+  let someUnmapped = false;
+  for (const id of candidates) {
+    const rec = m[`${url}|${id}`];
+    if (rec === recId) return { appCompanyId: id, someUnmapped: false };
+    if (!rec) someUnmapped = true;
+  }
+  return { appCompanyId: null, someUnmapped };
 }
 
 export type PocketBaseCompanyInfo = {
@@ -721,32 +754,61 @@ export async function pushOutboxRowToPocketBase(row: PbOutboxRow): Promise<PbOpR
   } catch {
     payload = {};
   }
-  const mode: PbWriteMode = row.op === "delete" ? "delete" : "set";
+  const isTombstone =
+    row.op !== "delete" &&
+    (payload.isDeleted === true || payload.deleted === true);
+  // Recycle-bin soft delete: merge tombstone. Full SET was rejected when server `updatedAtMs`
+  // was newer, so PocketBase never logged the delete and the other device kept the voucher.
+  const mode: PbWriteMode = row.op === "delete" ? "delete" : isTombstone ? "merge" : "set";
   const at = Number(row.created_at);
-  // `local:` files -> pl_attachments, links -> `pbatt:` (bytes not on this device keep their ref).
-  let conversion: import("@/lib/pocketbaseData/pbAttachments").PbAttachmentConversion | null = null;
-  if (mode !== "delete" && JSON.stringify(payload).includes('"local:')) {
-    const [{ convertLocalRefsForPocketBase }, { getPendingPayloadForLocalRef }] = await Promise.all([
-      import("@/lib/pocketbaseData/pbAttachments"),
-      import("@/lib/localPendingFiles"),
+  const writeOnce = async (data: Record<string, unknown>) => {
+    const [result] = await pbBatchWrite(row.company_id, [
+      {
+        coll: row.collection_name,
+        id: row.doc_id,
+        mode,
+        data,
+        at: Number.isFinite(at) && at > 0 ? at : undefined,
+      },
     ]);
-    const pbCompanyId = await ensurePocketBaseCompany(row.company_id, {
-      createIfMissing: true,
-      info: await companyInfoFromLocalRegistry(row.company_id),
-    });
-    conversion = await convertLocalRefsForPocketBase({
-      pbCompanyId,
-      coll: row.collection_name,
-      docId: row.doc_id,
-      data: payload,
-      deviceId: pbDeviceId(),
-      getPending: getPendingPayloadForLocalRef,
-    });
-    payload = conversion.data;
+    return result || null;
+  };
+  // JSON first — voucher attachment upload used to occupy the HTTP/1.1 slot so the
+  // other device only saw the edit after the writer refreshed (SSE dropped, POST ran).
+  let r = await writeOnce(payload);
+  let conversion: import("@/lib/pocketbaseData/pbAttachments").PbAttachmentConversion | null = null;
+  if (mode !== "delete" && r?.status !== "rejected" && JSON.stringify(payload).includes('"local:')) {
+    const ac = typeof AbortController !== "undefined" ? new AbortController() : null;
+    // JSON is already on the server. Give the file upload time — 4s aborted `local:` and left it on the voucher.
+    const timer = ac ? setTimeout(() => ac.abort(), 60_000) : null;
+    try {
+      const [{ convertLocalRefsForPocketBase }, { getPendingPayloadForLocalRef }] = await Promise.all([
+        import("@/lib/pocketbaseData/pbAttachments"),
+        import("@/lib/localPendingFiles"),
+      ]);
+      const pbCompanyId = await ensurePocketBaseCompany(row.company_id, {
+        createIfMissing: true,
+        info: await companyInfoFromLocalRegistry(row.company_id),
+      });
+      conversion = await convertLocalRefsForPocketBase({
+        pbCompanyId,
+        coll: row.collection_name,
+        docId: row.doc_id,
+        data: payload,
+        deviceId: pbDeviceId(),
+        getPending: getPendingPayloadForLocalRef,
+        signal: ac?.signal,
+      });
+      if (conversion.converted.size) {
+        payload = conversion.data;
+        r = await writeOnce(payload);
+      }
+    } catch {
+      conversion = null;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
-  const [r] = await pbBatchWrite(row.company_id, [
-    { coll: row.collection_name, id: row.doc_id, mode, data: payload, at: Number.isFinite(at) && at > 0 ? at : undefined },
-  ]);
   if (conversion && conversion.converted.size && r && r.status !== "rejected") {
     await applyAttachmentLinksLocally(row, conversion);
   }
@@ -859,17 +921,105 @@ async function mirrorDocs(companyId: string, byColl: Map<string, Record<string, 
   const counts: Record<string, number> = {};
   for (const [coll, docs] of byColl) {
     if (!docs.length) continue;
-    await mirrorCollectionDocsToBrowserDbSilent(companyId, coll, docs, { force: true, mergePreferNewer: true });
-    counts[coll] = docs.length;
+    const result = await mirrorCollectionDocsToBrowserDbSilent(companyId, coll, docs, {
+      force: true,
+      mergePreferNewer: true,
+    });
+    if (!result.upserted) continue;
+    counts[coll] = result.upserted;
     // Open lists (dashboard, daybook, ledgers, vouchers, parties, items) re-read SQLite on this bump.
-    notifyBrowserDbCollectionUpdated(companyId, coll, { source: "pl_server_pull" });
+    notifyBrowserDbCollectionUpdated(companyId, coll, { source: "pl_server_pull", immediate: true });
   }
   return counts;
 }
 
-function groupRecords(collection: string, recs: Record<string, unknown>[], into: Map<string, Record<string, unknown>[]>): number {
+/**
+ * Live-patch open lists from SQLite (post-merge), never from a stale incoming server row.
+ * Writer save: local newer stays; painting the old server copy caused a 20ms old-narration flash.
+ */
+async function dispatchPbMirrorLivePatches(
+  companyId: string,
+  byColl: Map<string, Record<string, unknown>[]>,
+  opts?: { insertIfMissing?: boolean }
+): Promise<void> {
+  const insertIfMissing = opts?.insertIfMissing !== false;
+  const { getCompanyDocFromBrowserDb } = await import("@/lib/localCompanyDocMirror");
+  for (const [coll, docs] of byColl) {
+    for (const doc of docs) {
+      const id = String(doc.id || "");
+      if (!id) continue;
+      const local = ((await getCompanyDocFromBrowserDb(companyId, coll, id, {
+        includeDeleted: true,
+      })) || doc) as Record<string, unknown>;
+      if (coll === "vouchers") {
+        const { dispatchVoucherLivePatch } = await import("@/lib/voucherFormAttachmentSave");
+        dispatchVoucherLivePatch(companyId, id, { ...local, id });
+      } else {
+        const { dispatchMasterLivePatch, isMasterLivePatchCollection } = await import(
+          "@/lib/masterEntityLivePatch"
+        );
+        if (isMasterLivePatchCollection(coll)) {
+          dispatchMasterLivePatch(companyId, coll, id, { ...local, id }, { insertIfMissing });
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Apply one PocketBase realtime collection event to the local SQLite mirror (Live mode).
+ * Same merge rules as a change-log pull (newer local / pending outbox wins).
+ */
+export async function applyPocketBaseRealtimeRecord(
+  collection: string,
+  rec: Record<string, unknown> | null | undefined,
+  action?: string
+): Promise<"applied" | "skipped" | "unmapped"> {
+  if (!rec || typeof rec !== "object") return "skipped";
+  const auth = getValidPocketBaseAuth();
+  if (!auth) return "skipped";
+  const companyRecId = pocketBaseCompanyRecId(rec);
+  if (!companyRecId) return "skipped";
+  const myDevice = pbDeviceId();
+  if (myDevice && String(rec.deviceId || "") === myDevice) return "skipped";
+  const ids = listPocketBaseCompanyIds();
+  const hit = appCompanyIdForPocketBaseRecord(companyRecId, ids);
+  if (!hit.appCompanyId) return hit.someUnmapped ? "unmapped" : "skipped";
+  if (!isActivePocketBaseCompanyId(hit.appCompanyId)) return "skipped";
+
+  if (collection === "pl_companies") {
+    rootCache.delete(hit.appCompanyId);
+    await syncCompanyRoot(hit.appCompanyId, true);
+    return "applied";
+  }
+  if (!(PB_DATA_COLLECTIONS as readonly string[]).includes(collection)) return "skipped";
+
+  const row = String(action || "").toLowerCase() === "delete" ? { ...rec, deleted: true } : rec;
+  const byColl = new Map<string, Record<string, unknown>[]>();
+  if (!groupRecords(collection, [row], byColl)) return "skipped";
+  const collections = await mirrorDocs(hit.appCompanyId, byColl);
+  if (Object.keys(collections).length) {
+    try {
+      await dispatchPbMirrorLivePatches(hit.appCompanyId, byColl, {
+        insertIfMissing: String(action || "").toLowerCase() !== "delete",
+      });
+    } catch {
+      /* collection bump already refreshed open lists */
+    }
+  }
+  return "applied";
+}
+
+function groupRecords(
+  collection: string,
+  recs: Record<string, unknown>[],
+  into: Map<string, Record<string, unknown>[]>,
+  opts?: { skipOwnDevice?: boolean }
+): number {
+  const myDevice = opts?.skipOwnDevice ? pbDeviceId() : "";
   let n = 0;
   for (const r of recs) {
+    if (myDevice && String(r.deviceId || "") === myDevice) continue;
     const appColl = appCollectionForPbRecord(collection, r);
     if (!appColl || !r.app_id) continue;
     const list = into.get(appColl) || [];
@@ -903,6 +1053,13 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
       changed += groupRecords(coll, recs, byColl);
     }
     const collections = await mirrorDocs(companyId, byColl);
+    if (Object.keys(collections).length) {
+      try {
+        await dispatchPbMirrorLivePatches(companyId, byColl);
+      } catch {
+        /* collection bump already refreshed open lists */
+      }
+    }
     await syncCompanyRoot(companyId, true);
     writeCursor(companyId, { atMs: maxAt, url: auth.url });
     return { full: true, changed, collections };
@@ -926,7 +1083,7 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
     maxAt = Math.max(maxAt, Number(l.at_ms) || 0);
     const coll = String(l.coll || "");
     if (coll === "pl_companies") rootChanged = true;
-    if (!(PB_DATA_COLLECTIONS as readonly string[]).includes(coll) || !l.record_id || l.op === "delete") continue;
+    if (!(PB_DATA_COLLECTIONS as readonly string[]).includes(coll) || !l.record_id) continue;
     const s = idsByColl.get(coll) || new Set<string>();
     s.add(String(l.record_id));
     idsByColl.set(coll, s);
@@ -938,10 +1095,17 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
       const chunk = all.slice(i, i + 40);
       const f = `${cf} && (${chunk.map((id) => `id = ${pbQuote(id)}`).join(" || ")})`;
       const recs = await pbListAll<PbRecord>(coll, f);
-      changed += groupRecords(coll, recs, byColl);
+      changed += groupRecords(coll, recs, byColl, { skipOwnDevice: true });
     }
   }
   const collections = await mirrorDocs(companyId, byColl);
+  if (Object.keys(collections).length) {
+    try {
+      await dispatchPbMirrorLivePatches(companyId, byColl);
+    } catch {
+      /* collection bump already refreshed open lists */
+    }
+  }
   if (rootChanged || isPocketBaseCompanyRootDirty(companyId)) {
     rootCache.delete(companyId);
     await syncCompanyRoot(companyId, rootChanged);
@@ -953,18 +1117,21 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
 let pullAllRunning = false;
 let lastPullAllAt = 0;
 
-/** Throttled pull of every PocketBase company on this device (called by the sync manager). */
-export async function pullAllPocketBaseCompaniesThrottled(minIntervalMs = 30_000): Promise<void> {
-  if (pullAllRunning || Date.now() - lastPullAllAt < minIntervalMs) return;
+/** Throttled pull of the selected PocketBase company only (idle sync). */
+export async function pullAllPocketBaseCompaniesThrottled(
+  minIntervalMs = 30_000,
+  opts?: { force?: boolean }
+): Promise<void> {
+  if (pullAllRunning) return;
+  if (!opts?.force && Date.now() - lastPullAllAt < minIntervalMs) return;
   if (!getValidPocketBaseAuth()) return;
   if (typeof navigator !== "undefined" && navigator.onLine === false) return;
-  const ids = listPocketBaseCompanyIds();
+  const ids = listActivePocketBaseCompanyIds();
   if (!ids.length) return;
   pullAllRunning = true;
   lastPullAllAt = Date.now();
   try {
     for (const id of ids) {
-      if (!isPocketBaseCompanyDataSyncEnabled(id)) continue;
       try {
         await pullPocketBaseCompanyToLocal(id);
       } catch (e) {

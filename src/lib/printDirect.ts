@@ -804,7 +804,7 @@ function buildAccountConfirmationDocDefinition(p: PrintPayload): TDocumentDefini
     activityRow("Sales Return", summary.salesReturn),
     activityRow("Purchase Turnover", summary.purchases),
     activityRow("Purchase Return", summary.purchaseReturn),
-    activityRow("Receipt / Payment Out", summary.payments),
+    activityRow("Receipt / Payment", summary.payments),
     activityRow("TDS Deducted", { exVatDr: 0, exVatCr: 0, vatDr: 0, vatCr: 0, totalDr: 0, totalCr: summary.tdsDeducted }),
   ];
   const totalActivity = ["Total", { exVatDr: 0, exVatCr: 0, vatDr: 0, vatCr: 0, totalDr: 0, totalCr: 0 }] as [string, any];
@@ -1502,7 +1502,7 @@ function getTransactionAmounts(t: any, context: Context, entityOrId?: any, stock
           } else if (t.type === 'purchase') {
               debit += amount;
           } else if (t.type === 'payment_out' || t.type === 'direct_expense') {
-              credit += amount; // Payment Out = Credit (money going out)
+              credit += amount; // Payment = Credit (money going out)
           } else if (t.type === 'payment_in' || t.type === 'direct_income') {
               debit += amount; // Payment In = Debit (money coming in)
           }

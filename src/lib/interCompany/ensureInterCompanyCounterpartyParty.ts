@@ -15,6 +15,7 @@ import {
   type InterCompanyClearingMode,
 } from "@/lib/interCompany/interCompanyCounterpartyPartyName";
 import { restoreCompanySubdocFromRecycleBin } from "@/lib/recycleBinEntityLifecycle";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 import {
   getCompanyDocFromBrowserDb,
   listCompanyDocsFromBrowserDb,
@@ -221,6 +222,7 @@ export type EnsureInterCompanyCounterpartyArgs = {
 export async function ensureInterCompanyCounterpartyParty(
   args: EnsureInterCompanyCounterpartyArgs
 ): Promise<string> {
+  if (!isInterCompanySystemEnabled()) return "";
   const companyId = String(args.companyId || "").trim();
   const peerCompanyId = String(args.peerCompanyId || "").trim();
   const peerCompanyName = String(args.peerCompanyName || "Company").trim() || "Company";

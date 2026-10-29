@@ -80,7 +80,6 @@ import {
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
   LEDGER_HEADER_PILL_ROW_CN,
   LEDGER_TXN_PAGE_ROOT_CN,
-  LEDGER_TXN_TABLE_HOST_CN,
 } from "@/lib/ledgerHeaderChrome";
 import { LedgerTxnScrollColumn } from "@/components/vouchers/LedgerTxnScrollColumn";
 import { useCompany } from "@/hooks/useCompany";
@@ -1882,9 +1881,10 @@ export function AccountGroupDetails({
         </div>
           }
           table={
-          <div className={cn(LEDGER_TXN_TABLE_HOST_CN, spendWiseView && "p-[2px]")}>
-            {/* Bank/Cash group pages use their own Statement/Spend-wise toggle, so shared bill-wise preference must stay off here. */}
-            <MasterAccountFreezeTxnShell className="min-h-[8rem]" overlay={memberFreezeOverlay}>
+            <MasterAccountFreezeTxnShell
+              className={cn("min-h-[8rem]", spendWiseView && "p-[2px]")}
+              overlay={memberFreezeOverlay}
+            >
             <TransactionsTable
               transactions={paginatedTransactions}
               context="group"
@@ -1939,7 +1939,6 @@ export function AccountGroupDetails({
               {...bankLedgerDepositWithdrawColumnLabels("bank")}
             />
             </MasterAccountFreezeTxnShell>
-          </div>
           }
           footer={
         <LedgerDesktopFooter

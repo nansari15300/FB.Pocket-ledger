@@ -3,6 +3,9 @@
 import { getEmbeddedLockShellKind } from "@/lib/embeddedDeviceLock";
 import { isPlNavRedirectDebugEnabled, plNavDbg, plNavDbgIdHint } from "@/lib/plNavRedirectDebug";
 
+/** Fired when this tab's selected company id actually changes (`detail: { previous, next }`). */
+export const SELECTED_COMPANY_CHANGED_EVENT = "pl-selected-company-changed";
+
 /** Legacy global — sirf nayi tab / pehli visit fallback; running tab is key se kabhi switch na ho. */
 const GLOBAL_COMPANY_ID_KEY = "companyId";
 /** Fast path — is tab ki current company (session). */
@@ -167,6 +170,7 @@ export function readSelectedCompanyId(): string {
 /** User company pick — tab map + session; global sirf nayi tab hint ke liye. */
 export function writeSelectedCompanyId(companyId: string, options?: WriteSelectedCompanyOptions): void {
   if (typeof window === "undefined") return;
+  const prev = readSelectedCompanyId();
   const clean = cleanCompanyId(companyId);
   const userInitiated = options?.userInitiated !== false;
 
@@ -190,6 +194,16 @@ export function writeSelectedCompanyId(companyId: string, options?: WriteSelecte
       sessionKey: TAB_COMPANY_ID_KEY,
       globalKey: userInitiated ? GLOBAL_COMPANY_ID_KEY : "(skipped boot)",
     });
+  }
+
+  if (prev !== clean) {
+    try {
+      window.dispatchEvent(
+        new CustomEvent(SELECTED_COMPANY_CHANGED_EVENT, { detail: { previous: prev, next: clean } })
+      );
+    } catch {
+      /* ignore */
+    }
   }
 }
 

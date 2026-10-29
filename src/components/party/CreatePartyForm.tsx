@@ -45,6 +45,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { compressFile } from "@/lib/compression";
 import { compressImageForCompany, attachmentImageStillTooLargeToastFields, useImageCompressionProcessing } from "@/lib/attachmentCompressionUi";
 import { MasterFormNameAcNoRow, MasterMobileNoField, MasterFormTwoColGrid } from "@/components/inter-company/MasterFormLayout";
+import { useAutoAliasFromName } from "@/hooks/useAutoAliasFromName";
 import { interCompanyAcNoForNewEntity } from "@/lib/interCompany/interCompanyAccountNo";
 import {
   MAX_IMAGE_BYTES_BEFORE_COMPRESS,
@@ -224,6 +225,7 @@ export function CreatePartyForm({
     },
     mode: "onChange",
   });
+  const { markAliasUserEdited } = useAutoAliasFromName(form);
 
   const openingBalanceDateMissing = useMasterOpeningBalanceDateRequired(form.control);
 
@@ -809,7 +811,14 @@ export function CreatePartyForm({
                 <FormItem>
                   <FormLabel>Alias Name <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
                   <FormControl>
-                    <Input placeholder="Other name on bills / short name" {...field} />
+                    <Input
+                      placeholder="Other name on bills / short name"
+                      {...field}
+                      onChange={(e) => {
+                        markAliasUserEdited();
+                        field.onChange(e);
+                      }}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

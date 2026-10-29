@@ -18,6 +18,7 @@ import {
 } from "@/lib/groupListExpand";
 import { groupListMemberAvatarFromRow } from "@/components/entity/GroupListMemberAvatar";
 import { MasterListGroupIcon } from "@/components/entity/MasterListGroupIcon";
+import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
 
 type MasterGroupRow = {
   id: string;
@@ -101,15 +102,7 @@ export function MasterGroupExpandableListBody<
             <div className="pl-master-list-row-leading">
               <div className="relative flex-shrink-0">
                 {groupLeading}
-                {groupPending > 0 && (
-                  <span
-                    className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center bg-pink-500 text-white text-[10px] font-bold origin-center"
-                    style={{ transform: "rotate(45deg) translate(25%, -25%)" }}
-                    aria-label={`${groupPending} pending approval`}
-                  >
-                    <span style={{ transform: "rotate(-45deg)" }}>{groupPending}</span>
-                  </span>
-                )}
+                <MasterListPendingBadge count={groupPending} />
               </div>
               <GroupListExpandNameRow
                 name={group.name}

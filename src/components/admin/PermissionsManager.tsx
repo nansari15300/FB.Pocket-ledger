@@ -1,10 +1,11 @@
 
 "use client";
 
+import { adminServerWriteBlocked, isAdminServerMode } from "@/lib/adminData/adminServerMode";
 import React, { useEffect, useState, useMemo } from "react";
 import { firestore } from "@/lib/firebase";
 import { doc, setDoc } from "firebase/firestore";
-import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
+import { adminServerSetDoc, isAdminServerDataActive, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { Permission, PermissionGroups, type PermissionGroup } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Loader2, Save, Undo2 } from "lucide-react";
@@ -37,7 +38,7 @@ export default function PermissionsManager({ selectedGroup }: { selectedGroup: P
         setFirestorePermissionConfig(data);
       } else {
         import("@/hooks/usePermissions").then(module => {
-            setDoc(docRef, module.initialPermissionConfig);
+            if (!isAdminServerMode()) setDoc(docRef, module.initialPermissionConfig);
             setEditablePermissionConfig(module.initialPermissionConfig);
             setFirestorePermissionConfig(module.initialPermissionConfig);
         });
@@ -89,10 +90,16 @@ export default function PermissionsManager({ selectedGroup }: { selectedGroup: P
   }
 
   const handleSavePermissions = async () => {
+    const viaServer = isAdminServerDataActive();
+    if (!viaServer && adminServerWriteBlocked()) return;
     if (!editablePermissionConfig) return;
     setIsSaving(true);
     try {
-      await setDoc(docRef, editablePermissionConfig);
+      if (viaServer) {
+        await adminServerSetDoc("app_settings/permissions", editablePermissionConfig as unknown as Record<string, unknown>, false);
+      } else {
+        await setDoc(docRef, editablePermissionConfig);
+      }
       sonnerToast.success("Permissions saved successfully!");
     } catch (error) {
        console.error("Failed to save permissions:", error);

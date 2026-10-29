@@ -42,6 +42,7 @@
     "cap:icons": "npx capacitor-assets generate --android --iconBackgroundColor \"#ffffff\" && node scripts/sync-android-launcher-foreground.js",
     "cap:open:android": "npx cap open android",
     "build:static": "node scripts/build-static.js",
+    "pack:pl-server": "node scripts/pack-app-to-pl-server.js",
     "build:static:fast": "node scripts/build-static.js --fast",
     "serve:out": "node scripts/serve-out-static.cjs",
     "build:portable": "node scripts/build-portable-out-zip.cjs",
@@ -54,7 +55,8 @@
     "website:stage-releases": "node scripts/stage-website-releases.cjs",
     "release:bump": "node scripts/bump-release-version.cjs",
     "release:publish": "node scripts/release-publish.cjs",
-    "release:publish:fast": "node scripts/release-publish.cjs --skip-static"
+    "release:publish:fast": "node scripts/release-publish.cjs --skip-static",
+    "release:upload:np": "node scripts/upload-releases-to-pl-server.cjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^6.2.0",

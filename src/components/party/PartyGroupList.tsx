@@ -39,6 +39,7 @@ import { formatGroupListCardCountSubtitle } from "@/lib/groupListCardCounts";
 import { toggleGroupListAccordionExpand } from "@/lib/groupListExpand";
 import { GroupListMemberAvatar } from "@/components/entity/GroupListMemberAvatar";
 import { MasterListGroupIcon } from "@/components/entity/MasterListGroupIcon";
+import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
 import { PartyGroupNestedListSection } from "@/components/party/PartyGroupNestedListSection";
 
 type GroupWithType = Group & { groupType?: 'party' | 'tax' | 'staff' | 'account' | 'expense' | 'item' };
@@ -369,15 +370,7 @@ export function PartyGroupList({
                                       <MasterListGroupIcon>
                                         {isSystem ? <Lock className="h-4 w-4" /> : <Users className="h-4 w-4" />}
                                       </MasterListGroupIcon>
-                                      {groupPending > 0 && (
-                                        <span
-                                          className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center bg-pink-500 text-[10px] font-bold text-white origin-center"
-                                          style={{ transform: "rotate(45deg) translate(25%, -25%)" }}
-                                          aria-label={`${groupPending} pending approval`}
-                                        >
-                                          <span style={{ transform: "rotate(-45deg)" }}>{groupPending}</span>
-                                        </span>
-                                      )}
+                                      <MasterListPendingBadge count={groupPending} />
                                     </div>
                                     <GroupListExpandNameRow
                                       name={group.name}

@@ -6,7 +6,7 @@ import { isEmbeddedDeviceLockShell } from "@/lib/embeddedDeviceLock";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Share2, Loader2, Hash, Palette, FileDigit, Zap, Building, ShieldAlert, Bell, Smartphone, ChevronLeft, PanelLeft, PanelRight, CalendarRange, LockKeyhole, Cloud, Server, Link2, Activity } from "lucide-react";
+import { Share2, Loader2, Hash, Palette, FileDigit, Zap, Building, ShieldAlert, Bell, Smartphone, ChevronLeft, PanelLeft, PanelRight, CalendarRange, LockKeyhole, Cloud, Server, Link2, Activity, Globe } from "lucide-react";
 import { ManageShare } from "@/components/company/ManageShare";
 import usePermissions from "@/hooks/usePermissions";
 import { useCompany } from "@/hooks/useCompany";
@@ -37,6 +37,7 @@ import { LocalCloudSyncSettingsPage } from "@/components/settings/LocalCloudSync
 import { LocalAppServerSettings } from "@/components/settings/LocalAppServerSettings";
 import { MyRoleButton } from "@/components/settings/MyRoleButton";
 import { CheckForUpdateSettingsRow } from "@/components/settings/CheckForUpdateSettingsRow";
+import { CountryAppSettings } from "@/components/settings/CountryAppSettings";
 import { OnlineTriggerLogSettings } from "@/components/settings/OnlineTriggerLogSettings";
 import { isLocalAppServerSettingsNavVisible } from "@/lib/localAppServerDevPreview";
 import { settingsViewHref } from "@/lib/appNavHref";
@@ -89,6 +90,7 @@ const settingsNavItems = [
     { id: "app_lock", title: "App Lock", icon: LockKeyhole, permission: "configure_company_settings" as const, href: null },
     { id: "voucher", title: "Voucher Settings", icon: FileDigit, permission: "configure_company_settings" as const, href: null },
     { id: "link_allocation", title: "Link allocation", icon: Link2, permission: "configure_company_settings" as const, href: null },
+    { id: "country", title: "Country", icon: Globe, permission: "configure_company_settings" as const, href: null },
     { id: "theme", title: "Theme Settings", icon: Palette, permission: "configure_company_settings" as const, href: null },
     { id: "animation", title: "Animation Settings", icon: Zap, permission: "configure_company_settings" as const, href: null },
     { id: "decimals", title: "Decimal Settings", icon: Hash, permission: "configure_company_settings" as const, href: null },
@@ -205,6 +207,7 @@ function SettingsPageContent() {
     const availableNavItems = useMemo(() => {
         const allowed = settingsNavItems.filter((item) => {
             if (item.id === "local_cloud_sync") return true;
+            if (item.id === "country") return true;
             if (item.id === "app_lock") return shellLockEligible;
             if (item.id === "local_app_server") return devServerNav || shellServerNavEligible;
             if (item.id === "company") return Boolean(companyId && company);
@@ -623,6 +626,8 @@ function SettingsPageContent() {
                 return can('configure_company_settings') ? <VoucherSettings /> : null;
             case "link_allocation":
                 return can("configure_company_settings") ? <LinkAllocationSettings /> : null;
+            case "country":
+                return <CountryAppSettings />;
             case "theme":
                 return canOpenThemeOrAnimation ? (
                     <ThemeSettings localOnlyHint={sharedLocalAppearanceOnly} />

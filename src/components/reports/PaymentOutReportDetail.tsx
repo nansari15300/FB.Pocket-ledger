@@ -63,13 +63,13 @@ export function PaymentOutReportDetail() {
   const reportRegisterTitle = useMemo(() => {
     if (voucherScope === "directExpenseOnly") return "Direct Expense";
     if (voucherScope === "paySalary") return "Pay Salary";
-    return "Payment Out";
+    return "Payment";
   }, [voucherScope]);
 
   const reportAllVouchersTitle = useMemo(() => {
     if (voucherScope === "directExpenseOnly") return "All Direct Exp";
     if (voucherScope === "paySalary") return "All Pay Salary";
-    return "All Payment Out";
+    return "All Payments";
   }, [voucherScope]);
 
   const paymentOutVouchers = useMemo(() => {
@@ -81,7 +81,7 @@ export function PaymentOutReportDetail() {
     if (voucherScope === "paymentOutExclPaySalary") {
       list = list.filter((v) => voucherCountsAsDashboardPaymentOutExcludingPaySalary(v));
     } else if (voucherScope === "directExpenseOnly") {
-      // Direct Expense card: sirf `direct_expense` vouchers; Payment Out family mix nahi.
+      // Direct Expense card: sirf `direct_expense` vouchers; Payment family mix nahi.
       list = list.filter((v) => v.type === "direct_expense");
     }
     return list;
@@ -406,7 +406,7 @@ export function PaymentOutReportDetail() {
           actionSlot={
             <div className="grid grid-cols-2 gap-2">
               <PermissionButton permission="create_records" className="w-full" onClick={() => openVoucherDialog("payment_out")}>
-                <PlusCircle className="mr-2 h-4 w-4" /> Payment Out
+                <PlusCircle className="mr-2 h-4 w-4" /> Payment
               </PermissionButton>
               <PermissionButton permission="create_records" className="w-full" variant="outline" onClick={() => openVoucherDialog("direct_expense")}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Direct Expense
@@ -446,7 +446,7 @@ export function PaymentOutReportDetail() {
           listPanel={
             <>
               <div className="p-4 border-b space-y-3 flex-shrink-0">
-                <ReportRegisterListHeading>Payment Out</ReportRegisterListHeading>
+                <ReportRegisterListHeading>Payment</ReportRegisterListHeading>
                 <Card className="p-3 text-center">
                   <p className="text-xs text-muted-foreground">Total Paid</p>
                   <p className="text-xl font-bold text-red-600">

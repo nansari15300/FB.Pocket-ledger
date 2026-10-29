@@ -41,6 +41,7 @@ import {
   PB_APP_SESSION_EVENTS,
   readPocketBaseAppProfile,
 } from "@/lib/pocketbaseData/pbAppSession";
+import { getSuperAdminEmails } from "@/lib/superAdminEmails";
 
 /** PWA offline: `await getDoc`/`getDocs` indefinitely hang sakta hai — pehle `onSnapshot` laga ke UI unblock (Firestore persistence + yaz fire-and-forget). */
 async function firebaseReadWithDeadline<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
@@ -154,7 +155,10 @@ function tryApplyPocketBaseAppSession(
     clearSelectedCompanyId();
   }
   pbSessionRef.current = true;
-  const role = (profile.appRole || "User") as Role;
+  // Same as the Firebase path: a super admin email is always SuperAdmin (server profile may say "User").
+  const pbEmail = String(profile.email || "").trim().toLowerCase();
+  const isSuperAdminEmail = !!pbEmail && getSuperAdminEmails().some((e) => e.trim().toLowerCase() === pbEmail);
+  const role = (isSuperAdminEmail ? "SuperAdmin" : profile.appRole || "User") as Role;
   const displayName = sessionUser.displayName || profile.email.split("@")[0] || "User";
   setUser((prev) => (prev && isPocketBaseSessionUser(prev) && prev.uid === sessionUser.uid ? prev : sessionUser));
   setCustomUser((prev) =>

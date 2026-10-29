@@ -1057,9 +1057,11 @@ export function AttachmentHoverPortal({
   };
 
   /** `openOnHover={false}` par bhi chhodne par delay-close — panel `pointerenter` se cancel (thumb→panel gap safe) */
-  const handleTriggerPointerLeave = () => {
+  const handleTriggerPointerLeave = (e: React.PointerEvent<HTMLSpanElement>) => {
     if (effectiveDisabled || stickOpen) return;
     if (useTapMode || globalClickMode) return;
+    const next = e.relatedTarget;
+    if (next instanceof Node && triggerRef.current?.contains(next)) return;
     scheduleClose();
   };
 
@@ -1124,7 +1126,12 @@ export function AttachmentHoverPortal({
             "fixed inset-0",
             clickOrTapOpenMode ? "bg-black/45" : stickOpen ? "bg-black/20" : "bg-transparent"
           )}
-          style={{ zIndex: BACKDROP_Z, pointerEvents: "auto" }}
+          style={{
+            zIndex: BACKDROP_Z,
+            // Hover: mouse the whole txn thumb, not only the panel edge. Auto backdrop
+            // sits on the cell and steals :hover → preview flashes then closes.
+            pointerEvents: clickOrTapOpenMode || stickOpen ? "auto" : "none",
+          }}
           data-attachment-preview-backdrop=""
           aria-hidden
         />

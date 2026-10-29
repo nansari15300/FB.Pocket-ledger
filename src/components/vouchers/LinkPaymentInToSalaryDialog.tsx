@@ -190,7 +190,7 @@ export function LinkPaymentInToSalaryDialog({
     for (const row of sourceRows) {
       const amt = Number(linkedAmounts[row.id] ?? 0);
       if (amt > row.linkable) {
-        toast.error(`Link amount for ${row.sourceType === "opening_balance" ? "Opening Balance" : (row.voucherNumber ?? "Payment Out")} cannot exceed linkable.`);
+        toast.error(`Link amount for ${row.sourceType === "opening_balance" ? "Opening Balance" : (row.voucherNumber ?? "Payment")} cannot exceed linkable.`);
         return;
       }
     }
@@ -261,7 +261,7 @@ export function LinkPaymentInToSalaryDialog({
             </table>
           </div>
           <p className="text-sm font-medium text-muted-foreground shrink-0 pt-1 text-center">From Voucher</p>
-          <p className="text-sm text-muted-foreground shrink-0 -mt-0.5 hidden md:block text-center">Debit-side vouchers for same staff (Payment Out, Opening Balance)</p>
+          <p className="text-sm text-muted-foreground shrink-0 -mt-0.5 hidden md:block text-center">Debit-side vouchers for same staff (Payment, Opening Balance)</p>
           <div className="flex-1 min-h-0 border rounded-md overflow-auto scrollbar-slim-dim">
             {sourceRows.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">No debit-side staff vouchers available to link.</p>
@@ -305,7 +305,7 @@ export function LinkPaymentInToSalaryDialog({
                           </td>
                           <td className="p-2 text-muted-foreground whitespace-nowrap align-middle">{dateStr}</td>
                           <td className="p-2 font-medium whitespace-nowrap align-middle">{row.voucherNumber ?? "—"}</td>
-                          <td className="p-2 whitespace-nowrap align-middle">{row.sourceType === "opening_balance" ? "Opening Balance" : "Payment Out"}</td>
+                          <td className="p-2 whitespace-nowrap align-middle">{row.sourceType === "opening_balance" ? "Opening Balance" : "Payment"}</td>
                           <td className="p-2 text-right font-medium text-green-600 whitespace-nowrap align-middle tabular-nums">{formatCurrencyForPrint(row.amount, { noSuffix: true })} Dr</td>
                           <td className="p-2 text-right text-muted-foreground whitespace-nowrap align-middle tabular-nums">{formatCurrencyForPrint(row.otherLinked, { noSuffix: true })} Dr</td>
                           <td className="p-2 text-right text-muted-foreground whitespace-nowrap align-middle tabular-nums">{formatCurrencyForPrint(linked, { noSuffix: true })} Dr</td>

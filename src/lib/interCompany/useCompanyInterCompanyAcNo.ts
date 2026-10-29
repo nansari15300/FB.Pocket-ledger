@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { useCompany } from "@/hooks/useCompany";
 import { ensureCompanyInterCompanyAcNo } from "@/lib/interCompany/ensureCompanyInterCompanyAcNo";
 import { readCompanyInterCompanyAcNo } from "@/lib/interCompany/interCompanyAccountNo";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 type Options = {
   /** true: jab A/c No missing ho to generate + save (sirf owned company par) */
@@ -25,7 +26,7 @@ export function useCompanyInterCompanyAcNo(options: Options = {}) {
   }, [company]);
 
   useEffect(() => {
-    if (!autoEnsure || !companyId) return;
+    if (!isInterCompanySystemEnabled() || !autoEnsure || !companyId) return;
     // Shared company par owner ke bina Firestore update mat chalao
     if (company && company.isOwned === false) return;
     if (readCompanyInterCompanyAcNo(company)) return;

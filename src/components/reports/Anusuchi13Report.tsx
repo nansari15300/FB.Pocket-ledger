@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import type { DateRange } from "@/components/ui/ad-calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useLiveMasterSelection } from "@/hooks/useLiveMasterSelection";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { mdc, mdcNoEdgeSwipeCapture } from "@/lib/mobileDetailChrome";
@@ -132,7 +133,8 @@ export function Anusuchi13Report() {
     [company?.country]
   );
 
-  const [selectedParty, setSelectedParty] = useState<Party | null>(null);
+  const [selectedPartyRaw, setSelectedParty] = useState<Party | null>(null);
+  const selectedParty = useLiveMasterSelection(selectedPartyRaw, setSelectedParty, processedParties);
   const [searchTerm, setSearchTerm] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [confirmationRunning, setConfirmationRunning] = useState(

@@ -17,6 +17,7 @@ import { ThemeProvider } from "@/hooks/useTheme";
 import { CapacitorAndroidBackButton } from "@/components/CapacitorAndroidBackButton";
 import { AppUiZoomBootstrap } from "@/components/layout/AppUiZoomBootstrap";
 import { VoucherOutboxFlushManager } from "@/components/VoucherOutboxFlushManager";
+import { PocketBaseLiveSyncManager } from "@/components/PocketBaseLiveSyncManager";
 import { LocalCompanyCloudSyncManager } from "@/components/LocalCompanyCloudSyncManager";
 import { CapacitorDriveOAuthReturnHandler } from "@/components/CapacitorDriveOAuthReturnHandler";
 import { DriveOAuthReturnBootstrap } from "@/components/DriveOAuthReturnBootstrap";
@@ -50,6 +51,7 @@ import { PlServerAccessBootstrap } from "@/components/settings/PlServerAccessBoo
 import { PlRemoteClientLandingBootstrap } from "@/components/settings/PlRemoteClientLandingBootstrap";
 import { PlServerGateLandingBootstrap } from "@/components/settings/PlServerGateLandingBootstrap";
 import { PlFirebaseAuthHandoffBootstrap } from "@/components/settings/PlFirebaseAuthHandoffBootstrap";
+import "@/lib/adminData/plServerMyCompanyHandoff";
 import { PlAppHubCompanyReturnBootstrap } from "@/components/settings/PlAppHubCompanyReturnBootstrap";
 import { PlServerClientDeltaManager } from "@/components/settings/PlServerClientDeltaManager";
 import { PlServerLiveSyncManager } from "@/components/settings/PlServerLiveSyncManager";
@@ -63,6 +65,7 @@ import { ClientHealthGlobalBootstrap } from "@/components/debug/ClientHealthGlob
 import { ClientHealthMonitorBootstrap } from "@/components/debug/ClientHealthMonitorBootstrap";
 import { ClientHealthMonitorSnapshotSync } from "@/components/debug/ClientHealthMonitorSnapshotSync";
 import { OnlineTriggerLogBootstrap } from "@/components/debug/OnlineTriggerLogBootstrap";
+import { CountryAppGate } from "@/components/country/CountryAppGate";
 
 /** Local-only app start: sql.js init pehle se — refresh par company turant SQLite se load. */
 function SqlitePrewarmBootstrap() {
@@ -191,6 +194,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
                                 <FySnapshotSaveBootstrap />
                                 <FyMasterOpeningSaveBootstrap />
                                 <VoucherOutboxFlushManager />
+                                <PocketBaseLiveSyncManager />
                                 <DaybookWedgeSyncManager />
                                 <LocalCompanyCloudSyncManager />
                                 <CapacitorDriveOAuthReturnHandler />
@@ -198,7 +202,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
                                 <PendingRestoreCloudPushManager />
                                 <TooltipProvider>
                                     <MobileDetailSummaryCollapseProvider>
-                                      {children}
+                                      <CountryAppGate>{children}</CountryAppGate>
                                     </MobileDetailSummaryCollapseProvider>
                                 </TooltipProvider>
                                 </FyVoucherScopeBootstrap>

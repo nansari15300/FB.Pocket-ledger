@@ -40,6 +40,7 @@ import type { Item, ItemGroup } from "@/components/items/types";
 import type { DateRange } from "@/components/ui/ad-calendar";
 import type { GroupListSelectOptions } from "@/lib/groupListExpand";
 import { useVouchers } from "@/hooks/useVouchers";
+import { useLiveMasterSelection } from "@/hooks/useLiveMasterSelection";
 import usePermissions from "@/hooks/usePermissions";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useMasterDetailQueryNav } from "@/hooks/useMasterDetailQueryNav";
@@ -179,7 +180,8 @@ function ItemsPageContent() {
     }
   }, [vouchersUserNames]);
 
-  const selectedItem = activeView === "items" ? (selected as Item) : null;
+  const selectedItemRaw = activeView === "items" ? (selected as Item) : null;
+  const selectedItem = useLiveMasterSelection(selectedItemRaw, setSelected, processedItems);
   const selectedItemGroupRaw = activeView === "groups" ? (selected as ItemGroup) : null;
   const mobileItemsSelectionLabelClassName = useMemo(() => {
     if (!selected) return undefined;
@@ -188,7 +190,7 @@ function ItemsPageContent() {
   const mobileItemsSelectionLabel = useMemo((): ReactNode => {
     if (!selected) return null;
     if (activeView !== "groups") {
-      const name = (selected as Item).name;
+      const name = selectedItem?.name ?? (selected as Item).name;
       return name && String(name).trim() ? String(name).trim() : null;
     }
     const group = selected as ItemGroup;
@@ -204,7 +206,7 @@ function ItemsPageContent() {
     }
     const name = group.name;
     return name && String(name).trim() ? String(name).trim() : null;
-  }, [selected, activeView, groupMemberFilterId, processedItems, mobileItemsSelectionLabelClassName]);
+  }, [selected, selectedItem, activeView, groupMemberFilterId, processedItems, mobileItemsSelectionLabelClassName]);
   const itemsMasterDetailTitle = activeView === "groups" ? "Item Groups" : "Items";
   const itemsShellTitle = useMemo(
     () => mobileEntityDetailShellTitle(isMobile, Boolean(selected), itemsMasterDetailTitle, "Item details"),
@@ -244,6 +246,7 @@ function ItemsPageContent() {
     );
   }, [initialProcessedItemGroups, companyId]);
 
+  useLiveMasterSelection(selectedItemGroupRaw, setSelected, processedItemGroups);
   const selectedItemGroup = useMemo(
     () =>
       selectedItemGroupRaw

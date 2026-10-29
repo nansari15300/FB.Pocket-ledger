@@ -1,5 +1,6 @@
 "use client";
 
+import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { doc, setDoc } from "firebase/firestore";
 import { getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
@@ -132,6 +133,7 @@ export default function WebsiteVideosAdminPage() {
   }, [videos, platformTab, searchQuery]);
 
   async function persist(next: WebsiteVideo[]) {
+    if (adminServerWriteBlocked()) return;
     setSaving(true);
     try {
       await setDoc(DOC_REF(), { videos: next, updatedAt: Date.now() }, { merge: true });

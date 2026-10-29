@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Source / Target company heading — edit par Payment Out (sender) ya Payment In (receiver) badge.
+ * Source / Target company heading — edit par Payment (sender) ya Payment In (receiver) badge.
  */
 import type { ReactNode } from "react";
 import { FormLabel } from "@/components/ui/form";
@@ -12,9 +12,9 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   title: string;
-  /** Voucher is doc role=source → sender opened → Payment Out; role=target → Payment In */
+  /** Voucher is doc role=source → sender opened → Payment; role=target → Payment In */
   flowBadge?: "payment_out" | "payment_in" | null;
-  /** Revert accept — Payment Out/In ke left blue pill */
+  /** Revert accept — Payment/In ke left blue pill */
   showRevertedBadge?: boolean;
   trailingAction?: ReactNode;
   /** Helper text — ⓘ popover me (title ke paas) */
@@ -72,7 +72,7 @@ export function InterCompanySectionTitle({
               "dark:border-amber-400/60 dark:bg-amber-950/40 dark:text-amber-100"
             )}
           >
-            Payment Out
+            Payment
           </Badge>
         ) : null}
         {flowBadge === "payment_in" ? (

@@ -3,7 +3,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, PlusCircle, Share2, UserPlus, ChevronDown, KeyRound, Eye, EyeOff, Loader2, Check, LogOut, Server, Wifi } from "lucide-react";
+import { Building2, PlusCircle, Share2, UserPlus, ChevronDown, KeyRound, Eye, EyeOff, Loader2, Check, LogOut, Server, Wifi, ArrowLeft } from "lucide-react";
 import { PlServerOnlineStatusDot } from "@/components/pl/PlServerOnlineStatusDot";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -25,6 +25,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, type Dispatch, type 
 import { useCompany } from "@/hooks/useCompany";
 import type { Company as CompanyData } from "@/hooks/useCompany";
 import { cn } from "@/lib/utils";
+import { publicAssetUrl } from "@/lib/webAppBasePath";
 import { logoutFromCompanyOnThisDevice } from "@/lib/logoutFromCompany";
 import { useAuth } from "@/hooks/useAuth";
 import { useCachedFeatureConfig } from "@/hooks/useCachedFeatureConfig";
@@ -121,6 +122,20 @@ import {
   useAdminPanelCompanyListFilter,
 } from "@/lib/adminPanelCompany/companyListFilter";
 import { AdminPanelCompanySelectorSection } from "@/adminPanelCompany/components/AdminPanelCompanySelectorSection";
+import {
+  goBackToPlServer,
+  plServerBackToServerHref,
+  plServerMyCompanyReturnUrl,
+} from "@/lib/adminData/plServerMyCompanyHandoff";
+import {
+  filterPackedMyCompanyRows,
+  isCountryPublicPackedApp,
+  isPackedMyCompanyOnly,
+  isPackedServerManageCompany,
+  isPlServerPackedApp,
+} from "@/lib/plServerPackedApp";
+import { ensureServerManageCompany } from "@/lib/ensureServerManageCompany";
+import { getValidPocketBaseAuth } from "@/lib/pocketbaseData/pbClient";
 import {
   selectAdminPanelCompanyInApp,
   withAdminPanelCompanyInSelectorList,
@@ -539,6 +554,57 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
     reloadLocalCompanyRegistry,
     localCompanyRegistryEpoch,
   } = useCompany();
+
+  const packedMyCompany = isPackedMyCompanyOnly();
+  const [packedCompanySetup, setPackedCompanySetup] = useState(false);
+  useEffect(() => {
+    if (!packedMyCompany) return;
+    if (!user?.uid) return;
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < 25; i++) {
+        if (cancelled) return;
+        if (getValidPocketBaseAuth()) break;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      if (cancelled || !getValidPocketBaseAuth()) return;
+      try {
+        await ensureServerManageCompany({
+          ownerId: user.uid,
+          ownerEmail: user.email,
+        });
+      } catch (e) {
+        console.warn("[CompanySelector] server manage company", e);
+      }
+      if (!cancelled) {
+        reloadLocalCompanyRegistry();
+        setPackedCompanySetup(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [packedMyCompany, user?.uid, user?.email, reloadLocalCompanyRegistry]);
+
+  useEffect(() => {
+    if (!packedMyCompany) return;
+    if (!companyId) return;
+    const selected =
+      (allCompaniesRegistry || []).find((c) => c.id === companyId) ||
+      (contextCompanies || []).find((c) => c.id === companyId);
+    if (isPackedServerManageCompany(selected) || isPackedServerManageCompany({ id: companyId })) return;
+    clearCompanyId({ force: true, reason: "user_clear" });
+  }, [packedMyCompany, companyId, allCompaniesRegistry, contextCompanies, clearCompanyId]);
+
+  useEffect(() => {
+    if (!isCountryPublicPackedApp()) return;
+    if (!companyId) return;
+    const selected =
+      (allCompaniesRegistry || []).find((c) => c.id === companyId) ||
+      (contextCompanies || []).find((c) => c.id === companyId);
+    if (!isPackedServerManageCompany(selected) && !isPackedServerManageCompany({ id: companyId })) return;
+    clearCompanyId({ force: true, reason: "user_clear" });
+  }, [companyId, allCompaniesRegistry, contextCompanies, clearCompanyId]);
 
   const handleLogoutCompany = useCallback((id: string) => {
     logoutFromCompanyOnThisDevice(id, user);
@@ -1176,11 +1242,13 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
     const mergedRaw = usePlServerCompanyMerge ? mergePlServerSharedCompaniesIntoRegistry(base) : base;
     const merged = mergedRaw.map((c) => ({ ...c, isOwned: Boolean(c.isOwned) }));
     const filtered = applyAdminPanelCompanyListFilter(merged);
-    return withAdminPanelCompanyInSelectorList(filtered, {
-      include: showAdminPanelInSelector,
-      ownerId: user?.uid,
-      ownerEmail: user?.email,
-    });
+    return filterPackedMyCompanyRows(
+      withAdminPanelCompanyInSelectorList(filtered, {
+        include: showAdminPanelInSelector,
+        ownerId: user?.uid,
+        ownerEmail: user?.email,
+      })
+    );
   }, [
     allCompanies,
     usePlServerCompanyMerge,
@@ -1351,6 +1419,21 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
   const handleLogout = () => {
     requestEmbeddedLogout();
   };
+
+  const [serverReturnUrl, setServerReturnUrl] = useState("");
+  useEffect(() => {
+    if (!isPackedMyCompanyOnly()) {
+      setServerReturnUrl("");
+      return;
+    }
+    setServerReturnUrl(plServerMyCompanyReturnUrl() || plServerBackToServerHref());
+  }, []);
+  useEffect(() => {
+    if (!serverReturnUrl) return;
+    if (!visibleStorageTabs.includes("server")) return;
+    manualListTabRef.current = true;
+    setListTab("server");
+  }, [serverReturnUrl, visibleStorageTabs]);
 
   const handleDriveCompanyJoined = async (
     joinedCompanyId: string,
@@ -1596,6 +1679,7 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
               ) : null}
               {listTab === "server" ? (
               <TabsContent value="server" className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain">
+                {!packedMyCompany ? (
                 <div className="space-y-3 rounded-lg border bg-muted/10 p-3">
                   <div className="flex items-center gap-2">
                     <Server className="h-4 w-4 text-muted-foreground" />
@@ -1688,10 +1772,13 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
                     </div>
                   ) : null}
                 </div>
+                ) : null}
                 {serverList.length > 0 ? (
                   <div className="space-y-3">
                     <h3 className="text-sm font-medium text-muted-foreground">
-                      {myServerDisplay.length > 0 && serverSharedDisplay.length === 0
+                      {packedMyCompany
+                        ? "Companies on this server"
+                        : myServerDisplay.length > 0 && serverSharedDisplay.length === 0
                         ? "My companies on server"
                         : "Server companies"}
                     </h3>
@@ -1719,7 +1806,11 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
                   </div>
                 ) : (
                   <p className="rounded-md border border-dashed bg-muted/20 px-3 py-6 text-center text-sm text-muted-foreground">
-                    No server-shared companies yet. Add a PL server gate above, then sync here or open the server page.
+                    {packedMyCompany
+                      ? packedCompanySetup
+                        ? "No companies on this server yet."
+                        : "Setting up server manage company…"
+                      : "No server-shared companies yet. Add a PL server gate above, then sync here or open the server page."}
                   </p>
                 )}
               </TabsContent>
@@ -1744,7 +1835,7 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
                         <LogOut className="mr-2 h-4 w-4" />
                         Log out
                       </Button>
-                      {canCreateAnyCompany ? (
+                      {canCreateAnyCompany && !packedMyCompany ? (
                         <Button
                           type="button"
                           variant="outline"
@@ -1773,7 +1864,7 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
                   <LogOut className="mr-2 h-4 w-4" />
                   Log out
                 </Button>
-                {canCreateAnyCompany ? (
+                {canCreateAnyCompany && !packedMyCompany ? (
                   <Button
                     type="button"
                     variant="outline"
@@ -1785,6 +1876,17 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
                   </Button>
                 ) : null}
               </div>
+            ) : null}
+            {serverReturnUrl ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-3 w-full shrink-0"
+                onClick={() => goBackToPlServer()}
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to server
+              </Button>
             ) : null}
             </>
             ) : null}
@@ -2519,11 +2621,13 @@ export function CompanyActions({
     const mergedRaw = usePlServerCompanyMerge ? mergePlServerSharedCompaniesIntoRegistry(base) : base;
     const merged = mergedRaw.map((c) => ({ ...c, isOwned: Boolean(c.isOwned) }));
     const filtered = applyAdminPanelCompanyListFilter(merged);
-    return withAdminPanelCompanyInSelectorList(filtered, {
-      include: showAdminPanelInSelector,
-      ownerId: user?.uid,
-      ownerEmail: user?.email,
-    });
+    return filterPackedMyCompanyRows(
+      withAdminPanelCompanyInSelectorList(filtered, {
+        include: showAdminPanelInSelector,
+        ownerId: user?.uid,
+        ownerEmail: user?.email,
+      })
+    );
   }, [
     companies,
     usePlServerCompanyMerge,
@@ -2822,12 +2926,18 @@ export function CompanyActions({
             aria-label={`Company: ${companyTriggerLabel}`}
           >
             <img
-              src="/app-icon.png"
+              src={publicAssetUrl("/app-icon.png")}
               alt=""
               className="h-6 w-6 shrink-0 rounded-sm object-contain"
               loading="eager"
               decoding="async"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+                const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                if (fallback) fallback.style.display = "block";
+              }}
             />
+            <Building2 className="hidden h-6 w-6 shrink-0 text-muted-foreground" />
             <span className="min-w-0 truncate text-left font-medium text-blue-700">
               {companyTriggerLabel}
             </span>
@@ -2959,6 +3069,7 @@ export function CompanyActions({
                 )
               ) : listTab === "server" ? (
                 <>
+                  {!isPlServerPackedApp() ? (
                   <div className="mt-2 space-y-2 rounded-md border bg-muted/10 p-2">
                     <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                       <Server className="h-3.5 w-3.5" />
@@ -3046,8 +3157,13 @@ export function CompanyActions({
                       </div>
                     ) : null}
                   </div>
+                  ) : null}
                   {serverList.length === 0 ? (
-                    <p className="px-2 py-3 text-xs text-muted-foreground">No server-shared companies yet.</p>
+                    <p className="px-2 py-3 text-xs text-muted-foreground">
+                      {isPlServerPackedApp()
+                        ? "No companies on this server yet."
+                        : "No server-shared companies yet."}
+                    </p>
                   ) : (
                     <div className="mt-2 max-h-64 overflow-y-auto rounded-md border bg-muted/20 p-1">
                       <DropdownMenuLabel className="pl-2 text-[11px] text-muted-foreground">
@@ -3119,7 +3235,7 @@ export function CompanyActions({
                     activeCompanyId={companyId}
                     onLogoutCompany={handleLogoutCompany}
                   leadingActions={
-                    canCreateAnyCompany ? (
+                    canCreateAnyCompany && !isPackedMyCompanyOnly() ? (
                       <Button
                         type="button"
                         variant="ghost"
@@ -3148,7 +3264,7 @@ export function CompanyActions({
           {!adminLedgerMode && showTrailingCompanyActions ? (
           <>
           <DropdownMenuSeparator />
-          {canCreateAnyCompany && listTab !== "online" ? (
+          {canCreateAnyCompany && listTab !== "online" && !isPackedMyCompanyOnly() ? (
             <DropdownMenuGroup>
               <DropdownMenuItem onSelect={() => router.push("/company/create")}>
                 <PlusCircle className="mr-2 h-4 w-4" />

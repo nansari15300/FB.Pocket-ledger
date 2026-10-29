@@ -22,6 +22,7 @@ import {
 import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { auth, firestore } from "@/lib/firebase";
 import { upsertInterCompanyPublicCompanyProfile } from "@/lib/interCompany/interCompanyPublicCompanyProfile";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 /** `local` = device-only system — sirf pure local companies, SQLite IC (Firebase nahi). */
 export type InterCompanyGroupVisibility = "public" | "private" | "local";
@@ -319,7 +320,7 @@ export function subscribeInterCompanyGroups(
   onData: (groups: InterCompanyGroupDoc[]) => void,
   onError?: (err: unknown) => void
 ): Unsubscribe {
-  if (!ownerUserId) {
+  if (!isInterCompanySystemEnabled() || !ownerUserId) {
     onData([]);
     return () => undefined;
   }

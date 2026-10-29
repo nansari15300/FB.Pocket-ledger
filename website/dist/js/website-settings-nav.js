@@ -18,7 +18,7 @@
         item("videos", "/website-settings/videos/", "Website Videos") +
         item("downloads", "/website-settings/downloads/", "Download analytics") +
         item("notice", "/website-settings/notice/", "Notice") +
-        '<a href="/">← Back to website</a>' +
+        '<a href="/home/">← Back to website</a>' +
       "</aside>"
     );
   }

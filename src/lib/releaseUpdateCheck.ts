@@ -1,4 +1,5 @@
 import { ANDROID_APP_VERSION, DESKTOP_APP_VERSION } from "@/config/releaseVersion";
+import { liveCountryPublicOrigin } from "@/lib/countryAppHosts";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
 
@@ -35,8 +36,6 @@ export const RELEASE_UPDATE_MANUAL_CHECK_EVENT = "pl-release-update-manual-check
 export const RELEASE_UPDATE_FOUND_EVENT = "pl-release-update-found";
 
 const DAILY_CHECK_KEY = "pl-release-update-check-v1";
-const RELEASE_BUCKET = "studio-5452513410-a3f5b.firebasestorage.app";
-const RELEASE_PREFIX = "public-releases/latest.json";
 
 export function compareReleaseVersions(a: string, b: string): number {
   const left = String(a || "0")
@@ -58,9 +57,7 @@ function todayKey(): string {
 }
 
 export function latestReleaseManifestUrl(): string {
-  return `https://firebasestorage.googleapis.com/v0/b/${RELEASE_BUCKET}/o/${encodeURIComponent(
-    RELEASE_PREFIX
-  )}?alt=media`;
+  return `${liveCountryPublicOrigin()}/releases/latest.json`;
 }
 
 export function installedReleaseVersion(): { kind: "desktop" | "android" | null; version: string } {

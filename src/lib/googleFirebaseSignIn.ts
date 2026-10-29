@@ -35,11 +35,13 @@ export async function signInWithGoogleForApp(
   options?: GoogleSignInForAppOptions
 ): Promise<UserCredential | null> {
   const loginHint = options?.loginHint?.trim() || undefined;
-  const forceAccountPicker = options?.forceAccountPicker ?? !loginHint;
+  const forceAccountPicker = options?.forceAccountPicker === true;
 
-  if (forceAccountPicker) {
+  // Pocket Ledger Firebase session only — never GoogleAuth.signOut / authuser=-1.
+  // Those clear Chrome/device sessions and replace the account list with email/password.
+  if (forceAccountPicker && auth.currentUser) {
     try {
-      if (auth.currentUser) await auth.signOut();
+      await auth.signOut();
     } catch {
       /* ignore */
     }
@@ -53,9 +55,6 @@ export async function signInWithGoogleForApp(
   };
   if (loginHint) {
     customParameters.login_hint = loginHint;
-  } else if (forceAccountPicker) {
-    // Google default account auto-select na kare — account list dikhaye.
-    customParameters.authuser = "-1";
   }
   provider.setCustomParameters(customParameters);
 
@@ -67,13 +66,6 @@ export async function signInWithGoogleForApp(
       throw new Error("Google Web client ID missing for native GoogleAuth.initialize");
     }
     await GoogleAuth.initialize({ clientId, scopes: ["profile", "email"], grantOfflineAccess: false });
-    if (forceAccountPicker) {
-      try {
-        await GoogleAuth.signOut();
-      } catch {
-        /* ignore — chooser ke liye best-effort cached account clear */
-      }
-    }
     const nativeUser = await GoogleAuth.signIn();
     const idToken = nativeUser.authentication?.idToken;
     if (!idToken) throw new Error("Google idToken missing from native sign-in");
@@ -81,15 +73,16 @@ export async function signInWithGoogleForApp(
     return signInWithCredential(auth, credential);
   }
 
-  /** EXE: Chrome/Edge system browser — prompt=select_account se naya account choose ho sakta hai. */
+  /** EXE: system Chrome — logged-in Google IDs select. */
   if (isElectronDesktopApp()) {
     const bridge = getElectronAuthBridge();
     if (!bridge?.signInWithGoogleExternal) {
       throw new Error("EXE Google browser sign-in is not available. Rebuild the desktop app.");
     }
-    const { idToken } = await bridge.signInWithGoogleExternal(
-      loginHint ? { loginHint } : { forceAccountPicker: true }
-    );
+    const { idToken } = await bridge.signInWithGoogleExternal({
+      ...(loginHint ? { loginHint } : {}),
+      forceAccountPicker,
+    });
     if (!idToken?.trim()) throw new Error("Google idToken missing from browser sign-in");
     return signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
   }

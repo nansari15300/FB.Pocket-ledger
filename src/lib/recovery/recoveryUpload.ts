@@ -3,7 +3,9 @@
 /**
  * Recovery mode: push one company from this PC's SQLite to the Pocket Ledger Server.
  * Same steps as the backup-restore upload (pbRestoreUpload): company root -> attachments
- * (`local:` -> `pbatt:`) -> every record in small batches; then a count check.
+ * (`local:` and Firebase Storage URLs -> `pbatt:`) -> every record in small batches; then a count check.
+ * Firebase files: bytes from this PC's cache first, then Firebase Storage (signed-in recovery session).
+ * Missing bytes keep the original URL and count as `missingFiles`. SQLite on this PC is not rewritten.
  *
  * Differences: the server main admin does the upload through /api/pl/recovery/* so the company
  * is owned by the ORIGINAL owner email (a placeholder server account when that person has none
@@ -282,17 +284,167 @@ function makeBatches(docs: RecoveryDoc[]): RecoveryDoc[][] {
   return out;
 }
 
-function collectLocalRefs(v: unknown, into: Set<string>): void {
+function collectFileRefs(v: unknown, into: Set<string>): void {
   if (typeof v === "string") {
     if (v.startsWith("local:") && v.length > 6) into.add(v);
+    else if (isFirebaseFileRef(v)) into.add(v);
     return;
   }
   if (Array.isArray(v)) {
-    for (const x of v) collectLocalRefs(x, into);
+    for (const x of v) collectFileRefs(x, into);
     return;
   }
   if (!v || typeof v !== "object") return;
-  for (const x of Object.values(v as Record<string, unknown>)) collectLocalRefs(x, into);
+  for (const x of Object.values(v as Record<string, unknown>)) collectFileRefs(x, into);
+}
+
+function isFirebaseFileRef(s: string): boolean {
+  if (!s || s.startsWith("pbatt:") || s.startsWith("local:") || s.startsWith("blob:") || s.startsWith("data:")) {
+    return false;
+  }
+  const l = s.toLowerCase();
+  if (
+    l.includes("firebasestorage.googleapis.com") ||
+    l.includes("firebasestorage.app") ||
+    (l.includes("googleapis.com") && l.includes("/o/")) ||
+    l.includes("storage.googleapis.com")
+  ) {
+    return true;
+  }
+  if (/^(https?:|drive:|capacitor:|file:)/i.test(s)) return false;
+  return (
+    /^voucher-files\//i.test(s) ||
+    /^companies\//i.test(s) ||
+    /^entity-files\//i.test(s) ||
+    /^pocket-ledger\//i.test(s)
+  );
+}
+
+function fileNameFromRef(ref: string, fallback = "file"): string {
+  try {
+    const path = /^https?:\/\//i.test(ref) ? decodeURIComponent(new URL(ref).pathname) : ref;
+    const base = path.split("/").pop() || "";
+    const name = decodeURIComponent(base.split("?")[0] || "");
+    return (name || fallback).slice(0, 300);
+  } catch {
+    return fallback;
+  }
+}
+
+async function attAppIdForRemote(url: string): Promise<string> {
+  let key = url.split("?")[0] || url;
+  try {
+    const { tryGetStoragePathFromFirebaseDownloadUrl } = await import("@/lib/firebaseStorageDownloadUrl");
+    key = tryGetStoragePathFromFirebaseDownloadUrl(url) || key;
+  } catch {
+    /* path parse optional */
+  }
+  try {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
+    const hex = Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+    return `att_fb_${hex.slice(0, 40)}`;
+  } catch {
+    const safe = key.replace(/[^A-Za-z0-9._:-]/g, "_").slice(-80);
+    return `att_fb_${safe}`.slice(0, 200);
+  }
+}
+
+const FILE_FETCH_MS = 20_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, signal?: AbortSignal): Promise<T | null> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), ms);
+    const onAbort = () => {
+      clearTimeout(t);
+      resolve(null);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    p.then((v) => {
+      clearTimeout(t);
+      resolve(v);
+    }).catch(() => {
+      clearTimeout(t);
+      resolve(null);
+    });
+  });
+}
+
+async function fetchUrlBlob(url: string, signal?: AbortSignal): Promise<Blob | null> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), FILE_FETCH_MS);
+  const onParent = () => ac.abort();
+  signal?.addEventListener("abort", onParent, { once: true });
+  try {
+    if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+      const ua = (typeof navigator !== "undefined" ? navigator.userAgent : "").toLowerCase();
+      if (ua.includes("electron")) {
+        const res = await fetch(`/__firebase_blob_proxy?url=${encodeURIComponent(url)}`, {
+          method: "GET",
+          signal: ac.signal,
+        });
+        if (res.ok) {
+          const b = await res.blob();
+          if (b.size > 0) return b;
+        }
+      }
+    }
+  } catch {
+    /* try CORS */
+  }
+  try {
+    const res = await fetch(url, { mode: "cors", credentials: "omit", signal: ac.signal });
+    if (!res.ok) return null;
+    const b = await res.blob();
+    return b.size > 0 ? b : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", onParent);
+  }
+}
+
+/** Cache on this PC, then Firebase Storage. Recovery must not use the Files-tick network gate. */
+async function blobFromFirebaseFile(url: string, signal?: AbortSignal): Promise<Blob | null> {
+  try {
+    const { tryOfflineCachedAttachmentBlobMultiKey } = await import("@/lib/offlineAttachmentUrlCache");
+    const cached = await tryOfflineCachedAttachmentBlobMultiKey(url);
+    if (cached && cached.size > 0) return cached;
+  } catch {
+    /* cache optional */
+  }
+  let path = "";
+  try {
+    const {
+      tryGetStoragePathFromFirebaseDownloadUrl,
+      looksLikeFirebaseStorageObjectPath,
+      normalizeFirebaseStorageObjectPathForSdk,
+    } = await import("@/lib/firebaseStorageDownloadUrl");
+    path =
+      tryGetStoragePathFromFirebaseDownloadUrl(url) ||
+      (looksLikeFirebaseStorageObjectPath(url) ? normalizeFirebaseStorageObjectPathForSdk(url) : "");
+  } catch {
+    path = "";
+  }
+  if (path) {
+    try {
+      const [{ getBlob, ref }, { storage }] = await Promise.all([
+        import("firebase/storage"),
+        import("@/lib/firebase"),
+      ]);
+      const blob = await withTimeout(getBlob(ref(storage, path)), FILE_FETCH_MS, signal);
+      if (blob && blob.size > 0) return blob;
+    } catch {
+      /* fallback to HTTPS */
+    }
+  }
+  if (/^https?:\/\//i.test(url)) return fetchUrlBlob(url, signal);
+  return null;
+}
+
+function bumpConvertedDocTimes(data: Record<string, unknown>): Record<string, unknown> {
+  const now = new Date();
+  return { ...data, updatedAt: now, lastEditedAt: now };
 }
 
 function categoryForCollection(coll: string): string {
@@ -316,34 +468,42 @@ const attAppId = (localRef: string) => `att_${localRef.slice("local:".length)}`.
 
 type FileStats = { files: number; missing: number; tooBig: number };
 
-/** `local:` refs in one batch -> server files. Returns the ref map (missing bytes keep `local:`). */
+type FileProgress = (label: string) => void;
+
+/** `local:` + Firebase Storage refs in one batch -> server files (`pbatt:`). Missing bytes keep the original URL. */
 async function pushBatchFiles(
   companyId: string,
   batch: RecoveryDoc[],
   stats: FileStats,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onFileProgress?: FileProgress
 ): Promise<Map<string, string>> {
   const owner = new Map<string, RecoveryDoc>();
   for (const d of batch) {
     const refs = new Set<string>();
-    collectLocalRefs(d.data, refs);
+    collectFileRefs(d.data, refs);
     for (const r of refs) if (!owner.has(r)) owner.set(r, d);
   }
   const map = new Map<string, string>();
   if (!owner.size) return map;
   const all = Array.from(owner.keys());
+  const appIdByRef = new Map<string, string>();
+  for (const r of all) {
+    appIdByRef.set(r, r.startsWith("local:") ? attAppId(r) : await attAppIdForRemote(r));
+  }
   for (let i = 0; i < all.length; i += 500) {
     const part = all.slice(i, i + 500);
     const res = (await withRetry(
       () =>
         pbRequest("/api/pl/recovery/attachments/exist", {
           method: "POST",
-          body: { company: companyId, appIds: part.map(attAppId) },
+          body: { company: companyId, appIds: part.map((r) => appIdByRef.get(r) || attAppId(r)) },
         }),
       signal
     )) as { refs?: Record<string, string> };
     for (const r of part) {
-      const ref = res?.refs?.[attAppId(r)];
+      const appId = appIdByRef.get(r) || attAppId(r);
+      const ref = res?.refs?.[appId];
       if (ref) {
         map.set(r, ref);
         stats.files += 1;
@@ -351,33 +511,41 @@ async function pushBatchFiles(
     }
   }
   const lp = await import("@/lib/localPendingFiles");
-  for (const [localRef, doc] of owner) {
-    if (map.has(localRef)) continue;
+  let done = 0;
+  const pending = all.filter((r) => !map.has(r)).length;
+  for (const [fileRef, doc] of owner) {
+    if (map.has(fileRef)) continue;
     throwIfAborted(signal);
+    done += 1;
+    onFileProgress?.(`Copying files to server ${done} / ${pending}`);
     let blob: Blob | null = null;
-    let fileName = "file";
+    let fileName = fileNameFromRef(fileRef, "file");
     let mime = "";
-    try {
-      const p = await lp.getPendingPayloadForLocalRef(localRef);
-      if (p?.blob && p.blob.size > 0) {
-        blob = p.blob;
-        fileName = str(p.fileName) || fileName;
-        mime = str(p.contentType);
-      }
-    } catch {
-      /* try the other store */
-    }
-    if (!blob) {
+    if (fileRef.startsWith("local:")) {
       try {
-        blob = await lp.getBlobFromLocalFileRef(localRef);
-        const meta = await lp.getLocalFileRefMeta(localRef).catch(() => null);
-        if (meta) {
-          fileName = str(meta.fileName) || fileName;
-          mime = str(meta.contentType) || mime;
+        const p = await lp.getPendingPayloadForLocalRef(fileRef);
+        if (p?.blob && p.blob.size > 0) {
+          blob = p.blob;
+          fileName = str(p.fileName) || fileName;
+          mime = str(p.contentType);
         }
       } catch {
-        blob = null;
+        /* try the other store */
       }
+      if (!blob) {
+        try {
+          blob = await lp.getBlobFromLocalFileRef(fileRef);
+          const meta = await lp.getLocalFileRefMeta(fileRef).catch(() => null);
+          if (meta) {
+            fileName = str(meta.fileName) || fileName;
+            mime = str(meta.contentType) || mime;
+          }
+        } catch {
+          blob = null;
+        }
+      }
+    } else {
+      blob = await blobFromFirebaseFile(fileRef, signal);
     }
     if (!blob || blob.size <= 0) {
       stats.missing += 1;
@@ -385,24 +553,25 @@ async function pushBatchFiles(
     }
     const type = mime || blob.type || "application/octet-stream";
     const typed = blob.type ? blob : new Blob([blob], { type });
+    const appId = appIdByRef.get(fileRef) || attAppId(fileRef);
     try {
       const rec = (await withRetry(() => {
         const fd = new FormData();
         fd.append("company", companyId);
-        fd.append("app_id", attAppId(localRef));
+        fd.append("app_id", appId);
         fd.append("category", categoryForCollection(doc.coll));
         fd.append("owner_coll", doc.coll);
         fd.append("owner_app_id", doc.id);
         fd.append("file_name", fileName.slice(0, 300));
         fd.append("mime", type.slice(0, 100));
         fd.append("size", String(typed.size));
-        fd.append("source_url", localRef.slice(0, 2000));
+        fd.append("source_url", fileRef.slice(0, 2000));
         fd.append("updatedAtMs", String(Date.now()));
         fd.append("file", typed, fileName);
         return pbFormRequest("/api/pl/recovery/attachment", fd);
       }, signal)) as { ref?: string };
       if (rec?.ref) {
-        map.set(localRef, rec.ref);
+        map.set(fileRef, rec.ref);
         stats.files += 1;
       } else {
         stats.missing += 1;
@@ -462,30 +631,83 @@ export async function pushCompanyToServer(input: {
   )) as { ok?: boolean; conflict?: string };
   if (!cres?.ok) throw new RecoveryConflictError(String(cres?.conflict || "rejected"));
 
+  // 1b) company logo / stamp / avatar: copy Firebase or local files onto the server
+  const rootStats: FileStats = { files: 0, missing: 0, tooBig: 0 };
+  {
+    const rootDoc: RecoveryDoc = { coll: "company", id: c.id, data: root, at: c.updatedAt || Date.now() };
+    const rootMap = await pushBatchFiles(c.id, [rootDoc], rootStats, signal, (label) =>
+      progress({ phase: "company", label, done: 1, total: 1 })
+    );
+    if (rootMap.size) {
+      const nextRoot = replaceRefsDeep(root, rootMap);
+      await withRetry(
+        () =>
+          pbRequest("/api/pl/recovery/company", {
+            method: "POST",
+            timeoutMs: REQ_TIMEOUT_MS,
+            body: {
+              apply: true,
+              company: {
+                id: c.id,
+                data: nextRoot,
+                ownerUid: c.ownerId || undefined,
+                ownerEmail,
+                ownerName: str(c.data.ownerName) || undefined,
+                updatedAtMs: Date.now(),
+              },
+            },
+          }),
+        signal
+      );
+    }
+  }
+
   // 2) records (+ their files), resumable by batch
   const docs = await readCompanyDocs(c.id);
   const batches = makeBatches(docs);
-  const sig = `${docs.length}:${batches.length}:${batches.map((b) => b.length).join(",")}`;
+  const sig = `f2:${docs.length}:${batches.length}:${batches.map((b) => b.length).join(",")}`;
   const prev = readMap<ResumeMark>(RESUME_KEY)[key];
   const start = prev && prev.sig === sig ? Math.min(prev.doneBatches, batches.length) : 0;
   const resumed = start > 0 && prev ? prev : null;
   const stats: FileStats = { files: 0, missing: 0, tooBig: 0, ...(resumed?.files || {}) };
+  if (!resumed) {
+    stats.files += rootStats.files;
+    stats.missing += rootStats.missing;
+    stats.tooBig += rootStats.tooBig;
+  }
   const sum: ResumeSum = { create: 0, update: 0, same: 0, kept_server: 0, unsupported: 0, bad: 0, ...(resumed?.sum || {}) };
   let sent = batches.slice(0, start).reduce((n, b) => n + b.length, 0);
   progress({ phase: "records", label: "Uploading records and files", done: sent, total: docs.length });
   for (let i = start; i < batches.length; i++) {
     throwIfAborted(signal);
     const batch = batches[i];
-    const map = await pushBatchFiles(c.id, batch, stats, signal);
+    const map = await pushBatchFiles(c.id, batch, stats, signal, (label) =>
+      progress({ phase: "records", label, done: sent, total: docs.length })
+    );
+    const convertedKeys = new Set<string>();
+    if (map.size) {
+      for (const d of batch) {
+        const refs = new Set<string>();
+        collectFileRefs(d.data, refs);
+        for (const r of refs) {
+          if (map.has(r)) convertedKeys.add(`${d.coll}/${d.id}`);
+        }
+      }
+    }
     const body = {
       apply: true,
       company: c.id,
-      docs: batch.map((d) => ({
-        coll: d.coll,
-        id: d.id,
-        data: encodeDocForPocketBase(replaceRefsDeep(d.data, map)),
-        at: d.at || undefined,
-      })),
+      docs: batch.map((d) => {
+        const next = replaceRefsDeep(d.data, map);
+        const converted = convertedKeys.has(`${d.coll}/${d.id}`);
+        const data = converted ? bumpConvertedDocTimes(next) : next;
+        return {
+          coll: d.coll,
+          id: d.id,
+          data: encodeDocForPocketBase(data),
+          at: converted ? Date.now() : d.at || undefined,
+        };
+      }),
     };
     const r = (await withRetry(
       () => pbRequest("/api/pl/recovery/docs", { method: "POST", body, timeoutMs: REQ_TIMEOUT_MS }),

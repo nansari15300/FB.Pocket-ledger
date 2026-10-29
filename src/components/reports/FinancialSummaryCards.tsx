@@ -1897,7 +1897,7 @@ export function FinancialSummaryCards({
     };
 
     // Stats calculation for voucher type summaries
-    // `payment_out_excl_pay_salary` = Payment Out minus staff / pay_salary payouts (unhi ka `Pay Salary` card)
+    // `payment_out_excl_pay_salary` = Payment minus staff / pay_salary payouts (unhi ka `Pay Salary` card)
     const statCardData = [
         { title: 'Sales', icon: ShoppingBag, type: 'sale', link: '/sale', isCredit: true },
         { title: 'Purchases', icon: ShoppingCart, type: 'purchase', link: '/purchase', isCredit: false },
@@ -1907,7 +1907,7 @@ export function FinancialSummaryCards({
         { title: 'Direct Income', icon: TrendingUp, type: 'direct_income', link: '/incomes', isCredit: true },
         { title: 'Direct Expense', icon: TrendingDown, type: 'direct_expense', link: '/incomes', isCredit: false },
         { title: 'Receipt', icon: ArrowDownCircle, type: 'payment_in', link: '/payment-in', isCredit: true },
-        { title: 'Payment Out', icon: ArrowUpCircle, type: 'payment_out_excl_pay_salary', link: '/payment-out', isCredit: false },
+        { title: 'Payment', icon: ArrowUpCircle, type: 'payment_out_excl_pay_salary', link: '/payment-out', isCredit: false },
         { title: 'Pay Salary', icon: HandCoins, type: 'pay_salary', link: '/add-salary', isCredit: false },
         { title: 'Notes', icon: StickyNote, type: 'note', link: '/notes', isCredit: true },
         { title: 'Production', icon: Factory, type: 'production', link: '/production', isCredit: true },
@@ -3262,7 +3262,7 @@ export function FinancialSummaryCards({
                             </span>
                         </div>
                         <div className={topSummaryMetricRowCn}>
-                            <span className={topSummaryMetricLabelCn}>Payment Out</span>
+                            <span className={topSummaryMetricLabelCn}>Payment</span>
                             <span className={cn(topSummaryMetricLineValueCn, "text-red-600")}>
                                 {formatCurrency(cashFlowDetails.totalOutflow, {noSuffix: true})}{" "}
                                 <span className={topSummaryMetricDrCrCn}>Cr</span>
@@ -3287,7 +3287,7 @@ export function FinancialSummaryCards({
                                 )}
                                 {renderDashboardMiniBar(
                                     dashboardCashFlowDailyTri.outflow,
-                                    "Payment out / day",
+                                    "Payment / day",
                                     "#dc2626",
                                     false,
                                     dashboardCashFlowDailyTri.outflowPointsByDay

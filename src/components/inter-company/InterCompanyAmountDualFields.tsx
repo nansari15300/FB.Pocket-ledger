@@ -3,7 +3,7 @@
 /**
  * Inter Company amount — identity strip jaisa 2 column (source | target);
  * har side: label box + amount box ek row; comma + Cr; min width 25mm.
- * Source side: optional Other charge (Payment Out jaisa).
+ * Source side: optional Other charge (Payment jaisa).
  */
 import { type ComponentProps, type ReactNode } from "react";
 import type { Control, FieldValues } from "react-hook-form";
@@ -33,7 +33,7 @@ type Props = {
   formatCurrencyForPrint: FormatPrint;
   fieldsDisabled?: boolean;
   editLocked?: boolean;
-  /** Source Payment Out — other charge toggle + fields */
+  /** Source Payment — other charge toggle + fields */
   showOtherCharge?: boolean;
   otherChargeEnabled?: boolean;
   onOtherChargeEnabledChange?: (enabled: boolean) => void;
@@ -203,7 +203,7 @@ export function InterCompanyAmountDualFields({
             return (
               <FormItem className="min-w-0 space-y-0">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <InterCompanyAmountSideRow label="Payment Out (source)">
+                  <InterCompanyAmountSideRow label="Payment (source)">
                     <FormControl>
                       <InterCompanyResponsiveAmountInput
                         displayText={sourceReadOnly ? formatted : sourceMeasure}

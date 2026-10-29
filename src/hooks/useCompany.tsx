@@ -145,6 +145,7 @@ import {
   resolveOrEnsureCompanyInterCompanyCode,
 } from "@/lib/interCompany/interCompanyCompanyCode";
 import { readCompanyInterCompanyAcNo } from "@/lib/interCompany/interCompanyAccountNo";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 import { plNavDbg, plNavDbgCritical, plNavDbgIdHint } from "@/lib/plNavRedirectDebug";
 import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
 import { isCloudBackedCompanyShape } from "@/lib/offlineFullWarmSync";
@@ -166,6 +167,7 @@ import { shouldSkipEmbeddedStartupAuthChurn } from "@/lib/embeddedWarmBootstrapF
 import { isEmbeddedOfflinePreloadClient } from "@/lib/isEmbeddedOfflinePreloadClient";
 import { withoutWebAppBasePath } from "@/lib/webAppBasePath";
 import { plCallerFrame, plCallerStack, plRegistryPullDebug } from "@/lib/registryPullDebug";
+import { isPbOnlySession } from "@/lib/pocketbaseData/userDisplayNameSession";
 
 export type DisplaySettings = {
     showDebit?: boolean;
@@ -1138,6 +1140,7 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
    * Party edit khole bina; owned company par Firestore + SQLite backfill.
    */
   useEffect(() => {
+    if (!isInterCompanySystemEnabled()) return;
     if (!companyId?.trim() || !company) return;
     if (company.isOwned === false) return;
     const existingAc = readCompanyInterCompanyAcNo(company);
@@ -1158,6 +1161,7 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
    * Company open: Company Code — shared user Firestore fetch; owner/admin generate if missing.
    */
   useEffect(() => {
+    if (!isInterCompanySystemEnabled()) return;
     if (!companyId?.trim() || !company) return;
     const existingCode = readCompanyInterCompanyCode(company);
     if (existingCode) return;
@@ -3496,7 +3500,7 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
       // Shared user: SQLite mirror baad me — Firestore doc se recover + upsert (sidebar /company clear kam)
-      if (!localRow && user?.uid) {
+      if (!localRow && user?.uid && !isPbOnlySession()) {
         try {
           const snap = await getDoc(doc(firestore, "companies", companyId));
           if (snap.exists()) {

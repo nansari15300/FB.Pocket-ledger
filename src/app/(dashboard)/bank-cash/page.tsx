@@ -35,7 +35,7 @@ import { CreateBankAccountDialog } from "@/components/bank-cash/CreateBankAccoun
 import { CreateAccountGroupDialog } from "@/components/bank-cash/CreateAccountGroupDialog";
 import { PermissionButton } from "@/components/permission";
 import { useVouchers } from "@/hooks/useVouchers";
-import { resolveMasterListSelection } from "@/lib/masterEntityLiveUpdate";
+import { useLiveMasterSelection } from "@/hooks/useLiveMasterSelection";
 import type { Account, AccountGroup } from "@/components/bank-cash/types";
 import { ResponsiveMasterDetail } from "@/components/layout/ResponsiveMasterDetail";
 import { LoadingSpinner } from "@/components/layout/LoadingSpinner";
@@ -78,6 +78,7 @@ import { mobileEntityDetailShellTitle } from "@/lib/mobileDetailChrome";
 import { usePendingApprovalListFilter } from "@/hooks/usePendingApprovalListFilter";
 import { MasterListViewShell } from "@/components/layout/MasterListViewShell";
 import { type EntityListQuickFilter } from "@/components/entity/EntityListQuickFilterBar";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 import { masterEntityTextMatchesSearch } from "@/lib/filterMasterEntityListRows";
 import { createMasterEntityGroupMoveHandler } from "@/lib/createMasterEntityGroupMoveHandler";
 import { createMasterEntityGroupTreeMoveHandler } from "@/lib/createMasterEntityGroupTreeMoveHandler";
@@ -95,6 +96,7 @@ import {
 } from "@/lib/masterEntitySystemGroups";
 
 function BankCashPageContent() {
+  const icSystemEnabled = isInterCompanySystemEnabled();
   const { user } = useAuth();
   const { company, companyId, effectiveNotificationSettings } = useCompany();
   const { formatCurrency, formatRunning } = useDate();
@@ -181,10 +183,7 @@ function BankCashPageContent() {
 
   // `clearing` tab bhi account detail use karta hai.
   const selectedAccountRaw = activeView !== 'groups' ? selected as Account : null;
-  const selectedAccount = useMemo(
-    () => resolveMasterListSelection(selectedAccountRaw, processedAccounts),
-    [selectedAccountRaw, processedAccounts]
-  );
+  const selectedAccount = useLiveMasterSelection(selectedAccountRaw, setSelected, processedAccounts);
   const selectedGroupRaw = activeView === "groups" ? (selected as AccountGroup) : null;
   const handleAccountUpdated = useCallback((patch?: Partial<Account>) => {
     if (!patch?.id || !selectedAccountRaw || selectedAccountRaw.id !== patch.id) return;
@@ -202,7 +201,7 @@ function BankCashPageContent() {
   const mobileBankCashSelectionLabel = useMemo((): ReactNode => {
     if (!selected) return null;
     if (activeView !== "groups") {
-      const nm = (selected as Account).accountName;
+      const nm = selectedAccount?.accountName ?? (selected as Account).accountName;
       return nm && String(nm).trim() ? String(nm).trim() : null;
     }
     const group = selected as AccountGroup;
@@ -218,7 +217,7 @@ function BankCashPageContent() {
     }
     const nm = group.name;
     return nm && String(nm).trim() ? String(nm).trim() : null;
-  }, [selected, activeView, groupMemberFilterId, processedAccounts, mobileBankCashSelectionLabelClassName]);
+  }, [selected, selectedAccount, activeView, groupMemberFilterId, processedAccounts, mobileBankCashSelectionLabelClassName]);
   const bankCashMasterDetailTitle = activeView === "groups" ? "Bank Groups" : "Bank & Cash";
   useSyncMasterDetailHeaderId("bank-cash", selectedAccount?.id ?? selectedGroupRaw?.id ?? null);
 
@@ -280,6 +279,7 @@ function BankCashPageContent() {
     userCanSeeSpecialAccountBalance,
   ]);
 
+  useLiveMasterSelection(selectedGroupRaw, setSelected, processedAccountGroups);
   const selectedGroup = useMemo(
     () =>
       selectedGroupRaw
@@ -384,6 +384,10 @@ function BankCashPageContent() {
     isMobile, // static PC: pehli account auto-select — `useQueryNav` URL sync ke liye alag
     selectedIdFromUrl
   );
+
+  useEffect(() => {
+    if (!icSystemEnabled && activeView === "clearing") setActiveView("accounts");
+  }, [icSystemEnabled, activeView]);
   // ==================================
 
   // Clear search when company changes (prevent email/other data from carrying over)
@@ -400,11 +404,12 @@ function BankCashPageContent() {
   }, [activeView]);
 
   const accountsForAccountList = useMemo(() => {
-    // Accounts tab: clearing accounts ko yahan hide rakho (wo sirf Clearing A/c tab me dikhte hain).
-    const nonClearingAccounts = processedAccounts.filter((a) => a.isClearing !== true);
-    if (!showOnlyAccountsWithPendingApproval || !showApproveOnList) return nonClearingAccounts;
-    return nonClearingAccounts.filter((a) => (pendingApprovalByAccountId[a.id] ?? 0) > 0);
-  }, [processedAccounts, showOnlyAccountsWithPendingApproval, showApproveOnList, pendingApprovalByAccountId]);
+    const source = icSystemEnabled
+      ? processedAccounts.filter((a) => a.isClearing !== true)
+      : processedAccounts;
+    if (!showOnlyAccountsWithPendingApproval || !showApproveOnList) return source;
+    return source.filter((a) => (pendingApprovalByAccountId[a.id] ?? 0) > 0);
+  }, [icSystemEnabled, processedAccounts, showOnlyAccountsWithPendingApproval, showApproveOnList, pendingApprovalByAccountId]);
   // Clearing tab: sirf bank/cash accounts jinke form me `isClearing` tick hai.
   const clearingAccountsForList = useMemo(() => {
     return processedAccounts.filter((a) => a.isClearing === true);
@@ -413,7 +418,12 @@ function BankCashPageContent() {
   /** Party-style tab switch — set view + row + URL together (EXE/APK stale ?selected= snap-back band). */
   const handleBankCashTabChange = useCallback(
     (value: string) => {
-      const tab = value === "groups" || value === "clearing" ? value : "accounts";
+      const tab =
+        value === "groups"
+          ? "groups"
+          : value === "clearing" && icSystemEnabled
+            ? "clearing"
+            : "accounts";
       const items: (Account | AccountGroup)[] =
         tab === "groups"
           ? processedAccountGroups
@@ -440,6 +450,7 @@ function BankCashPageContent() {
     [
       isMobile,
       useQueryNav,
+      icSystemEnabled,
       processedAccountGroups,
       clearingAccountsForList,
       accountsForAccountList,
@@ -480,7 +491,7 @@ function BankCashPageContent() {
     if (!selectedId) {
       if (view === "groups") {
         if (activeView !== "groups") setActiveView("groups");
-      } else if (view === "clearing") {
+      } else if (view === "clearing" && icSystemEnabled) {
         if (activeView !== "clearing") setActiveView("clearing");
       } else if (activeView !== "accounts") {
         setActiveView("accounts");
@@ -491,7 +502,7 @@ function BankCashPageContent() {
     const groupItem = processedAccountGroups.find((i) => i.id === selectedId);
     const accountItem = processedAccounts.find((i) => i.id === selectedId);
     if (view === "groups" && groupItem) setActiveView("groups");
-    else if (view === "clearing" && accountItem) setActiveView("clearing");
+    else if (view === "clearing" && icSystemEnabled && accountItem) setActiveView("clearing");
     else if (view === "accounts" && accountItem) setActiveView("accounts");
     const item =
       groupItem && accountItem
@@ -503,7 +514,7 @@ function BankCashPageContent() {
     const canonical =
       view === "groups"
         ? `/bank-cash?view=groups&selected=${encodeURIComponent(selectedId)}`
-        : view === "clearing"
+        : view === "clearing" && icSystemEnabled
           ? `/bank-cash?view=clearing&selected=${encodeURIComponent(selectedId)}`
           : `/bank-cash?selected=${encodeURIComponent(selectedId)}`;
     if (shouldReplaceWithMasterDetailCanonical(canonical)) {
@@ -520,6 +531,7 @@ function BankCashPageContent() {
     setSelected,
     setActiveView,
     router,
+    icSystemEnabled,
   ]);
   
   // Initial Mount Safety
@@ -706,7 +718,9 @@ function BankCashPageContent() {
       <TabsList listChrome>
         <TabsTrigger listChrome value="accounts" className="flex-1">Accounts</TabsTrigger>
         <TabsTrigger listChrome value="groups" className="flex-1">Groups</TabsTrigger>
-        <TabsTrigger listChrome value="clearing" className="flex-1">Clearing A/c</TabsTrigger>
+        {icSystemEnabled ? (
+          <TabsTrigger listChrome value="clearing" className="flex-1">Clearing A/c</TabsTrigger>
+        ) : null}
       </TabsList>
     </Tabs>
   );

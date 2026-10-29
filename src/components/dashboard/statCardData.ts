@@ -34,7 +34,7 @@ export const statCardData = [
     isCredit: true,
   },
   {
-    title: 'Payment Out',
+    title: 'Payment',
     icon: ArrowLeft,
     type: 'payment_out',
     link: '/payment-out',

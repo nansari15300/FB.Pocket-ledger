@@ -34,7 +34,9 @@ import {
   isPocketBaseRootWritePending,
   listPocketBaseCompanyIds,
 } from "@/lib/pocketbaseData/pbCompanyRegistry";
-import { isPocketBaseAppSessionActive } from "@/lib/pocketbaseData/pbAppSession";
+import { isPocketBaseAppSessionActive, readPocketBaseAppProfile } from "@/lib/pocketbaseData/pbAppSession";
+import { pbRequest } from "@/lib/pocketbaseData/pbClient";
+import { isSuperAdminEmail } from "@/lib/recovery/recoveryMode";
 
 
 type AnyRec = Record<string, unknown>;
@@ -582,6 +584,244 @@ async function pbGetRootSnapshot(fsFn: Fn, args: unknown[], t: Extract<PbTarget,
 }
 
 /* ------------------------------------------------------------------ */
+/* Admin Panel on a server login (super admin)                          */
+/* ------------------------------------------------------------------ */
+/*
+ * Server login + super admin + an Admin Panel page: global paths the company seam does not
+ * serve (users, companies, other users' company data, app_settings, ...) are read from the
+ * server's read-only admin routes (pb_hooks/lib/admin_view.js) instead of Firestore (which is
+ * off for the whole server session). Queries run in memory like the company seam.
+ */
+
+type AdminTarget =
+  | { kind: "doc"; path: string; id: string }
+  | { kind: "query"; parent: string; q: ParsedQuery | null };
+
+function isAdminPanelPage(): boolean {
+  try {
+    return typeof window !== "undefined" && /\/admin(\/|$)/.test(window.location.pathname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Write one allow-listed `app_settings/*` doc to the Pocket Ledger Server (main admin only,
+ * `/api/pl/admin/set`), then drop the admin read caches so the page re-reads the new value.
+ */
+async function adminPbRequest(
+  path: string,
+  init: { method?: string; body?: unknown; timeoutMs?: number }
+): Promise<unknown> {
+  return pbRequest(path, init);
+}
+
+export async function adminServerSetDoc(path: string, data: Record<string, unknown>, merge = true): Promise<void> {
+  const { encodeDocForPocketBase } = await import("@/lib/pocketbaseData/pbSync");
+  await adminPbRequest("/api/pl/admin/set", {
+    method: "POST",
+    body: { path, data: encodeDocForPocketBase(data), merge },
+    timeoutMs: 30_000,
+  });
+  adminListCache.clear();
+  adminDocCache.clear();
+}
+
+/** Server login of a super admin on an Admin Panel page. */
+export function isAdminServerDataActive(): boolean {
+  if (!isAdminPanelPage()) return false;
+  try {
+    if (!isPocketBaseAppSessionActive()) return false;
+    return isSuperAdminEmail(readPocketBaseAppProfile()?.email);
+  } catch {
+    return false;
+  }
+}
+
+function adminTargetOf(refOrQuery: unknown): AdminTarget | null {
+  if (!isAdminServerDataActive()) return null;
+  const o = refOrQuery as AnyRec | null;
+  if (!o || typeof o !== "object") return null;
+  try {
+    if (o.type === "document" || o.type === "collection") {
+      const parts = String(o.path || "").split("/").filter(Boolean);
+      if (!parts.length) return null;
+      if (o.type === "document" && parts.length % 2 === 0) {
+        return { kind: "doc", path: parts.join("/"), id: parts[parts.length - 1] };
+      }
+      if (o.type === "collection" && parts.length % 2 === 1) return { kind: "query", parent: parts.join("/"), q: null };
+      return null;
+    }
+    if (o.type === "query") {
+      const qi = o._query as AnyRec | undefined;
+      if (!qi || qi.collectionGroup) return null;
+      const parts = segmentsOf(qi.path);
+      if (!parts || parts.length % 2 !== 1) return null;
+      return { kind: "query", parent: parts.join("/"), q: parseQueryImpl(qi) };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+type AdminRow = { id: string; path: string; data: AnyRec };
+const ADMIN_CACHE_MS = 3_000;
+const adminListCache = new Map<string, { at: number; p: Promise<AdminRow[]> }>();
+const adminDocCache = new Map<string, { at: number; p: Promise<AnyRec | null> }>();
+
+async function decodeAdmin(data: unknown): Promise<AnyRec> {
+  const m = await import("@/lib/pocketbaseData/pbSync");
+  return m.decodeDocFromPocketBase(data);
+}
+
+function adminList(parent: string): Promise<AdminRow[]> {
+  const hit = adminListCache.get(parent);
+  if (hit && Date.now() - hit.at < ADMIN_CACHE_MS) return hit.p;
+  const p = (async () => {
+    const r = (await adminPbRequest("/api/pl/admin/list", { method: "POST", body: { parent }, timeoutMs: 60_000 })) as {
+      docs?: { id?: unknown; path?: unknown; data?: unknown }[];
+    };
+    const out: AdminRow[] = [];
+    for (const d of Array.isArray(r?.docs) ? r.docs : []) {
+      const id = String(d?.id || "");
+      if (!id) continue;
+      out.push({ id, path: String(d.path || `${parent}/${id}`), data: await decodeAdmin(d.data) });
+    }
+    return out;
+  })();
+  adminListCache.set(parent, { at: Date.now(), p });
+  p.catch(() => adminListCache.delete(parent));
+  return p;
+}
+
+function adminDoc(path: string): Promise<AnyRec | null> {
+  const hit = adminDocCache.get(path);
+  if (hit && Date.now() - hit.at < ADMIN_CACHE_MS) return hit.p;
+  const p = (async () => {
+    const r = (await adminPbRequest("/api/pl/admin/get", { method: "POST", body: { paths: [path] } })) as {
+      docs?: { exists?: unknown; data?: unknown }[];
+    };
+    const d = Array.isArray(r?.docs) ? r.docs[0] : null;
+    return d && d.exists === true ? decodeAdmin(d.data) : null;
+  })();
+  adminDocCache.set(path, { at: Date.now(), p });
+  p.catch(() => adminDocCache.delete(path));
+  return p;
+}
+
+function adminRefFor(path: string, converter: unknown): unknown {
+  const parts = path.split("/").filter(Boolean);
+  const r = fsDoc(firestore, parts[0], ...parts.slice(1));
+  return converter ? r.withConverter(converter as never) : r;
+}
+
+async function adminGetDocSnapshot(ref: unknown, t: Extract<AdminTarget, { kind: "doc" }>): Promise<AnyRec> {
+  const converter = (ref as { converter?: unknown }).converter || null;
+  const data = await adminDoc(t.path);
+  return makeDocSnapshot(ref, t.id, data, converter);
+}
+
+async function adminGetQuerySnapshot(
+  query: unknown,
+  t: Extract<AdminTarget, { kind: "query" }>,
+  prev: Map<string, string> | null
+): Promise<{ snap: AnyRec; sig: Map<string, string> }> {
+  const converter = (query as { converter?: unknown }).converter || null;
+  const all = await adminList(t.parent);
+  const byId = new Map(all.map((r) => [r.id, r.path]));
+  const rows = runQuery(all.map((r) => ({ id: r.id, data: r.data })), t.q);
+  const sig = new Map<string, string>();
+  const docs = rows.map((r) => {
+    const s = makeDocSnapshot(adminRefFor(byId.get(r.id) || `${t.parent}/${r.id}`, converter), r.id, r.data, converter);
+    const g = signature(r.data);
+    s.__sig = g;
+    sig.set(r.id, g);
+    return s;
+  });
+  return { snap: makeQuerySnapshot(query, docs, prev), sig };
+}
+
+const ADMIN_POLL_MS = 30_000;
+
+/** Admin `onSnapshot`: server read now, on server change events, and every 30s (only changes emit). */
+function onAdminSnapshot(args: unknown[], t: AdminTarget): () => void {
+  const target = args[0];
+  const obs = observerFrom(args);
+  let closed = false;
+  let running = false;
+  let again = false;
+  let prevSig: Map<string, string> | null = null;
+  let lastKey = "";
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const emit = async () => {
+    if (closed) return;
+    if (running) {
+      again = true;
+      return;
+    }
+    running = true;
+    try {
+      if (t.kind === "query") {
+        const r = await adminGetQuerySnapshot(target, t, prevSig);
+        const key = Array.from(r.sig.entries()).map(([k, v]) => `${k}=${v}`).join("|");
+        prevSig = r.sig;
+        if (!closed && key !== lastKey) {
+          lastKey = key;
+          obs.next?.(r.snap);
+        }
+      } else {
+        const snap = await adminGetDocSnapshot(target, t);
+        const raw = (snap.exists as () => boolean)() ? (snap.data as () => unknown)() : null;
+        const key = raw ? signature(raw as AnyRec) : "none";
+        if (!closed && key !== lastKey) {
+          lastKey = key;
+          obs.next?.(snap);
+        }
+      }
+    } catch (e) {
+      if (!closed) obs.error?.(e);
+    } finally {
+      running = false;
+      if (again && !closed) {
+        again = false;
+        void emit();
+      }
+    }
+  };
+  const schedule = () => {
+    if (closed) return;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      adminListCache.clear();
+      adminDocCache.clear();
+      void emit();
+    }, 1_500);
+  };
+  let bumpEvent = "";
+  void import("@/lib/localCompanyDocMirror").then((m) => {
+    if (closed) return;
+    bumpEvent = m.BROWSER_DB_COLLECTION_BUMP;
+    window.addEventListener(bumpEvent, schedule);
+  });
+  window.addEventListener("pl-pb-company-root-updated", schedule);
+  const poll = setInterval(() => {
+    adminListCache.delete(t.kind === "query" ? t.parent : "");
+    adminDocCache.delete(t.kind === "doc" ? t.path : "");
+    void emit();
+  }, ADMIN_POLL_MS);
+  void emit();
+  return () => {
+    closed = true;
+    clearInterval(poll);
+    if (timer) clearTimeout(timer);
+    window.removeEventListener("pl-pb-company-root-updated", schedule);
+    if (bumpEvent) window.removeEventListener(bumpEvent, schedule);
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* public API (Firestore signatures)                                   */
 /* ------------------------------------------------------------------ */
 
@@ -589,8 +829,11 @@ type Fn = (...a: unknown[]) => unknown;
 
 function wrapDocRead(fsFn: Fn, rootFromServer: boolean): Fn {
   return (...args: unknown[]) => {
-    if (noPocketBaseCompanies()) return fsFn(...args);
-    const t = pbTargetOf(args[0]);
+    const t = noPocketBaseCompanies() ? null : pbTargetOf(args[0]);
+    if (!t) {
+      const at = adminTargetOf(args[0]);
+      if (at && at.kind === "doc") return adminGetDocSnapshot(args[0], at);
+    }
     if (!t || t.kind === "query") return fsFn(...args);
     if (t.kind === "root") {
       return rootFromServer || isPocketBaseAppSessionActive() ? pbGetRootSnapshot(fsFn, args, t) : fsFn(...args);
@@ -601,8 +844,11 @@ function wrapDocRead(fsFn: Fn, rootFromServer: boolean): Fn {
 
 function wrapQueryRead(fsFn: Fn): Fn {
   return (...args: unknown[]) => {
-    if (noPocketBaseCompanies()) return fsFn(...args);
-    const t = pbTargetOf(args[0]);
+    const t = noPocketBaseCompanies() ? null : pbTargetOf(args[0]);
+    if (!t) {
+      const at = adminTargetOf(args[0]);
+      if (at && at.kind === "query") return adminGetQuerySnapshot(args[0], at, null).then((r) => r.snap);
+    }
     if (!t || t.kind !== "query") return fsFn(...args);
     return pbGetQuerySnapshot(args[0], t, null).then((r) => r.snap);
   };
@@ -616,8 +862,16 @@ export const getDocsFromServer = wrapQueryRead(fsGetDocsFromServer as Fn) as typ
 export const getDocsFromCache = wrapQueryRead(fsGetDocsFromCache as Fn) as typeof fsGetDocsFromCache;
 
 export const getCountFromServer = ((...args: unknown[]) => {
-  if (noPocketBaseCompanies()) return (fsGetCountFromServer as Fn)(...args);
-  const t = pbTargetOf(args[0]);
+  const t = noPocketBaseCompanies() ? null : pbTargetOf(args[0]);
+  if (!t) {
+    const at = adminTargetOf(args[0]);
+    if (at && at.kind === "query") {
+      return adminGetQuerySnapshot(args[0], at, null).then((r) => {
+        const count = r.snap.size as number;
+        return { data: () => ({ count }) };
+      });
+    }
+  }
   if (!t || t.kind !== "query") return (fsGetCountFromServer as Fn)(...args);
   return pbGetQuerySnapshot(args[0], t, null).then((r) => {
     const count = r.snap.size as number;
@@ -646,8 +900,12 @@ function observerFrom(args: unknown[]): Observer {
 
 /** `onSnapshot`: PocketBase company targets re-read the local mirror on every change bump. */
 export const onSnapshot = ((...args: unknown[]) => {
-  if (noPocketBaseCompanies() || typeof window === "undefined") return (fsOnSnapshot as Fn)(...args);
-  const t = pbTargetOf(args[0]);
+  if (typeof window === "undefined") return (fsOnSnapshot as Fn)(...args);
+  const t = noPocketBaseCompanies() ? null : pbTargetOf(args[0]);
+  if (!t) {
+    const at = adminTargetOf(args[0]);
+    if (at) return onAdminSnapshot(args, at);
+  }
   if (t && t.kind === "root" && isPocketBaseAppSessionActive()) return onRootSnapshotServerOnly(args, t);
   if (!t || t.kind === "root") return (fsOnSnapshot as Fn)(...args);
   const target = args[0];

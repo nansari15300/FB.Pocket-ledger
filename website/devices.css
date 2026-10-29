@@ -8,14 +8,28 @@
   grid-template-columns: 0.95fr 1.35fr;
   align-items: center;
   gap: 2rem;
+  min-width: 0;
 }
 /* Copy column keeps its own breathing room while devices touch the band edges. */
 .hero-devices .hero-grid > div:first-child {
   padding: 3rem 0;
+  min-width: 0;
+}
+@media (min-width: 861px) {
+  /* Same left/right gutter as other pages’ `.wrap` — copy not flush to the navy edge. */
+  .hero-devices {
+    padding: 5px clamp(24px, 4vw, 64px);
+  }
+  .hero-devices .hero-grid.wrap {
+    width: 100%;
+    max-width: none;
+    margin-inline: 0;
+  }
 }
 
 .device-stage {
   position: relative;
+  min-width: 0;
   min-height: clamp(320px, 33vw, 460px);
   padding: 0;
 }

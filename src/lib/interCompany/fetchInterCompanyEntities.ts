@@ -11,6 +11,7 @@ import {
   fetchInterCompanyEntitiesFromLocalMirror,
   fetchInterCompanyBankEntityDetailFromLocalMirror,
 } from "@/lib/interCompany/fetchInterCompanyEntitiesLocal";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 async function fetchInterCompanyEntitiesFromFirestore(
   companyId: string
@@ -136,6 +137,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 export async function fetchInterCompanyEntitiesForCompany(
   companyId: string
 ): Promise<InterCompanyEntityDetail[]> {
+  if (!isInterCompanySystemEnabled()) return [];
   if (!companyId) return [];
   if (await isPureLocalInterCompanyCompany(companyId)) {
     return fetchInterCompanyEntitiesFromLocalMirror(companyId);

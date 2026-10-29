@@ -52,6 +52,12 @@ import {
   isSubscriberPartyRow,
   resolveSubscriberPartyDisplayName,
 } from "@/lib/adminPanelCompany/subscriberPartyListDisplay";
+import { isPackedMyCompanyOnly } from "@/lib/plServerPackedApp";
+import {
+  isMyCompanyAgentParty,
+  isMyCompanySubscriberParty,
+  myCompanyDetailsTitle,
+} from "@/lib/myCompanyPartyList";
 import {
   nestedLedgerChildDialogShell,
   type MasterEditPresentationMode,
@@ -617,15 +623,22 @@ export function PartyDetails({
     return interCompanyClearingAccountDisplayName(icGroupFilteredMember);
   }, [icGroupFilteredMember]);
 
+  const packedMyCompanyDetails =
+    isPackedMyCompanyOnly() &&
+    (isMyCompanySubscriberParty(party) || isMyCompanyAgentParty(party));
   const headerDisplayTitle =
     icMemberDisplayName ??
-    (isAdminPanelCompanyLocalId(companyId) && isSubscriberPartyRow(party)
-      ? resolveSubscriberPartyDisplayName(party)
-      : party.name);
+    (packedMyCompanyDetails
+      ? myCompanyDetailsTitle(party)
+      : isAdminPanelCompanyLocalId(companyId) && isSubscriberPartyRow(party)
+        ? resolveSubscriberPartyDisplayName(party)
+        : party.name);
   const headerDisplayEmail =
-    isAdminPanelCompanyLocalId(companyId) && isSubscriberPartyRow(party)
+    packedMyCompanyDetails
       ? String(party.email ?? "").trim() || null
-      : null;
+      : isAdminPanelCompanyLocalId(companyId) && isSubscriberPartyRow(party)
+        ? String(party.email ?? "").trim() || null
+        : null;
 
   const adminSubscriberPartyLedger =
     isAdminPanelCompanyLocalId(companyId) && isSubscriberPartyRow(party);
@@ -1612,7 +1625,7 @@ export function PartyDetails({
     if (context === "sale") return "Sales";
     if (context === "purchase") return "Purchases";
     if (context === "payment-in") return "Receipt";
-    if (context === "payment-out") return "Payment Out";
+    if (context === "payment-out") return "Payment";
     return "Report";
   }, [mobileReportStickyTitle, context]);
 

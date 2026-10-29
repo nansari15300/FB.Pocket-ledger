@@ -373,7 +373,7 @@ export async function recompressOversizedImageAttachmentsOnSave(
     const url = String(item || "").trim();
     return url.length > 0 && looksLikeImageAttachmentUrl(url);
   });
-  // Add-time compress (Payment Out jaisa): sirf File/PDF under cap — save par dubara download/compress mat karo.
+  // Add-time compress (Payment jaisa): sirf File/PDF under cap — save par dubara download/compress mat karo.
   if (!hasOversizedImageFile && !hasImageUrl) return items;
 
   let skipExistingUrlRecompress = false;

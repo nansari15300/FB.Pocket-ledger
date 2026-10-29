@@ -6,6 +6,7 @@ import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { getLocalCompanyById, listLocalCompanies, upsertLocalCompany } from "@/lib/localCompanyStore";
 import { isLocalOnlyMode } from "@/lib/localMode";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 /** Company Code — exactly 12 chars, A–Z + 0–9, dono types zaroori */
 export const INTER_COMPANY_COMPANY_CODE_LEN = 12;
@@ -189,6 +190,7 @@ export async function resolveOrEnsureCompanyInterCompanyCode(args: {
   /** false = sirf read / fetch, generate mat karo */
   allowEnsure?: boolean;
 }): Promise<string> {
+  if (!isInterCompanySystemEnabled()) return "";
   const companyId = args.companyId.trim();
   if (!companyId) return "";
 
@@ -257,6 +259,7 @@ export async function generateUniqueInterCompanyCompanyCode(
   companyName?: string,
   maxAttempts = 12
 ): Promise<string> {
+  if (!isInterCompanySystemEnabled()) return "";
   for (let i = 0; i < maxAttempts; i++) {
     const candidate = generateInterCompanyCompanyCode(companyName);
     if (!isValidInterCompanyCompanyCode(candidate)) continue;
@@ -279,7 +282,7 @@ export async function ensureCompanyInterCompanyCode(
   companyId: string,
   companyName?: string
 ): Promise<string> {
-  if (!companyId) return "";
+  if (!isInterCompanySystemEnabled() || !companyId) return "";
 
   const inflight = ensureCompanyCodeInflight.get(companyId);
   if (inflight) return inflight;

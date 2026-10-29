@@ -2,7 +2,13 @@
 'use client'
 import { useAdminAccess } from '@/hooks/useAdminAccess'
 import { firestore as db } from '@/lib/firebase'
-import { collection, getDocs, orderBy, query, limit } from 'firebase/firestore'
+import {
+  collection,
+  orderBy,
+  query,
+  limit,
+} from 'firebase/firestore';
+import { getDocs } from '@/lib/pocketbaseData/pbReadSeam';
 import { useEffect, useState, useMemo } from 'react'
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'

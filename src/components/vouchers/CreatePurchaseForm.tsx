@@ -498,7 +498,7 @@ export function CreatePurchaseForm({
   } | null>(null);
   const [billWiseLinkLegKey, setBillWiseLinkLegKey] = useState<string>("");
   const billWiseLinksPersistedOnDialogRef = useRef(false);
-  /** Edit hydrate + line calc settle hone se pehle Save mat enable (Payment Out / Journal jaisa). */
+  /** Edit hydrate + line calc settle hone se pehle Save mat enable (Payment / Journal jaisa). */
   const [editBaselineHydrated, setEditBaselineHydrated] = useState(() => !voucher?.id);
   const editBaselineVoucherIdRef = useRef<string | null>(null);
   const resetLinksOnCopyTargetChange = useCallback(() => {
@@ -802,7 +802,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     }
     return m;
   }, [vouchers]);
-  /** Bill wise: count of Payment Out / Direct Expense vouchers for this party with unallocated amount (available to link to this purchase). Message uses "bcz" spelling. */
+  /** Bill wise: count of Payment / Direct Expense vouchers for this party with unallocated amount (available to link to this purchase). Message uses "bcz" spelling. */
   /** Bill wise: same count as Link to Dr popup (OB row + payment out/sale list). */
   const billWiseLinkableCount = useAdvancesLinkableCount(
     "purchase",
@@ -3564,7 +3564,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
 
                   {/* Bill wise link — mobile par totals/narration/files ke baad */}
                   <div className="col-span-2 flex flex-col gap-[15px] w-full">
-                    {/* Link for bill wise — same table/style as Payment Out. Shown for both new and edit so user can link before/after save. */}
+                    {/* Link for bill wise — same table/style as Payment. Shown for both new and edit so user can link before/after save. */}
                     {shouldShowLinkButton && (
                       <div className="pb-1.5">
                         {/* User request: keep hidden unless Show Link is clicked for add/non-linked edit. */}
@@ -3940,7 +3940,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                         <SalePurchaseTotalsSummaryAmount value={total || 0} className="text-red-600 font-bold" />
                       </div>
                     </div>
-                    {/* Container 2: Link for bill wise — same table/style as Payment Out. Shown for both new and edit so user can link before/after save. */}
+                    {/* Container 2: Link for bill wise — same table/style as Payment. Shown for both new and edit so user can link before/after save. */}
                     {shouldShowLinkButton && (
                       <div className="pb-1">
                         {/* Desktop add/non-linked edit path uses same reveal button. */}

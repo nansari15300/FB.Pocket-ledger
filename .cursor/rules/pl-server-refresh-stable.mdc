@@ -1,0 +1,14 @@
+---
+description: Pocket Ledger Server — Refresh must not jump the UI
+alwaysApply: true
+---
+
+# Pocket Ledger Server — Refresh (no layout jump)
+
+When editing `C:\Balgram\PocketLedger-Server\sub-server\pb_public` (Dashboard, Usage, App accounts, App Setting, Network meter):
+
+- **Refresh click** (page Refresh, per-chart refresh, App Setting Refresh) and **auto timers** must **not move / shake / jump** the UI.
+- Shared helper: `window.PLRefresh` in `app.js` (`aroundPaint`, `busy`, `lock` / `unlock`, scroll snap). Use it; do not wipe a page to “Loading…” if content is already on screen.
+- Keep previous paint while the request runs. Before replacing DOM, lock that container’s `min-height`. Restore `window` / `main` / `#as-body` / list scroll after paint.
+- Refresh buttons: spin the icon (`.is-refreshing`) for **at least 2 seconds** (`PLRefresh.busy` in `app.js`) — do **not** disable in a way that collapses layout, and do not clear `#dash-stats`, charts, or tables down to empty height.
+- Usage tables: if rows were stacked (`.us-stack`), keep them stacked on refresh so the two-column → stacked flash does not run.

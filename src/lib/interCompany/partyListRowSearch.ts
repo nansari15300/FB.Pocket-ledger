@@ -8,7 +8,8 @@ import {
 
 /** PartyList + header count — naam, IC Company subtitle, member account names. */
 export function partyListRowMatchesSearch(party: Party, searchTerm: string): boolean {
-  if (!party.name) return false;
+  const email = String(party.email || "").trim();
+  if (!party.name && !email) return false;
 
   const isIcPeerCompanyGroup = Boolean(
     (party as Party & { isIcPeerCompanyGroup?: boolean }).isIcPeerCompanyGroup
@@ -28,6 +29,7 @@ export function partyListRowMatchesSearch(party: Party, searchTerm: string): boo
 
   return (
     masterEntityTextMatchesSearch(party.name, searchTerm) ||
+    (email ? masterEntityTextMatchesSearch(email, searchTerm) : false) ||
     masterEntityTextMatchesSearch((party as Party & { aliasName?: string }).aliasName || "\u0000", searchTerm) ||
     (title.secondary ? masterEntityTextMatchesSearch(title.secondary, searchTerm) : false) ||
     memberSearchMatch ||

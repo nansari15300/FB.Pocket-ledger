@@ -12,6 +12,7 @@ import {
   getLocalFileRefMetaSync,
   getBlobFromLocalFileRef,
 } from "@/lib/localPendingFiles";
+import { fetchPbAttachmentBlob, isPbAttachmentRef } from "@/lib/pocketbaseData/pbAttachments";
 import {
   VoucherAttachmentFallbackContext,
   useVoucherAttachmentFallback,
@@ -150,6 +151,56 @@ export async function prewarmVisibleAttachmentRefsForInstantOpen(
 /** EXE preview: download + disk write — isse zyada mat wait karo; retry dikhao. */
 const EMBEDDED_PREVIEW_DOWNLOAD_TIMEOUT_MS = 28_000;
 const PDF_HOVER_RASTER_TIMEOUT_MS = 45_000;
+
+/**
+ * Portal bytes: `local:` pending first, then PocketBase `pbatt:`, then cache, then HTTPS.
+ * Same order as save (local upload → server URL; pending is deleted only after the URL is stored).
+ */
+async function resolvePortalPreviewBlob(
+  url: string,
+  companyId: string | undefined,
+  signal?: AbortSignal
+): Promise<Blob | null> {
+  if (signal?.aborted) return null;
+  if (isLocalFileRef(url)) {
+    const local = await getBlobFromLocalFileRef(url, { companyId });
+    if (local && local.size > 0) return local;
+    if (usesEmbeddedNativeAttachmentStorage()) {
+      const meta = getLocalFileRefMetaSync(url) ?? (await getLocalFileRefMeta(url));
+      if (meta?.displayUrl && (meta.filePath || meta.fileUri)) {
+        try {
+          const fetched = await fetch(meta.displayUrl, { signal }).then((r) => (r.ok ? r.blob() : null));
+          if (fetched && fetched.size > 0) return fetched;
+        } catch {
+          /* fall through */
+        }
+      }
+    }
+  }
+  if (isPbAttachmentRef(url)) {
+    const pb = await fetchPbAttachmentBlob(url);
+    if (pb && pb.size > 0) return pb;
+  }
+  try {
+    const cached = await tryOfflineCachedAttachmentBlobMultiKey(url);
+    if (cached && cached.size > 0) return cached;
+  } catch {
+    /* cache optional */
+  }
+  if (/^https?:\/\//i.test(url) && !signal?.aborted) {
+    try {
+      const remote = await getRemoteAttachmentBlobPreferOfflineCache(url, signal, {
+        companyId,
+        explicitUserRequest: true,
+        bypassVisiblePageCheck: true,
+      });
+      if (remote && remote.size > 0) return remote;
+    } catch {
+      /* fall through */
+    }
+  }
+  return null;
+}
 
 /** Full-quality portal raster only — never `::cell-thumb` (tiny Fit-window 100%). */
 function pdfPortalCacheKey(url: string): string {
@@ -910,54 +961,16 @@ export function LocalFileRefTooltipPreview({
           }
         }
 
-        const { isPlRemoteServerClientMode, isPlSharingServerPortOrigin } = await import(
-          "@/lib/plRemoteServerClient"
-        );
-        const staffRemote = isPlRemoteServerClientMode() || isPlSharingServerPortOrigin();
-        if (!blob?.size && !staffRemote && isLocalFileRef(effectiveUrl)) {
-          blob = await getBlobFromLocalFileRef(effectiveUrl, {
-            companyId: cid,
-          });
+        if (!blob?.size) {
+          blob = await resolvePortalPreviewBlob(effectiveUrl, cid, ac.signal);
         }
-        if (
-          !blob?.size &&
-          !staffRemote &&
-          usesEmbeddedNativeAttachmentStorage() &&
-          isLocalFileRef(effectiveUrl)
-        ) {
-          const meta = getLocalFileRefMetaSync(effectiveUrl) ?? (await getLocalFileRefMeta(effectiveUrl));
-          if (meta?.displayUrl && (meta.filePath || meta.fileUri)) {
-            try {
-              const fetched = await fetch(meta.displayUrl, { signal: ac.signal }).then((r) =>
-                r.ok ? r.blob() : null
-              );
-              if (fetched && fetched.size > 0) blob = fetched;
-            } catch {
-              /* fall through */
-            }
-          }
-        }
-        if (!blob || blob.size <= 0) {
+        if (!blob?.size) {
           const { resolvePlServerStaffAttachmentPreviewBlob } = await import("@/lib/plServerAttachmentFetch");
           blob = await resolvePlServerStaffAttachmentPreviewBlob(effectiveUrl, {
             galleryUrls: gallery?.urls,
             companyId: cid,
             signal: ac.signal,
           });
-        }
-        if (
-          !blob?.size &&
-          /^https?:\/\//i.test(effectiveUrl) &&
-          !ac.signal.aborted
-        ) {
-          try {
-            blob = await getRemoteAttachmentBlobPreferOfflineCache(effectiveUrl, ac.signal, {
-              companyId: cid,
-              explicitUserRequest: true,
-            });
-          } catch {
-            /* fall through */
-          }
         }
         if (cancelled) return;
         if (!blob || blob.size === 0) {
@@ -1252,7 +1265,8 @@ export function SingleAttachmentHoverPreviewBody({
   const effectiveUrl = normalizeAttachmentUrlForDevicePreview(u);
   const cleanUrl = effectiveUrl.split("?")[0].toLowerCase();
   // `drive:` / `PL_ATTACH` ko HTTPS image branch mat bhejo — wahan spinner atka rehta tha.
-  const usesDeviceBlobPreview = isLocalFileRef(effectiveUrl) || isDriveFileRef(effectiveUrl);
+  const usesDeviceBlobPreview =
+    isLocalFileRef(effectiveUrl) || isDriveFileRef(effectiveUrl) || isPbAttachmentRef(effectiveUrl);
   const storagePathRaw = !usesDeviceBlobPreview ? tryGetStoragePathFromFirebaseDownloadUrl(u) : null;
   const pathLower = (storagePathRaw || "").toLowerCase();
   const fmt = getAttachmentFormatLabel(effectiveUrl || u);

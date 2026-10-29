@@ -14,6 +14,7 @@ import {
   readInterCompanyAcNoFromDoc,
 } from "@/lib/interCompany/interCompanyAccountNo";
 import { getCompanyDocFromBrowserDb } from "@/lib/localCompanyDocMirror";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 type Options = {
   entityKind: InterCompanyEntityKind;
@@ -31,7 +32,7 @@ export function useEntityInterCompanyAcNo({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!entityId || !companyId) {
+    if (!isInterCompanySystemEnabled() || !entityId || !companyId) {
       setAcNo("");
       return;
     }

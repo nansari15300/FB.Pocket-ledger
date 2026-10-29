@@ -98,7 +98,7 @@ const prefixLabels: Record<keyof VoucherPrefixValues, string> = {
     purchase: "Purchase Bill (Items)",
     purchase_service: "Purchase Bill (Services)",
     payment_in: "Receipt",
-    payment_out: "Payment Out",
+    payment_out: "Payment",
     contra: "Contra Entry",
     direct_income: "Direct Income",
     direct_expense: "Direct Expense",
@@ -173,7 +173,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 export const REQUIRE_LINK_VOUCHER_KEYS = ["payment_out", "contra", "direct_expense"] as const;
 export const REQUIRE_LINK_VOUCHER_LABELS: Record<(typeof REQUIRE_LINK_VOUCHER_KEYS)[number], string> = {
-  payment_out: "Payment Out",
+  payment_out: "Payment",
   contra: "Contra",
   direct_expense: "Direct Expense",
 };
@@ -613,7 +613,7 @@ export function VoucherSettings() {
                     <div className={cn("space-y-4 pl-4", VS_BORDER_L)}>
                       <p className="text-sm font-medium">Require Receipt link (role + voucher type)</p>
                       <FormDescription className="!mt-0">
-                        When ON, that role must link to a Receipt to save. When OFF, they can save without linking. Set per voucher: Payment Out, Contra, Direct Expense.
+                        When ON, that role must link to a Receipt to save. When OFF, they can save without linking. Set per voucher: Payment, Contra, Direct Expense.
                       </FormDescription>
                       {/* Master OFF: stored matrix form me rakho, Switch UI pe OFF dikhao (sirf disabled nahi lagna chahiye "ON"); master ON ⇒ asli checkbox */}
                       {ROLES_WITH_VOUCHER_CREATE.map((role) => {
@@ -638,7 +638,7 @@ export function VoucherSettings() {
                             <p className="text-sm font-medium text-muted-foreground">{ROLE_LABELS[role] ?? role}</p>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                               <FormItem className={cn("flex flex-row items-center justify-between rounded-lg px-3 py-2", VS_CARD_BORDER)}>
-                                <FormLabel className="font-normal text-sm cursor-pointer">Payment Out</FormLabel>
+                                <FormLabel className="font-normal text-sm cursor-pointer">Payment</FormLabel>
                                 <FormControl>
                                   <Switch checked={oppoOn && payment_out} disabled={!oppoOn} onCheckedChange={(v) => update("payment_out", v)} />
                                 </FormControl>

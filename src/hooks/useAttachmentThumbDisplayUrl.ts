@@ -207,6 +207,14 @@ export function useAttachmentThumbDisplayUrl(
           const { getBlobFromLocalFileRef } = await import("@/lib/localPendingFiles");
           blob = await getBlobFromLocalFileRef(url, { companyId: companyId ?? undefined });
         }
+        if (!blob?.size) {
+          const { isPbAttachmentRef, fetchPbAttachmentBlob } = await import(
+            "@/lib/pocketbaseData/pbAttachments"
+          );
+          if (isPbAttachmentRef(url)) {
+            blob = await fetchPbAttachmentBlob(url);
+          }
+        }
         if (
           !blob?.size &&
           isLocalFileRef(url) &&

@@ -17,6 +17,7 @@ import { signOut as firebaseSignOut } from "firebase/auth";
 import {
   ArrowLeft,
   CheckCircle2,
+  LayoutDashboard,
   Loader2,
   LogOut,
   RefreshCw,
@@ -40,8 +41,13 @@ import {
 } from "@/components/ui/dialog";
 import { useDate } from "@/hooks/useDate";
 import { auth } from "@/lib/firebase";
-import { getPocketBaseServerUrl, pocketBaseSignIn, pocketBaseSignOut } from "@/lib/pocketbaseData/pbClient";
-import { clearPocketBaseAppSession } from "@/lib/pocketbaseData/pbAppSession";
+import { getPocketBaseServerUrl, getValidPocketBaseAuth, pocketBaseSignIn, pocketBaseSignOut } from "@/lib/pocketbaseData/pbClient";
+import {
+  clearPocketBaseAppSession,
+  pocketBaseSessionUid,
+  startPocketBaseAppSession,
+} from "@/lib/pocketbaseData/pbAppSession";
+import { resolvePostAuthCompanyRoute } from "@/lib/postAuthCompanyRoute";
 import { listAllSqliteCompanies, type RecoveryCompany } from "@/lib/recovery/recoveryReader";
 import {
   checkRecoveryAccess,
@@ -102,6 +108,7 @@ export default function RecoveryPage() {
   const [serverOk, setServerOk] = useState<boolean | null>(null);
   const [serverReason, setServerReason] = useState("");
   const [busyExit, setBusyExit] = useState(false);
+  const [goAppError, setGoAppError] = useState("");
 
   // Selection + per-company push jobs
   const [selected, setSelected] = useState<Record<string, boolean>>({});
@@ -204,6 +211,45 @@ export default function RecoveryPage() {
       /* ignore */
     }
     window.location.assign("/");
+  }, []);
+
+  // "Go to App": leave recovery mode but keep this sign-in (no password again). With the older
+  // (Firebase) account signed in, the normal app opens on it; otherwise a valid Pocket Ledger Server
+  // token starts a server-only app session (same as a server-only sign-in). The recovery marker is
+  // cleared first, so RecoveryModeGate does not send the app back here. Getting back into recovery
+  // mode still needs Log out + sign in with the recovery tick.
+  const goToApp = useCallback(async () => {
+    if (Object.values(jobsRef.current).some(isActive)) return;
+    setGoAppError("");
+    setBusyExit(true);
+    try {
+      try {
+        await Promise.race([auth.authStateReady(), new Promise((r) => setTimeout(r, 4000))]);
+      } catch {
+        /* ignore */
+      }
+      const fbUser = auth.currentUser;
+      let uid: string | undefined;
+      let email: string | null | undefined;
+      if (fbUser) {
+        clearPocketBaseAppSession();
+        uid = fbUser.uid;
+        email = fbUser.email;
+      } else if (getValidPocketBaseAuth()) {
+        const p = await startPocketBaseAppSession();
+        uid = pocketBaseSessionUid(p);
+        email = p.email;
+      } else {
+        setGoAppError("No signed-in app session to reuse. Use Log out and sign in normally.");
+        setBusyExit(false);
+        return;
+      }
+      writeRecoveryMode(null);
+      window.location.assign(resolvePostAuthCompanyRoute(uid, email));
+    } catch (e) {
+      setGoAppError(e instanceof Error ? e.message : "Could not open the app.");
+      setBusyExit(false);
+    }
   }, []);
 
   const updateJob = useCallback((id: string, patch: Partial<Job> | ((j: Job) => Partial<Job>)) => {
@@ -434,11 +480,14 @@ export default function RecoveryPage() {
 
   return (
     <main className="min-h-screen bg-background p-4 md:p-8">
-      <div className="mx-auto w-full max-w-5xl space-y-6">
+      <div className="w-full space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Button variant="outline" size="sm" onClick={() => void exitRecovery()} disabled={busyExit || anyActive}>
               <ArrowLeft className="mr-1 h-4 w-4" /> Back
+            </Button>
+            <Button size="sm" onClick={() => void goToApp()} disabled={busyExit || anyActive}>
+              <LayoutDashboard className="mr-1 h-4 w-4" /> Go to App
             </Button>
             <div>
               <h1 className="text-xl font-semibold">Recovery mode</h1>
@@ -451,6 +500,7 @@ export default function RecoveryPage() {
             <LogOut className="mr-1 h-4 w-4" /> Log out
           </Button>
         </header>
+        {goAppError ? <p className="text-sm text-destructive">{goAppError}</p> : null}
 
         <section className="rounded-lg border bg-card p-4 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -568,6 +618,7 @@ export default function RecoveryPage() {
                 <UploadCloud className="mr-1 h-4 w-4" /> Push selected{selectedIds.length ? ` (${selectedIds.length})` : ""}
               </Button>
             </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {companies.map((c) => {
               const mark = marks[c.id];
               const job = jobs[c.id];
@@ -578,7 +629,7 @@ export default function RecoveryPage() {
                 .slice(0, 6);
               const pct = job ? jobPct(job) : 0;
               return (
-                <div key={c.id} className="rounded-lg border bg-card p-4">
+                <div key={c.id} className="min-w-0 rounded-lg border bg-card p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex min-w-0 flex-1 items-start gap-3">
                       <Checkbox
@@ -680,8 +731,10 @@ export default function RecoveryPage() {
                             <p className="text-xs text-muted-foreground">
                               {job.result.created} new, {job.result.updated} updated, {job.result.same + job.result.keptServer} unchanged
                               {job.result.keptServer ? ` (${job.result.keptServer} newer on the server kept)` : ""},{" "}
-                              {job.result.failedRecords + job.result.unsupported} failed. {job.result.files} files uploaded
-                              {job.result.missingFiles ? `, ${job.result.missingFiles} not found on this PC` : ""}
+                              {job.result.failedRecords + job.result.unsupported} failed.                               {job.result.files} files uploaded
+                              {job.result.missingFiles
+                                ? `, ${job.result.missingFiles} not on this PC and could not be copied from Firebase`
+                                : ""}
                               {job.result.tooBigFiles ? `, ${job.result.tooBigFiles} too big for the server` : ""}.
                               {job.result.resumedFromBatch ? ` Continued from part ${job.result.resumedFromBatch + 1}.` : ""}
                               {job.result.countMismatch.length
@@ -696,6 +749,7 @@ export default function RecoveryPage() {
                 </div>
               );
             })}
+            </div>
           </section>
         )}
       </div>
@@ -710,7 +764,7 @@ export default function RecoveryPage() {
             <DialogDescription>
               {promptIds && promptIds.length > 1
                 ? `${promptIds.length} companies. They upload one after another, each with its own progress, Stop and Retry.`
-                : "Pushing again is safe: records already on the server are not duplicated."}
+                : "Pushing again is safe: records already on the server are not duplicated. Firebase files on this PC (or still on Firebase) are copied to Pocket Ledger Server URLs."}
             </DialogDescription>
           </DialogHeader>
 

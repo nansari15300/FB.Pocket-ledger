@@ -20,6 +20,7 @@ import { ensureJoinPairCompaniesInInterCompanySystem } from "@/lib/interCompany/
 import { notifyInterCompanyAlertsChanged } from "@/lib/interCompany/interCompanyAlerts";
 import { loadInterCompanyJoinSettings, saveInterCompanyJoinSettings } from "@/lib/interCompany/interCompanyJoinSettingsSync";
 import { addPermanentInterCompanyJoin } from "@/lib/interCompany/interCompanyPermanentJoin";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 const REQUESTS = () => collection(firestore, "inter_company_system_join_requests");
 
@@ -191,7 +192,7 @@ export function subscribePendingSystemJoinRequests(
   },
   onData: (rows: PendingSystemJoinRequest[]) => void
 ): Unsubscribe {
-  if (!args.systemId || !args.requesterUserId) {
+  if (!isInterCompanySystemEnabled() || !args.systemId || !args.requesterUserId) {
     onData([]);
     return () => undefined;
   }
@@ -268,7 +269,7 @@ export function subscribeIncomingSystemJoinRequests(
   },
   onData: (rows: IncomingSystemJoinRequest[]) => void
 ): Unsubscribe {
-  if (!args.targetOwnerUserId) {
+  if (!isInterCompanySystemEnabled() || !args.targetOwnerUserId) {
     onData([]);
     return () => undefined;
   }
@@ -557,7 +558,7 @@ export function subscribeAcceptedSystemJoinLinksForRequester(
   requesterUserId: string,
   onSynced?: () => void
 ): Unsubscribe {
-  if (!requesterUserId) return () => undefined;
+  if (!isInterCompanySystemEnabled() || !requesterUserId) return () => undefined;
 
   return onSnapshot(
     query(
@@ -641,7 +642,7 @@ export function subscribeAcceptedSystemJoinsForCompany(
   onData: (links: AcceptedSystemJoinLink[]) => void,
   onError?: (err: unknown) => void
 ): Unsubscribe {
-  if (!sourceCompanyId) {
+  if (!isInterCompanySystemEnabled() || !sourceCompanyId) {
     onData([]);
     return () => undefined;
   }
@@ -715,7 +716,7 @@ export function subscribeAcceptedSystemJoinsForSystem(
   onData: (rows: AcceptedSystemJoinPair[]) => void,
   onError?: (err: unknown) => void
 ): Unsubscribe {
-  if (!systemId) {
+  if (!isInterCompanySystemEnabled() || !systemId) {
     onData([]);
     return () => undefined;
   }

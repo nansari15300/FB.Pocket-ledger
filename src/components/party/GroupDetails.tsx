@@ -246,7 +246,7 @@ function filterByStatus(txns: any[], statusFilter: StatusFilter): any[] {
 }
 
 export function GroupDetails({
-  group,
+  group: initialGroup,
   allGroups,
   allParties,
   onGroupUpdated,
@@ -282,6 +282,10 @@ export function GroupDetails({
   const { balanceMode, setBalanceMode } = useBalanceMode();
   const { company, companyId } = useCompany();
   useFyLoadOnDateRangeChange(dateRange);
+  const group = useMemo(
+    () => allGroups.find((row) => row.id === initialGroup.id) || initialGroup,
+    [allGroups, initialGroup]
+  );
   const {
     vouchers,
     vouchersAll,

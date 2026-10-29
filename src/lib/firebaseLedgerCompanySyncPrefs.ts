@@ -161,7 +161,16 @@ export function isPocketBaseCompanyDataSyncEnabled(
   const registry = String(companyId || "").trim();
   if (!registry || !isPocketBaseCompany(registry, company)) return false;
   const auth = String(company?.authoritativeCompanyId || "").trim();
-  return dataSyncEntryEnabledForIds(registry, auth || undefined);
+  const prefs = readFirebaseLedgerCompanySyncPrefs();
+  // If explicitly configured in prefs, respect user's setting
+  if (prefs.companies[registry]) {
+    return prefs.companies[registry].data === true;
+  }
+  if (auth && prefs.companies[auth]) {
+    return prefs.companies[auth].data === true;
+  }
+  // Default to true for PocketBase companies (their primary data is on the server)
+  return true;
 }
 
 /**

@@ -47,7 +47,7 @@ import { CreatePartyDialog } from "@/components/party/CreatePartyDialog";
 import { CreateGroupDialog } from "@/components/party/CreateGroupDialog";
 import { PermissionButton } from "@/components/permission";
 import { useVouchers } from "@/hooks/useVouchers";
-import { resolveMasterListSelection } from "@/lib/masterEntityLiveUpdate";
+import { masterEntityProfileUiFields, resolveMasterListSelection } from "@/lib/masterEntityLiveUpdate";
 import usePermissions from "@/hooks/usePermissions";
 import type { Party, Group } from "@/components/party/types";
 import { useResponsiveListLayout } from "@/hooks/useResponsiveListLayout";
@@ -136,6 +136,13 @@ import {
   type PartyListTab,
 } from "@/lib/adminPanelCompany/partyList";
 import { subscriberPartyListTitleLines } from "@/lib/adminPanelCompany/subscriberPartyListDisplay";
+import { isPocketBaseAppSessionActive, readPocketBaseAppProfile, pocketBaseSessionUid } from "@/lib/pocketbaseData/pbAppSession";
+import { isPackedMyCompanyOnly } from "@/lib/plServerPackedApp";
+import {
+  isMyCompanyAgentParty,
+  myCompanyPartyListTitleLines,
+  parsePackedMyCompanyPartyTab,
+} from "@/lib/myCompanyPartyList";
 
 /** Tab `replaceState` ke baad `useSearchParams` stale reh sakta hai — address bar (location) pehle. */
 
@@ -217,6 +224,7 @@ function PartyPageContent() {
   // Pehle company context: warna vouchersLoading false ho kar khali list flash, phir company aate hi dubara paint (Poora page jump).
   const { company, companyId, loading: companyLoading, effectiveNotificationSettings } = useCompany();
   const adminPartyMode = isAdminPanelPartyPage(companyId);
+  const packedMyCompanyMode = isPackedMyCompanyOnly();
   const { formatCurrency, formatDate, formatDateBS, dateSystem } = useDate();
   const { vouchers, loading: vouchersLoading, processedParties, processedPartiesForSelection, processedGroups: initialProcessedGroups, overdueTransactions, hasOverdueTransactions, userNames: voucherUserNames, journalAccountNames } = useVouchers();
   const waitingForCompany = Boolean(companyId && (companyLoading || !company));
@@ -283,8 +291,12 @@ function PartyPageContent() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const v = new URLSearchParams(window.location.search).get("view");
-    setActiveView(parsePartyListTab(v ?? "", adminPartyMode));
-  }, [adminPartyMode, companyId]);
+    setActiveView(
+      packedMyCompanyMode
+        ? parsePackedMyCompanyPartyTab(v ?? "")
+        : parsePartyListTab(v ?? "", adminPartyMode)
+    );
+  }, [adminPartyMode, packedMyCompanyMode, companyId]);
   const { isMobile, selected, setSelected } = useResponsiveListLayout<Party | Group>(`party_view_${activeView}`);
   // APK/static: mobile list-detail + hardware back — sirf `isMobile` par mat band karo (PC mode tablet)
   const useQueryNav = useMasterDetailQueryNav();
@@ -394,7 +406,13 @@ function PartyPageContent() {
     return masterDetailBalanceToneClass((selected as Party | Group).balance);
   }, [selected]);
   const partyMasterDetailTitle =
-    activeView === "groups" ? "Party Groups" : activeView === "ic_ac" ? "IC / Ac" : "Parties";
+    activeView === "groups"
+      ? "Party Groups"
+      : activeView === "ic_ac"
+        ? "IC / Ac"
+        : activeView === "agents"
+          ? "Agents"
+          : "Parties";
   // Header Report: sessionStorage sync — URL ?selected= flicker / router.replace race se button stable rahe
   const overdueVirtualParty = useMemo((): Party | null => {
     if (!hasOverdueTransactions || overdueTransactions.length === 0) return null;
@@ -490,10 +508,12 @@ function PartyPageContent() {
   const partiesForList = processedPartiesForSelection;
   const icParties = useMemo(
     () =>
-      dedupeInterCompanyClearingParties(
-        partiesForList.filter((p) => isInterCompanyPartyListAccount(p))
-      ),
-    [partiesForList]
+      packedMyCompanyMode
+        ? []
+        : dedupeInterCompanyClearingParties(
+            partiesForList.filter((p) => isInterCompanyPartyListAccount(p))
+          ),
+    [packedMyCompanyMode, partiesForList]
   );
   /** usePageMemory + URL sync — list jaisa (IC company merged rows included). */
   const partiesForPartyListView = useMemo(() => {
@@ -501,6 +521,9 @@ function PartyPageContent() {
       showOnlyPartiesWithPendingApproval && showApproveOnList
         ? partiesForList.filter((p) => (pendingApprovalByPartyId[p.id] ?? 0) > 0)
         : partiesForList;
+    if (packedMyCompanyMode) {
+      return base.filter((p) => !isInterCompanyPartyListAccount(p));
+    }
     const regular = base.filter((p) => !isInterCompanyPartyListAccount(p));
     const icFlat = dedupeInterCompanyClearingParties(
       base.filter((p) => isInterCompanyPartyListAccount(p))
@@ -508,18 +531,27 @@ function PartyPageContent() {
     return [...regular, ...icFlat];
   }, [
     partiesForList,
+    packedMyCompanyMode,
     showOnlyPartiesWithPendingApproval,
     showApproveOnList,
     pendingApprovalByPartyId,
   ]);
+  const packedPartiesForView = useMemo(
+    () =>
+      packedMyCompanyMode
+        ? partiesForPartyListView.filter((p) => !isMyCompanyAgentParty(p))
+        : partiesForPartyListView,
+    [packedMyCompanyMode, partiesForPartyListView]
+  );
   const subscriberPartiesForView = useMemo(
     () => filterSubscriberParties(partiesForPartyListView.filter((p) => !isInterCompanyPartyListAccount(p))),
     [partiesForPartyListView]
   );
-  const agentPartiesForView = useMemo(
-    () => filterAgentParties(partiesForPartyListView.filter((p) => !isInterCompanyPartyListAccount(p))),
-    [partiesForPartyListView]
-  );
+  const agentPartiesForView = useMemo(() => {
+    const base = partiesForPartyListView.filter((p) => !isInterCompanyPartyListAccount(p));
+    if (packedMyCompanyMode) return base.filter(isMyCompanyAgentParty);
+    return filterAgentParties(base);
+  }, [packedMyCompanyMode, partiesForPartyListView]);
   const adminPartyLists = useMemo(
     () => ({ subscribers: subscriberPartiesForView, agents: agentPartiesForView }),
     [subscriberPartiesForView, agentPartiesForView]
@@ -548,7 +580,9 @@ function PartyPageContent() {
           : activeView === "agents"
             ? agentPartiesForView
             : activeView === "parties"
-              ? partiesForPartyListView
+              ? packedMyCompanyMode
+                ? packedPartiesForView
+                : partiesForPartyListView
               : processedPartiesForSelection;
     return resolveMasterListSelection(selectedPartyRaw, listRows);
   }, [
@@ -557,6 +591,8 @@ function PartyPageContent() {
     icListRowsForView,
     subscriberPartiesForView,
     agentPartiesForView,
+    packedMyCompanyMode,
+    packedPartiesForView,
     partiesForPartyListView,
     processedPartiesForSelection,
   ]);
@@ -642,6 +678,21 @@ function PartyPageContent() {
         : null,
     [processedGroups, selectedGroupRaw, companyId]
   );
+
+  // List already live-patches processed rows; write that back into `selected` so the open
+  // details header / group page stay on the new name without leaving the page.
+  useEffect(() => {
+    if (!selected?.id) return;
+    const live =
+      activeView === "groups"
+        ? processedGroups.find((row) => row.id === selected.id)
+        : processedParties.find((row) => row.id === selected.id);
+    if (!live) return;
+    const prev = masterEntityProfileUiFields(selected as unknown as Record<string, unknown>);
+    const next = masterEntityProfileUiFields(live as unknown as Record<string, unknown>);
+    if (prev === next) return;
+    setSelected({ ...selected, ...live });
+  }, [selected, activeView, processedParties, processedGroups, setSelected]);
 
   const mobileDetailHeaderAvatar = useMemo(() => {
     if (!isMobile || !selected) return null;
@@ -743,7 +794,15 @@ function PartyPageContent() {
     "partyPageState",
     activeView,
     (view) => {
-      if (view === "groups" || view === "ic_ac" || view === "parties") setActiveView(view);
+      if (
+        view === "groups" ||
+        view === "ic_ac" ||
+        view === "parties" ||
+        view === "agents" ||
+        view === "subscribers"
+      ) {
+        setActiveView(view);
+      }
     },
     selected,
     setSelected,
@@ -751,7 +810,13 @@ function PartyPageContent() {
       ? processedGroups
       : activeView === "ic_ac"
         ? icListRowsForView
-        : partiesForPageMemory,
+        : activeView === "agents"
+          ? agentPartiesForView
+          : activeView === "subscribers"
+            ? subscriberPartiesForView
+            : packedMyCompanyMode
+              ? packedPartiesForView
+              : partiesForPageMemory,
     pageDataLoading,
     isMobile, // static PC: auto-select chalu — `useQueryNav` sirf URL/mobile list-first ke liye
     partyUrlState.selectedId,
@@ -771,7 +836,9 @@ function PartyPageContent() {
         ? `${masterDetailListHref("party")}?view=groups`
         : activeView === "ic_ac"
           ? `${masterDetailListHref("party")}?view=ic_ac`
-          : masterDetailListHref("party");
+          : activeView === "agents"
+            ? `${masterDetailListHref("party")}?view=agents`
+            : masterDetailListHref("party");
     if (typeof window !== "undefined") {
       try {
         window.history.replaceState(window.history.state, "", browserHistoryHref(href));
@@ -819,6 +886,14 @@ function PartyPageContent() {
         if (currentActiveView !== "ic_ac") {
           setActiveView("ic_ac");
         }
+      } else if (view === "agents") {
+        if (currentActiveView !== "agents") {
+          setActiveView("agents");
+        }
+      } else if (view === "subscribers") {
+        if (currentActiveView !== "subscribers") {
+          setActiveView("subscribers");
+        }
       } else if (currentActiveView !== "parties") {
         setActiveView("parties");
       }
@@ -849,9 +924,19 @@ function PartyPageContent() {
     let targetView = currentActiveView;
     if (groupItem && partyItem) {
       targetView =
-        view === "groups" ? "groups" : view === "ic_ac" ? "ic_ac" : "parties";
+        view === "groups"
+          ? "groups"
+          : view === "ic_ac"
+            ? "ic_ac"
+            : view === "agents"
+              ? "agents"
+              : view === "subscribers"
+                ? "subscribers"
+                : "parties";
     } else if (view === "groups" && groupItem) targetView = "groups";
     else if (view === "ic_ac" && partyItem) targetView = "ic_ac";
+    else if (view === "agents" && partyItem) targetView = "agents";
+    else if (view === "subscribers" && partyItem) targetView = "subscribers";
     else if (view === "parties" && partyItem) targetView = "parties";
     // No entity-type inference — stale ?selected= without view must not snap tabs on PL refresh.
     if (targetView !== currentActiveView) setActiveView(targetView);
@@ -867,7 +952,11 @@ function PartyPageContent() {
         ? `/party?view=groups&selected=${encodeURIComponent(selectedId)}`
         : view === "ic_ac"
           ? `/party?view=ic_ac&selected=${encodeURIComponent(selectedId)}`
-          : `/party?selected=${encodeURIComponent(selectedId)}`;
+          : view === "agents"
+            ? `/party?view=agents&selected=${encodeURIComponent(selectedId)}`
+            : view === "subscribers"
+              ? `/party?view=subscribers&selected=${encodeURIComponent(selectedId)}`
+              : `/party?selected=${encodeURIComponent(selectedId)}`;
     const canonicalWithModal = appendPreservedModalQueryToHref(canonical);
     if (shouldReplaceWithMasterDetailCanonical(canonicalWithModal)) {
       router.replace(canonicalWithModal, { scroll: false });
@@ -890,7 +979,7 @@ function PartyPageContent() {
     if (suppressPartyListRestoreRef.current) return;
     const { view, selectedId } = readPartyPageUrlState(viewFromUrl, selectedIdFromUrl);
     if (selectedId) return;
-    if (view === "groups" || view === "ic_ac") return;
+    if (view === "groups" || view === "ic_ac" || view === "agents" || view === "subscribers") return;
     if (activeView !== "parties") return;
     if (selected?.id && selected.id !== OVERDUE_ACCOUNT_ID) return;
 
@@ -950,14 +1039,16 @@ function PartyPageContent() {
   /** Tab switch — turant list row select (null + useEffect = 1–7s random delay fix). */
   const handlePartyGroupsTabChange = useCallback(
     (value: string) => {
-      const tab = parsePartyListTab(value, adminPartyMode);
+      const tab = packedMyCompanyMode
+        ? parsePackedMyCompanyPartyTab(value)
+        : parsePartyListTab(value, adminPartyMode);
       const nextSelected = tabSwitchSelection(
         isMobile,
         pickPartyTabSelection(
           tab,
-          partiesForPageMemory,
+          packedMyCompanyMode ? packedPartiesForView : partiesForPageMemory,
           processedGroups,
-          icListRowsForView,
+          packedMyCompanyMode ? [] : icListRowsForView,
           adminPartyLists
         )
       );
@@ -987,6 +1078,8 @@ function PartyPageContent() {
     },
     [
       adminPartyMode,
+      packedMyCompanyMode,
+      packedPartiesForView,
       adminPartyLists,
       partiesForPageMemory,
       processedGroups,
@@ -1003,7 +1096,14 @@ function PartyPageContent() {
     if (userNames[userId] && userNames[userId] !== "Unknown" && userNames[userId] !== "N/A") {
       return userNames[userId];
     }
-    try {
+    // Pocket Ledger Server session: no Firebase user, so Firestore would only fail ("client is offline").
+    if (isPocketBaseAppSessionActive()) {
+      const p = readPocketBaseAppProfile();
+      if (p && (userId === pocketBaseSessionUid(p) || userId === p.id)) {
+        const nm = p.name || p.email;
+        if (nm) return nm;
+      }
+    } else try {
         // Primary lookup by uid because user doc IDs may be name_uid format.
         const q = query(collection(firestore, "users"), where("uid", "==", userId));
         const snap = await getDocs(q);
@@ -1029,7 +1129,11 @@ function PartyPageContent() {
             }
         }
     } catch (e) {
-      console.error("[PartyPage] Error fetching userName for", userId, e);
+      if ((e as { code?: unknown } | null)?.code === "unavailable") {
+        console.debug("[PartyPage] userName lookup skipped (offline) for", userId);
+      } else {
+        console.error("[PartyPage] Error fetching userName for", userId, e);
+      }
     }
     return "N/A";
   }, [userNames]);
@@ -1262,7 +1366,11 @@ function PartyPageContent() {
           ? `/party?selected=${encodeURIComponent(OVERDUE_ACCOUNT_ID)}`
           : activeView === "ic_ac"
             ? `/party?view=ic_ac&selected=${encodeURIComponent(party.id)}`
-            : `/party?selected=${encodeURIComponent(party.id)}`;
+            : activeView === "agents"
+              ? `/party?view=agents&selected=${encodeURIComponent(party.id)}`
+              : activeView === "subscribers"
+                ? `/party?view=subscribers&selected=${encodeURIComponent(party.id)}`
+                : `/party?selected=${encodeURIComponent(party.id)}`;
       const syncRouter = useQueryNav && shouldReplaceWithMasterDetailCanonical(path);
       if (typeof window !== "undefined") {
         try {
@@ -1297,12 +1405,14 @@ function PartyPageContent() {
         ? subscriberPartiesForView
         : activeView === "agents"
           ? agentPartiesForView
-          : partiesForPartyListView;
+          : packedMyCompanyMode
+            ? packedPartiesForView
+            : partiesForPartyListView;
     return (source || []).filter((p) => {
       const isSystemAccount = (p as any).isSystemAccount === true;
       return partyListRowMatchesSearch(p, searchTerm) && !isSystemAccount;
     }).length;
-  }, [activeView, partiesForPartyListView, subscriberPartiesForView, agentPartiesForView, searchTerm]);
+  }, [activeView, packedMyCompanyMode, packedPartiesForView, partiesForPartyListView, subscriberPartiesForView, agentPartiesForView, searchTerm]);
 
   const filteredIcPartyCount = useMemo(() => {
     return (icListRowsForView || []).filter((p) => partyListRowMatchesSearch(p, searchTerm)).length;
@@ -1431,9 +1541,11 @@ function PartyPageContent() {
           <TabsTrigger listChrome value="parties" className="flex-1">Parties</TabsTrigger>
         )}
         <TabsTrigger listChrome value="groups" className="flex-1">Groups</TabsTrigger>
-        {!adminPartyMode ? (
+        {adminPartyMode ? null : packedMyCompanyMode ? (
+          <TabsTrigger listChrome value="agents" className="flex-1">Agents</TabsTrigger>
+        ) : (
           <TabsTrigger listChrome value="ic_ac" className="flex-1">IC / Ac</TabsTrigger>
-        ) : null}
+        )}
       </TabsList>
     </Tabs>
   );
@@ -1452,7 +1564,9 @@ function PartyPageContent() {
                   ? "Search parties..."
                   : activeView === "ic_ac"
                     ? "Search companies..."
-                    : "Search groups/party"
+                    : packedMyCompanyMode && activeView === "agents"
+                      ? "Search agents..."
+                      : "Search groups/party"
           }
           listChrome
           listChromeSearch
@@ -1578,7 +1692,7 @@ function PartyPageContent() {
           aria-hidden={activeView !== "parties"}
         >
           <PartyList
-            parties={partiesForPartyListView}
+            parties={packedMyCompanyMode ? packedPartiesForView : partiesForPartyListView}
             onSelectParty={handleSelectParty}
             selectedParty={selectedParty}
             selectedIcMemberAccountId={icGroupMemberFilterId}
@@ -1586,6 +1700,7 @@ function PartyPageContent() {
             topPartyId={hasOverdueTransactions ? OVERDUE_ACCOUNT_ID : undefined}
             overdueVoucherCount={hasOverdueTransactions ? overdueTransactions.length : undefined}
             pendingApprovalByPartyId={pendingApprovalByPartyId}
+            resolvePartyTitleLines={packedMyCompanyMode ? myCompanyPartyListTitleLines : undefined}
             getItemHref={useQueryNav ? (p) => (p.id === OVERDUE_ACCOUNT_ID ? undefined : `/party?selected=${p.id}`) : undefined}
             quickFilter={partyListQuickFilter}
             onQuickFilterChange={setPartyListQuickFilter}
@@ -1627,10 +1742,12 @@ function PartyPageContent() {
             selectedParty={selectedParty}
             searchTerm={searchTerm}
             pendingApprovalByPartyId={pendingApprovalByPartyId}
+            resolvePartyTitleLines={packedMyCompanyMode ? myCompanyPartyListTitleLines : undefined}
             getItemHref={useQueryNav ? (p) => `/party?view=agents&selected=${p.id}` : undefined}
             quickFilter={partyListQuickFilter}
             onQuickFilterChange={setPartyListQuickFilter}
             hideQuickFilterBar
+            emptyLabel="No agents found."
           />
         </div>
         <div
@@ -1648,7 +1765,7 @@ function PartyPageContent() {
             collapsible={false}
             pendingApprovalByGroupId={pendingApprovalByGroupId}
             pendingApprovalByPartyId={pendingApprovalByPartyId}
-            icPeerCompanyRows={icPeerCompanyRowsForGroupTab}
+            icPeerCompanyRows={packedMyCompanyMode ? [] : icPeerCompanyRowsForGroupTab}
             selectedIcPeerCompanyId={icGroupPeerCompanyFilterId}
             selectedIcMemberAccountId={icGroupMemberFilterId}
             onSelectIcCompanyGroup={handleSelectIcCompanyGroup}

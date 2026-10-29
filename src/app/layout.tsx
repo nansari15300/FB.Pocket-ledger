@@ -48,7 +48,7 @@ export default function RootLayout({
       <body className="font-body antialiased theme-pro primary-pro">
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{localStorage.removeItem("pl-color-mode");var R="pl-theme-default-rev",V="2",TK="theme",PK="primaryColor";var rev=localStorage.getItem(R),t=localStorage.getItem(TK),p=localStorage.getItem(PK);if(!rev||rev!==V){if(!t||t==="theme-pure-white"){t="theme-pro";p="primary-pro";}localStorage.setItem(R,V);localStorage.setItem(TK,t);localStorage.setItem(PK,p||"primary-pro");}if(!t){t="theme-pro";p="primary-pro";}document.body.className="font-body antialiased "+t+" "+(p||"primary-pro");}catch(e){}})();`,
+            __html: `(function(){try{localStorage.removeItem("pl-color-mode");var R="pl-theme-default-rev",V="2",TK="theme",PK="primaryColor";var rev=localStorage.getItem(R),t=localStorage.getItem(TK),p=localStorage.getItem(PK);if(!rev||rev!==V){if(!t||t==="theme-pure-white"){t="theme-pro";p="primary-pro";}localStorage.setItem(R,V);localStorage.setItem(TK,t);localStorage.setItem(PK,p||"primary-pro");}if(!t){t="theme-pro";p="primary-pro";}var dark=t==="theme-pl-dark";document.body.className="font-body antialiased "+t+" "+(p||"primary-pro")+(dark?" dark":"");}catch(e){}})();`,
           }}
         />
         <script

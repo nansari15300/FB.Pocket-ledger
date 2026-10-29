@@ -131,12 +131,14 @@ import { getInterCompanyLedgerAmounts } from "@/lib/interCompany/interCompanyLed
 import { resolveInterCompanyOtherChargeKindFromVoucher } from "@/lib/interCompany/resolveInterCompanyOtherChargeKind";
 import { isRecurringAutoUserDisplayLabel } from "@/lib/interCompany/interCompanyVoucherHistory";
 import { backfillInterCompanySourceApprovedFlags } from "@/lib/interCompany/interCompanyVisibilityBackfill";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 import {
   batchFetchUserDisplayNamesFromFirestore,
   displayNameFromUserFirestoreDoc,
 } from "@/lib/batchFetchUserDisplayNames";
 import { buildPartyLedgerAggregateMap } from "@/lib/partyListLedgerBalance";
 import { filterVouchersForAdminSubscriberPartyLedger } from "@/lib/adminPanelCompany/adminPanelPartyLedger";
+import { isPbOnlySession } from "@/lib/pocketbaseData/userDisplayNameSession";
 
 /** Offline company: vouchers me `userId` aksar owner ka Firebase uid ya `local` — sirf `user.uid` match se shared user ko 0 rows. */
 function localCompanyRoleAllowsViewAll(role: string | undefined): boolean {
@@ -325,6 +327,8 @@ async function resolveJournalAccountFirestoreParallel(
   if (!companyDocId || !ids.length) return out;
 
   async function probeOne(accountId: string): Promise<{ id: string; name: string } | null> {
+    // Server-only session: no Firebase user, Firestore reads would only fail.
+    if (isPbOnlySession()) return { id: accountId, name: "Unknown Account" };
     const collectionsToSearch = ["parties", "bank_accounts", "staff", "items", "expense_accounts", "taxes", "users"] as const;
     const nameFields = ["name", "accountName", "name", "name", "name", "name", "displayName"] as const;
     for (let i = 0; i < collectionsToSearch.length; i++) {
@@ -445,7 +449,7 @@ function entityListUiFingerprint(rows: readonly any[]): string {
     };
     parts += `\x1f${id}\x1e${tsField(r.updatedAt)}\x1e${tsField(r.lastEditedAt)}\x1e${tsField(r.createdAt)}\x1e${tsField(r.date)}\x1e${
       r.isApproved === true ? 1 : 0
-    }\x1e${tsField(r.approvedAt)}\x1e${masterEntityProfileUiFields(r)}\x1e${voucherBillWiseAllocationsUiFingerprint(r)}`;
+    }\x1e${tsField(r.approvedAt)}\x1e${masterEntityProfileUiFields(r)}\x1e${voucherBillWiseAllocationsUiFingerprint(r)}\x1e${voucherLedgerLiveUiFingerprint(r)}`;
     if (String(r.type || "") === "inter_company") {
       const legs = Array.isArray(r.interCompanyLegs) ? r.interCompanyLegs.length : 0;
       parts += `\x1e${legs}\x1e${r.interCompanySourceApproved === true ? 1 : 0}`;
@@ -453,6 +457,40 @@ function entityListUiFingerprint(rows: readonly any[]): string {
     parts += `\x1e${voucherAttachmentUiFingerprint(r)}`;
   }
   return `${alive}|${parts}`;
+}
+
+/** Live voucher list/form: narration/amount/party — timestamps-only fingerprint skipped other-device edits. */
+function voucherLedgerLiveUiFingerprint(r: {
+  type?: unknown;
+  narration?: unknown;
+  notes?: unknown;
+  amount?: unknown;
+  total?: unknown;
+  debit?: unknown;
+  credit?: unknown;
+  partyId?: unknown;
+  staffId?: unknown;
+  accountId?: unknown;
+  cashBankAccountId?: unknown;
+  fromAccountId?: unknown;
+  toAccountId?: unknown;
+  voucherNumber?: unknown;
+  number?: unknown;
+}): string {
+  return [
+    String(r.type ?? ""),
+    String(r.narration ?? r.notes ?? ""),
+    String(r.amount ?? ""),
+    String(r.total ?? ""),
+    String(r.debit ?? ""),
+    String(r.credit ?? ""),
+    String(r.partyId ?? ""),
+    String(r.staffId ?? ""),
+    String(r.accountId ?? r.cashBankAccountId ?? ""),
+    String(r.fromAccountId ?? ""),
+    String(r.toAccountId ?? ""),
+    String(r.voucherNumber ?? r.number ?? ""),
+  ].join("\x1e");
 }
 
 /** Snapshot/mirror full replace: keep intentional cleared avatar / voucher attachments against stale HTTPS. */
@@ -1113,11 +1151,13 @@ export const VoucherProvider = ({
     // Defensive guard: agar stale source se deleted voucher aa bhi gaya, view layer se hata do.
     // Approve All hold: stale reload row ko unapproved dikhaye to bhi pink wapas na aaye.
     const activeVouchers = applyLocalLedgerHoldsToRows((vouchers || []).filter(isAliveDoc));
-    const applyTargetIcVisibility = <T extends { type?: string }>(list: T[]): T[] =>
-      list.filter((v) => {
+    const applyTargetIcVisibility = <T extends { type?: string }>(list: T[]): T[] => {
+      if (!isInterCompanySystemEnabled()) return list;
+      return list.filter((v) => {
         if (String(v?.type || "") !== "inter_company") return true;
         return isInterCompanyVisibleOnTargetBank(v as Record<string, unknown>);
       });
+    };
     if (!user?.uid) return [];
     const localUser =
       isLocalCompanySelected && companyId ? getLocalAuthUser(companyId) : null;
@@ -1156,7 +1196,7 @@ export const VoucherProvider = ({
   // IMPORTANT: scan raw `vouchers`, not `vouchersForDisplay` — display already hides unflagged target IC rows.
   const icBackfillGenRef = useRef(0);
   useEffect(() => {
-    if (!companyId || !vouchers.length) return;
+    if (!isInterCompanySystemEnabled() || !companyId || !vouchers.length) return;
     const rawAlive = (vouchers || []).filter(isAliveDoc);
     const needsBackfill = rawAlive.some(
       (v) =>
@@ -3587,8 +3627,10 @@ export const VoucherProvider = ({
 
 
  const processedParties: ProcessedParty[] = useMemo(() => {
-    // Return early if the necessary data isn't loaded yet.
-    if (loading || !parties || !unprocessedExpenseAccounts) {
+    // Masters (name/phone/group) must recompute even while voucher hydration still has
+    // `loading=true` — otherwise edit-form SQLite is fresh and the list stays on the
+    // previous snapshot (PC → mobile: form naya, list purana).
+    if (!parties || !unprocessedExpenseAccounts) {
         return previousData.current.processedParties || [];
     }
     const regularParties = parties.map(p => {
@@ -3624,7 +3666,7 @@ export const VoucherProvider = ({
     }).filter(sp => sp.debit !== 0 || sp.credit !== 0);
 
     return [...regularParties, ...systemParties];
-}, [parties, voucherAggregates.partyMap, voucherAggregates.expenseMap, unprocessedExpenseAccounts, loading]);
+  }, [parties, voucherAggregates.partyMap, voucherAggregates.expenseMap, unprocessedExpenseAccounts]);
 
   const processedPartiesForSelection: ProcessedParty[] = useMemo(
     () => processedParties.filter(
@@ -3947,6 +3989,26 @@ export const VoucherProvider = ({
         next = {
           ...previousData.current,
           loading: true,
+          // Keep live master + voucher rows while a background reload holds `loading`.
+          vouchers: value.vouchers,
+          vouchersAll: value.vouchersAll,
+          processedParties: value.processedParties,
+          processedPartiesForSelection: value.processedPartiesForSelection,
+          processedStaff: value.processedStaff,
+          processedAccounts: value.processedAccounts,
+          processedTaxes: value.processedTaxes,
+          processedExpenseAccounts: value.processedExpenseAccounts,
+          expenseAccounts: value.expenseAccounts,
+          processedItems: value.processedItems,
+          processedItemGroups: value.processedItemGroups,
+          processedGroups: value.processedGroups,
+          processedAccountGroups: value.processedAccountGroups,
+          processedStaffGroups: value.processedStaffGroups,
+          processedTaxGroups: value.processedTaxGroups,
+          processedExpenseGroups: value.processedExpenseGroups,
+          journalAccountNames: value.journalAccountNames,
+          userNames: value.userNames,
+          patchMasterEntity: value.patchMasterEntity,
         };
       }
     }

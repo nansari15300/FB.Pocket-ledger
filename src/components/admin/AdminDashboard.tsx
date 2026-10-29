@@ -310,7 +310,7 @@ const ADMIN_VOUCHER_SUMMARY_TYPES: ReadonlyArray<{ id: string; label: string }> 
   { id: "sale", label: "Sale" },
   { id: "purchase", label: "Purchase" },
   { id: "payment_in", label: "Receipt" },
-  { id: "payment_out", label: "Payment Out" },
+  { id: "payment_out", label: "Payment" },
   { id: "pay_salary", label: "Pay Salary" },
   { id: "contra", label: "Contra" },
   { id: "journal", label: "Journal" },

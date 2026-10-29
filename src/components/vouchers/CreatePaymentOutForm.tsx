@@ -1006,7 +1006,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       }
     } catch {}
   }, [isEditingVoucherForDefaults, showOtherChargeCard, otherChargeAccountId, otherChargeDefaultStorageKey, otherChargeAccountOptions, form]);
-  /** Edit dialog me tab click (Payment Out <-> Direct Expense) par bhi voucher number regenerate karo. */
+  /** Edit dialog me tab click (Payment <-> Direct Expense) par bhi voucher number regenerate karo. */
   const isEditingAndConverting = isVoucherEditConverting(voucher, voucherType);
   const convertPresentation = useMemo(
     () => getVoucherEditConvertPresentation(voucher as Record<string, unknown> | undefined, voucherType),
@@ -1134,7 +1134,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     if (!allVouchers?.length || !linkedPaymentInIds?.length || !accountId) return 0;
     return linkedPaymentInIds.reduce((sum, id) => {
       if (id === SPEND_WISE_OPENING_BALANCE_ID) {
-        // Opening balance behaves like spend-wise source row on Dr side for Payment Out/Direct Expense.
+        // Opening balance behaves like spend-wise source row on Dr side for Payment/Direct Expense.
         const base = getOpeningBalanceBaseAmount(accountOpeningBalance, "dr");
         const alreadyLinked = linkedAmountByPaymentInId.get(id) ?? 0;
         const linkable = Math.max(0, base - alreadyLinked);
@@ -2119,7 +2119,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     setIsLoading(true);
     try {
       await permanentDeleteVoucherFromForm(companyId, savedVoucherId);
-      toast({ title: "Payment out deleted permanently." });
+      toast({ title: "Payment deleted permanently." });
       setIsDeleteDialogOpen(false);
       onVoucherAction?.("cancelled", false, savedVoucherId);
     } catch (error) {
@@ -2218,7 +2218,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
 
   const formDate = form.watch("date");
   const formVoucherNumber = form.watch("voucherNumber");
-  /** Current Payment Out as it appears on the opposite voucher (Payment In / Direct Income / Contra in) in their "Link for spend wise (linked to me)" table — one row: this voucher's details (e.g. PYMT-006). */
+  /** Current Payment as it appears on the opposite voucher (Payment In / Direct Income / Contra in) in their "Link for spend wise (linked to me)" table — one row: this voucher's details (e.g. PYMT-006). */
   const currentVoucherAsOnOppositeRows = useMemo(() => {
     if (!showSpendWiseSection || !accountId) return [];
     const date = formDate;
@@ -2243,7 +2243,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     ];
   }, [showSpendWiseSection, accountId, formDate, formVoucherNumber, voucher?.voucherNumber, amountPaid, spendWiseDisplayRows, payeeType, partyId, staffId, taxAccountId, expenseAccountId, toAccountId, processedParties, processedStaff, processedTaxes, expenseAccounts, form]);
 
-  /** Summary for Link Payment In dialog: current Payment Out shown at top (like Payment In dialog's current voucher). */
+  /** Summary for Link Payment In dialog: current Payment shown at top (like Payment In dialog's current voucher). */
   const paymentOutCurrentVoucherSummary = useMemo(() => {
     if (!showSpendWiseSection || !accountId) return undefined;
     const row = currentVoucherAsOnOppositeRows[0];
@@ -3526,7 +3526,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                       ? "grid-cols-1 md:grid-cols-2"
                       : "grid-cols-1"
                 )}>
-                  {/* Payment Out: bill wise first, then spend wise below. Direct Expense: spend wise then bill wise side-by-side on PC */}
+                  {/* Payment: bill wise first, then spend wise below. Direct Expense: spend wise then bill wise side-by-side on PC */}
                   {/* Bill-wise link card uses rose tone so it differs from spend-wise card color. */}
                   {voucherType === "payment_out" && shouldShowBillWiseSection && (
                     <div
@@ -4152,7 +4152,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           paymentOutVoucherNumber={form.watch("voucherNumber") || undefined}
           paymentOutDate={form.watch("date")}
           partyOpeningBalance={processedParties.find((p) => p.id === partyId)?.openingBalance ?? 0}
-          dialogTitle="Link Payment Out to Linkable Cr Txns"
+          dialogTitle="Link Payment to Linkable Cr Txns"
           onDone={(allocs, _amount, info) => {
             // Link save only on local; server save when user clicks Save on voucher
             setAllocations(allocs);
@@ -4188,12 +4188,12 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
               <DialogTitle>Link payment to tax</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">
-              Allocate this payment out to vouchers with outstanding tax for{" "}
+              Allocate this payment to vouchers with outstanding tax for{" "}
               {processedTaxes.find((t) => t.id === taxAccountId)?.name ??
                 (processedTaxes.find((t) => t.id === taxAccountId) as any)?.label ??
                 "selected tax"}{" "}
               (e.g. Add Salary tax, sale/purchase tax). Use Add Salary → Link (Tax) to write
-              entity-scoped tax links; staff Payment Out uses separate staff entityTxnId so Status
+              entity-scoped tax links; staff Payment uses separate staff entityTxnId so Status
               does not cross over.
             </p>
             <div className="flex justify-end pt-2">
@@ -4239,8 +4239,8 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       <VoucherDeleteConfirmAlertDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}
-        entityKind="payment out"
-        entityName={voucher?.voucherNumber || "this payment out"}
+        entityKind="payment"
+        entityName={voucher?.voucherNumber || "this payment"}
         onMoveToBin={handleDelete}
         onDeletePermanently={handlePermanentDelete}
         localOnlyCheck={{ companyId, collectionName: "vouchers", docId: savedVoucherId }}

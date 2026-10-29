@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { useCompanyInterCompanyCode } from "@/lib/interCompany/useCompanyInterCompanyCode";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 type Props = {
   /** Create form: abhi company save nahi — placeholder hint */
@@ -19,6 +20,8 @@ export function CompanyInterCompanyCodeField({ mode = "edit" }: Props) {
   const { companyCode, loading } = useCompanyInterCompanyCode({
     autoEnsure: mode === "edit",
   });
+
+  if (!isInterCompanySystemEnabled()) return null;
 
   if (mode === "create") {
     return (

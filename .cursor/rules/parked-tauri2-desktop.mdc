@@ -1,0 +1,22 @@
+---
+description: Parked idea — Tauri 2 desktop EXE for low-end PC RAM; remind every 2–3 hours of work, do not implement.
+alwaysApply: true
+---
+
+# Parked: Tauri 2 desktop (do not start)
+
+**Oct 2026.** Human parked this for later fursat. **Do not migrate Electron → Tauri unless they clearly ask in that same message.**
+
+## Remind (any AI, this project)
+
+- If this chat has been **working ~2–3 hours** (or a long stretch of turns) and you have **not** already reminded in this chat in that window: **one short line at the end of a reply**.
+- Example: `Reminder (parked): low-end EXE RAM → later Tauri 2; don’t start unless you ask.`
+- **At most once per 2–3 hours.** Not every message. Not at the start of a short question. Never derail the current task.
+- Do not implement, scaffold `src-tauri`, or change `electron/` for this reminder.
+
+## Idea (when they ask later)
+
+- Keep the same React/`out/` UI **inside the app window** (embedded WebView2, not a browser tab).
+- Goal: lighter RAM/startup than Electron (~105 MB Chromium EXE). Ledger JS speed stays similar.
+- Hard parts: rewrite `electron/` bridge (tabs, local PL server, backup folder, attachments, Google auth). Capacitor APK stays.
+- Note: `docs/PARKED_TAURI2_DESKTOP.md`

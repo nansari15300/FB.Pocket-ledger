@@ -10,6 +10,7 @@ import type { InterCompanyEntityKind } from "@/components/inter-company/InterCom
 import { INTER_COMPANY_ENTITY_LABELS } from "@/components/inter-company/InterCompanyEntitySide";
 import { INTER_COMPANY_AC_PREFIX } from "@/lib/interCompany/interCompanyAccountNo";
 import { useEntityInterCompanyAcNo } from "@/lib/interCompany/useEntityInterCompanyAcNo";
+import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 
 type Props = {
   entityKind: InterCompanyEntityKind;
@@ -29,6 +30,8 @@ export function MasterFormInterCompanyAcNoSlot({
     entityId: mode === "edit" ? entityId : null,
     autoEnsure: mode === "edit" && Boolean(entityId),
   });
+
+  if (!isInterCompanySystemEnabled()) return null;
 
   if (mode === "create") {
     return (

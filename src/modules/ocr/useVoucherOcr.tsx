@@ -59,7 +59,7 @@ export type UseVoucherOcrOptions = {
   disabled?: boolean;
   /** Purchase/Sale ledger options (value/label) for the Dr account lookup. */
   ledgerAccounts?: readonly { value: string; label: string }[];
-  /** Actual open tab when one form serves two types (Payment In/Direct Income, Payment Out/Direct Expense). */
+  /** Actual open tab when one form serves two types (Payment In/Direct Income, Payment/Direct Expense). */
   currentVoucherType?: string;
 };
 
@@ -232,7 +232,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             const m = rc.master;
             const masterTxt = m.kind ? `${m.kind === "own_bank" ? "own bank" : m.kind}: ${m.name ?? "-"} (${Math.round(m.score * 100)}%)` : "no master matched";
             const why = `${rc.format} receipt; ${rc.reason}; ${masterTxt}${rc.payeeType === "staff" ? "; payee type Staff" : ""}`;
-            /* Payment Out tab only (not Direct Expense): fill payee / from-account / amount / charge / date / narration */
+            /* Payment tab only (not Direct Expense): fill payee / from-account / amount / charge / date / narration */
             const rFilled: string[] = [];
             const rMissing: string[] = [];
             const rExtra: OcrSuggestion[] = [];
@@ -327,7 +327,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 : here && types.length === 1 ? `${niceType(cur)} is the right voucher. Fields are not auto-filled for this voucher type yet.` : `Suggested: ${types.map(niceType).join(" / ")}. Fields are not auto-filled yet.`,
             });
             /* Auto Post for bank receipts (direct attach OR after a voucher-type switch hand-off): only when this tab was filled
-               (Payment Out), nothing is missing, and no other voucher type is suggested. Once per OCR read. */
+               (Payment), nothing is missing, and no other voucher type is suggested. Once per OCR read. */
             if ((reason === "auto" || reason === "handoff") && getOcrPrefs().autoPost && !opt.isEditing && opt.adapter.autoPost && apScheduledForRef.current !== raw) {
               const F = opt.form;
               const ok =
@@ -929,7 +929,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     const sub = optsRef.current.form.watch((_v: unknown, info: { type?: string }) => { if (info?.type === "change") cancelSwitchCountdown(); });
     return () => sub.unsubscribe();
   }, [swActive, cancelSwitchCountdown]);
-  // manual tab change inside the same form (e.g. Payment Out <-> Direct Expense) -> cancel
+  // manual tab change inside the same form (e.g. Payment <-> Direct Expense) -> cancel
   const curTabRef = useRef(o.currentVoucherType);
   useEffect(() => {
     if (curTabRef.current !== o.currentVoucherType) { curTabRef.current = o.currentVoucherType; cancelSwitchCountdown(); }

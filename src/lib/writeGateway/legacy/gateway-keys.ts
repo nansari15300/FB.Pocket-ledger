@@ -168,13 +168,29 @@ export async function resolveGatewayKeysForPayments(): Promise<GatewayKeys> {
 }
 
 export async function getGatewayKeys(): Promise<GatewayKeys> {
+  let serverSession = false;
   try {
+    if (typeof window !== 'undefined') {
+      const { isPocketBaseAppSessionActive } = await import('@/lib/pocketbaseData/pbAppSession');
+      serverSession = isPocketBaseAppSessionActive();
+    }
+    if (serverSession) {
+      // Server login: Firestore is offline. Admin Panel (super admin) reads via the server; otherwise no keys.
+      const seam = await import('@/lib/pocketbaseData/pbReadSeam');
+      if (!seam.isAdminServerDataActive()) return {};
+      const snap = await seam.getDoc(keysDocRef);
+      return snap.exists() ? (snap.data() as GatewayKeys) : {};
+    }
     const docSnap = await getDoc(keysDocRef);
     if (docSnap.exists()) {
       return docSnap.data() as GatewayKeys;
     }
     return {};
   } catch (e) {
+    if (serverSession) {
+      console.warn('[gateway-keys] server read failed', e instanceof Error ? e.message : String(e));
+      return {};
+    }
     console.error('Error fetching gateway keys:', e);
     return {};
   }

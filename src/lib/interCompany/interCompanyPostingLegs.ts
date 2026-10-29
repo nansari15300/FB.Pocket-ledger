@@ -3,7 +3,7 @@
  * Unapproved: clearing + destination row dikhe (Dr/Cr 0); balance approve ke baad.
  * Approved: clearing Dr+Cr (path-through) + destination one-side
  *   (party/staff/tax/expense/bank same — target bank select pe clearing bypass nahi).
- * Journal mode: target destination Dr/Cr ulta = Payment Out jaisa.
+ * Journal mode: target destination Dr/Cr ulta = Payment jaisa.
  */
 import type { InterCompanyEntityKind } from "@/components/inter-company/InterCompanyEntitySide";
 import {
@@ -227,7 +227,7 @@ export function interCompanyUsesConduitParty(voucher: Record<string, unknown>): 
   );
 }
 
-/** Source company — Payment Out style bank outflow (transfer + optional other charge). */
+/** Source company — Payment style bank outflow (transfer + optional other charge). */
 export function readInterCompanyOtherCharge(voucher: Record<string, unknown>): {
   accountId: string;
   amount: number;
@@ -258,7 +258,7 @@ function appendInterCompanyOtherChargeSourceLeg(
   legs.push({ kind: otherChargeKind, accountId, debit: otherAmt, credit: 0 });
 }
 
-/** Source company — save/unapproved: amount clearing pe Cr (Payment Out); destination baad me. */
+/** Source company — save/unapproved: amount clearing pe Cr (Payment); destination baad me. */
 export function buildSourceInterCompanyLegs(args: {
   amount: number;
   entityKind: InterCompanyEntityKind;
@@ -315,7 +315,7 @@ export function buildTargetInterCompanyLegsPending(args: {
 /**
  * Destination Dr/Cr — Payment In/Out jaisa:
  * Bank/Cash: Out=Cr, In=Dr; Party/Staff/Tax/Expense: Out=Dr, In=Cr.
- * Journal mode on target: Payment Out style (Payment In se ulta).
+ * Journal mode on target: Payment style (Payment In se ulta).
  */
 function destinationLegAmount(
   side: "source" | "target",
@@ -325,11 +325,11 @@ function destinationLegAmount(
 ): { debit: number; credit: number } {
   const isBank = String(entityKind || "").toLowerCase() === "bank";
   if (side === "source") {
-    // Payment Out
+    // Payment
     return isBank ? { debit: 0, credit: amt } : { debit: amt, credit: 0 };
   }
   if (targetPostMode === "journal") {
-    // Target Journal — Payment Out jaisa (Payment In se ulta); company-to-company conduit alag leg.
+    // Target Journal — Payment jaisa (Payment In se ulta); company-to-company conduit alag leg.
     return isBank ? { debit: 0, credit: amt } : { debit: amt, credit: 0 };
   }
   // Payment In (default)
@@ -337,7 +337,7 @@ function destinationLegAmount(
 }
 
 /**
- * Source approve: destination Payment Out jaisa (one side); clearing bank madhyasth (Dr+Cr).
+ * Source approve: destination Payment jaisa (one side); clearing bank madhyasth (Dr+Cr).
  * Destination bank/party/staff/tax/expense — same; clearing kabhi bypass mat karo.
  */
 export function buildSourceInterCompanyLegsApproved(args: {
@@ -376,7 +376,7 @@ export function buildSourceInterCompanyLegsApproved(args: {
     return legs;
   }
   if (bankId && bankOut > 0) {
-    // Destination missing — amount clearing pe one-side (Payment Out = Cr)
+    // Destination missing — amount clearing pe one-side (Payment = Cr)
     legs.push({ kind: "bank", accountId: bankId, debit: 0, credit: bankOut });
   }
   appendInterCompanyOtherChargeSourceLeg(

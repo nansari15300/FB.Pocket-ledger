@@ -1,0 +1,30 @@
+---
+description: Pocket Ledger Server panel — same buttons, fields, search, switch, card color
+globs: PocketLedger-Server/sub-server/pb_public/**
+alwaysApply: true
+---
+
+# Pocket Ledger Server — global chrome (hard)
+
+When editing `C:\Balgram\PocketLedger-Server\sub-server\pb_public` (App Setting, My Company, Dashboard, Usage, accounts, settings):
+
+## Same controls everywhere
+
+- **Buttons:** `btn` / `btn-sm` / `btn-primary` / `btn-secondary` / `btn-danger-solid` only. Header actions (`Back`, `Refresh`, Extra Bin, gear) stay **32px** in `.page-head-actions` (or `.page-head-nav`). Do not invent per-page height, padding, or a second button skin.
+- **Save (light / gray theme):** gray fill `#737373` (`.btn-save` or `btn-primary` with `data-i18n="btn_save"` / `data-as-save`) — not accent blue. Dark / Medium keep accent.
+- **Search:** `searchBox()` / `.as-search.as-search-wide` only. One field, same size as other App Setting pages.
+- **Fields:** global `label` + `input`/`select` from `style.css` (14px, 10px 12px padding, `--radius-sm`). Inline row fields use the same control, not a custom tiny box.
+- **Switch:** `window.PLSwitch` / `.as-ios-sw` only. Same size and **same visual** on every page: 25mm × 18px track, 400ms stretch on click (`PLSwitch.set(..., true)`). **OFF = gray** track + gray knob (light theme: `#e5e5e5` / `#737373` — not white-on-white). **ON = dim-green** track + green knob. After paint call `PLSwitch.schedule()` so the knob lays out. Never `paint()` / replace the switch DOM during that animation — toggle nearby fields in place (e.g. `.hidden`). Do not let generic `button { min-width: 0 }` crush `.as-ios-sw`. Keep `flex: none` + `max-height: 18px` so a column parent cannot turn the track into a circle.
+- **Tabs:** `.seg` / `.seg-btn` only.
+
+## Same card color
+
+- Cards use `.panel` with `background: var(--surface)`. No per-page tint (no mint/green recycle cards, no one-off `color-mix` card fills).
+- Empty states use `.as-empty-card`, not a special colored panel.
+
+## Do not
+
+- Add page-specific button/search/input/switch CSS that changes size or chrome.
+- Recolor a settings card to “match Admin Panel mint”.
+- Put a one-off control in the title row outside `.page-head-actions`.
+- Kill the switch stretch by rebuilding the page on click, or shrink `.as-ios-sw` with clip/`min-width: 0`.

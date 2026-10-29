@@ -125,7 +125,7 @@
       btn.removeAttribute("data-track-platform");
       meta.textContent = isLocalHost()
         ? "Not staged yet — run npm run website:stage-releases"
-        : "Not published yet — upload from /admin-release/";
+        : "Not published yet on this country's Pocket Ledger Server";
       return;
     }
     btn.classList.remove("is-disabled");
@@ -145,7 +145,7 @@
     if (item.version) bits.push("v" + item.version);
     if (item.sizeLabel) bits.push(item.sizeLabel);
     if (source === "local") bits.push("local path");
-    if (source === "firebase") bits.push("Firebase");
+    if (source === "country") bits.push("country server");
     meta.textContent = bits.join(" · ");
   }
 
@@ -432,20 +432,27 @@
     return cachedSettings;
   }
 
+  function countryLatestUrl() {
+    if (window.PLCountry && typeof window.PLCountry.countryReleasesUrl === "function") {
+      return String(window.PLCountry.countryReleasesUrl() || "").trim();
+    }
+    return "https://np.pocket-ledger.com/releases/latest.json";
+  }
+
   async function loadManifest() {
     if (isLocalHost()) {
       try {
         var local = await fetchJson(LOCAL_MANIFEST);
         return { source: "local", data: local };
       } catch (_) {
-        /* fall through to Firebase */
+        /* fall through to the live country server on this PC */
       }
     }
-    var remote = firebaseLatestUrl();
+    var remote = countryLatestUrl();
     if (!remote) return { source: "none", data: null };
     try {
       var data = await fetchJson(remote);
-      return { source: "firebase", data: data };
+      return { source: "country", data: data };
     } catch (_) {
       return { source: "none", data: null };
     }
@@ -459,12 +466,20 @@
     if (note) {
       if (source === "local" && data.date) {
         note.textContent = "Local staged build · " + data.date;
-      } else if (source === "firebase" && data.date) {
-        note.textContent = "Published build · " + data.date;
+      } else if (source === "country" && data.date) {
+        var origin = "";
+        try {
+          origin = new URL(countryLatestUrl()).hostname;
+        } catch (_) {
+          origin = "";
+        }
+        note.textContent = origin
+          ? ("Published on " + origin + " · " + data.date)
+          : ("Published on this country's server · " + data.date);
       } else {
         note.textContent = isLocalHost()
           ? "No local EXE/APK staged yet."
-          : "No published installer yet.";
+          : "No published installer yet on this country's server.";
       }
     }
     var entriesWindows = keptEntries(data, "windows");

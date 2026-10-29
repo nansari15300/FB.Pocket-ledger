@@ -17,6 +17,7 @@ import { ResolvedEntityAvatar } from "@/components/entity/ResolvedEntityAvatar";
 import { EntityFileAttachmentHover } from "@/components/entity/EntityFileAttachmentHover";
 import { trimEntityFileUrlForPreview } from "@/lib/trimEntityFileUrlForPreview";
 import { MasterListGroupIcon } from "@/components/entity/MasterListGroupIcon";
+import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
 import {
   icPeerCompanyGroupListTitleLines,
   interCompanyClearingAccountDisplayName,
@@ -251,15 +252,7 @@ export function IcCompanyGroupTabListTree({
               />
             </EntityFileAttachmentHover>
           )}
-          {pendingCount > 0 && (
-            <span
-              className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center bg-pink-500 text-[10px] font-bold text-white origin-center"
-              style={{ transform: "rotate(45deg) translate(25%, -25%)" }}
-              aria-label={`${pendingCount} pending approval`}
-            >
-              <span style={{ transform: "rotate(-45deg)" }}>{pendingCount}</span>
-            </span>
-          )}
+          <MasterListPendingBadge count={pendingCount} />
         </div>
         <div className="flex min-w-0 flex-1 items-start gap-0.5 overflow-hidden">
           <MasterListNameTooltip

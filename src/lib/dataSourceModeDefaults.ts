@@ -11,6 +11,7 @@ export const DATA_SOURCE_MODE_STORAGE_KEY = "dataSourceMode";
 /** Static APK / explicit local-only web: default local; `npm run dev` par Firebase (localhost web refresh purge avoid). */
 export function buildDefaultDataSourceMode(): DataSourceMode {
   if (process.env.NODE_ENV === "development") return "firebase";
+  if (process.env.NEXT_PUBLIC_PL_SERVER_PACK === "1") return "firebase";
   if (process.env.NEXT_PUBLIC_STATIC_BUILD === "1") return "local";
   if (process.env.NEXT_PUBLIC_LOCAL_ONLY_MODE === "1") return "local";
   return "firebase";
@@ -36,6 +37,12 @@ export function computeIsLocalOnlyMode(): boolean {
       return getEffectiveDataSourceModeFromWindow() === "local";
     }
     return buildDefaultDataSourceMode() === "local";
+  }
+  if (process.env.NEXT_PUBLIC_PL_SERVER_PACK === "1") {
+    if (typeof window !== "undefined") {
+      return getEffectiveDataSourceModeFromWindow() === "local";
+    }
+    return false;
   }
   if (process.env.NEXT_PUBLIC_STATIC_BUILD === "1") return true;
   if (process.env.NEXT_PUBLIC_LOCAL_ONLY_MODE === "1") return true;

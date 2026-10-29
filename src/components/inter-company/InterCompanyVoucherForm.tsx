@@ -3876,7 +3876,7 @@ export function InterCompanyVoucherForm({
 
       <p className="text-xs text-muted-foreground">
         Clearing account and Source/Target account are required on both sides. Unapproved: amount stays on
-        clearing (Payment Out = Cr, Receipt = Dr). After approve: clearing is intermediary (Dr+Cr) and
+        clearing (Payment = Cr, Receipt = Dr). After approve: clearing is intermediary (Dr+Cr) and
         amount moves to the account.
       </p>
     </div>

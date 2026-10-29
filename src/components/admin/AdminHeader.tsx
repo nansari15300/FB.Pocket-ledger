@@ -162,11 +162,11 @@ export function AdminHeader() {
        <div className="flex items-center gap-2">
           {radixMounted ? (
             <AddVoucherDialog defaultTab="payment_out">
-              <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" /> Payment Out</Button>
+              <Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" /> Payment</Button>
             </AddVoucherDialog>
           ) : (
             <Button variant="outline" type="button" disabled className="pointer-events-none opacity-90" aria-hidden>
-              <ArrowLeft className="mr-2 h-4 w-4" /> Payment Out
+              <ArrowLeft className="mr-2 h-4 w-4" /> Payment
             </Button>
           )}
           <ScreenControls />

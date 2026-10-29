@@ -20,6 +20,7 @@ import {
 } from "@/lib/groupListExpand";
 import { masterEntityTextMatchesSearch } from "@/lib/filterMasterEntityListRows";
 import { MasterListGroupIcon } from "@/components/entity/MasterListGroupIcon";
+import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
 import {
   groupListAmountCn,
   GROUP_LIST_FOCUS_DIM_CLASS,
@@ -348,15 +349,7 @@ function MasterGroupTreeNodeRow<G extends MasterGroupListRow, M>({
       <div className="pl-master-list-row-leading">
         <div className="relative flex-shrink-0">
           {groupLeading}
-          {groupPending > 0 && (
-            <span
-              className="absolute top-0 right-0 flex h-4 w-4 origin-center items-center justify-center bg-pink-500 text-[10px] font-bold text-white"
-              style={{ transform: "rotate(45deg) translate(25%, -25%)" }}
-              aria-label={`${groupPending} pending approval`}
-            >
-              <span style={{ transform: "rotate(-45deg)" }}>{groupPending}</span>
-            </span>
-          )}
+          <MasterListPendingBadge count={groupPending} />
         </div>
         <GroupListExpandNameRow
           name={group.name}
@@ -671,15 +664,7 @@ function MasterGroupSystemBranchRow<G extends MasterGroupListRow, M>({
       <div className="pl-master-list-row-leading">
         <div className="relative flex-shrink-0">
           {branchLeading}
-          {branchPending > 0 && (
-            <span
-              className="absolute top-0 right-0 flex h-4 w-4 origin-center items-center justify-center bg-pink-500 text-[10px] font-bold text-white"
-              style={{ transform: "rotate(45deg) translate(25%, -25%)" }}
-              aria-label={`${branchPending} pending approval`}
-            >
-              <span style={{ transform: "rotate(-45deg)" }}>{branchPending}</span>
-            </span>
-          )}
+          <MasterListPendingBadge count={branchPending} />
         </div>
         <GroupListExpandNameRow
           name={branchLabel}

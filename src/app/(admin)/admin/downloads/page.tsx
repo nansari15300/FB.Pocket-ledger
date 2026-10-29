@@ -1,5 +1,6 @@
 "use client";
 
+import { ADMIN_SERVER_VIEW_UNAVAILABLE_MESSAGE, isAdminServerMode } from "@/lib/adminData/adminServerMode";
 import { useCallback, useEffect, useState } from "react";
 import { Download } from "lucide-react";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
@@ -47,6 +48,7 @@ export default function WebsiteDownloadsAdminPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      if (isAdminServerMode()) throw new Error(ADMIN_SERVER_VIEW_UNAVAILABLE_MESSAGE);
       const token = await auth.currentUser?.getIdToken();
       if (!token) throw new Error("Not signed in");
       const res = await fetch(appApiUrl("/api/admin/download-stats"), {

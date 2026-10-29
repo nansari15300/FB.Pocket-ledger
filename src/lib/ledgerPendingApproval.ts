@@ -72,6 +72,53 @@ function copyApprovalFields<T extends Record<string, unknown>>(from: T, onto: T)
   };
 }
 
+function toApprovalClockMs(raw: unknown): number {
+  if (raw == null) return 0;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (raw instanceof Date) {
+    const ms = raw.getTime();
+    return Number.isFinite(ms) ? ms : 0;
+  }
+  if (typeof raw === "string") {
+    const ms = Date.parse(raw);
+    return Number.isFinite(ms) ? ms : 0;
+  }
+  if (typeof raw === "object") {
+    const o = raw as { toMillis?: () => number; seconds?: number; nanoseconds?: number };
+    if (typeof o.toMillis === "function") {
+      try {
+        const ms = o.toMillis();
+        return Number.isFinite(ms) ? ms : 0;
+      } catch {
+        return 0;
+      }
+    }
+    if (typeof o.seconds === "number") {
+      return o.seconds * 1000 + Math.floor((typeof o.nanoseconds === "number" ? o.nanoseconds : 0) / 1e6);
+    }
+  }
+  return 0;
+}
+
+/** Approve / unapprove history clock — lastEditedAt nahi (account list Latest sort alag). */
+export function voucherApprovalActionMs(row: Record<string, unknown> | null | undefined): number {
+  if (!row) return 0;
+  const hist = Array.isArray(row.history) ? row.history[0] : null;
+  const changedAt =
+    hist && typeof hist === "object" ? (hist as { changedAt?: unknown }).changedAt : null;
+  return (
+    toApprovalClockMs(row.approvalUpdatedAt) ||
+    toApprovalClockMs(changedAt) ||
+    toApprovalClockMs(row.approvedAt)
+  );
+}
+
+function incomingIsExplicitUnapprove(incoming: Record<string, unknown> | null | undefined): boolean {
+  if (!incoming || isVoucherLiteProjectionRow(incoming)) return false;
+  if (!Object.prototype.hasOwnProperty.call(incoming, "isApproved")) return false;
+  return incoming.isApproved !== true;
+}
+
 /** Incoming SQLite/snapshot row se local Approve All regress mat hone do. */
 export function mergeVoucherRowKeepingLocalApproval<T extends { id?: string; isApproved?: boolean }>(
   prev: T | undefined,
@@ -90,6 +137,15 @@ export function mergeVoucherRowKeepingLocalApproval<T extends { id?: string; isA
       return copyApprovalFields(prev as Record<string, unknown>, merged as Record<string, unknown>) as T;
     }
     return merged;
+  }
+  if (
+    !hold &&
+    prevApproved &&
+    incomingIsExplicitUnapprove(incoming as Record<string, unknown>) &&
+    voucherApprovalActionMs(incoming as Record<string, unknown>) >=
+      voucherApprovalActionMs(prev as Record<string, unknown>)
+  ) {
+    return incoming;
   }
   if (hold || prevApproved) {
     const src = (prevApproved ? prev : incoming) as Record<string, unknown>;
@@ -158,19 +214,38 @@ export function preserveLocalVoucherApprovalOverIncoming(
   pendingOutbox?: Record<string, unknown> | null
 ): Record<string, unknown> {
   if (incoming?.isApproved === true) return incoming;
-  const src =
-    local?.isApproved === true
-      ? local
-      : pendingOutbox?.isApproved === true
-        ? pendingOutbox
-        : null;
-  if (!src) return incoming;
+  const id = String(incoming?.id || local?.id || "").trim();
+  if (pendingOutbox?.isApproved === true) {
+    return {
+      ...incoming,
+      isApproved: true,
+      approvedByUserId: pendingOutbox.approvedByUserId ?? incoming.approvedByUserId,
+      approvedByUserName: pendingOutbox.approvedByUserName ?? incoming.approvedByUserName,
+      approvedAt: pendingOutbox.approvedAt ?? incoming.approvedAt,
+    };
+  }
+  if (id && voucherApproveHoldActive(id) && local?.isApproved === true) {
+    return {
+      ...incoming,
+      isApproved: true,
+      approvedByUserId: local.approvedByUserId ?? incoming.approvedByUserId,
+      approvedByUserName: local.approvedByUserName ?? incoming.approvedByUserName,
+      approvedAt: local.approvedAt ?? incoming.approvedAt,
+    };
+  }
+  // PocketBase / other device Mark as unapproved: newer history clock wins over local white row.
+  if (incomingIsExplicitUnapprove(incoming)) {
+    const incomingMs = voucherApprovalActionMs(incoming);
+    const localMs = voucherApprovalActionMs(local);
+    if (incomingMs >= localMs) return incoming;
+  }
+  if (local?.isApproved !== true) return incoming;
   return {
     ...incoming,
     isApproved: true,
-    approvedByUserId: src.approvedByUserId ?? incoming.approvedByUserId,
-    approvedByUserName: src.approvedByUserName ?? incoming.approvedByUserName,
-    approvedAt: src.approvedAt ?? incoming.approvedAt,
+    approvedByUserId: local.approvedByUserId ?? incoming.approvedByUserId,
+    approvedByUserName: local.approvedByUserName ?? incoming.approvedByUserName,
+    approvedAt: local.approvedAt ?? incoming.approvedAt,
   };
 }
 

@@ -47,7 +47,7 @@ export type PaymentOutWithRemaining = {
 /** Cr voucher types for party (Payment In, Purchase, Journal Cr) — used to settle Sale (Dr). */
 const CR_TYPES = ["payment_in", "direct_income", "purchase", "purchase_service"] as const;
 
-/** Dr voucher types for party (Payment Out, Sale, Journal Dr) — used to settle Purchase (Cr). */
+/** Dr voucher types for party (Payment, Sale, Journal Dr) — used to settle Purchase (Cr). */
 const DR_TYPES = ["payment_out", "direct_expense", "sale", "sale_service"] as const;
 
 const getJournalPartyAmount = (voucher: any, partyId: string) =>
@@ -269,7 +269,7 @@ export function useAdvancesForPurchase(
       return getOutstanding(total, allocated);
     })();
 
-    // Sale/Purchase use total; Payment Out uses amount. Prefer total for sale (Dr), amount for payment_out.
+    // Sale/Purchase use total; Payment uses amount. Prefer total for sale (Dr), amount for payment_out.
     const paymentOutsWithRemaining: PaymentOutWithRemaining[] = drVouchers.map((v) => {
       const t = (v.type || "").toLowerCase();
       const amount = (t === "sale" || t === "sale_service")
@@ -394,7 +394,7 @@ export function useAdvancesLinkableCount(
       if (String((v as any).partyId ?? "") !== targetPartyIdStr) return sum;
       return sum + (Number((v as any).openingBalanceAllocated) || 0);
     }, 0);
-    // Dr OB consumed by Payment In; Cr OB by Payment Out.
+    // Dr OB consumed by Payment In; Cr OB by Payment.
     const payTypesOB = partyOB > 0 ? ["payment_in", "direct_income"] : ["payment_out", "direct_expense"];
     const totalConsumedFromOBByPayments = (vouchers as any[]).reduce((sum, v) => {
       if (!payTypesOB.includes(v.type) || String((v as any).partyId ?? "") !== targetPartyIdStr) return sum;
@@ -474,7 +474,7 @@ export function useTaxAccountLinkableCount(
 }
 
 /**
- * Payment_outs for same accountId (for Payment In linking to Payment Out - e.g. refunds).
+ * Payment_outs for same accountId (for Payment In linking to Payment - e.g. refunds).
  */
 export function usePaymentOutsByAccount(
   accountId: string | null | undefined,
@@ -514,7 +514,7 @@ export function usePaymentOutsByAccount(
 }
 
 /**
- * Payment_ins for same accountId (for Payment Out linking to Payment In - within same account).
+ * Payment_ins for same accountId (for Payment linking to Payment In - within same account).
  */
 export function usePaymentInsByAccount(
   accountId: string | null | undefined,

@@ -1,6 +1,7 @@
 
 "use client";
 
+import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
 import { useState, useEffect, type ReactNode } from 'react';
 import { useAdminAccess } from '@/hooks/useAdminAccess';
 import { useForm } from 'react-hook-form';
@@ -24,7 +25,11 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Info, Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import {
+  doc,
+  setDoc,
+} from 'firebase/firestore';
+import { getDoc } from '@/lib/pocketbaseData/pbReadSeam';
 import { firestore } from '@/lib/firebase';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -32,12 +37,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { parseBillingPolicyDoc } from '@/lib/billingPolicyFlags';
 
 /**
- * Gateway cards: 1→full width, 2→50-50, 3→⅓ each — `auto-fit` + min width taaki
- * “Show on plan page” + switch ek line me rahe (text wrap na ho).
+ * Stripe / Khalti / eSewa / Billing: wide = 1 row (4), mid = 2×2, narrow = 1 column.
+ * Header text wrap allowed — “Show on plan page” card width ke hisaab se neeche aa sakta hai.
  */
-/** `20rem` min — “Show on plan page” + (i) + switch ek line, chhoti width par wrap na ho. */
 const adminGatewayCardsGridCn =
-  'grid w-full gap-4 grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))]';
+  'grid w-full gap-[15px] grid-cols-1 min-[640px]:grid-cols-2 min-[1100px]:grid-cols-4';
 
 const formSchema = z.object({
   stripeSecretKey: z.string().optional(),
@@ -226,6 +230,7 @@ export default function BankSettingsPage() {
 
   /** Keys + payment toggles + downgrade — ek hi Save button. */
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
+    if (adminServerWriteBlocked()) return;
     setIsSaving(true);
     try {
       await Promise.all([
@@ -272,8 +277,8 @@ export default function BankSettingsPage() {
         <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="flex w-full flex-col gap-4">
                 <div className={adminGatewayCardsGridCn}>
-                <Card className="flex h-full min-w-0 w-full flex-col">
-                    <CardHeader className="flex flex-row flex-nowrap items-center justify-between gap-x-2 space-y-0 overflow-x-auto pb-4">
+                <Card className="pl-dashboard-ribbon-indigo flex h-full min-w-0 w-full flex-col">
+                    <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-4">
                         <CardTitle className="shrink-0 text-xl leading-none">Stripe</CardTitle>
                         <GatewayPlanPaymentRow
                           id="stripe-plan-payment"
@@ -305,8 +310,8 @@ export default function BankSettingsPage() {
                     </CardContent>
                 </Card>
 
-                 <Card className="flex h-full min-w-0 w-full flex-col">
-                    <CardHeader className="flex flex-row flex-nowrap items-center justify-between gap-x-2 space-y-0 overflow-x-auto pb-4">
+                 <Card className="pl-dashboard-ribbon-violet flex h-full min-w-0 w-full flex-col">
+                    <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-4">
                         <CardTitle className="shrink-0 text-xl leading-none">Khalti</CardTitle>
                         <GatewayPlanPaymentRow
                           id="khalti-plan-payment"
@@ -337,8 +342,8 @@ export default function BankSettingsPage() {
                     </CardContent>
                 </Card>
 
-                 <Card className="flex h-full min-w-0 w-full flex-col">
-                    <CardHeader className="flex flex-row flex-nowrap items-center justify-between gap-x-2 space-y-0 overflow-x-auto pb-4">
+                 <Card className="pl-dashboard-ribbon-emerald flex h-full min-w-0 w-full flex-col">
+                    <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-4">
                         <CardTitle className="shrink-0 text-xl leading-none">eSewa</CardTitle>
                         <GatewayPlanPaymentRow
                           id="esewa-plan-payment"
@@ -382,10 +387,8 @@ export default function BankSettingsPage() {
                         />
                     </CardContent>
                 </Card>
-                </div>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-4">
+                <Card className="pl-dashboard-ribbon-amber flex h-full min-w-0 w-full flex-col">
+          <CardHeader className="flex flex-row flex-wrap items-center gap-2 space-y-0 pb-4">
             <CardTitle className="leading-none">Billing behaviour</CardTitle>
             <SettingsInfoTip
               ariaLabel="About billing behaviour"
@@ -399,9 +402,9 @@ export default function BankSettingsPage() {
             />
           </CardHeader>
           <CardContent className="pt-0">
-            <div className="flex flex-row flex-nowrap items-center justify-between gap-x-2 overflow-x-auto">
-              <div className="flex shrink-0 flex-nowrap items-center gap-1">
-                <Label htmlFor="plan-downgrade-enabled" className="cursor-default shrink-0 text-base whitespace-nowrap">
+            <div className="flex flex-row flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-1">
+                <Label htmlFor="plan-downgrade-enabled" className="cursor-default min-w-0 text-base">
                   Allow downgrade to lower paid plans
                 </Label>
                 <SettingsInfoTip
@@ -426,6 +429,7 @@ export default function BankSettingsPage() {
             </div>
           </CardContent>
         </Card>
+                </div>
 
                 {/* Sab changes — keys, plan-page toggles, downgrade — ek hi Save (page ke niche) */}
                 <div className="flex w-full justify-end pt-1">

@@ -74,7 +74,10 @@
     category: "all",
     query: "",
     activeId: "",
+    /** Per category card search text (key = category). */
+    cardQuery: {},
   };
+  var SEARCH_DEBOUNCE_MS = 150;
 
   function $(id) { return document.getElementById(id); }
   function escapeHtml(value) {
@@ -417,40 +420,103 @@
     var key = normalizedCategory(video.category);
     return visibleCategoryOrder().indexOf(key) !== -1 ? key : "getting-started";
   }
-  function filteredVideos() {
-    var query = state.query.trim().toLowerCase();
-    return state.videos.filter(function (video) {
-      var category = displayCategory(video);
-      if (state.category !== "all" && category !== state.category) return false;
-      if (!query) return true;
-      return [
-        video.title,
-        video.url,
-        CATEGORY_COPY[category],
-        LABEL_COPY[video.label] || "",
-        video.platform,
-      ].join(" ").toLowerCase().indexOf(query) !== -1;
-    });
+  /** Case-insensitive, Unicode-safe (Hindi/Devanagari) text for matching. */
+  function normalizeSearchText(value) {
+    var text = String(value == null ? "" : value);
+    try { text = text.normalize("NFC"); } catch (_) { /* old browser */ }
+    return text.toLocaleLowerCase().replace(/\s+/g, " ").trim();
   }
-  function renderCategories() {
+  function searchTokens(query) {
+    var q = normalizeSearchText(query);
+    return q ? q.split(" ") : [];
+  }
+  function textMatchesTokens(text, tokens) {
+    if (!tokens.length) return true;
+    for (var i = 0; i < tokens.length; i++) {
+      if (text.indexOf(tokens[i]) === -1) return false;
+    }
+    return true;
+  }
+  function tagsText(tags) {
+    if (Array.isArray(tags)) return tags.join(" ");
+    return tags == null ? "" : String(tags);
+  }
+  /** Title, description, tags (+ label / platform) of one video. */
+  function videoSearchText(video) {
+    if (!video) return "";
+    return normalizeSearchText([
+      video.title,
+      video.description,
+      video.desc,
+      tagsText(video.tags),
+      LABEL_COPY[video.label] || "",
+      video.platform,
+    ].join(" "));
+  }
+  function categoryNameMatches(category, tokens) {
+    if (!tokens.length) return true;
+    return textMatchesTokens(normalizeSearchText((CATEGORY_COPY[category] || "") + " " + category), tokens);
+  }
+  /**
+   * Top search result per category: name match = all its videos; otherwise only matching videos.
+   * Returns { byCategory: {key: video[]}, matchedCategories: {key: true} }.
+   */
+  function topSearchResult() {
+    var tokens = searchTokens(state.query);
+    var byCategory = {};
+    var matchedCategories = {};
+    var nameMatch = {};
+    visibleCategoryOrder().forEach(function (key) {
+      byCategory[key] = [];
+      nameMatch[key] = categoryNameMatches(key, tokens);
+      if (!tokens.length || nameMatch[key]) matchedCategories[key] = true;
+    });
+    state.videos.forEach(function (video) {
+      var key = displayCategory(video);
+      if (!byCategory[key]) return;
+      if (!tokens.length || nameMatch[key] || textMatchesTokens(videoSearchText(video), tokens)) {
+        byCategory[key].push(video);
+        matchedCategories[key] = true;
+      }
+    });
+    return { active: tokens.length > 0, byCategory: byCategory, matchedCategories: matchedCategories };
+  }
+  /** Card search narrows the top-search list of one category. */
+  function cardFilteredList(category, list) {
+    var tokens = searchTokens(state.cardQuery[category] || "");
+    if (!tokens.length) return list;
+    return list.filter(function (video) { return textMatchesTokens(videoSearchText(video), tokens); });
+  }
+  /** While searching, a selected pill that no longer matches falls back to "All videos". */
+  function effectiveCategory(result) {
+    if (state.category === "all") return "all";
+    if (result && result.active && !result.matchedCategories[state.category]) return "all";
+    return state.category;
+  }
+  function renderCategories(result) {
     var holder = $("videosCategories");
     if (!holder) return;
     var order = visibleCategoryOrder();
-    var counts = {};
-    state.videos.forEach(function (video) {
-      var key = displayCategory(video);
-      counts[key] = (counts[key] || 0) + 1;
-    });
     if (state.category !== "all" && order.indexOf(state.category) === -1) {
       state.category = "all";
     }
-    var categoryKeys = ["all"].concat(order);
+    var total = 0;
+    order.forEach(function (key) { total += result.byCategory[key].length; });
+    var categoryKeys = ["all"].concat(order.filter(function (key) {
+      // While searching only matched pills are shown; "All videos" always stays as the reset.
+      return !result.active || result.matchedCategories[key];
+    }));
+    var current = effectiveCategory(result);
+    var tokens = searchTokens(state.query);
+    var allMatches = result.active && textMatchesTokens(normalizeSearchText("All videos all"), tokens);
     holder.innerHTML = categoryKeys.map(function (key) {
-      var active = state.category === key ? " is-active" : "";
+      var active = current === key ? " is-active" : "";
+      var matched = result.active && (key === "all" ? allMatches : !!result.matchedCategories[key]);
+      if (matched) active += " is-match";
       var title = key === "all" ? "All videos" : CATEGORY_COPY[key];
-      var count = key === "all" ? state.videos.length : (counts[key] || 0);
+      var count = key === "all" ? total : result.byCategory[key].length;
       return '<button type="button" class="video-category-filter' + active +
-        '" data-category="' + key + '" aria-pressed="' + (state.category === key ? "true" : "false") + '">' +
+        '" data-category="' + key + '" aria-pressed="' + (current === key ? "true" : "false") + '">' +
         escapeHtml(title) + " <span>" + count + "</span></button>";
     }).join("");
     holder.querySelectorAll(".video-category-filter").forEach(function (button) {
@@ -460,44 +526,113 @@
       });
     });
   }
-  function render() {
-    var grid = $("videosGrid");
-    var status = $("videosStatus");
-    if (!grid) return;
-    renderCategories();
-    var matched = filteredVideos();
-    var order = visibleCategoryOrder();
-    var categories = state.category === "all" ? order : [state.category];
-    var html = categories.map(function (category) {
-      var list = matched.filter(function (video) { return displayCategory(video) === category; });
-      return (
-        '<section class="videos-category-card">' +
-          '<div class="videos-category-head"><h3>' + escapeHtml(CATEGORY_COPY[category]) + "</h3>" +
-          "<span>" + list.length + (list.length === 1 ? " video" : " videos") + "</span></div>" +
-          (list.length
-            ? '<div class="videos-cards">' + list.map(cardHtml).join("") + "</div>"
-            : '<p class="videos-empty">No videos in this folder yet.</p>') +
-        "</section>"
-      );
-    }).join("");
-    grid.innerHTML = html || '<p class="videos-empty">' +
-      (state.videos.length ? "No videos match this category or search." : "Videos will appear here after Super Admin publishes them.") +
-      "</p>";
-    if (status) {
-      status.textContent = matched.length
-        ? matched.length + (matched.length === 1 ? " video found." : " videos found.")
-        : (state.query || state.category !== "all"
-          ? "No videos match this filter."
-          : "No published videos yet.");
+  function countLabel(n) {
+    return n + (n === 1 ? " video" : " videos");
+  }
+  function cardBodyHtml(category, topList) {
+    var list = cardFilteredList(category, topList);
+    if (list.length) return '<div class="videos-cards">' + list.map(cardHtml).join("") + "</div>";
+    if (topList.length && normalizeSearchText(state.cardQuery[category] || "")) {
+      return '<p class="videos-empty">No videos match</p>';
     }
-    grid.querySelectorAll(".video-card-hit").forEach(function (button) {
+    return '<p class="videos-empty">No videos in this folder yet.</p>';
+  }
+  function bindCardVideos(root) {
+    if (!root) return;
+    root.querySelectorAll(".video-card-hit").forEach(function (button) {
       button.addEventListener("click", function () {
         var id = button.parentElement && button.parentElement.getAttribute("data-video-id");
         var video = state.videos.filter(function (item) { return item.id === id; })[0];
         if (video) openVideo(video);
       });
     });
-    bindEngagement(grid);
+    bindEngagement(root);
+  }
+  var lastTopResult = null;
+  function updateStatus(result, shownTotal) {
+    var status = $("videosStatus");
+    if (!status) return;
+    status.textContent = shownTotal
+      ? shownTotal + (shownTotal === 1 ? " video found." : " videos found.")
+      : (result.active || effectiveCategory(result) !== "all" || hasCardQuery()
+        ? "No videos match this filter."
+        : "No published videos yet.");
+  }
+  function hasCardQuery() {
+    for (var key in state.cardQuery) {
+      if (Object.prototype.hasOwnProperty.call(state.cardQuery, key) && normalizeSearchText(state.cardQuery[key])) return true;
+    }
+    return false;
+  }
+  function visibleCardCategories(result) {
+    var order = visibleCategoryOrder();
+    var current = effectiveCategory(result);
+    var categories = current === "all" ? order : [current];
+    if (!result.active) return categories;
+    return categories.filter(function (key) { return result.matchedCategories[key]; });
+  }
+  function shownTotalFor(result) {
+    var total = 0;
+    visibleCardCategories(result).forEach(function (key) {
+      total += cardFilteredList(key, result.byCategory[key] || []).length;
+    });
+    return total;
+  }
+  /** Card search: refresh only that card (keeps the input focused while typing). */
+  function refreshCard(category) {
+    var grid = $("videosGrid");
+    var result = lastTopResult;
+    if (!grid || !result) return;
+    var section = grid.querySelector('.videos-category-card[data-category="' + category + '"]');
+    if (!section) return;
+    var topList = result.byCategory[category] || [];
+    var countEl = section.querySelector(".videos-category-count");
+    if (countEl) countEl.textContent = countLabel(cardFilteredList(category, topList).length);
+    var body = section.querySelector(".videos-category-body");
+    if (body) {
+      body.innerHTML = cardBodyHtml(category, topList);
+      bindCardVideos(body);
+    }
+    updateStatus(result, shownTotalFor(result));
+  }
+  function render() {
+    var grid = $("videosGrid");
+    if (!grid) return;
+    var result = topSearchResult();
+    lastTopResult = result;
+    renderCategories(result);
+    var categories = visibleCardCategories(result);
+    var html = categories.map(function (category) {
+      var topList = result.byCategory[category] || [];
+      var shown = cardFilteredList(category, topList).length;
+      var cardTitle = CATEGORY_COPY[category];
+      return (
+        '<section class="videos-category-card" data-category="' + escapeHtml(category) + '">' +
+          '<div class="videos-category-head"><h3>' + escapeHtml(cardTitle) + "</h3>" +
+          '<div class="videos-category-side">' +
+            '<label class="videos-card-search">' +
+              '<span class="sr-only">Search in ' + escapeHtml(cardTitle) + "</span>" +
+              '<input type="search" class="videos-card-search-input" data-card-search="' + escapeHtml(category) +
+              '" placeholder="Search here" autocomplete="off" value="' + escapeHtml(state.cardQuery[category] || "") + '" />' +
+            "</label>" +
+            '<span class="videos-category-count">' + countLabel(shown) + "</span>" +
+          "</div></div>" +
+          '<div class="videos-category-body">' + cardBodyHtml(category, topList) + "</div>" +
+        "</section>"
+      );
+    }).join("");
+    grid.innerHTML = html || '<p class="videos-empty">' +
+      (state.videos.length ? "No videos match this category or search." : "Videos will appear here after Super Admin publishes them.") +
+      "</p>";
+    updateStatus(result, shownTotalFor(result));
+    bindCardVideos(grid);
+    grid.querySelectorAll("[data-card-search]").forEach(function (input) {
+      var category = input.getAttribute("data-card-search") || "";
+      bindDebouncedInput(input, function (value) {
+        state.cardQuery[category] = value;
+        refreshCard(category);
+      });
+    });
     if (state.activeId) {
       var active = state.videos.filter(function (item) { return item.id === state.activeId; })[0];
       var engage = $("videoModalEngage");
@@ -507,11 +642,24 @@
       }
     }
   }
+  /** ~150 ms debounce; clearing applies at once. */
+  function bindDebouncedInput(input, apply) {
+    var timer = 0;
+    function run() {
+      if (timer) { window.clearTimeout(timer); timer = 0; }
+      apply(input.value || "");
+    }
+    input.addEventListener("input", function () {
+      if (timer) window.clearTimeout(timer);
+      if (!input.value) { run(); return; }
+      timer = window.setTimeout(run, SEARCH_DEBOUNCE_MS);
+    });
+  }
   function bindTools() {
     var search = $("videosSearch");
     if (search) {
-      search.addEventListener("input", function () {
-        state.query = search.value || "";
+      bindDebouncedInput(search, function (value) {
+        state.query = value;
         render();
       });
     }

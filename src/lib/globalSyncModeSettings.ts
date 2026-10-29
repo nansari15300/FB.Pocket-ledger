@@ -1,7 +1,7 @@
 /**
- * SuperAdmin global: Firebase company sync mode (`app_settings/sync_mode`).
- * `full_online` (default) = Live sync with Firestore collection listeners (~300ms real-time updates).
- * `local` = Delta sync with SQLite + `_pl_change_log` feed (low Firebase reads, smooth on low internet).
+ * SuperAdmin global: company sync mode (`app_settings/sync_mode`).
+ * `full_online` (default) = Live: Firestore collection listeners, or PocketBase collection realtime.
+ * `local` = Delta: SQLite + change-log feed (Firebase `_pl_change_log` / PocketBase `pl_change_log`).
  */
 import { FIREBASE_LEDGER_SYNC_MODE_CHANGED_EVENT, type FirebaseLedgerSyncMode } from "@/lib/firebaseLedgerSyncMode";
 
@@ -68,7 +68,18 @@ export async function ensureGlobalSyncModeSettingsHydrated(): Promise<GlobalSync
   if (!syncModeHydratePromise) {
     syncModeHydratePromise = (async () => {
       try {
-        const { doc, getDoc } = await import("firebase/firestore");
+        const { doc, getDoc: fsGetDoc } = await import("firebase/firestore");
+        const { isPocketBaseAppSessionActive } = await import("@/lib/pocketbaseData/pbAppSession");
+        let getDoc = fsGetDoc;
+        if (isPocketBaseAppSessionActive()) {
+          // Server login: Firestore is offline. Admin Panel (super admin) reads via the server; else cache.
+          const seam = await import("@/lib/pocketbaseData/pbReadSeam");
+          if (!seam.isAdminServerDataActive()) {
+            syncModeHydratePromise = null;
+            return readCachedGlobalSyncModeSettings();
+          }
+          getDoc = seam.getDoc;
+        }
         const { firestore } = await import("@/lib/firebase");
         const snap = await getDoc(doc(firestore, SYNC_MODE_SETTINGS_COLLECTION, SYNC_MODE_SETTINGS_ID));
         const next = normalizeGlobalSyncModeSettings(snap.exists() ? snap.data() : undefined);

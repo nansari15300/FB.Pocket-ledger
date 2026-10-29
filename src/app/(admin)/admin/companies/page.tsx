@@ -2,7 +2,14 @@
 "use client"
 import { useAdminAccess } from '@/hooks/useAdminAccess'
 import { firestore as db } from '@/lib/firebase'
-import { collection, getDocs, doc, updateDoc, Timestamp, getDoc, query } from 'firebase/firestore'
+import {
+  collection,
+  doc,
+  updateDoc,
+  Timestamp,
+  query,
+} from 'firebase/firestore';
+import { getDocs, getDoc } from '@/lib/pocketbaseData/pbReadSeam';
 import { useEffect, useState, useMemo } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CompanyList } from '@/components/admin/CompanyList'

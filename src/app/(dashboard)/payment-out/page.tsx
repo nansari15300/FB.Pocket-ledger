@@ -324,13 +324,13 @@ export default function PaymentOutPage() {
         <div className="grid grid-cols-1 md:grid-cols-[380px_1fr] h-full">
             <div className="flex flex-col min-h-0 border-r">
                 <div className="p-4 border-b">
-                    <h1 className="text-2xl font-bold font-headline">Payments Out</h1>
+                    <h1 className="text-2xl font-bold font-headline">Payments</h1>
                     <p className="text-sm text-muted-foreground">Manage your outgoing payments.</p>
                 </div>
                 <div className="p-4 border-b space-y-4">
                      <div className="grid grid-cols-2 gap-2">
                         <PermissionButton permission="create_records" className="w-full" onClick={() => openVoucherDialog("payment_out")}>
-                            <PlusCircle className="mr-2 h-4 w-4" /> Payment Out
+                            <PlusCircle className="mr-2 h-4 w-4" /> Payment
                         </PermissionButton>
                         <PermissionButton permission="create_records" className="w-full" variant="outline" onClick={() => openVoucherDialog("direct_expense")}>
                             <PlusCircle className="mr-2 h-4 w-4" /> Direct Expense

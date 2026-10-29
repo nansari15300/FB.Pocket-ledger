@@ -1,8 +1,9 @@
 "use client";
 
+import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { doc, setDoc } from "firebase/firestore";
-import { getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
+import { adminServerSetDoc, getDocFromServer, isAdminServerDataActive } from "@/lib/pocketbaseData/pbReadSeam";
 import { Fingerprint, Loader2, Search } from "lucide-react";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import PermissionsManager from "@/components/admin/PermissionsManager";
@@ -66,7 +67,7 @@ const VOUCHER_LOAD_HELP = {
 const SYNC_MODE_HELP = {
   title: "Company sync mode",
   body:
-    "Delta — SQLite + change feed (_pl_change_log). Only fetches changed documents. Saves huge Firebase reads and runs smooth on low internet.\n\nLive — real-time Firebase collection listeners. Updates cross-device in ~300ms. Higher Firebase read usage.\n\nApplies globally to all users and companies after save.",
+    "Delta — SQLite + change feed. Only fetches changed documents. Firebase uses _pl_change_log; Pocket Ledger Server uses pl_change_log. Smooth on low internet.\n\nLive — real-time collection updates across devices in ~300ms. Firebase uses Firestore listeners; Pocket Ledger Server uses collection realtime.\n\nApplies globally to all users and companies after save (Firebase and Pocket Ledger Server).",
 };
 
 const ONLINE_DATA_SERVER_HELP = {
@@ -157,6 +158,8 @@ function GlobalSettingsPage() {
   }, [loadVoucherLoadSettings, loadSyncModeSettings, loadOnlineDataServerSettings]);
 
   const saveVoucherLoadMode = async (mode: VoucherLoadMode) => {
+    const viaServer = isAdminServerDataActive();
+    if (!viaServer && adminServerWriteBlocked()) return;
     setVoucherLoadSaving(true);
     const prev = voucherLoad;
     const next: VoucherLoadSettings = {
@@ -166,7 +169,8 @@ function GlobalSettingsPage() {
     };
     setVoucherLoad(next);
     try {
-      await setDoc(doc(firestore, "app_settings", "voucher_load"), next, { merge: true });
+      if (viaServer) await adminServerSetDoc("app_settings/voucher_load", next);
+      else await setDoc(doc(firestore, "app_settings", "voucher_load"), next, { merge: true });
       writeCachedVoucherLoadSettings(next);
       toast({
         title: "Saved",
@@ -184,6 +188,8 @@ function GlobalSettingsPage() {
   };
 
   const saveSyncMode = async (mode: GlobalSyncMode) => {
+    const viaServer = isAdminServerDataActive();
+    if (!viaServer && adminServerWriteBlocked()) return;
     setSyncModeSaving(true);
     const prev = syncMode;
     const next: GlobalSyncModeSettings = {
@@ -192,14 +198,15 @@ function GlobalSettingsPage() {
     };
     setSyncMode(next);
     try {
-      await setDoc(doc(firestore, "app_settings", "sync_mode"), next, { merge: true });
+      if (viaServer) await adminServerSetDoc("app_settings/sync_mode", next);
+      else await setDoc(doc(firestore, "app_settings", "sync_mode"), next, { merge: true });
       writeCachedGlobalSyncModeSettings(next);
       toast({
         title: "Saved",
         description:
           mode === "full_online"
-            ? "Global sync mode: Live (real-time collection listeners active)."
-            : "Global sync mode: Delta (SQLite + change-feed only — low read usage).",
+            ? "Global sync mode: Live (real-time collection updates on Firebase and Pocket Ledger Server)."
+            : "Global sync mode: Delta (SQLite + change-feed only — low traffic).",
       });
     } catch {
       setSyncMode(prev);
@@ -210,6 +217,8 @@ function GlobalSettingsPage() {
   };
 
   const saveOnlineDataServer = async (patch: Partial<Pick<OnlineDataServerSettings, "serverId" | "pocketbaseUrl">>) => {
+    const viaServer = isAdminServerDataActive();
+    if (!viaServer && adminServerWriteBlocked()) return;
     setOnlineServerSaving(true);
     const prev = onlineServer;
     const next: OnlineDataServerSettings = {
@@ -219,9 +228,13 @@ function GlobalSettingsPage() {
     };
     setOnlineServer(next);
     try {
-      await setDoc(doc(firestore, ONLINE_DATA_SERVER_SETTINGS_COLLECTION, ONLINE_DATA_SERVER_SETTINGS_ID), next, {
-        merge: true,
-      });
+      if (viaServer) {
+        await adminServerSetDoc(`${ONLINE_DATA_SERVER_SETTINGS_COLLECTION}/${ONLINE_DATA_SERVER_SETTINGS_ID}`, next);
+      } else {
+        await setDoc(doc(firestore, ONLINE_DATA_SERVER_SETTINGS_COLLECTION, ONLINE_DATA_SERVER_SETTINGS_ID), next, {
+          merge: true,
+        });
+      }
       writeCachedOnlineDataServerSettings(next);
       setPocketbaseUrlDraft(next.pocketbaseUrl);
       const server = getActiveOnlineDataServer(next);
@@ -246,8 +259,8 @@ function GlobalSettingsPage() {
   const liveChecked = syncMode.mode === "full_online";
 
   return (
-    <div className="flex h-full flex-col gap-8">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="flex h-full flex-col gap-3 px-[3px] md:gap-[30px] md:p-[30px]">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-[30px]">
         {/* Card 1: Company voucher data load */}
         <Card>
           <CardHeader>
@@ -453,8 +466,8 @@ function GlobalSettingsPage() {
         </Card>
       </div>
 
-      <div className="grid h-full grid-cols-1 gap-8 md:grid-cols-[320px_1fr]">
-        <div className="flex flex-col gap-4">
+      <div className="grid h-full grid-cols-1 gap-3 md:gap-[30px] md:grid-cols-[320px_1fr]">
+        <div className="flex flex-col gap-3 md:gap-[30px]">
           <Card>
             <CardHeader>
               <CardTitle>Global Settings</CardTitle>

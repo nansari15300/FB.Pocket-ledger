@@ -27,7 +27,7 @@ import { CreateStaffGroupDialog } from "@/components/staff/CreateStaffGroupDialo
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { PermissionButton } from "@/components/permission";
 import { useVouchers } from "@/hooks/useVouchers";
-import { resolveMasterListSelection } from "@/lib/masterEntityLiveUpdate";
+import { useLiveMasterSelection } from "@/hooks/useLiveMasterSelection";
 import usePermissions from "@/hooks/usePermissions";
 import type { DateRange } from "@/components/ui/ad-calendar";
 import type { GroupListSelectOptions } from "@/lib/groupListExpand";
@@ -180,10 +180,7 @@ function StaffPageContent() {
   const [voucherDefaultTab, setVoucherDefaultTab] = useState<'add_salary' | 'payment_out'>('add_salary');
 
   const selectedStaffRaw = activeView === 'staff' ? selected as Staff : null;
-  const selectedStaff = useMemo(
-    () => resolveMasterListSelection(selectedStaffRaw, processedStaff),
-    [selectedStaffRaw, processedStaff]
-  );
+  const selectedStaff = useLiveMasterSelection(selectedStaffRaw, setSelected, processedStaff);
   const payEmiSelectedAccountId =
     selectedStaff && isLoanLiabilityStaff(selectedStaff) ? selectedStaff.id : null;
   const { show: showPayEmiButton, emiDue: payEmiDue } = useStaffPayEmiButtonState({
@@ -207,7 +204,7 @@ function StaffPageContent() {
   const mobileStaffSelectionLabel = useMemo((): ReactNode => {
     if (!selected) return null;
     if (activeView !== "groups") {
-      const name = (selected as Staff).name;
+      const name = selectedStaff?.name ?? (selected as Staff).name;
       return name && String(name).trim() ? String(name).trim() : null;
     }
     const group = selected as StaffGroup;
@@ -223,7 +220,7 @@ function StaffPageContent() {
     }
     const name = group.name;
     return name && String(name).trim() ? String(name).trim() : null;
-  }, [selected, activeView, groupMemberFilterId, processedStaff, mobileStaffSelectionLabelClassName]);
+  }, [selected, selectedStaff, activeView, groupMemberFilterId, processedStaff, mobileStaffSelectionLabelClassName]);
   const [staffLedgerSplitMode, setStaffLedgerSplitMode] = useState<"tax" | "salary">("salary");
   const staffDateRangeClearRef = useRef<(() => void) | null>(null);
   useEffect(() => {
@@ -265,6 +262,7 @@ function StaffPageContent() {
     );
   }, [initialProcessedStaffGroups, companyId]);
 
+  useLiveMasterSelection(selectedGroupRaw, setSelected, processedStaffGroups);
   const selectedGroup = useMemo(
     () =>
       selectedGroupRaw

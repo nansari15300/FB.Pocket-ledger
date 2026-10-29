@@ -1,9 +1,9 @@
 /**
  * Bank/Cash ledger — Company vs Bank Dr/Cr perspective.
  *
- * Underlying books are asset-style (Payment In = Dr, Payment Out = Cr).
- * - Bank (default): keep asset / cash-book columns — Payment Out = Cr, Payment In = Dr.
- * - Company: treat bank like a party — Payment Out = Dr, Payment In = Cr.
+ * Underlying books are asset-style (Payment In = Dr, Payment = Cr).
+ * - Bank (default): keep asset / cash-book columns — Payment = Cr, Payment In = Dr.
+ * - Company: treat bank like a party — Payment = Dr, Payment In = Cr.
  */
 
 export type BankLedgerDrCrPerspective = "company" | "bank";
@@ -98,8 +98,8 @@ export function bankLedgerTxnColumnLabels(
 export const BANK_LEDGER_DRCR_PERSPECTIVE_INFO = {
   title: "Company vs Bank Dr/Cr",
   body: [
-    "Bank mode (default): Cash-book / bank-statement style for this account. Payment Out posts as Credit (Cr), Receipt as Debit (Dr). The balance Dr/Cr follows this Bank view.",
-    "Company mode: Treat the bank/cash account like a party. Payment Out posts as Debit (Dr), Receipt as Credit (Cr). The balance Dr/Cr follows this Company view.",
+    "Bank mode (default): Cash-book / bank-statement style for this account. Payment posts as Credit (Cr), Receipt as Debit (Dr). The balance Dr/Cr follows this Bank view.",
+    "Company mode: Treat the bank/cash account like a party. Payment posts as Debit (Dr), Receipt as Credit (Cr). The balance Dr/Cr follows this Company view.",
     "Today In / Today Out still mean money in and money out. Only the Debit/Credit columns and the Dr/Cr balance label change with the switch.",
     "This switch is only for Bank/Cash statement, spend-wise, and day peek ledgers — not for Party or Staff ledgers.",
   ].join("\n\n"),

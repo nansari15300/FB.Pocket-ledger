@@ -23,8 +23,8 @@ export function masterListRowUnselectedCn(isSelected: boolean, extra?: string) {
 /** Masters list profile — initials + icon ink (border jaisa green / IC blue). */
 export const MASTER_LIST_PROFILE_INK_CN = "pl-master-list-profile-ink";
 
-/** List row profile circle — globals.css green/blue border+fill (Tailwind class selectors avoid). */
-export const MASTER_LIST_AVATAR_CN = "pl-master-list-avatar h-8 w-8 text-sm";
+/** List row profile square — height matches name block; rounded corners via globals.css. */
+export const MASTER_LIST_AVATAR_CN = "pl-master-list-avatar h-8 w-8 text-sm rounded-lg";
 export const MASTER_LIST_AVATAR_FALLBACK_CN = cn(
   "pl-master-list-avatar-fallback",
   MASTER_LIST_PROFILE_INK_CN

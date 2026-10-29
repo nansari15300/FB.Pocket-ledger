@@ -62,3 +62,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local junction to C:\Balgram\PocketLedger-Server (not part of this repo)
+/PocketLedger-Server/

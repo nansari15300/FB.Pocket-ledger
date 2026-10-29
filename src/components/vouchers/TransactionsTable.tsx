@@ -5193,7 +5193,7 @@ export function TransactionsTable({
           <TableCell colSpan={footerClosingLabelColSpan} className="align-middle">
             <div data-pl-closing-balance-card="" className={LEDGER_CLOSING_BALANCE_CARD_ROW_CN}>
               <div
-                className="flex min-w-0 flex-wrap items-center gap-1"
+                className="flex shrink-0 flex-nowrap items-center gap-1"
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => e.stopPropagation()}
               >

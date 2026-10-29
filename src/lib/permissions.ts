@@ -121,7 +121,7 @@ export const PermissionGroups: PermissionGroup[] = [
         title: "Dashboard Summaries",
         permissions: [
             { key: "view_receivable_payable_summary", label: "View Receivable/Payable Summary" },
-            { key: "view_payment_in_out_summary", label: "View Receipt / Payment Out Summary" },
+            { key: "view_payment_in_out_summary", label: "View Receipt / Payment Summary" },
             { key: "view_entity_counts_summary", label: "View Entity Counts" },
             { key: "view_voucher_type_summaries", label: "View Voucher Type Summaries" },
             { key: "view_bank_cash_summary", label: "View Bank/Cash Summary" },

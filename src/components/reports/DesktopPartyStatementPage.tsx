@@ -70,6 +70,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { firestore } from "@/lib/firebase";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { PartyDetails } from "@/components/party/PartyDetails";
+import { useLiveMasterSelection } from "@/hooks/useLiveMasterSelection";
 import { OverdueAccountView, type OverdueTransactionRow } from "@/components/party/OverdueAccountView";
 import { HistoryDialog } from "@/components/vouchers/HistoryDialog";
 import { LinkAdvancesToVoucherDialog } from "@/components/vouchers/LinkAdvancesToVoucherDialog";
@@ -102,6 +103,7 @@ import {
 import { buildIcPeerCompanyGroupRows, IC_COMPANY_PARTY_GROUP_ID } from "@/lib/interCompany/icPeerCompanyGroups";
 import { resolvePartyListGroupBucketId } from "@/lib/partySystemGroups";
 import type { PartyListSelectOptions } from "@/components/party/PartyList";
+import { resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";
 
 /** Main Parties page (`/party`) ka Overdue virtual account id. */
 const PARTY_PAGE_OVERDUE_ACCOUNT_ID = "__overdue__";
@@ -163,8 +165,10 @@ export default function DesktopPartyStatementPage() {
     // Same preference as Party Details: Statement vs Bill wise (running balance vs per-voucher status).
     const { balanceMode, setBalanceMode } = useBalanceMode();
 
-    const [selectedParty, setSelectedParty] = useState<Party | null>(null);
-    const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+    const [selectedPartyRaw, setSelectedParty] = useState<Party | null>(null);
+    const selectedParty = useLiveMasterSelection(selectedPartyRaw, setSelectedParty, processedParties);
+    const [selectedGroupRaw, setSelectedGroup] = useState<Group | null>(null);
+    const selectedGroup = useLiveMasterSelection(selectedGroupRaw, setSelectedGroup, processedGroups);
     const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
     const [userNames, setUserNames] = useState<Record<string, string>>({});
     const fetchedUidsRef = useRef<Set<string>>(new Set());
@@ -172,13 +176,7 @@ export default function DesktopPartyStatementPage() {
     const pageTitle = selectedGroup ? 'Party Group Statement' : 'Party Statement';
 
     const fetchUserName = useCallback(async (userId: string): Promise<string> => {
-        try {
-            const userDoc = await getDoc(doc(firestore, 'users', userId));
-            if (userDoc.exists()) {
-                return userDoc.data().displayName || userDoc.data().email || "Unknown";
-            }
-        } catch (e) {}
-        return "Unknown";
+        return resolveUserDisplayName(userId, "Unknown");
     }, []);
 
     useEffect(() => {
@@ -253,11 +251,11 @@ export default function DesktopPartyStatementPage() {
 
         if (partyId && processedParties.length > 0) {
             const party = processedParties.find(p => p.id === partyId);
-            setSelectedParty((prev) => (prev?.id === party?.id ? prev : party || null));
+            setSelectedParty((prev) => (party ? party : prev));
             setSelectedGroup((prev) => (prev !== null ? null : prev));
         } else if (groupId && processedGroups.length > 0) {
             const group = processedGroups.find(g => g.id === groupId);
-            setSelectedGroup((prev) => (prev?.id === group?.id ? prev : group || null));
+            setSelectedGroup((prev) => (group ? group : prev));
             setSelectedParty((prev) => (prev !== null ? null : prev));
         } else if (processedPartiesForSelection.length > 0) {
             const first = processedPartiesForSelection[0];

@@ -696,7 +696,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       const amt = Number(v.total ?? v.amount ?? 0) || 0;
       const amounts = v.linkedPaymentInAmounts && typeof v.linkedPaymentInAmounts === "object" ? v.linkedPaymentInAmounts : {};
       const linked = amounts[currentContraVoucherId] != null ? Number(amounts[currentContraVoucherId]) : amt / (v.linkedPaymentInIds?.length || 1);
-      const typeLabel = v.type === "payment_out" ? "Payment Out" : v.type === "direct_expense" ? "Direct Expense" : "Contra";
+      const typeLabel = v.type === "payment_out" ? "Payment" : v.type === "direct_expense" ? "Direct Expense" : "Contra";
       const to = getSpendWiseOutflowPartyLabel(v, paymentInDialogNames);
       return {
         id: v.id,
@@ -754,7 +754,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
         const amt = Number(v.total ?? v.amount ?? 0) || 0;
         const linked = pendingLinkedPaymentOut.amountsByVoucherId[id] ?? 0;
         const to = getSpendWiseOutflowPartyLabel(v, paymentInDialogNames);
-        return { id: v.id, voucherNumber: v.voucherNumber ?? "—", date, amount: amt, linked, typeLabel: v.type === "payment_out" ? "Payment Out" : v.type === "direct_expense" ? "Direct Expense" : "Contra", from: to, to };
+        return { id: v.id, voucherNumber: v.voucherNumber ?? "—", date, amount: amt, linked, typeLabel: v.type === "payment_out" ? "Payment" : v.type === "direct_expense" ? "Direct Expense" : "Contra", from: to, to };
       })
       .filter(Boolean);
     const typed = rows as { id: string; voucherNumber: string; date: Date | null; amount: number; linked: number; typeLabel: string; from: string }[];
@@ -798,7 +798,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
   // Card count: Contra In follows Pay Out popup count; Contra Out keeps inflow-link count.
   const spendWiseCardAvailableCount = selectedContraLeg === 'in' ? spendWiseOutDialogRowCount : spendWiseLinkableCount;
 
-  /** Total linked from this contra to Payment Out (used by Link Pay Out dialog summary). */
+  /** Total linked from this contra to Payment (used by Link Pay Out dialog summary). */
   const lowerCardTotalLinked = useMemo(() => displayLinkedToMeRows.reduce((s, r) => s + r.linked, 0), [displayLinkedToMeRows]);
   // Keep left "From Voucher" card synced with active contra leg.
   const fromCardLinkedTotal = selectedContraLeg === 'in' ? lowerCardTotalLinked : spendWiseFromCardTotalLinked;

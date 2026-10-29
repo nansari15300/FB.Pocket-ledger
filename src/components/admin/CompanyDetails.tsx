@@ -1,6 +1,8 @@
 
 "use client";
 
+import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
+import { adminServerSetDoc, isAdminServerDataActive } from "@/lib/pocketbaseData/pbReadSeam";
 import { useState } from "react";
 import { doc, updateDoc, Timestamp, writeBatch } from "firebase/firestore";
 import { firestore as db } from "@/lib/firebase";
@@ -206,6 +208,37 @@ function buildPlanIdFirestorePatch(target: Company, planId: PlanId): Record<stri
     return { planId, ...settingsUpdate };
 }
 
+/** Firestore dotted keys → nested object for PocketBase `/api/pl/admin/set` merge. */
+function nestDotted(data: Record<string, unknown>): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data)) {
+        if (!key.includes(".")) {
+            out[key] = value;
+            continue;
+        }
+        const parts = key.split(".");
+        let cur = out;
+        for (let i = 0; i < parts.length - 1; i++) {
+            const p = parts[i];
+            const next = cur[p];
+            if (!next || typeof next !== "object" || Array.isArray(next)) cur[p] = {};
+            cur = cur[p] as Record<string, unknown>;
+        }
+        cur[parts[parts.length - 1]] = value;
+    }
+    return out;
+}
+
+async function persistCompanyFields(companyId: string, data: Record<string, unknown>): Promise<boolean> {
+    if (isAdminServerDataActive()) {
+        await adminServerSetDoc(`companies/${companyId}`, nestDotted(data), true);
+        return true;
+    }
+    if (adminServerWriteBlocked()) return false;
+    await updateDoc(doc(db, "companies", companyId), data as Record<string, unknown>);
+    return true;
+}
+
 /** Local `Company` preview: planId + missing settings keys ko defaults se bharo (UI list ke liye). */
 function companyAfterPlanIdPatch(target: Company, planId: PlanId): Company {
     const planDefaults = DEFAULT_PLANS[planId].entitlements;
@@ -245,6 +278,8 @@ export function CompanyDetails({
     const { user: firebaseUser } = useAuth();
 
     const updatePlan = async (planId: PlanId) => {
+        const viaServer = isAdminServerDataActive();
+        if (!viaServer && adminServerWriteBlocked()) return;
         setIsUpdating(true);
         try {
             // Ek hi `ownerId` par jitni bhi companies — sab par wahi `planId` (per-company entitlement defaults jahan pehle undefined).
@@ -255,34 +290,65 @@ export function CompanyDetails({
             // Ek hi waqt — saari owned companies par "Joined date" / ramp billing (`planUpgradedAt*`) align (user multi-company).
             const nowMs = Date.now();
             const planUpgradedAt = Timestamp.fromMillis(nowMs);
-            const batch = writeBatch(db);
             const patched: Company[] = [];
-            for (const c of targets) {
-                batch.update(doc(db, "companies", c.id), {
-                    ...buildPlanIdFirestorePatch(c, planId),
-                    planUpgradedAt,
-                    planUpgradedAtMs: nowMs,
-                });
-                patched.push({
-                    ...companyAfterPlanIdPatch(c, planId),
-                    planUpgradedAt,
-                    planUpgradedAtMs: nowMs,
-                });
+            if (viaServer) {
+                for (const c of targets) {
+                    const ok = await persistCompanyFields(c.id, {
+                        ...buildPlanIdFirestorePatch(c, planId),
+                        planUpgradedAt,
+                        planUpgradedAtMs: nowMs,
+                    });
+                    if (!ok) return;
+                    patched.push({
+                        ...companyAfterPlanIdPatch(c, planId),
+                        planUpgradedAt,
+                        planUpgradedAtMs: nowMs,
+                    });
+                }
+            } else {
+                const batch = writeBatch(db);
+                for (const c of targets) {
+                    batch.update(doc(db, "companies", c.id), {
+                        ...buildPlanIdFirestorePatch(c, planId),
+                        planUpgradedAt,
+                        planUpgradedAtMs: nowMs,
+                    });
+                    patched.push({
+                        ...companyAfterPlanIdPatch(c, planId),
+                        planUpgradedAt,
+                        planUpgradedAtMs: nowMs,
+                    });
+                }
+                await batch.commit();
             }
-            await batch.commit();
-            const ownerIdForReconcile = String((targets[0]?.ownerId ?? company.ownerId) ?? "").trim();
-            await postReconcileOwnerPlanFromAdmin(firebaseUser, ownerIdForReconcile);
-            const prevExp = company.planExpiry?.toMillis?.() ?? null;
-            const mirror = await postAdminPlanGrantMirror(firebaseUser, {
-              ownerId: ownerIdForReconcile,
-              companyId: company.id,
-              planId,
-              planExpiryMs: prevExp,
-              previousExpiryMs: prevExp,
-              reason: "admin_plan",
-            });
+            if (!viaServer) {
+                const ownerIdForReconcile = String((targets[0]?.ownerId ?? company.ownerId) ?? "").trim();
+                await postReconcileOwnerPlanFromAdmin(firebaseUser, ownerIdForReconcile);
+                const prevExp = company.planExpiry?.toMillis?.() ?? null;
+                const mirror = await postAdminPlanGrantMirror(firebaseUser, {
+                  ownerId: ownerIdForReconcile,
+                  companyId: company.id,
+                  planId,
+                  planExpiryMs: prevExp,
+                  previousExpiryMs: prevExp,
+                  reason: "admin_plan",
+                });
+                triggerSync();
+                if (mirror?.mirroredSale) {
+                    toast({
+                        title: "Admin Panel Company",
+                        description: `Subscriber + sale mirrored (Rs ${Number(mirror.amountNpr ?? 0).toFixed(0)}, admin_manual — Stripe open nahi hota).`,
+                    });
+                } else if (planId !== "basic") {
+                    toast({
+                        title: "Note",
+                        description:
+                            mirror?.note ||
+                            "Subscriber list update try hua. Real payment ke liye user /billing pe Renew/Pay use kare.",
+                    });
+                }
+            }
             onSeveralCompaniesUpdated(patched);
-            triggerSync();
             toast({
                 title: "Success",
                 description:
@@ -290,19 +356,6 @@ export function CompanyDetails({
                         ? `Plan "${planId}" — is owner ki ${targets.length} companies par sync ho gaya.`
                         : "Company plan updated.",
             });
-            if (mirror?.mirroredSale) {
-                toast({
-                    title: "Admin Panel Company",
-                    description: `Subscriber + sale mirrored (Rs ${Number(mirror.amountNpr ?? 0).toFixed(0)}, admin_manual — Stripe open nahi hota).`,
-                });
-            } else if (planId !== "basic") {
-                toast({
-                    title: "Note",
-                    description:
-                        mirror?.note ||
-                        "Subscriber list update try hua. Real payment ke liye user /billing pe Renew/Pay use kare.",
-                });
-            }
         } catch (error) {
             console.error(error);
             toast({ variant: "destructive", title: "Error", description: "Failed to update plan." });
@@ -312,6 +365,8 @@ export function CompanyDetails({
     };
 
     const updateExpiry = async (isoDate: string) => {
+        const viaServer = isAdminServerDataActive();
+        if (!viaServer && adminServerWriteBlocked()) return;
         if (!isoDate) return;
         setIsUpdating(true);
         try {
@@ -322,29 +377,54 @@ export function CompanyDetails({
                 sameOwnerCompanies.length > 0
                     ? sameOwnerCompanies
                     : [company];
-            const batch = writeBatch(db);
             const patched: Company[] = [];
-            for (const c of targets) {
-                batch.update(doc(db, "companies", c.id), {
-                    planExpiry: at,
-                    planExpiryMs: expiryMs,
-                });
-                patched.push({ ...c, planExpiry: at, planExpiryMs: expiryMs } as Company);
+            if (viaServer) {
+                for (const c of targets) {
+                    const ok = await persistCompanyFields(c.id, {
+                        planExpiry: at,
+                        planExpiryMs: expiryMs,
+                    });
+                    if (!ok) return;
+                    patched.push({ ...c, planExpiry: at, planExpiryMs: expiryMs } as Company);
+                }
+            } else {
+                const batch = writeBatch(db);
+                for (const c of targets) {
+                    batch.update(doc(db, "companies", c.id), {
+                        planExpiry: at,
+                        planExpiryMs: expiryMs,
+                    });
+                    patched.push({ ...c, planExpiry: at, planExpiryMs: expiryMs } as Company);
+                }
+                await batch.commit();
             }
-            await batch.commit();
-            const ownerIdForReconcile = String((targets[0]?.ownerId ?? company.ownerId) ?? "").trim();
-            await postReconcileOwnerPlanFromAdmin(firebaseUser, ownerIdForReconcile);
-            const mirror = await postAdminPlanGrantMirror(firebaseUser, {
-              ownerId: ownerIdForReconcile,
-              companyId: company.id,
-              planId: String(company.planId || "basic"),
-              planExpiryMs: expiryMs,
-              previousExpiryMs,
-              reason: "admin_expiry",
-            });
+            if (!viaServer) {
+                const ownerIdForReconcile = String((targets[0]?.ownerId ?? company.ownerId) ?? "").trim();
+                await postReconcileOwnerPlanFromAdmin(firebaseUser, ownerIdForReconcile);
+                const mirror = await postAdminPlanGrantMirror(firebaseUser, {
+                  ownerId: ownerIdForReconcile,
+                  companyId: company.id,
+                  planId: String(company.planId || "basic"),
+                  planExpiryMs: expiryMs,
+                  previousExpiryMs,
+                  reason: "admin_expiry",
+                });
+                reloadLocalCompanyRegistry();
+                triggerSync();
+                if (mirror?.mirroredSale) {
+                    toast({
+                        title: "Admin Panel Company",
+                        description: `Sale mirrored for added days (Rs ${Number(mirror.amountNpr ?? 0).toFixed(0)}, admin_manual). Stripe gateway admin date se open nahi hota — paid renew /billing se.`,
+                    });
+                } else {
+                    toast({
+                        title: "Note",
+                        description:
+                            "Yeh admin grant hai — payment gateway open nahi hota. Paid renew ke liye user Billing → Renew use kare.",
+                    });
+                }
+            }
             onSeveralCompaniesUpdated(patched);
-            reloadLocalCompanyRegistry();
-            triggerSync();
             toast({
                 title: "Success",
                 description:
@@ -352,18 +432,6 @@ export function CompanyDetails({
                         ? `Plan expiry — is owner ki ${targets.length} companies par sync ho gaya.`
                         : "Plan expiry updated.",
             });
-            if (mirror?.mirroredSale) {
-                toast({
-                    title: "Admin Panel Company",
-                    description: `Sale mirrored for added days (Rs ${Number(mirror.amountNpr ?? 0).toFixed(0)}, admin_manual). Stripe gateway admin date se open nahi hota — paid renew /billing se.`,
-                });
-            } else {
-                toast({
-                    title: "Note",
-                    description:
-                        "Yeh admin grant hai — payment gateway open nahi hota. Paid renew ke liye user Billing → Renew use kare.",
-                });
-            }
         } catch (error) {
             console.error(error);
             toast({ variant: "destructive", title: "Error", description: "Failed to update expiry." });
@@ -373,16 +441,21 @@ export function CompanyDetails({
     };
 
     const resetCompanyPassword = async () => {
+        const viaServer = isAdminServerDataActive();
+        if (!viaServer && adminServerWriteBlocked()) return;
         if (!newPassword) {
             toast({ variant: "destructive", title: "Error", description: "Password cannot be empty." });
             return;
         }
         setIsResettingPassword(true);
         try {
-            await updateDoc(doc(db, 'companies', company.id), { password: newPassword });
+            const ok = await persistCompanyFields(company.id, { password: newPassword });
+            if (!ok) return;
             onUpdate({ ...company, password: newPassword });
-            reloadLocalCompanyRegistry();
-            triggerSync();
+            if (!viaServer) {
+                reloadLocalCompanyRegistry();
+                triggerSync();
+            }
             toast({ title: "Success", description: "Company password has been reset." });
             setIsResetDialogOpen(false); // Close dialog on success
         } catch (error) {
@@ -395,13 +468,18 @@ export function CompanyDetails({
     }
 
     const toggleFeature = async (key: string, value: boolean) => {
+        const viaServer = isAdminServerDataActive();
+        if (!viaServer && adminServerWriteBlocked()) return;
         setIsUpdating(true);
         try {
-            await updateDoc(doc(db, 'companies', company.id), { [`settings.${key}`]: value });
+            const ok = await persistCompanyFields(company.id, { [`settings.${key}`]: value });
+            if (!ok) return;
             const updatedSettings = { ...(company.settings || {}), [key]: value };
             onUpdate({ ...company, settings: updatedSettings });
-            reloadLocalCompanyRegistry();
-            triggerSync();
+            if (!viaServer) {
+                reloadLocalCompanyRegistry();
+                triggerSync();
+            }
             toast({ title: "Success", description: `Feature '${key}' ${value ? 'enabled' : 'disabled'}.` });
         } catch (error) {
             console.error(error);

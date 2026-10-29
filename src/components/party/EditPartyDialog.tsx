@@ -40,6 +40,7 @@ import {
   MasterMobileNoField,
   MasterFormTwoColGrid,
 } from "@/components/inter-company/MasterFormLayout";
+import { useAutoAliasFromName } from "@/hooks/useAutoAliasFromName";
 import { PartyGroupTreeCombobox } from "@/components/party/PartyGroupTreeCombobox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { useDate } from "@/hooks/useDate";
@@ -246,6 +247,7 @@ export function EditPartyDialog({ party, onPartyUpdated, onPartyDeleted, childre
         openingBalanceNarration: party.openingBalanceNarration ?? "",
     },
   });
+  const { markAliasUserEdited } = useAutoAliasFromName(form);
 
   const openingBalanceDateMissing = useMasterOpeningBalanceDateRequired(form.control);
 
@@ -881,7 +883,14 @@ export function EditPartyDialog({ party, onPartyUpdated, onPartyDeleted, childre
                         <FormItem>
                           <FormLabel>Alias Name <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
                           <FormControl>
-                            <Input placeholder="Other name on bills / short name" {...field} />
+                            <Input
+                              placeholder="Other name on bills / short name"
+                              {...field}
+                              onChange={(e) => {
+                                markAliasUserEdited();
+                                field.onChange(e);
+                              }}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>

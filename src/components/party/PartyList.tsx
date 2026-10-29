@@ -37,6 +37,7 @@ import {
 import { sortIcMemberParties, sortPartyListRows } from "@/lib/interCompany/partyListRowSort";
 import { partyListRowMatchesSearch } from "@/lib/interCompany/partyListRowSearch";
 import { MasterListChromeChevronToggle } from "@/components/layout/MasterListChromeChevronToggle";
+import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
 import { toggleGroupListAccordionExpand } from "@/lib/groupListExpand";
 
 const getInitials = (name: string) => {
@@ -162,6 +163,7 @@ export const PartyList = React.memo(({
   onQuickFilterChange,
   hideQuickFilterBar = false,
   resolvePartyTitleLines,
+  emptyLabel = "No parties found.",
 }: {
   parties: Party[];
   selectedParty: Party | null;
@@ -182,6 +184,7 @@ export const PartyList = React.memo(({
   hideQuickFilterBar?: boolean;
   /** Admin subscribers etc. — primary name + secondary email under title. */
   resolvePartyTitleLines?: (party: Party) => { primary: string; secondary?: string | null };
+  emptyLabel?: string;
 }) => {
   const { formatCurrency } = useDate();
   const { company } = useCompany();
@@ -243,7 +246,7 @@ export const PartyList = React.memo(({
   if (displayListRows.length === 0) {
     return (
       <div className="p-8 text-center text-sm text-muted-foreground bg-background rounded-b-lg border-t-0">
-        No parties found.
+        {emptyLabel}
       </div>
     );
   }
@@ -321,7 +324,7 @@ export const PartyList = React.memo(({
                     <div className="relative flex-shrink-0">
                       <EntityFileAttachmentHover
                         fileUrl={trimEntityFileUrlForPreview(rowParty.fileUrl)}
-                        triggerClassName="inline-flex shrink-0 rounded-full"
+                        triggerClassName="inline-flex h-full w-full shrink-0 rounded-lg"
                       >
                         <ResolvedEntityAvatar
                           className={MASTER_LIST_AVATAR_CN}
@@ -332,15 +335,7 @@ export const PartyList = React.memo(({
                           fallbackText={getInitials(rowTitleLines.primary)}
                         />
                       </EntityFileAttachmentHover>
-                      {rowPendingCount > 0 && (
-                        <span
-                          className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center bg-pink-500 text-white text-[10px] font-bold origin-center"
-                          style={{ transform: "rotate(45deg) translate(25%, -25%)" }}
-                          aria-label={`${rowPendingCount} pending approval`}
-                        >
-                          <span style={{ transform: "rotate(-45deg)" }}>{rowPendingCount}</span>
-                        </span>
-                      )}
+                      <MasterListPendingBadge count={rowPendingCount} />
                     </div>
                   );
 
