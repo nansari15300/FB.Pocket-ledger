@@ -63,6 +63,47 @@ export function writeCachedGlobalSyncModeSettings(settings: GlobalSyncModeSettin
 
 let syncModeHydratePromise: Promise<GlobalSyncModeSettings> | null = null;
 
+/**
+ * Server login (Firestore offline): read `app_settings/sync_mode` from the Pocket Ledger Server. The route is
+ * read-only and open to any signed-in server user (pb_hooks/app_settings_read.pb.js), unlike the main-admin
+ * only `/api/pl/admin/*`. Returns null when not signed in, unreachable, route missing (server not restarted
+ * yet) or the admin never saved a mode on this server.
+ */
+async function fetchGlobalSyncModeFromPocketBase(): Promise<GlobalSyncModeSettings | null> {
+  try {
+    const { getValidPocketBaseAuth, pbRequest } = await import("@/lib/pocketbaseData/pbClient");
+    if (!getValidPocketBaseAuth()) return null;
+    const res = (await pbRequest("/api/pl/app-settings/sync_mode", { timeoutMs: 8000 })) as {
+      exists?: boolean;
+      data?: unknown;
+    } | null;
+    if (!res || res.exists !== true) return null;
+    return normalizeGlobalSyncModeSettings(res.data);
+  } catch {
+    return null;
+  }
+}
+
+/** Write to the cache only when something changed (the write fires the sync-mode changed event). */
+function applyFetchedGlobalSyncMode(next: GlobalSyncModeSettings): void {
+  const cur = readCachedGlobalSyncModeSettings();
+  if (cur.mode === next.mode && cur.updatedAtMs === next.updatedAtMs) return;
+  writeCachedGlobalSyncModeSettings(next);
+}
+
+/** Server login only: re-read the sync mode from the server (call on load, focus, online and every minute). */
+export async function refreshGlobalSyncModeFromPocketBase(): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    const { isPocketBaseAppSessionActive } = await import("@/lib/pocketbaseData/pbAppSession");
+    if (!isPocketBaseAppSessionActive()) return;
+    const next = await fetchGlobalSyncModeFromPocketBase();
+    if (next) applyFetchedGlobalSyncMode(next);
+  } catch {
+    /* keep cached mode */
+  }
+}
+
 export async function ensureGlobalSyncModeSettingsHydrated(): Promise<GlobalSyncModeSettings> {
   if (typeof window === "undefined") return { ...DEFAULT_GLOBAL_SYNC_MODE_SETTINGS };
   if (!syncModeHydratePromise) {
@@ -72,7 +113,13 @@ export async function ensureGlobalSyncModeSettingsHydrated(): Promise<GlobalSync
         const { isPocketBaseAppSessionActive } = await import("@/lib/pocketbaseData/pbAppSession");
         let getDoc = fsGetDoc;
         if (isPocketBaseAppSessionActive()) {
-          // Server login: Firestore is offline. Admin Panel (super admin) reads via the server; else cache.
+          // Server login: Firestore is offline. Read the mode from the server (any signed-in user)...
+          const fromServer = await fetchGlobalSyncModeFromPocketBase();
+          if (fromServer) {
+            applyFetchedGlobalSyncMode(fromServer);
+            return fromServer;
+          }
+          // ...else Admin Panel (super admin) reads via the server; others keep the cache.
           const seam = await import("@/lib/pocketbaseData/pbReadSeam");
           if (!seam.isAdminServerDataActive()) {
             syncModeHydratePromise = null;

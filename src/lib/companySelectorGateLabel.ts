@@ -5,6 +5,7 @@ import {
   isServerGateCompany,
   isSharedOnlineCompany,
   isServerSelectorCompanyRow,
+  isPocketBaseSelectorCompanyRow,
   partitionCompaniesForUnlockDialog,
   type CompanyListTab,
   type SelectorCompanyBuckets,
@@ -23,9 +24,20 @@ type CompanyGateRow = Company & {
 };
 
 export type CompanySelectorGateInfo = {
-  tabLabel: "Local" | "Server" | "Online";
+  tabLabel: "Local" | "PL Server" | "Firebase" | "PocketBase";
   gateName: string | null;
 };
+
+export const COMPANY_SELECTOR_TAB_LABELS: Record<CompanyListTab, string> = {
+  local: "Local",
+  server: "PL Server",
+  online: "Firebase",
+  pocketbase: "PocketBase",
+};
+
+/** Short line under company picker tabs — login method vs which books live where. */
+export const COMPANY_SELECTOR_TAB_HINT =
+  "Local = this device. PL Server = EXE/LAN share. Firebase = Google cloud. PocketBase = Pocket Ledger Server.";
 
 /** Server company row se PL gate — id, stamped URL, ya active local_server gate. */
 export function resolveServerGateForCompany(company: {
@@ -54,6 +66,10 @@ export function resolveCompanySelectorGateInfo(
 ): CompanySelectorGateInfo {
   if (!company) return { tabLabel: "Local", gateName: null };
 
+  if (isPocketBaseSelectorCompanyRow(company)) {
+    return { tabLabel: "PocketBase", gateName: null };
+  }
+
   const remoteClient = typeof window !== "undefined" && isPlRemoteServerClientMode();
   if (
     isServerGateCompany(company) ||
@@ -62,7 +78,7 @@ export function resolveCompanySelectorGateInfo(
   ) {
     const gate = resolveServerGateForCompany(company);
     return {
-      tabLabel: "Server",
+      tabLabel: "PL Server",
       gateName: gate?.label ?? (remoteClient ? "Server PC" : null),
     };
   }
@@ -74,7 +90,7 @@ export function resolveCompanySelectorGateInfo(
   ) {
     const active = getActiveGate();
     return {
-      tabLabel: "Online",
+      tabLabel: "Firebase",
       gateName: active.type === "online" ? active.label : null,
     };
   }
@@ -136,8 +152,9 @@ export function resolveCompanySelectorTab(
 ): CompanyListTab {
   if (!company) return "local";
   const info = resolveCompanySelectorGateInfo(company);
-  if (info.tabLabel === "Server") return "server";
-  if (info.tabLabel === "Online") return "online";
+  if (info.tabLabel === "PocketBase") return "pocketbase";
+  if (info.tabLabel === "PL Server") return "server";
+  if (info.tabLabel === "Firebase") return "online";
   return "local";
 }
 
@@ -147,12 +164,13 @@ export function unlockTabCompanies(
 ): Company[] {
   if (tab === "local") return buckets.localTabCompanies;
   if (tab === "server") return buckets.serverTabCompanies;
+  if (tab === "pocketbase") return buckets.pocketbaseTabCompanies;
   return buckets.onlineTabCompanies;
 }
 
 /** Credential dialog: hamesha teeno gate tabs — Server khali ho to bhi Gate page par jaa sako. */
 export function availableUnlockTabs(): CompanyListTab[] {
-  return ["local", "server", "online"];
+  return ["local", "server", "online", "pocketbase"];
 }
 
 /** Unlock dialog tab — bucket membership pehle, heuristic fallback. */
@@ -160,6 +178,7 @@ export function resolveCompanyUnlockTab(
   company: CompanyGateRow,
   buckets: SelectorCompanyBuckets
 ): CompanyListTab {
+  if (buckets.pocketbaseTabCompanies.some((c) => c.id === company.id)) return "pocketbase";
   if (buckets.serverTabCompanies.some((c) => c.id === company.id)) return "server";
   if (buckets.onlineTabCompanies.some((c) => c.id === company.id)) return "online";
   if (buckets.localTabCompanies.some((c) => c.id === company.id)) return "local";

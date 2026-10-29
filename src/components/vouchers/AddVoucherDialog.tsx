@@ -1048,8 +1048,9 @@ function VoucherCopyCompanySelectOptions({
   const sections = (
     [
       { key: "local" as const, label: "Local", list: [...buckets.localTabCompanies].sort(byName) },
-      { key: "server" as const, label: "Server", list: [...buckets.serverTabCompanies].sort(byName) },
-      { key: "online" as const, label: "Online", list: [...buckets.onlineTabCompanies].sort(byName) },
+      { key: "server" as const, label: "PL Server", list: [...buckets.serverTabCompanies].sort(byName) },
+      { key: "online" as const, label: "Firebase", list: [...buckets.onlineTabCompanies].sort(byName) },
+      { key: "pocketbase" as const, label: "PocketBase", list: [...buckets.pocketbaseTabCompanies].sort(byName) },
     ] as const
   ).filter((sec) => visibleTabs.includes(sec.key));
 

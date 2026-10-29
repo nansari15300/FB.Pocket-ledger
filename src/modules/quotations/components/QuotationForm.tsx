@@ -230,8 +230,9 @@ export function QuotationForm({
   const companySections = (
     [
       { key: "local" as const, label: "Local", list: buckets.localTabCompanies },
-      { key: "server" as const, label: "Server", list: buckets.serverTabCompanies },
-      { key: "online" as const, label: "Online", list: buckets.onlineTabCompanies },
+      { key: "server" as const, label: "PL Server", list: buckets.serverTabCompanies },
+      { key: "online" as const, label: "Firebase", list: buckets.onlineTabCompanies },
+      { key: "pocketbase" as const, label: "PocketBase", list: buckets.pocketbaseTabCompanies },
     ] as const
   ).filter((sec) => visibleTabs.includes(sec.key));
 

@@ -115,17 +115,17 @@ function missingAppPrefixRedirect(reqUrl) {
   if (isAppPath(pathOnly)) return null;
   if (pathOnly === "/" || pathOnly === "") return null;
 
-  // App company picker lives under `/app/company`; marketing owns bare `/company` (about page).
-  if (pathOnly === "/company/create" || pathOnly.startsWith("/company/create/")) {
+  // App company picker is `/app/company`. Bare `/company` is also rewritten in
+  // this gateway so a Next `router.push("/company")` that dropped `/app` still
+  // loads the live app (not website/company marketing HTML / a stale SPA).
+  if (
+    pathOnly === "/company" ||
+    pathOnly === "/company/" ||
+    pathOnly === "/company/create" ||
+    pathOnly.startsWith("/company/create/")
+  ) {
     const qs = raw.includes("?") ? "?" + raw.split("?").slice(1).join("?") : "";
-    return "/app" + pathOnly + qs;
-  }
-  if (pathOnly === "/company" || pathOnly === "/company/") {
-    const qs = raw.includes("?") ? raw.slice(raw.indexOf("?")) : "";
-    if (qs.includes("pl_company=") || qs.includes("modal=")) {
-      return "/app/company" + qs;
-    }
-    return null;
+    return "/app" + pathOnly.replace(/\/$/, pathOnly === "/company/" ? "/" : "") + qs;
   }
 
   const first = pathOnly.split("/").filter(Boolean)[0];

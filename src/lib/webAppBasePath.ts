@@ -196,6 +196,67 @@ export function isAppUiPathMissingBasePrefix(pathname?: string): boolean {
   return !!first && APP_ONLY_FIRST_SEGMENTS.has(first);
 }
 
+function coerceHistoryUrl(url: string | URL | null | undefined): string | URL | null | undefined {
+  if (url == null || url === "") return url;
+  const base = webAppBasePath();
+  if (!base || typeof window === "undefined") return url;
+
+  if (typeof url !== "string") {
+    if (url instanceof URL && url.origin === window.location.origin) {
+      const first = url.pathname.split("/").filter(Boolean)[0];
+      if (first && APP_ONLY_FIRST_SEGMENTS.has(first)) {
+        url.pathname = ensureWebAppBasePathOnPathname(url.pathname, base);
+      }
+    }
+    return url;
+  }
+  if (url.startsWith("#") || url.startsWith("?")) return url;
+
+  if (/^https?:\/\//i.test(url)) {
+    try {
+      const u = new URL(url);
+      if (u.origin !== window.location.origin) return url;
+      const first = u.pathname.split("/").filter(Boolean)[0];
+      if (first && APP_ONLY_FIRST_SEGMENTS.has(first)) {
+        u.pathname = ensureWebAppBasePathOnPathname(u.pathname, base);
+      }
+      return `${u.pathname}${u.search}${u.hash}`;
+    } catch {
+      return url;
+    }
+  }
+
+  const abs = url.startsWith("/") ? url : `/${url}`;
+  const { pathname, queryPart, hashPart } = splitPathQueryHash(abs);
+  const first = pathname.split("/").filter(Boolean)[0];
+  if (!first || !APP_ONLY_FIRST_SEGMENTS.has(first)) return url.startsWith("/") ? url : abs;
+  return `${ensureWebAppBasePathOnPathname(pathname, base)}${queryPart}${hashPart}`;
+}
+
+let historyGuardInstalled = false;
+
+/**
+ * Next App Router sometimes `replaceState("/company")` without `basePath`, so the
+ * address bar drops `/app` (then a refresh hits marketing `/company`). Patch History
+ * so in-app routes always keep `/app`.
+ */
+export function installWebAppBasePathHistoryGuard(): void {
+  if (historyGuardInstalled || typeof window === "undefined") return;
+  if (!webAppBasePath()) return;
+  historyGuardInstalled = true;
+  const push = window.history.pushState.bind(window.history);
+  const replace = window.history.replaceState.bind(window.history);
+  window.history.pushState = function (data, unused, url) {
+    return push(data, unused, coerceHistoryUrl(url) as string);
+  };
+  window.history.replaceState = function (data, unused, url) {
+    return replace(data, unused, coerceHistoryUrl(url) as string);
+  };
+  window.addEventListener("popstate", () => {
+    repairAppUiPathInBrowser();
+  });
+}
+
 /**
  * Restore `/app` on the address bar when basePath is active but History API dropped it.
  * Next `router.push` already prefixes basePath; raw `replaceState` does not.

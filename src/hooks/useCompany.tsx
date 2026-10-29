@@ -1769,11 +1769,19 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
           uid: user?.uid || "",
           email: resolveMirrorUserEmail(user, customUser) || null,
         };
+        const pbLoginSession = isPocketBaseSessionUser(user);
         const stampCloudMirrorRow = (norm: Company, isOwned: boolean): Company => ({
           ...norm,
           isOwned,
           storageOption: "firebase",
           syncedFromCloud: true,
+        });
+        const stampPocketBaseMirrorRow = (norm: Company, isOwned: boolean): Company => ({
+          ...norm,
+          isOwned,
+          onlineServerId: "pocketbase",
+          onlineDataBackend: "pocketbase",
+          syncedFromCloud: false,
         });
         /** Staff PL-share: Firestore me same id online company zinda ho to UI/SQLite pe cloud stamp mat chipkao. */
         const preferPlServerOverCloud = (row: { id?: string; plServerHostCompanyId?: string; plServerShared?: boolean } | null | undefined) =>
@@ -1787,8 +1795,9 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
           const norm = normalizeLocalCompany({
             id: row.id,
             ...row.data,
-            storageOption: "firebase",
-            syncedFromCloud: true,
+            ...(pbLoginSession
+              ? { onlineServerId: "pocketbase", onlineDataBackend: "pocketbase", syncedFromCloud: false }
+              : { storageOption: "firebase", syncedFromCloud: true }),
             isOwned: row.isOwned,
           } as Company);
           if (!isCompanyVisibleInMainApp(norm)) continue;
@@ -1797,16 +1806,18 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
             : sharedOnlyMirrorIds.has(norm.id)
               ? false
               : resolveCompanyIsOwnedForUser(norm, shareUser);
-          companyById.set(norm.id, stampCloudMirrorRow(norm, isOwned));
+          companyById.set(
+            norm.id,
+            pbLoginSession ? stampPocketBaseMirrorRow(norm, isOwned) : stampCloudMirrorRow(norm, isOwned)
+          );
         }
 
         const localCompanies = await listLocalCompanies();
-        const serverLoginSession = isPocketBaseSessionUser(user);
         for (const c of localCompanies) {
           const norm = normalizeLocalCompany(c as unknown as Company);
           if (!isCompanyVisibleInMainApp(norm)) continue;
           if (!isLocalCompanyVisibleToAppAccount(c, user)) continue;
-          if (serverLoginSession && isFirebaseCloudRowHiddenInServerSession(norm)) continue;
+          if (pbLoginSession && isFirebaseCloudRowHiddenInServerSession(norm)) continue;
           if (isStrictLocalOnlyCompany(norm)) {
             companyById.set(norm.id, {
               ...norm,
@@ -2925,6 +2936,16 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
             localCompanyUsers:
               (existing as { localCompanyUsers?: unknown }).localCompanyUsers ?? mergedLocalUsers,
           } as import("@/lib/localCompanyStore").LocalCompanyDoc);
+          return;
+        }
+        if (isPocketBaseCompanyId(c.id) || companyUsesPocketBase(c)) {
+          await upsertLocalCompany({
+            ...(c as any),
+            onlineServerId: "pocketbase",
+            onlineDataBackend: "pocketbase",
+            syncedFromCloud: false,
+            localCompanyUsers: mergedLocalUsers,
+          } as any);
           return;
         }
         await upsertLocalCompany({

@@ -35,6 +35,7 @@ const OFFLINE_BASE_FEATURE_CONFIG: Record<string, boolean> = {
   company_tab_local: true,
   company_tab_server: true,
   company_tab_online: true,
+  company_tab_pocketbase: true,
 };
 
 function readCachedFeatureConfig(): Record<string, boolean> | null {

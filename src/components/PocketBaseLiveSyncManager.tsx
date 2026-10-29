@@ -16,10 +16,13 @@ import {
 import {
   ensureGlobalSyncModeSettingsHydrated,
   readCachedGlobalSyncModeSettings,
+  refreshGlobalSyncModeFromPocketBase,
 } from "@/lib/globalSyncModeSettings";
 import type { PocketBaseRealtimeMode } from "@/lib/pocketbaseData/pbRealtime";
 
 const RECHECK_MS = 30_000;
+/** Server login: re-read the admin's Live/Delta mode from the server this often (and on focus / online). */
+const SYNC_MODE_REFRESH_MS = 60_000;
 
 function currentMode(): PocketBaseRealtimeMode {
   return readCachedGlobalSyncModeSettings().mode === "full_online" ? "live" : "delta";
@@ -56,7 +59,25 @@ export function PocketBaseLiveSyncManager() {
     window.addEventListener(FIREBASE_LEDGER_SYNC_MODE_CHANGED_EVENT, evaluate);
     window.addEventListener(SELECTED_COMPANY_CHANGED_EVENT, evaluate);
     const iv = window.setInterval(evaluate, RECHECK_MS);
+    // Server login only (no-op otherwise): pick up a changed sync_mode without a page reload.
+    const refreshMode = () => {
+      void refreshGlobalSyncModeFromPocketBase().catch(() => {});
+    };
+    const onVisibleMode = () => {
+      if (document.visibilityState === "visible") refreshMode();
+    };
+    refreshMode();
+    const ivMode = window.setInterval(refreshMode, SYNC_MODE_REFRESH_MS);
+    window.addEventListener("focus", refreshMode);
+    window.addEventListener("online", refreshMode);
+    window.addEventListener(PL_PB_AUTH_CHANGED_EVENT, refreshMode);
+    document.addEventListener("visibilitychange", onVisibleMode);
     return () => {
+      window.removeEventListener("focus", refreshMode);
+      window.removeEventListener("online", refreshMode);
+      window.removeEventListener(PL_PB_AUTH_CHANGED_EVENT, refreshMode);
+      document.removeEventListener("visibilitychange", onVisibleMode);
+      clearInterval(ivMode);
       window.removeEventListener(PL_PB_AUTH_CHANGED_EVENT, evaluate);
       window.removeEventListener(FIREBASE_LEDGER_SYNC_MODE_CHANGED_EVENT, evaluate);
       window.removeEventListener(SELECTED_COMPANY_CHANGED_EVENT, evaluate);

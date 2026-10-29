@@ -406,7 +406,21 @@ export function findCountryAppRecords(query: string): CountryAppRecord[] {
     });
 }
 
+export function isLocalDevAppHost(hostname = currentAppHostname()): boolean {
+  const h = String(hostname || "").toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h === "[::1]" || /^\d{1,3}(\.\d{1,3}){3}$/.test(h);
+}
+
 export function countryAppUrl(rec: CountryAppRecord): string {
+  if (typeof window !== "undefined" && isLocalDevAppHost()) {
+    try {
+      const origin = String(window.location.origin || "").replace(/\/+$/, "");
+      if (origin && origin !== "null") return `${origin}/app`;
+    } catch {
+      /* ignore */
+    }
+    return "/app";
+  }
   return `https://${rec.host}/app`;
 }
 
@@ -495,6 +509,7 @@ export type ApplyAppCountryResult =
 
 function canNavigateToCountryHost(): boolean {
   if (typeof window === "undefined") return false;
+  if (isLocalDevAppHost()) return false;
   try {
     const C = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
     if (C && typeof C.isNativePlatform === "function" && C.isNativePlatform()) return false;

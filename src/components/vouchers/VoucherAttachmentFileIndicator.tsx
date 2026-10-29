@@ -24,6 +24,8 @@ import {
   resolveAttachmentReuseUiMeta,
 } from "@/lib/companyAttachmentRegistry";
 import { useVoucherListReuseHint, lookupVoucherListReuseHint } from "@/lib/voucherAttachmentListReuseIndex";
+import { useAttachmentNoFile } from "@/lib/attachmentNoFileSession";
+import { AttachmentNoFileEye } from "@/components/vouchers/AttachmentNoFileEye";
 
 type Props = {
   urls: readonly string[];
@@ -70,9 +72,41 @@ export function VoucherAttachmentFileIndicator({
     [urls]
   );
   const readyState = useAttachmentUrlsReadyState(urls);
+  /**
+   * Lazy thumb load: only start fetching once the cell has been near the viewport (sticky once true,
+   * so scrolling away never blinks / re-fetches). Already-cached thumbs render immediately regardless.
+   */
+  const [rootEl, setRootEl] = React.useState<HTMLElement | null>(null);
+  const [inView, setInView] = React.useState(
+    () => typeof window === "undefined" || typeof IntersectionObserver === "undefined"
+  );
+  React.useEffect(() => {
+    if (inView || !rootEl) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((en) => en.isIntersecting)) {
+          setInView(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "240px" }
+    );
+    io.observe(rootEl);
+    return () => io.disconnect();
+  }, [inView, rootEl]);
   const [thumbRetryKey, setThumbRetryKey] = React.useState(0);
   /** 404 fallback: current URL re-read from the doc (local -> server) after a swap on another device. */
   const [currentDocUrlOverride, setCurrentDocUrlOverride] = React.useState<string | null>(null);
+  /**
+   * URL present but no file bytes (verdict cached for the url the thumb hook actually loads: primary or
+   * current-doc override). Multi-url cells show one thumb for the primary url, so the primary verdict decides.
+   */
+  const effectiveThumbSrc = currentDocUrlOverride ?? primaryUrl;
+  const noFile = useAttachmentNoFile(effectiveThumbSrc ? [effectiveThumbSrc] : null);
   React.useEffect(() => {
     setThumbRetryKey(0);
     setCurrentDocUrlOverride(null);
@@ -100,8 +134,9 @@ export function VoucherAttachmentFileIndicator({
   }, [clientFileUrlsKey, companyId, filesNetworkAllowed, syncPrefsTick, urlsKey]);
   const wantsPreview = displayMode === "preview";
   // Files OFF: sirf device cache se thumb; network kabhi nahi. Files ON: visible page + lazy load.
+  // Tick-only mode: same lazy byte lookup (probe only, no thumb) so URL-only rows can show the eye instead of the tick.
   const allowThumbLoad =
-    wantsPreview &&
+    inView &&
     !suppressAutoThumbLoad &&
     filesNetworkAllowed &&
     (readyState === "ready" || shouldUseAttachmentLazyLoad(company));
@@ -114,6 +149,7 @@ export function VoucherAttachmentFileIndicator({
       voucherId,
       clientFileUrls,
       filesNetworkAllowed,
+      noFileProbeOnly: !wantsPreview,
     }
   );
 
@@ -294,6 +330,26 @@ export function VoucherAttachmentFileIndicator({
       </span>
     ) : null;
 
+  if (noFile) {
+    return (
+      <span
+        ref={setRootEl}
+        className={cn(
+          "inline-flex shrink-0",
+          // Preview mode: same box as the file thumbnail (size / border / radius / shadow / empty-thumb bg), eye centered.
+          wantsPreview &&
+            cn(
+              "relative box-border items-center justify-center rounded-[4px] border border-slate-300 bg-slate-50 shadow-sm",
+              thumbClass
+            ),
+          className
+        )}
+      >
+        <AttachmentNoFileEye size={size} />
+      </span>
+    );
+  }
+
   if (wantsPreview) {
     const canShowThumb =
       !!thumbUrl &&
@@ -335,6 +391,7 @@ export function VoucherAttachmentFileIndicator({
 
     return (
       <span
+        ref={setRootEl}
         data-pl-txn-file-thumb=""
         className={cn(
           "relative inline-flex box-border shrink-0 rounded-[4px]",
@@ -365,6 +422,7 @@ export function VoucherAttachmentFileIndicator({
 
   return (
     <span
+      ref={setRootEl}
       className={cn("relative inline-flex", className)}
       aria-label={
         fileCount > 1

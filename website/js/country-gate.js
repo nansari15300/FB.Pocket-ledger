@@ -103,6 +103,7 @@
   function countryAppUrl(rec) {
     rec = rec || detect();
     if (!rec) return "/app";
+    if (isLocalHost()) return "/app";
     return "https://" + rec.host + "/app";
   }
 

@@ -1590,7 +1590,6 @@ export const VoucherProvider = ({
   // --- Data Fetching Logic ---
   useEffect(() => {
     const keepWarmUi = hasWarmLedgerDataRef.current && lastCompanyIdRef.current === companyId;
-    console.info("[PL-DEBUG-SAVE] useVouchers fetch effect run", { companyId, keepWarmUi, t: Math.round(performance.now()) });
 
     if (authLoading) {
       if (!keepWarmUi) setLoadingIfChanged(true);
@@ -3682,6 +3681,7 @@ export const VoucherProvider = ({
     const cid = String(companyId || "").trim();
     if (
       cid &&
+      !isPocketBaseCompany(cid, company) &&
       !isOnlineCompanyLedgerCloudSyncAllowed(
         cid,
         company as Parameters<typeof isOnlineCompanyLedgerCloudSyncAllowed>[1]

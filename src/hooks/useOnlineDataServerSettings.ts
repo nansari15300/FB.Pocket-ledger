@@ -5,6 +5,7 @@ import { doc } from "firebase/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore, isFirestoreBlockedForServerSession } from "@/lib/firebase";
 import {
+  applyLocalDevPocketBaseGuard,
   DEFAULT_ONLINE_DATA_SERVER_SETTINGS,
   ONLINE_DATA_SERVER_SETTINGS_COLLECTION,
   ONLINE_DATA_SERVER_SETTINGS_ID,
@@ -32,7 +33,8 @@ export function useOnlineDataServerSettings(): {
     const unsub = onSnapshot(
       doc(firestore, ONLINE_DATA_SERVER_SETTINGS_COLLECTION, ONLINE_DATA_SERVER_SETTINGS_ID),
       (snap) => {
-        const next = normalizeOnlineDataServerSettings(snap.exists() ? snap.data() : undefined);
+        // Local dev: ignore a production (non-local) pocketbaseUrl saved in Firestore.
+        const next = applyLocalDevPocketBaseGuard(normalizeOnlineDataServerSettings(snap.exists() ? snap.data() : undefined));
         setSettings(next);
         writeCachedOnlineDataServerSettings(next);
         setLoading(false);

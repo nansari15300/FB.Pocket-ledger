@@ -9,6 +9,8 @@ import {
 } from "@/lib/plServerAccessContext";
 import { isPlRemoteServerClientMode, isPlSharingServerPortOrigin } from "@/lib/plRemoteServerClient";
 import { filterPackedMyCompanyRows, isPlServerPackedApp } from "@/lib/plServerPackedApp";
+import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { isServerOnlyLoginSession } from "@/lib/pocketbaseData/serverSessionCompanyScope";
 
 export type CompanyStorageRow = {
   id?: string;
@@ -18,6 +20,9 @@ export type CompanyStorageRow = {
   storageOption?: string | null;
   syncPolicy?: string | null;
   syncedFromCloud?: boolean;
+  /** Pocket Ledger Server (PocketBase) books — not Firebase Online. */
+  onlineServerId?: string | null;
+  onlineDataBackend?: string | null;
   isOwned?: boolean;
   isDeleted?: boolean;
   plServerShared?: boolean;
@@ -99,15 +104,29 @@ export function isServerOriginSelectorCompanyRow(
   return true;
 }
 
+/** Company books live on Pocket Ledger Server (PocketBase), not Firebase. */
+export function isPocketBaseSelectorCompanyRow(
+  c: CompanyStorageRow | null | undefined
+): boolean {
+  if (!c) return false;
+  if (isPocketBaseCompanyId(c.id)) return true;
+  const server = String(c.onlineServerId ?? "").trim().toLowerCase();
+  const backend = String(c.onlineDataBackend ?? "").trim().toLowerCase();
+  return server === "pocketbase" || backend === "pocketbase";
+}
+
 /**
- * Company picker Server tab — PL server delta mirror / gate share (hub :3000 ya sharing :3001).
- * Local tab sirf is device par banayi hui company — Firebase Online tab me.
+ * Company picker Server tab — PocketBase companies + PL LAN share (hub :3000 / :3001).
+ * Firebase/Drive stay on the Online (Firebase) tab even if storageOption is "firebase"
+ * from recovery — `onlineServerId: pocketbase` wins.
  */
 export function isServerSelectorCompanyRow(
   c: CompanyStorageRow | null | undefined,
   gateId?: string | null
 ): boolean {
   if (!c) return false;
+  // PocketBase has its own picker tab — EXE/LAN PL Server stays here.
+  if (isPocketBaseSelectorCompanyRow(c)) return false;
   // Firebase/Drive Online rows must never land in Server — even when PL markers pollute the registry row.
   if (isCloudLinkedCompanyStorage(c)) return false;
   if (c.plServerShared === true && hasPlServerGateMarker(c)) return true;
@@ -137,6 +156,7 @@ export function isLocalSelectorCompanyRow(
   }) | null | undefined
 ): boolean {
   if (!c) return false;
+  if (isPocketBaseSelectorCompanyRow(c)) return false;
   // Firebase / Firestore mirror — kabhi Local tab me mat dikhao (cloud sync off / PL marker pollution pe bhi).
   if (isCloudLinkedCompanyStorage(c)) return false;
   if (c.plServerShared === true || hasPlServerGateMarker(c)) return false;
@@ -151,12 +171,16 @@ export function isLocalSelectorCompanyRow(
 
 /** Handover / Delete dropdown: cloud-synced company (Firestore row as source of truth for handover) */
 export function isOnlineCompanyRow(c: Company): boolean {
-  return !isLocalSelectorCompanyRow(c) && !isServerSelectorCompanyRow(c);
+  return (
+    !isLocalSelectorCompanyRow(c) &&
+    !isServerSelectorCompanyRow(c) &&
+    !isPocketBaseSelectorCompanyRow(c)
+  );
 }
 
 export function isSharedOnlineCompany(c: CompanyStorageRow | null | undefined): boolean {
   if (!c) return false;
-  if (isServerSelectorCompanyRow(c)) return false;
+  if (isServerSelectorCompanyRow(c) || isPocketBaseSelectorCompanyRow(c)) return false;
   return !c.isOwned && !isLocalSelectorCompanyRow(c);
 }
 
@@ -247,7 +271,7 @@ export function shouldReadLedgerFromSqliteOnly(
   return isStructuralSqliteOnlyLedgerCompany(c);
 }
 
-export type CompanyListTab = "local" | "online" | "server";
+export type CompanyListTab = "local" | "online" | "server" | "pocketbase";
 
 export type SelectorCompanyBuckets = {
   localOwnedCompanies: Company[];
@@ -258,6 +282,7 @@ export type SelectorCompanyBuckets = {
   localTabCompanies: Company[];
   onlineTabCompanies: Company[];
   serverTabCompanies: Company[];
+  pocketbaseTabCompanies: Company[];
 };
 
 function dedupeCompaniesById(companies: Company[]): Company[] {
@@ -273,7 +298,7 @@ export function isStrictLocalUnlockTabCompany(
 ): boolean {
   if (!c || isCloudLinkedCompanyStorage(c)) return false;
   if (isServerGateCompany(c)) return false;
-  if (isServerSelectorCompanyRow(c)) return false;
+  if (isServerSelectorCompanyRow(c) || isPocketBaseSelectorCompanyRow(c)) return false;
   if (isSharedOnlineCompany(c)) return false;
   if (isStrictLocalOnlyCompany(c)) return true;
   if (isDriveCloudSyncLocalRegistryRow(c as Record<string, unknown>)) return true;
@@ -310,27 +335,27 @@ export function partitionCompaniesForSelector(companies: Company[]): SelectorCom
     return {
       localOwnedCompanies: [],
       sharedLocalCompanies: [],
-      serverSharedCompanies: packed,
+      serverSharedCompanies: [],
       cloudOwnedCompanies: [],
       sharedCloudCompanies: [],
       localTabCompanies: [],
       onlineTabCompanies: [],
-      serverTabCompanies: packed,
+      serverTabCompanies: [],
+      pocketbaseTabCompanies: packed,
     };
   }
   const gateId = getPlServerContextGateId();
-  const owned = rows.filter((c) => c.isOwned);
-  const nonServerRows = rows.filter((c) => !isServerSelectorCompanyRow(c, gateId));
-  const nonServerOwned = owned.filter((c) => !isServerSelectorCompanyRow(c, gateId));
-  const localOwnedCompanies = owned.filter((c) => isLocalSelectorCompanyRow(c));
-  const cloudOwnedCompanies = nonServerOwned.filter((c) => !isLocalSelectorCompanyRow(c));
-  const sharedCloudCompanies = nonServerRows.filter((c) => isSharedOnlineCompany(c));
+  const pocketbaseTabCompanies = dedupeCompaniesById(rows.filter((c) => isPocketBaseSelectorCompanyRow(c)));
   const serverSharedCompanies = rows.filter((c) => isServerSelectorCompanyRow(c, gateId));
-  const sharedLocalCompanies = rows.filter((c) => isSharedLocalCompany(c));
-  const localTabCompanies = dedupeCompaniesById([
-    ...localOwnedCompanies.filter((c) => !isServerSelectorCompanyRow(c, gateId)),
-    ...sharedLocalCompanies.filter((c) => !isServerSelectorCompanyRow(c, gateId)),
-  ]);
+  const rest = rows.filter(
+    (c) => !isPocketBaseSelectorCompanyRow(c) && !isServerSelectorCompanyRow(c, gateId)
+  );
+  const owned = rest.filter((c) => c.isOwned);
+  const localOwnedCompanies = owned.filter((c) => isLocalSelectorCompanyRow(c));
+  const cloudOwnedCompanies = owned.filter((c) => !isLocalSelectorCompanyRow(c));
+  const sharedCloudCompanies = rest.filter((c) => isSharedOnlineCompany(c));
+  const sharedLocalCompanies = rest.filter((c) => isSharedLocalCompany(c));
+  const localTabCompanies = dedupeCompaniesById([...localOwnedCompanies, ...sharedLocalCompanies]);
   const onlineTabCompanies = dedupeCompaniesById([...cloudOwnedCompanies, ...sharedCloudCompanies]);
   const serverTabCompanies = dedupeCompaniesById([...serverSharedCompanies]);
   return {
@@ -342,6 +367,7 @@ export function partitionCompaniesForSelector(companies: Company[]): SelectorCom
     localTabCompanies,
     onlineTabCompanies,
     serverTabCompanies,
+    pocketbaseTabCompanies,
   };
 }
 
@@ -354,7 +380,7 @@ export function filterCompaniesForSelectorPartition(companies: Company[]): Compa
 
 /** CompanySelector Online tab — same post-partition filter. */
 export function filterOnlineTabCompaniesForSelector(companies: Company[]): Company[] {
-  return companies.filter((c) => !isServerSelectorCompanyRow(c));
+  return companies.filter((c) => !isServerSelectorCompanyRow(c) && !isPocketBaseSelectorCompanyRow(c));
 }
 
 export function defaultSelectorTab(
@@ -363,12 +389,14 @@ export function defaultSelectorTab(
 ): CompanyListTab {
   const id = companyId?.trim();
   if (id) {
+    if (buckets.pocketbaseTabCompanies.some((c) => c.id === id)) return "pocketbase";
     if (buckets.serverTabCompanies.some((c) => c.id === id)) return "server";
     const localHit = buckets.localTabCompanies.find((c) => c.id === id);
     if (localHit && isServerGateCompany(localHit)) return "server";
     if (localHit) return "local";
     if (buckets.onlineTabCompanies.some((c) => c.id === id)) return "online";
   }
+  if (isServerOnlyLoginSession() && buckets.pocketbaseTabCompanies.length > 0) return "pocketbase";
   if (
     buckets.serverTabCompanies.length > 0 &&
     (isPlSharingServerPortOrigin() || isPlRemoteServerClientMode() || getPlServerContextGateId())
@@ -377,6 +405,7 @@ export function defaultSelectorTab(
   }
   if (buckets.localTabCompanies.length > 0) return "local";
   if (buckets.serverTabCompanies.length > 0) return "server";
+  if (buckets.pocketbaseTabCompanies.length > 0) return "pocketbase";
   return "online";
 }
 
@@ -392,13 +421,21 @@ export function ensureSelectedInTabList(
   const selected = pool.find((c) => c.id === id);
   if (!selected) return list;
   const gateId = getPlServerContextGateId();
+  if (tab === "pocketbase" && isPocketBaseSelectorCompanyRow(selected)) {
+    return [selected, ...list];
+  }
   if (tab === "server" && (isServerGateCompany(selected) || isServerSelectorCompanyRow(selected, gateId))) {
     return [selected, ...list];
   }
   if (tab === "local" && isLocalSelectorCompanyRow(selected) && isStrictLocalUnlockTabCompany(selected)) {
     return [selected, ...list];
   }
-  if (tab === "online" && !isLocalSelectorCompanyRow(selected) && !isServerSelectorCompanyRow(selected, gateId)) {
+  if (
+    tab === "online" &&
+    !isLocalSelectorCompanyRow(selected) &&
+    !isServerSelectorCompanyRow(selected, gateId) &&
+    !isPocketBaseSelectorCompanyRow(selected)
+  ) {
     return [selected, ...list];
   }
   if (tab === "online" && isSharedOnlineCompany(selected)) return [selected, ...list];

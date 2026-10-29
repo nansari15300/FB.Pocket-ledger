@@ -27,7 +27,14 @@ import {
   looksLikeFirebaseStorageDownloadUrl,
   tryGetBlobFromFirebaseStorageDownloadUrl,
 } from "@/lib/storageGetBlobFromDownloadUrl";
-import { isRemoteHttpsAttachmentUrl } from "@/lib/attachmentNetworkGate";
+import { isRemoteAttachmentNetworkFetchAllowed, isRemoteHttpsAttachmentUrl } from "@/lib/attachmentNetworkGate";
+import {
+  clearAttachmentNoFile,
+  isAttachmentNoFile,
+  markAttachmentNoFile,
+  markAttachmentNoFileInferred,
+  probeRemoteAttachmentBytes,
+} from "@/lib/attachmentNoFileSession";
 
 function thumbCacheKey(url: string): string {
   return `${url}::cell-thumb`;
@@ -67,6 +74,8 @@ export function invalidateAttachmentThumbDisplayUrl(
   if (hoverCached && !isLocalFileRef(url) && (!expected || hoverCached === expected)) {
     forgetHoverBlobUrl(url, expected);
   }
+  // Explicit refresh (prefs change / <img> error): re-check whether the file exists now.
+  clearAttachmentNoFile(url);
   requestAttachmentUiRefresh();
 }
 
@@ -80,6 +89,8 @@ export function useAttachmentThumbDisplayUrl(
     voucherId?: string;
     clientFileUrls?: readonly string[] | null;
     filesNetworkAllowed?: boolean;
+    /** Tick-only File column: run the same byte lookup (no thumb / no PDF raster) just to detect URL-only rows. */
+    noFileProbeOnly?: boolean;
   }
 ): string | null {
   const { companyId: shellCid, company } = useCompany();
@@ -181,6 +192,8 @@ export function useAttachmentThumbDisplayUrl(
       if (refreshKey <= 0) return;
     }
     if (!ready && !verifyLocalCached) return;
+    // Session-cached "remote file has no bytes": do not refetch on every refresh tick.
+    if (refreshKey <= 0 && isAttachmentNoFile(url)) return;
     const networkAllowed = resolveFallback?.filesNetworkAllowed !== false;
 
     let cancelled = false;
@@ -271,7 +284,39 @@ export function useAttachmentThumbDisplayUrl(
             company,
           });
         }
-        if (cancelled || !blob?.size) return;
+        if (cancelled) return;
+        if (!blob?.size) {
+          // URL-only row (ref present, no bytes anywhere). Definitive: server says 404/410/0 bytes.
+          // Otherwise (CORS-blocked HEAD, Firebase object missing, `local:` ref never uploaded, relative/object-path ref)
+          // the real load above (cache / SDK / fetch) already tried and returned nothing -> inferred verdict (memory, expires).
+          const isHttp = /^https?:\/\//i.test(url);
+          if (networkAllowed && !/^(data:|blob:)/i.test(url)) {
+            if (isHttp && blob && blob.size === 0) {
+              markAttachmentNoFile(url);
+            } else {
+              const verdict = isHttp ? await probeRemoteAttachmentBytes(url) : "unknown";
+              if (cancelled) return;
+              if (verdict === "no-bytes") {
+                markAttachmentNoFile(url);
+              } else if (
+                verdict === "unknown" &&
+                (typeof navigator === "undefined" || navigator.onLine !== false) &&
+                isRemoteAttachmentNetworkFetchAllowed(url, {
+                  companyId: companyId ?? undefined,
+                  company,
+                })
+              ) {
+                markAttachmentNoFileInferred(url);
+              }
+            }
+          }
+          return;
+        }
+        if (resolveFallback?.noFileProbeOnly) {
+          // Bytes exist: nothing to render in tick-only mode; just drop any stale "no file" verdict.
+          clearAttachmentNoFile(url);
+          return;
+        }
         const kind = await sniffBlobKindForPreview(blob);
         if (kind === "image") {
           const typed =
@@ -284,6 +329,7 @@ export function useAttachmentThumbDisplayUrl(
           rememberHoverBlobUrl(thumbCacheKey(url), ou);
           if (!cancelled) setThumb(ou);
           markAttachmentUrlReady(url);
+          clearAttachmentNoFile(url);
           return;
         }
         if (kind === "pdf") {
@@ -297,6 +343,7 @@ export function useAttachmentThumbDisplayUrl(
           void seedOfflineAttachmentCacheFromBlob(thumbCacheKey(url), result.thumbnailBlob);
           if (!cancelled) setThumb(result.thumbnailUrl);
           markAttachmentUrlReady(url);
+          clearAttachmentNoFile(url);
           if (!peekHoverCachedBlobUrl(pdfPortalCacheKey(url))) {
             void convertPdfFirstPageToImage(pdfBlob, 0.92, 1800)
               .then((full) => {
@@ -323,6 +370,7 @@ export function useAttachmentThumbDisplayUrl(
     resolveFallback?.voucherId,
     fallbackClientFileUrlsKey,
     resolveFallback?.filesNetworkAllowed,
+    resolveFallback?.noFileProbeOnly,
   ]);
 
   return thumb;

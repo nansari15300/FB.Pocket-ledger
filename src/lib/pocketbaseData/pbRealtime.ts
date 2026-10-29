@@ -53,8 +53,12 @@ const PULL_DEBOUNCE_MS = 400;
 const RECONNECT_MIN_MS = 2_000;
 const RECONNECT_MAX_MS = 15_000;
 const CONNECT_WAIT_MS = 8_000;
-/** PocketBase closes idle SSE at 5 min — reconnect before that. */
-const SSE_KEEPALIVE_MS = 4 * 60_000;
+/**
+ * Proactive SSE reconnect. PocketBase sends no heartbeat, and the Cloudflare tunnel cuts an idle stream
+ * after ~100 s (cloudflared log: "stream canceled by remote" about every 2 min), so reconnect before that.
+ * Every reconnect runs a forced catch-up pull (see PB_CONNECT) so no event is lost in the gap.
+ */
+const SSE_KEEPALIVE_MS = 80_000;
 const CATCHUP_MIN_MS = 8_000;
 
 type RealtimePayload = {
@@ -317,6 +321,8 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
 
   const handleFrame = (eventName: string, rawData: string, lastId: string) => {
     if (closed) return;
+    // Server keep-alive ping (pb_hooks/realtime_ping.pb.js): only keeps the tunnel stream open.
+    if (eventName === "pl_ping") return;
     if (eventName === "PB_CONNECT") {
       let clientId = "";
       try {
@@ -332,7 +338,9 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
           retryMs = RECONNECT_MIN_MS;
           clearConnectWatch();
           setConnected(true);
-          queueAll({ force: lastCatchupAt === 0 });
+          // Every (re)connect: forced catch-up from the change-log cursor, so events missed while the
+          // stream was down (tunnel idle cut / proactive reconnect) are never lost.
+          queueAll({ force: true });
         })
         .catch((e) => {
           console.warn("[pbRealtime] subscribe failed", e instanceof Error ? e.message : e);
@@ -471,9 +479,15 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
     }
   };
 
+  const onFocus = () => {
+    if (closed || document.visibilityState !== "visible") return;
+    queueAll({ force: true });
+  };
+
   const onOnline = () => {
     if (closed) return;
     retryMs = RECONNECT_MIN_MS;
+    queueAll({ force: true });
     if (!feedConnected) {
       if (retryTimer != null) {
         window.clearTimeout(retryTimer);
@@ -496,6 +510,7 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
   };
 
   window.addEventListener("online", onOnline);
+  window.addEventListener("focus", onFocus);
   document.addEventListener("visibilitychange", onVisible);
   window.addEventListener(SELECTED_COMPANY_CHANGED_EVENT, onSelectedCompany);
   keepAliveTimer = window.setInterval(() => {
@@ -529,6 +544,7 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
     if (pauseReconnect) pauseReconnect = null;
     if (pauseCatchup) pauseCatchup = null;
     window.removeEventListener("online", onOnline);
+    window.removeEventListener("focus", onFocus);
     document.removeEventListener("visibilitychange", onVisible);
     window.removeEventListener(SELECTED_COMPANY_CHANGED_EVENT, onSelectedCompany);
     if (retryTimer != null) window.clearTimeout(retryTimer);

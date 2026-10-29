@@ -22,6 +22,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AttachmentHoverPortal } from "@/components/vouchers/AttachmentHoverPortal";
+import { NoFileAwareHoverPortal } from "@/components/vouchers/AttachmentNoFileEye";
 import { MultiAttachmentPortalPreview } from "@/components/vouchers/attachmentHoverPreviewBody";
 import { differenceInDays } from "date-fns";
 import { shouldAutoWarmAttachmentForLedgerRow } from "@/lib/fyPagination/attachmentFyAutoLoadPolicy";
@@ -130,7 +131,7 @@ function isTxnFilePreviewInteractionTarget(target: EventTarget | null): boolean 
   if (!(target instanceof Element)) return false;
   return Boolean(
     target.closest(
-      "[data-pl-txn-file-cell],[data-pl-txn-file-thumb],[data-attachment-index],[data-attachment-preview-portal]"
+      "[data-pl-txn-file-cell],[data-pl-txn-file-thumb],[data-pl-txn-file-nofile],[data-attachment-index],[data-attachment-preview-portal]"
     )
   );
 }
@@ -369,14 +370,14 @@ export function OpeningBalanceFileCellContent({
       onClick={stopTxnRowOpenFromFilePreview}
       onDoubleClick={stopTxnRowOpenFromFilePreview}
     >
-      <AttachmentHoverPortal
+      <NoFileAwareHoverPortal urls={urls}
         triggerClassName="inline-flex cursor-pointer"
         onPreviewDoubleClick={singlePdfOpen}
         galleryUrls={urls.length > 1 ? urls : undefined}
         preview={<StableAttachmentPortalPreview urls={urls} companyId={company?.id} />}
       >
         {indicator}
-      </AttachmentHoverPortal>
+      </NoFileAwareHoverPortal>
     </span>
   );
 }
@@ -456,7 +457,7 @@ export function MobileTransactionFilePreview({
       onClick={stopTxnRowOpenFromFilePreview}
       onDoubleClick={stopTxnRowOpenFromFilePreview}
     >
-    <AttachmentHoverPortal
+    <NoFileAwareHoverPortal urls={urls}
       triggerClassName="inline-flex h-7 shrink-0 cursor-pointer items-center justify-center overflow-visible rounded bg-transparent"
       onPreviewDoubleClick={singlePdfOpen}
       galleryUrls={urls.length > 1 ? urls : undefined}
@@ -469,7 +470,7 @@ export function MobileTransactionFilePreview({
       }
     >
       {indicator}
-    </AttachmentHoverPortal>
+    </NoFileAwareHoverPortal>
     </span>
   );
 }
@@ -2377,7 +2378,7 @@ export const TransactionRow = React.memo(
                     }
                   : undefined;
               const filePreview = (
-                <AttachmentHoverPortal
+                <NoFileAwareHoverPortal urls={rowUrls}
                   triggerClassName="inline-flex cursor-pointer"
                   onPreviewDoubleClick={singlePdfOpen}
                   galleryUrls={rowUrls.length > 1 ? rowUrls : undefined}
@@ -2390,7 +2391,7 @@ export const TransactionRow = React.memo(
                   }
                 >
                   {indicator}
-                </AttachmentHoverPortal>
+                </NoFileAwareHoverPortal>
               );
               return tdsLedgerRowLayout ? (
                 <div className="flex w-full justify-center">{filePreview}</div>

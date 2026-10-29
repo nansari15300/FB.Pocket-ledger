@@ -31,6 +31,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCachedFeatureConfig } from "@/hooks/useCachedFeatureConfig";
 import { useCreateCompanyAvailability } from "@/hooks/useCreateCompanyAvailability";
 import {
+  companySelectorTabsGridClass,
   resolveVisibleCompanySelectorTab,
   visibleCompanySelectorTabs,
 } from "@/lib/companySelectorTabFeatures";
@@ -80,6 +81,7 @@ import {
 } from "@/lib/offlineCompanyUnlockRemember";
 import { RememberCompanyPasswordDurationSelect } from "@/components/company/RememberCompanyPasswordDurationSelect";
 import { FirebaseLedgerOnlineCompanySyncList } from "@/components/company/FirebaseLedgerOnlineCompanySyncList";
+import { CompanyRowSyncButton, type CompanyRowSyncKind } from "@/components/company/CompanyRowSyncButton";
 import { CloudSyncHelpPopover } from "@/components/company/CloudSyncHelpPopover";
 import {
   readCloudCompanyPasswordUnlockPreferenceDays,
@@ -102,6 +104,7 @@ import {
   partitionCompaniesForUnlockDialog,
   defaultSelectorTab,
   ensureSelectedInTabList,
+  filterOnlineTabCompaniesForSelector,
   isSharedOnlineCompany,
   isSharedLocalCompany,
   isServerGateCompany,
@@ -155,6 +158,8 @@ import { isPlSharingServerPortOrigin } from "@/lib/plRemoteServerClient";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CompanyUnlockContextPickers } from "@/components/company/CompanyUnlockContextPickers";
 import {
+  COMPANY_SELECTOR_TAB_HINT,
+  COMPANY_SELECTOR_TAB_LABELS,
   companyUsesRemotePlServerLogin,
   pickCompanyForUnlockTab,
   prefetchCompanyUnlockUsernameHint,
@@ -204,6 +209,7 @@ function CompanySelectorTabBar({
   localCount,
   onlineCount,
   serverCount,
+  pocketbaseCount,
   compact,
   visibleTabs,
 }: {
@@ -212,6 +218,7 @@ function CompanySelectorTabBar({
   localCount: number;
   onlineCount: number;
   serverCount: number;
+  pocketbaseCount: number;
   compact?: boolean;
   visibleTabs: CompanyListTab[];
 }) {
@@ -221,7 +228,7 @@ function CompanySelectorTabBar({
       type="button"
       className={cn(
         "flex-1 rounded-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-0",
-        compact ? "px-1.5 py-1.5 text-[11px]" : "px-2 py-2 text-sm",
+        compact || visibleTabs.length >= 4 ? "px-1 py-1.5 text-[10px] sm:text-[11px]" : "px-2 py-2 text-sm",
         value === tab ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
       )}
       onPointerDown={(e) => e.stopPropagation()}
@@ -238,20 +245,23 @@ function CompanySelectorTabBar({
     local: localCount,
     server: serverCount,
     online: onlineCount,
-  };
-  const labels: Record<CompanyListTab, string> = {
-    local: "Local",
-    server: "Server",
-    online: "Online",
+    pocketbase: pocketbaseCount,
   };
   return (
-    <div
-      className={cn(
-        "flex w-full gap-1 rounded-md bg-muted p-1",
-        compact && "mb-1"
-      )}
-    >
-      {visibleTabs.map((tab) => tabBtn(tab, labels[tab], counts[tab]))}
+    <div className={cn(!compact && "space-y-1")}>
+      <div
+        className={cn(
+          "flex w-full gap-1 rounded-md bg-muted p-1",
+          compact && "mb-1"
+        )}
+      >
+        {visibleTabs.map((tab) => tabBtn(tab, COMPANY_SELECTOR_TAB_LABELS[tab], counts[tab]))}
+      </div>
+      {visibleTabs.includes("online") || visibleTabs.includes("server") ? (
+        <p className={cn("px-0.5 text-muted-foreground", compact ? "mb-1 text-[10px] leading-tight" : "text-[11px]")}>
+          {COMPANY_SELECTOR_TAB_HINT}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -430,6 +440,8 @@ type CompanyItemProps = {
   onSelectCompany: (company: CompanyData) => void;
   onOpenDialog: (type: "share" | "addLocalUser", company: CompanyData) => void;
   onLogoutCompany: (companyId: string) => void;
+  /** Non-Firebase tabs: direct per-company Sync button (no Data/Files ticks). */
+  syncKind?: CompanyRowSyncKind;
 };
 
 function CompanyItem({
@@ -438,6 +450,7 @@ function CompanyItem({
   onSelectCompany,
   onOpenDialog,
   onLogoutCompany,
+  syncKind,
 }: CompanyItemProps) {
   const offlineOwned = company.isOwned && isOfflineCompanyStorage(company);
   const isSelected = company.id === selectedCompanyId;
@@ -458,6 +471,7 @@ function CompanyItem({
         <PlServerOnlineStatusDot company={company} className="mr-1" />
         {isSelected ? <Check className="h-5 w-5 shrink-0 text-green-600" aria-label="Selected" /> : null}
       </button>
+      {syncKind ? <CompanyRowSyncButton company={company} kind={syncKind} className="mr-1 h-8 w-8" /> : null}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -1280,6 +1294,7 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
     localTabCompanies,
     onlineTabCompanies,
     serverTabCompanies,
+    pocketbaseTabCompanies,
   } = buckets;
   const localList = useMemo(
     () =>
@@ -1290,14 +1305,18 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
   );
   const onlineList = useMemo(
     () =>
-      ensureSelectedInTabList(onlineTabCompanies, companyId, selectorCompanies, "online").filter(
-        (c) => !isServerSelectorCompanyRow(c)
+      filterOnlineTabCompaniesForSelector(
+        ensureSelectedInTabList(onlineTabCompanies, companyId, selectorCompanies, "online")
       ),
     [onlineTabCompanies, companyId, selectorCompanies]
   );
   const serverList = useMemo(
     () => ensureSelectedInTabList(serverTabCompanies, companyId, selectorCompanies, "server"),
     [serverTabCompanies, companyId, selectorCompanies]
+  );
+  const pocketbaseList = useMemo(
+    () => ensureSelectedInTabList(pocketbaseTabCompanies, companyId, selectorCompanies, "pocketbase"),
+    [pocketbaseTabCompanies, companyId, selectorCompanies]
   );
   const myLocalDisplay = useMemo(() => localList.filter((c) => c.isOwned), [localList]);
   const sharedLocalDisplay = useMemo(
@@ -1313,6 +1332,11 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
   const sharedOnlineDisplay = useMemo(
     () => onlineList.filter((c) => isSharedOnlineCompany(c)),
     [onlineList]
+  );
+  const myPocketBaseDisplay = useMemo(() => pocketbaseList.filter((c) => c.isOwned), [pocketbaseList]);
+  const sharedPocketBaseDisplay = useMemo(
+    () => pocketbaseList.filter((c) => !c.isOwned),
+    [pocketbaseList]
   );
 
   useEffect(() => {
@@ -1488,8 +1512,9 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
   const activeSharedCompaniesForOwnerLookup = useMemo(() => {
     if (listTab === "local") return sharedLocalDisplay;
     if (listTab === "server") return serverSharedDisplay;
+    if (listTab === "pocketbase") return sharedPocketBaseDisplay;
     return sharedOnlineDisplay;
-  }, [listTab, sharedLocalDisplay, serverSharedDisplay, sharedOnlineDisplay]);
+  }, [listTab, sharedLocalDisplay, serverSharedDisplay, sharedPocketBaseDisplay, sharedOnlineDisplay]);
   const sharedOwnerIdsKey = useMemo(
     () =>
       [...new Set(activeSharedCompaniesForOwnerLookup.map((c) => c.ownerId).filter(Boolean))]
@@ -1575,29 +1600,37 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
               <TabsList
                 className={cn(
                   "grid w-full shrink-0",
-                  visibleStorageTabs.length === 1
-                    ? "grid-cols-1"
-                    : visibleStorageTabs.length === 2
-                      ? "grid-cols-2"
-                      : "grid-cols-3"
+                  companySelectorTabsGridClass(visibleStorageTabs.length)
                 )}
               >
                 {visibleStorageTabs.includes("local") ? (
-                  <TabsTrigger value="local">
-                    Local{localList.length > 0 ? ` (${localList.length})` : ""}
+                  <TabsTrigger value="local" className="px-1 text-[11px] sm:text-xs">
+                    Local
+                    {localList.length > 0 ? ` (${localList.length})` : ""}
                   </TabsTrigger>
                 ) : null}
                 {visibleStorageTabs.includes("server") ? (
-                  <TabsTrigger value="server">
-                    Server{serverList.length > 0 ? ` (${serverList.length})` : ""}
+                  <TabsTrigger value="server" className="px-1 text-[11px] sm:text-xs">
+                    PL Server
+                    {serverList.length > 0 ? ` (${serverList.length})` : ""}
                   </TabsTrigger>
                 ) : null}
                 {visibleStorageTabs.includes("online") ? (
-                  <TabsTrigger value="online">
-                    Online{onlineList.length > 0 ? ` (${onlineList.length})` : ""}
+                  <TabsTrigger value="online" className="px-1 text-[11px] sm:text-xs">
+                    Firebase
+                    {onlineList.length > 0 ? ` (${onlineList.length})` : ""}
+                  </TabsTrigger>
+                ) : null}
+                {visibleStorageTabs.includes("pocketbase") ? (
+                  <TabsTrigger value="pocketbase" className="px-1 text-[11px] sm:text-xs">
+                    PocketBase
+                    {pocketbaseList.length > 0 ? ` (${pocketbaseList.length})` : ""}
                   </TabsTrigger>
                 ) : null}
               </TabsList>
+              <p className="mt-1.5 shrink-0 text-[11px] leading-snug text-muted-foreground">
+                {COMPANY_SELECTOR_TAB_HINT}
+              </p>
               {listTab === "local" ? (
               <TabsContent value="local" className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain">
                 {localList.length > 0 ? (
@@ -1609,6 +1642,7 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
                           {myLocalDisplay.map((company) => (
                             <li key={company.id}>
                               <CompanyItem
+                                syncKind="local"
                                 company={company}
                                 selectedCompanyId={companyId}
                                 onSelectCompany={handleSelectCompany}
@@ -1627,6 +1661,7 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
                           {sharedLocalDisplay.map((company) => (
                             <li key={company.id} className="space-y-1">
                               <CompanyItem
+                                syncKind="local"
                                 company={company}
                                 selectedCompanyId={companyId}
                                 onSelectCompany={handleSelectCompany}
@@ -1786,6 +1821,7 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
                       {serverList.map((company) => (
                         <li key={company.id} className="space-y-1">
                           <CompanyItem
+                            syncKind="server"
                             company={company}
                             selectedCompanyId={companyId}
                             onSelectCompany={handleSelectCompany}
@@ -1811,6 +1847,64 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
                         ? "No companies on this server yet."
                         : "Setting up server manage company…"
                       : "No server-shared companies yet. Add a PL server gate above, then sync here or open the server page."}
+                  </p>
+                )}
+              </TabsContent>
+              ) : null}
+              {listTab === "pocketbase" ? (
+              <TabsContent value="pocketbase" className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain">
+                {pocketbaseList.length > 0 ? (
+                  <div className="space-y-5">
+                    {myPocketBaseDisplay.length > 0 ? (
+                      <div className="space-y-3">
+                        <h3 className="text-sm font-medium text-muted-foreground">My PocketBase companies</h3>
+                        <ul className="space-y-3">
+                          {myPocketBaseDisplay.map((company) => (
+                            <li key={company.id}>
+                              <CompanyItem
+                                syncKind="pocketbase"
+                                company={company}
+                                selectedCompanyId={companyId}
+                                onSelectCompany={handleSelectCompany}
+                                onOpenDialog={openCompanyDialog}
+                                onLogoutCompany={handleLogoutCompany}
+                              />
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {sharedPocketBaseDisplay.length > 0 ? (
+                      <div className="space-y-3">
+                        <h3 className="text-sm font-medium text-muted-foreground">Shared PocketBase companies</h3>
+                        <ul className="space-y-3">
+                          {sharedPocketBaseDisplay.map((company) => (
+                            <li key={company.id} className="space-y-1">
+                              <CompanyItem
+                                syncKind="pocketbase"
+                                company={company}
+                                selectedCompanyId={companyId}
+                                onSelectCompany={handleSelectCompany}
+                                onOpenDialog={openCompanyDialog}
+                                onLogoutCompany={handleLogoutCompany}
+                              />
+                              {(company.ownerEmail || ownerNames[company.ownerId]) ? (
+                                <p className="pl-10 text-xs text-muted-foreground">
+                                  Shared by:{" "}
+                                  {ownerNames[company.ownerId]
+                                    ? `${ownerNames[company.ownerId]} (${company.ownerEmail || ""})`
+                                    : company.ownerEmail || ""}
+                                </p>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="rounded-md border border-dashed bg-muted/20 px-3 py-6 text-center text-sm text-muted-foreground">
+                    No PocketBase companies for this login. Sign in to Pocket Ledger Server to list them here.
                   </p>
                 )}
               </TabsContent>
@@ -2656,6 +2750,7 @@ export function CompanyActions({
     localTabCompanies,
     onlineTabCompanies,
     serverTabCompanies,
+    pocketbaseTabCompanies,
   } = buckets;
 
   useEffect(() => {
@@ -2740,14 +2835,18 @@ export function CompanyActions({
   );
   const onlineList = useMemo(
     () =>
-      ensureSelectedInTabList(onlineTabCompanies, companyId, selectorCompanies, "online").filter(
-        (c) => !isServerSelectorCompanyRow(c)
+      filterOnlineTabCompaniesForSelector(
+        ensureSelectedInTabList(onlineTabCompanies, companyId, selectorCompanies, "online")
       ),
     [onlineTabCompanies, companyId, selectorCompanies]
   );
   const serverList = useMemo(
     () => ensureSelectedInTabList(serverTabCompanies, companyId, selectorCompanies, "server"),
     [serverTabCompanies, companyId, selectorCompanies]
+  );
+  const pocketbaseList = useMemo(
+    () => ensureSelectedInTabList(pocketbaseTabCompanies, companyId, selectorCompanies, "pocketbase"),
+    [pocketbaseTabCompanies, companyId, selectorCompanies]
   );
   const myLocalDisplay = useMemo(() => localList.filter((c) => c.isOwned), [localList]);
   const sharedLocalDisplay = useMemo(
@@ -2763,6 +2862,11 @@ export function CompanyActions({
   const sharedOnlineDisplay = useMemo(
     () => onlineList.filter((c) => isSharedOnlineCompany(c)),
     [onlineList]
+  );
+  const myPocketBaseDisplay = useMemo(() => pocketbaseList.filter((c) => c.isOwned), [pocketbaseList]);
+  const sharedPocketBaseDisplay = useMemo(
+    () => pocketbaseList.filter((c) => !c.isOwned),
+    [pocketbaseList]
   );
   // `useCompany` bhi selection ko host-id aware fuzzy match se dekhta hai. Yahan strict `c.id === companyId`
   // rehne se PL server / restored row par selector clear karta tha aur context wapas select — clear↔select loop.
@@ -2851,8 +2955,9 @@ export function CompanyActions({
   const activeSharedCompaniesForOwnerLookup = useMemo(() => {
     if (listTab === "local") return sharedLocalDisplay;
     if (listTab === "server") return serverSharedDisplay;
+    if (listTab === "pocketbase") return sharedPocketBaseDisplay;
     return sharedOnlineDisplay;
-  }, [listTab, sharedLocalDisplay, serverSharedDisplay, sharedOnlineDisplay]);
+  }, [listTab, sharedLocalDisplay, serverSharedDisplay, sharedPocketBaseDisplay, sharedOnlineDisplay]);
   const sharedOwnerIdsKey = useMemo(
     () =>
       [...new Set(activeSharedCompaniesForOwnerLookup.map((c) => c.ownerId).filter(Boolean))]
@@ -2969,6 +3074,7 @@ export function CompanyActions({
                 localCount={localList.length}
                 serverCount={serverList.length}
                 onlineCount={onlineList.length}
+                pocketbaseCount={pocketbaseList.length}
                 visibleTabs={visibleStorageTabs}
               />
               {listTab === "local" ? (
@@ -2991,6 +3097,7 @@ export function CompanyActions({
                             {company.id === companyId && (
                               <Check className="ml-2 h-4 w-4 shrink-0 text-green-600" />
                             )}
+                            <CompanyRowSyncButton company={company} kind="local" onGuard={markLogoutOnlyClick} />
                             <Button
                               type="button"
                               variant="ghost"
@@ -3032,6 +3139,107 @@ export function CompanyActions({
                               {company.id === companyId && (
                                 <Check className="h-4 w-4 shrink-0 text-green-600" />
                               )}
+                              <CompanyRowSyncButton company={company} kind="local" onGuard={markLogoutOnlyClick} />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                data-pl-company-logout=""
+                                className="h-7 w-7 shrink-0"
+                                title="Log out from company"
+                                onPointerDown={(e) => {
+                                  e.stopPropagation();
+                                  markLogoutOnlyClick();
+                                }}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  markLogoutOnlyClick();
+                                  handleLogoutCompany(company.id);
+                                }}
+                              >
+                                <LogOut className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                            {(company.ownerEmail || ownerNames[company.ownerId]) ? (
+                              <div className="mt-0.5 truncate pl-6 text-xs text-muted-foreground group-data-[highlighted]:text-white">
+                                Shared by:{" "}
+                                {ownerNames[company.ownerId]
+                                  ? `${ownerNames[company.ownerId]} (${company.ownerEmail || ""})`
+                                  : company.ownerEmail || ""}
+                              </div>
+                            ) : null}
+                          </DropdownMenuItem>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              ) : listTab === "pocketbase" ? (
+                pocketbaseList.length === 0 ? (
+                  <p className="px-2 py-3 text-xs text-muted-foreground">
+                    No PocketBase companies for this login.
+                  </p>
+                ) : (
+                  <div className="mt-2 max-h-64 overflow-y-auto rounded-md border bg-muted/20 p-1">
+                    {myPocketBaseDisplay.length > 0 ? (
+                      <div className="mb-2">
+                        <DropdownMenuLabel className="pl-2 text-[11px] text-muted-foreground">
+                          My PocketBase companies
+                        </DropdownMenuLabel>
+                        {myPocketBaseDisplay.map((company) => (
+                          <DropdownMenuItem
+                            key={company.id}
+                            onSelect={(e) => onCompanyRowSelect(company, e)}
+                          >
+                            <Building2 className="mr-2 h-4 w-4 shrink-0" />
+                            <span className="flex-1 truncate">{companyDisplayName(company)}</span>
+                            {company.id === companyId && (
+                              <Check className="ml-2 h-4 w-4 shrink-0 text-green-600" />
+                            )}
+                            <CompanyRowSyncButton company={company} kind="pocketbase" onGuard={markLogoutOnlyClick} />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              data-pl-company-logout=""
+                              className="ml-1 h-7 w-7 shrink-0"
+                              title="Log out from company"
+                              onPointerDown={(e) => {
+                                e.stopPropagation();
+                                markLogoutOnlyClick();
+                              }}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                markLogoutOnlyClick();
+                                handleLogoutCompany(company.id);
+                              }}
+                            >
+                              <LogOut className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuItem>
+                        ))}
+                      </div>
+                    ) : null}
+                    {sharedPocketBaseDisplay.length > 0 ? (
+                      <div>
+                        <DropdownMenuLabel className="pl-2 text-[11px] text-muted-foreground">
+                          Shared PocketBase companies
+                        </DropdownMenuLabel>
+                        {sharedPocketBaseDisplay.map((company) => (
+                          <DropdownMenuItem
+                            key={company.id}
+                            onSelect={(e) => onCompanyRowSelect(company, e)}
+                            className="flex flex-col items-stretch py-2 group"
+                          >
+                            <div className="flex w-full items-center gap-2">
+                              <Building2 className="h-4 w-4 shrink-0" />
+                              <span className="flex-1 truncate font-medium">{companyDisplayName(company)}</span>
+                              {company.id === companyId && (
+                                <Check className="h-4 w-4 shrink-0 text-green-600" />
+                              )}
+                              <CompanyRowSyncButton company={company} kind="pocketbase" onGuard={markLogoutOnlyClick} />
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -3184,6 +3392,7 @@ export function CompanyActions({
                             {company.id === companyId && (
                               <Check className="h-4 w-4 shrink-0 text-green-600" />
                             )}
+                            <CompanyRowSyncButton company={company} kind="server" onGuard={markLogoutOnlyClick} />
                             <Button
                               type="button"
                               variant="ghost"

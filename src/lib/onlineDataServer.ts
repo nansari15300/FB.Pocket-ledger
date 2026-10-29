@@ -12,6 +12,9 @@
  * Pocket Ledger Server (`src/lib/pocketbaseData/*`, URL = `pocketbaseUrl` below).
  * A server that is not implemented falls back to Firebase with a logged warning.
  */
+import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
+import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
+
 export const ONLINE_DATA_SERVER_SETTINGS_COLLECTION = "app_settings";
 export const ONLINE_DATA_SERVER_SETTINGS_ID = "online_data_server";
 export const ONLINE_DATA_SERVER_SETTINGS_DOC = `${ONLINE_DATA_SERVER_SETTINGS_COLLECTION}/${ONLINE_DATA_SERVER_SETTINGS_ID}`;
@@ -101,12 +104,69 @@ export function normalizeOnlineDataServerSettings(raw: unknown): OnlineDataServe
   };
 }
 
+/** This-PC PocketBase address used in local dev (the dev gateway maps it to `/pb` for LAN devices). */
+const LOCAL_DEV_POCKETBASE_URL = "http://127.0.0.1:8090";
+
+/** Loopback, LAN-private, `.local` or single-label host = a server on this machine / network. */
+function isLocalNetworkHostname(hostRaw: string): boolean {
+  const h = hostRaw.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  if (!h) return false;
+  if (h === "localhost" || h === "0.0.0.0" || h === "::1" || h.endsWith(".localhost") || h.endsWith(".local")) return true;
+  if (!h.includes(".") && !h.includes(":")) return true; // bare PC name
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (m) {
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    return a === 127 || a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254);
+  }
+  return h.startsWith("fe80:") || h.startsWith("fc") || h.startsWith("fd");
+}
+
+/** True when `url` is an http(s) address that is NOT on this machine / LAN (e.g. https://np.pocket-ledger.com). */
+function isNonLocalServerUrl(url: string): boolean {
+  try {
+    const u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : `http://${url}`);
+    return !isLocalNetworkHostname(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Local dev guard: localhost / 127.0.0.1 / LAN-private page host, or `npm run dev` (NODE_ENV=development).
+ * Never for the packed server app, the Electron EXE, the Capacitor APK or static builds (those are production
+ * and keep using the Cloudflare URL).
+ */
+export function isLocalDevRuntime(): boolean {
+  if (typeof window === "undefined") return false;
+  if (process.env.NEXT_PUBLIC_PL_SERVER_PACK === "1") return false;
+  if (process.env.NEXT_PUBLIC_STATIC_BUILD === "1") return false;
+  if (isCapacitorNativeApp() || isElectronDesktopApp()) return false;
+  if (process.env.NODE_ENV === "development") return true;
+  try {
+    return isLocalNetworkHostname(window.location.hostname || "");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * In local dev, ignore a non-local `pocketbaseUrl` (e.g. one the SuperAdmin saved in Firestore
+ * `app_settings/online_data_server` for production) and keep the local default. Production unchanged.
+ * Never write the result back to Firestore.
+ */
+export function applyLocalDevPocketBaseGuard(settings: OnlineDataServerSettings): OnlineDataServerSettings {
+  if (!isNonLocalServerUrl(settings.pocketbaseUrl) || !isLocalDevRuntime()) return settings;
+  const fallback = isNonLocalServerUrl(DEFAULT_POCKETBASE_SERVER_URL) ? LOCAL_DEV_POCKETBASE_URL : DEFAULT_POCKETBASE_SERVER_URL;
+  return { ...settings, pocketbaseUrl: fallback };
+}
+
 export function readCachedOnlineDataServerSettings(): OnlineDataServerSettings {
   if (typeof window === "undefined") return { ...DEFAULT_ONLINE_DATA_SERVER_SETTINGS };
   try {
     const raw = window.localStorage.getItem(CACHE_KEY);
     if (!raw) return { ...DEFAULT_ONLINE_DATA_SERVER_SETTINGS };
-    return normalizeOnlineDataServerSettings(JSON.parse(raw));
+    return applyLocalDevPocketBaseGuard(normalizeOnlineDataServerSettings(JSON.parse(raw)));
   } catch {
     return { ...DEFAULT_ONLINE_DATA_SERVER_SETTINGS };
   }
@@ -141,7 +201,7 @@ export async function ensureOnlineDataServerSettingsHydrated(opts?: {
           getDoc(doc(firestore, ONLINE_DATA_SERVER_SETTINGS_COLLECTION, ONLINE_DATA_SERVER_SETTINGS_ID)),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
         ]);
-        const next = normalizeOnlineDataServerSettings(snap.exists() ? snap.data() : undefined);
+        const next = applyLocalDevPocketBaseGuard(normalizeOnlineDataServerSettings(snap.exists() ? snap.data() : undefined));
         writeCachedOnlineDataServerSettings(next);
         return next;
       } catch {

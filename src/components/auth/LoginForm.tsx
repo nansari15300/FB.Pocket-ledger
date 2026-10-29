@@ -525,16 +525,21 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
                 : olderCode || "sign-in-failed",
           });
         }
-        if (serverRes.status === "fulfilled") {
+        if (olderRes.status === "fulfilled") {
+          // Firebase sign-in worked: the Firebase session wins. Keep the server token (pl_pb_data_auth_v1)
+          // so Pocket Ledger Server companies still sync, but do NOT set the server-only marker
+          // (pl_app_session_kind_v1) - and drop a stale one - so Firestore stays on and Firebase
+          // companies stay visible after a reload. (firebase.ts reloads once if a stale marker was blocking Firestore.)
+          clearPocketBaseAppSession();
+        } else if (serverRes.status === "fulfilled") {
+          // Only the server login worked: server-only session (same as the checkbox path).
           try {
             await startPocketBaseAppSession();
           } catch (e) {
             pocketBaseSignOut();
-            if (olderRes.status !== "fulfilled") {
-              throw Object.assign(new Error(e instanceof Error ? e.message : "SIGN_IN_FAILED"), {
-                code: "pl-server-profile",
-              });
-            }
+            throw Object.assign(new Error(e instanceof Error ? e.message : "SIGN_IN_FAILED"), {
+              code: "pl-server-profile",
+            });
           }
         }
         if (olderRes.status === "rejected") serverOnly = true;

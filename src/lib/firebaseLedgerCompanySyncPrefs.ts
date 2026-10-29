@@ -150,8 +150,9 @@ export function isFirebaseLedgerCompanyDataSyncEnabled(
 }
 
 /**
- * Same global switch + company Data tick as Firebase, for Pocket Ledger Server (PocketBase)
- * companies: outbox push + server pull run only when this is true.
+ * Pocket Ledger Server (PocketBase) companies: Data is ALWAYS on - no Data tick / opt-in
+ * (per-company Firebase sync prefs are ignored). Only the global cloud-sync switch applies.
+ * Outbox push + server pull run when this is true.
  */
 export function isPocketBaseCompanyDataSyncEnabled(
   companyId: string,
@@ -160,17 +161,18 @@ export function isPocketBaseCompanyDataSyncEnabled(
   if (isFirebaseLedgerDataSyncDisabled()) return false;
   const registry = String(companyId || "").trim();
   if (!registry || !isPocketBaseCompany(registry, company)) return false;
-  const auth = String(company?.authoritativeCompanyId || "").trim();
-  const prefs = readFirebaseLedgerCompanySyncPrefs();
-  // If explicitly configured in prefs, respect user's setting
-  if (prefs.companies[registry]) {
-    return prefs.companies[registry].data === true;
-  }
-  if (auth && prefs.companies[auth]) {
-    return prefs.companies[auth].data === true;
-  }
-  // Default to true for PocketBase companies (their primary data is on the server)
   return true;
+}
+
+/**
+ * Pocket Ledger Server (PocketBase) companies: attachment files are ALWAYS on - no Files tick.
+ * Only the global cloud-sync switch applies. (Firebase companies still need Data + Files ticks.)
+ */
+export function isPocketBaseCompanyAttachmentSyncEnabled(
+  companyId: string,
+  company?: { authoritativeCompanyId?: string } | null
+): boolean {
+  return isPocketBaseCompanyDataSyncEnabled(companyId, company);
 }
 
 /**
@@ -181,6 +183,8 @@ export function isFirebaseLedgerCompanyAttachmentSyncEnabled(
   companyId: string,
   company?: { authoritativeCompanyId?: string } | null
 ): boolean {
+  // PocketBase companies: files always on (no Files tick needed).
+  if (isPocketBaseCompanyAttachmentSyncEnabled(companyId, company)) return true;
   if (!isFirebaseLedgerCompanyDataSyncEnabled(companyId, company)) return false;
   const registry = String(companyId || "").trim();
   const auth = String(company?.authoritativeCompanyId || "").trim();

@@ -14,7 +14,11 @@ export function CompanyUnlockGateBadge({
 }) {
   const info = resolveCompanySelectorGateInfo(company);
   const Icon =
-    info.tabLabel === "Server" ? Server : info.tabLabel === "Online" ? Building2 : HardDrive;
+    info.tabLabel === "PL Server" || info.tabLabel === "PocketBase"
+      ? Server
+      : info.tabLabel === "Firebase"
+        ? Building2
+        : HardDrive;
 
   return (
     <div

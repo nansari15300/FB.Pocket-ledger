@@ -31,6 +31,7 @@ import { isRecurringVoucherGenerationEnabled } from "@/lib/recurringVoucherSetti
 import { clientRandomUUID } from "@/lib/clientRandomUUID";
 import { isCloudLinkedCompanyStorage } from "@/lib/companyUnlockGate";
 import { isDeviceLocalCompany, isServerGateCompany } from "@/lib/companyStorageKind";
+import { isPocketBaseCompany } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import {
   companyUsesOnlineSelectorSyncTicks,
   isOnlineCompanyLedgerCloudSyncAllowed,
@@ -629,7 +630,7 @@ export async function assertOnlineForRecurringVoucherCreate(
     };
   }
 
-  if (c != null && companyUsesOnlineSelectorSyncTicks(c) && !isOnlineCompanyLedgerCloudSyncAllowed(id, c)) {
+  if (c != null && companyUsesOnlineSelectorSyncTicks(c) && !isPocketBaseCompany(id, c) && !isOnlineCompanyLedgerCloudSyncAllowed(id, c)) {
     console.info("[AutoRecurringOnlineGate] block", { companyId: id, reason: "online_selector_sync_disabled" });
     return {
       ok: false,

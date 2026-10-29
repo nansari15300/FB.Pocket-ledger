@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  COMPANY_SELECTOR_TAB_LABELS,
   unlockTabCompanies,
 } from "@/lib/companySelectorGateLabel";
 import {
@@ -25,12 +26,6 @@ import {
   resolveVisibleCompanySelectorTab,
   visibleCompanySelectorTabs,
 } from "@/lib/companySelectorTabFeatures";
-
-const TAB_LABELS: Record<CompanyListTab, string> = {
-  local: "Local",
-  server: "Server",
-  online: "Online",
-};
 
 export function CompanyUnlockContextPickers({
   companies,
@@ -90,7 +85,7 @@ export function CompanyUnlockContextPickers({
           <SelectContent>
             {tabs.map((tab) => (
               <SelectItem key={tab} value={tab}>
-                {TAB_LABELS[tab]}
+                {COMPANY_SELECTOR_TAB_LABELS[tab]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -101,10 +96,12 @@ export function CompanyUnlockContextPickers({
         {tabCompanies.length === 0 ? (
           <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
             {unlockTab === "server"
-              ? "No server companies on this device yet. Connect your PL server gate below."
+              ? "No PL Server companies on this device yet. Connect your EXE/LAN gate below."
+              : unlockTab === "pocketbase"
+                ? "No PocketBase companies on this login yet."
               : unlockTab === "local"
                 ? "No local companies on this gate."
-                : "No online companies on this gate."}
+                : "No Firebase companies on this gate."}
           </p>
         ) : (
           <Select

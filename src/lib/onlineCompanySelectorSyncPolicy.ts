@@ -17,6 +17,7 @@ import {
   isFirebaseLedgerCompanyDataSyncEnabled,
 } from "@/lib/firebaseLedgerCompanySyncPrefs";
 import { isFirebaseLedgerDataSyncDisabled } from "@/lib/firebaseLedgerDataSyncDisabled";
+import { isPocketBaseCompany } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { isCloudBackedCompanyShape } from "@/lib/offlineFullWarmSync";
 import type { Company } from "@/hooks/useCompany";
 
@@ -66,6 +67,8 @@ export function isOnlineCompanyFilesUiAllowed(
 ): boolean {
   const id = String(companyId || "").trim();
   if (!id) return false;
+  // PocketBase companies: files always on (no Files tick / opt-in).
+  if (isPocketBaseCompany(id, company)) return true;
   if (company != null && !companyUsesOnlineSelectorSyncTicks(company)) return true;
   if (isFirebaseLedgerDataSyncDisabled()) return true;
   if (company != null && companyUsesOnlineSelectorSyncTicks(company)) {
@@ -92,6 +95,8 @@ export function isOnlineCompanyAttachmentUploadAllowed(
 ): boolean {
   const id = String(companyId || "").trim();
   if (!id) return false;
+  // PocketBase companies: no Data/Files opt-in (uploads ride the PB outbox).
+  if (isPocketBaseCompany(id, company)) return true;
   if (company != null && !companyUsesOnlineSelectorSyncTicks(company)) return true;
   if (isFirebaseLedgerDataSyncDisabled()) return true;
   if (company != null && companyUsesOnlineSelectorSyncTicks(company)) {
@@ -120,7 +125,7 @@ export function getOnlineCompanySyncStatusRibbon(
   company?: OnlineSelectorSyncCompany
 ): OnlineSyncStatusRibbon {
   const id = String(companyId || "").trim();
-  if (!id || !companyUsesOnlineSelectorSyncTicks(company ?? null)) {
+  if (!id || !companyUsesOnlineSelectorSyncTicks(company ?? null) || isPocketBaseCompany(id, company)) {
     return { show: false, message: "" };
   }
   if (isFirebaseLedgerDataSyncDisabled()) {
@@ -173,7 +178,7 @@ export function getOnlineCompanyBackupTickGate(
 ): OnlineBackupTickGate {
   const id = String((company as { id?: string } | null | undefined)?.id || "").trim();
   const allowWithoutFilesTick = opts?.attachmentEmbedMode === "local_device_bytes";
-  if (!company || !id || !companyUsesOnlineSelectorSyncTicks(company)) {
+  if (!company || !id || !companyUsesOnlineSelectorSyncTicks(company) || isPocketBaseCompany(id, company)) {
     return {
       dataAllowed: true,
       filesAllowed: true,

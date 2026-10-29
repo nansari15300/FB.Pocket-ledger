@@ -34,6 +34,7 @@ export function FeatureDetails({ feature, isEnabled, featureConfig, onToggle, is
     const companyTabLocalEnabled = featureConfig[COMPANY_STORAGE_TAB_FEATURE.local] !== false;
     const companyTabServerEnabled = featureConfig[COMPANY_STORAGE_TAB_FEATURE.server] !== false;
     const companyTabOnlineEnabled = featureConfig[COMPANY_STORAGE_TAB_FEATURE.online] !== false;
+    const companyTabPocketBaseEnabled = featureConfig[COMPANY_STORAGE_TAB_FEATURE.pocketbase] !== false;
 
     return (
         <Card className="h-full relative">
@@ -46,7 +47,7 @@ export function FeatureDetails({ feature, isEnabled, featureConfig, onToggle, is
                 <CardTitle>{feature.label}</CardTitle>
                 <CardDescription>
                     {isCompanyStorageTabsFeature
-                        ? "Show or hide Local, Server, and Online tabs in the web app company selector."
+                        ? "Show or hide Local, PL Server, Firebase, and PocketBase tabs in the web app company selector."
                         : "Toggle to activate or deactivate this menu for all users."}
                 </CardDescription>
             </CardHeader>
@@ -88,7 +89,7 @@ export function FeatureDetails({ feature, isEnabled, featureConfig, onToggle, is
                                 />
                             </div>
                             <div className="flex items-center justify-between">
-                                <Label htmlFor="company-tab-server-toggle">Server tab</Label>
+                                <Label htmlFor="company-tab-server-toggle">PL Server tab</Label>
                                 <Switch
                                     id="company-tab-server-toggle"
                                     checked={companyTabServerEnabled}
@@ -97,12 +98,21 @@ export function FeatureDetails({ feature, isEnabled, featureConfig, onToggle, is
                                 />
                             </div>
                             <div className="flex items-center justify-between">
-                                <Label htmlFor="company-tab-online-toggle">Online tab</Label>
+                                <Label htmlFor="company-tab-online-toggle">Firebase tab</Label>
                                 <Switch
                                     id="company-tab-online-toggle"
                                     checked={companyTabOnlineEnabled}
                                     disabled={!isEnabled}
                                     onCheckedChange={(checked) => onToggle(COMPANY_STORAGE_TAB_FEATURE.online, checked)}
+                                />
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <Label htmlFor="company-tab-pocketbase-toggle">PocketBase tab</Label>
+                                <Switch
+                                    id="company-tab-pocketbase-toggle"
+                                    checked={companyTabPocketBaseEnabled}
+                                    disabled={!isEnabled}
+                                    onCheckedChange={(checked) => onToggle(COMPANY_STORAGE_TAB_FEATURE.pocketbase, checked)}
                                 />
                             </div>
                         </div>
