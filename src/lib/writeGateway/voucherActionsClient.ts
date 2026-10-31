@@ -7,11 +7,11 @@ import {
   Timestamp,
   collection,
   serverTimestamp,
-} from "firebase/firestore";
+} from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { addDoc, getDoc, setDoc, updateDoc, runTransaction } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { auth, firestore, storage, firestoreNetworkDisabledByApi } from "@/lib/firebase";
-import { ref as storageRef, deleteObject } from "firebase/storage";
+import { ref as storageRef, deleteObject } from "@/lib/pocketbaseData/pbStorage";
 import { moveFilesToVoucherDateClient } from "@/lib/storageClient";
 import { deleteFirebaseStorageUrlsWithRegistry } from "@/lib/companyAttachmentRegistry";
 import {

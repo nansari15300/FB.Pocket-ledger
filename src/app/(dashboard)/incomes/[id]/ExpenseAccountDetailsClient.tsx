@@ -1,5 +1,6 @@
 'use client';
 
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { useParams, useSearchParams } from 'next/navigation';
 import { ExpenseAccountDetails as DesktopExpenseAccountDetails } from '@/components/expenses/ExpenseAccountDetails';
 import { useVouchers } from '@/hooks/useVouchers';
@@ -7,7 +8,7 @@ import { Suspense, useState, useEffect, useCallback } from 'react';
 import type { DateRange } from "@/components/ui/ad-calendar";
 import { useRouter } from 'next/navigation';
 import { LoadingSpinner } from '@/components/layout/LoadingSpinner';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc } from "@/lib/pbCompat/firestore";
 import { firestore } from '@/lib/firebase';
 import { masterDetailListHref } from '@/lib/masterDetailListPath';
 import { resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";

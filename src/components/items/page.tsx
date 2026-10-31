@@ -14,7 +14,7 @@ import {
   orderBy,
   collectionGroup,
   doc,
-} from "firebase/firestore";
+} from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Skeleton } from "@/components/ui/skeleton";

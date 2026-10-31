@@ -2,12 +2,8 @@
  * Inter Company join settings — Firestore sync (shared users + devices).
  * localStorage cache ke saath; Save par dono update.
  */
-import {
-  doc,
-  serverTimestamp,
-  setDoc,
-  type Unsubscribe,
-} from "firebase/firestore";
+import { setDoc } from "@/lib/writeGateway/pbWrites";
+import { doc, serverTimestamp, type Unsubscribe } from "@/lib/pbCompat/firestore";
 import { getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import {

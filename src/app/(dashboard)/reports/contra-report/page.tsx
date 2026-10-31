@@ -1,6 +1,7 @@
 
 "use client";
 
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import * as React from "react";
 import { Suspense, useState, useEffect, useMemo, useCallback } from "react";
 import { useVouchers } from "@/hooks/useVouchers";
@@ -34,7 +35,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import * as XLSX from 'xlsx';
 import { RunningBalanceFullChart } from "@/components/reports/RunningBalanceFullChart";
-import { doc, getDoc } from 'firebase/firestore';
+import { doc } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { Calendar } from "@/components/ui/calendar";
 import { toast } from "sonner";

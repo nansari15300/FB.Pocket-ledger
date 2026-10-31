@@ -1,7 +1,7 @@
 
 "use client";
 
-import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { useState, useEffect, type ReactNode } from 'react';
 import { useAdminAccess } from '@/hooks/useAdminAccess';
 import { useForm } from 'react-hook-form';
@@ -25,10 +25,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Info, Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import {
-  doc,
-  setDoc,
-} from 'firebase/firestore';
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from '@/lib/pocketbaseData/pbReadSeam';
 import { firestore } from '@/lib/firebase';
 import { Switch } from '@/components/ui/switch';
@@ -230,7 +227,6 @@ export default function BankSettingsPage() {
 
   /** Keys + payment toggles + downgrade — ek hi Save button. */
   const onSubmit = async (data: z.infer<typeof formSchema>) => {
-    if (adminServerWriteBlocked()) return;
     setIsSaving(true);
     try {
       await Promise.all([

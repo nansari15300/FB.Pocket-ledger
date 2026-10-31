@@ -1,7 +1,7 @@
 /**
  * User ki owned companies — View com / system UI (Firestore ownerId / ownerEmail).
  */
-import { collection, query, where } from "firebase/firestore";
+import { collection, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 

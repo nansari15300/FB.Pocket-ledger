@@ -5,7 +5,7 @@
  * Same logic as storage.ts but runs in browser (no server action).
  * Used by Gallery and other components when building for APK.
  */
-import { ref, uploadBytes, getDownloadURL, deleteObject, getBlob } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL, deleteObject, getBlob } from "@/lib/pocketbaseData/pbStorage";
 import { storage } from "./firebase";
 import { format } from "date-fns";
 

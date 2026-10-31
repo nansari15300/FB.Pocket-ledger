@@ -23,7 +23,7 @@ import { openPrintDirect } from "@/lib/printDirect";
 import usePermissions from "@/hooks/usePermissions";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ItemFilterDropdown } from "../items/ItemFilterDropdown";
-import { collection, query, doc } from "firebase/firestore";
+import { collection, query, doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { AddVoucherDialog } from "../vouchers/AddVoucherDialog";

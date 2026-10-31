@@ -1,6 +1,7 @@
 
 'use client';
 
+import { deleteDoc, setDoc } from "@/lib/writeGateway/pbWrites";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { AppHeader } from "@/components/layout/AppHeader";
@@ -67,7 +68,7 @@ import { AutoBackupScheduler } from "@/components/settings/AutoBackupScheduler";
 import { WebAppOnlineAccessGate } from "@/components/auth/WebAppOnlineAccessGate";
 import { AdRuntimeBootstrap } from "@/components/ads/AdRuntimeBootstrap";
 import { AdLockedScreenBanner } from "@/components/ads/AdLockedScreenBanner";
-import { collection, doc, deleteDoc, setDoc, serverTimestamp, query, where } from "firebase/firestore";
+import { collection, doc, serverTimestamp, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase"; // device-limit overlay: companies/{id}/devices + users lookup
 import { Settings, Monitor, Trash2, Loader2 } from "lucide-react";

@@ -1,6 +1,7 @@
 "use client";
 
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { setDoc } from "@/lib/writeGateway/pbWrites";
+import { doc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { clientRandomUUID } from "@/lib/clientRandomUUID";
 import { getLocalCompanyById, removeLocalCompanyById, upsertLocalCompany, type LocalCompanyDoc } from "@/lib/localCompanyStore";

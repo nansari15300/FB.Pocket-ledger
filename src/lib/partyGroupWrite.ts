@@ -1,4 +1,5 @@
-import { addDoc, collection, serverTimestamp, Timestamp } from "firebase/firestore";
+import { addDoc } from "@/lib/writeGateway/pbWrites";
+import { collection, serverTimestamp, Timestamp } from "@/lib/pbCompat/firestore";
 import type { Company } from "@/hooks/useCompany";
 import { firestore } from "@/lib/firebase";
 import { apkEntityWriteUsesLocalSqliteMirror } from "@/lib/apkOnlineFirestoreWritePolicy";

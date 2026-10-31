@@ -1,10 +1,11 @@
 
 "use client";
 
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { adminServerWriteBlocked, isAdminServerMode } from "@/lib/adminData/adminServerMode";
 import React, { useEffect, useState, useMemo } from "react";
 import { firestore } from "@/lib/firebase";
-import { doc, setDoc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { adminServerSetDoc, isAdminServerDataActive, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { Permission, PermissionGroups, type PermissionGroup } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";

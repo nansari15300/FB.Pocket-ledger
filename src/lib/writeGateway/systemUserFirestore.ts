@@ -2,7 +2,7 @@
  * `users/*` + `app_settings/*` writes — UI/hooks yahan se call karein; raw `updateDoc`/`setDoc`/`writeBatch` hooks me nahi.
  */
 import { doc, setDoc, updateDoc, writeBatch } from "@/lib/writeGateway/firestoreMutationsInternal";
-import { serverTimestamp } from "firebase/firestore";
+import { serverTimestamp } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 
 /** Fire-and-forget user doc patch (auth bootstrap / presence). */

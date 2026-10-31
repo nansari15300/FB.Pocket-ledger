@@ -1,6 +1,6 @@
 "use client";
 
-import { onAuthStateChanged, type User } from "firebase/auth";
+import { onAuthStateChanged, type User } from "@/lib/pbCompat/auth";
 import { auth } from "@/lib/firebase";
 import { getValidPocketBaseAuth } from "@/lib/pocketbaseData/pbClient";
 import {

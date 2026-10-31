@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";

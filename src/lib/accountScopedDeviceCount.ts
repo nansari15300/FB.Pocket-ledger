@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, collectionGroup, query, where } from "firebase/firestore";
+import { collection, collectionGroup, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { isCloudLinkedCompanyStorage } from "@/lib/companyUnlockGate";

@@ -45,7 +45,13 @@ export function PocketBaseLiveSyncManager() {
       stop?.();
       stop = null;
       key = next;
-      if (!next) return;
+      if (!next) {
+        // signed out / no server company selected: stop the background file pull
+        void import("@/lib/pocketbaseData/pbFilesPull").then((m) => m.stopPbFilesSync()).catch(() => {});
+        return;
+      }
+      // App start / sign-in / company switch: continue (or begin) pulling every server file to this device.
+      void import("@/lib/pocketbaseData/pbFilesPull").then((m) => m.resumePbFilesSync()).catch(() => {});
       const mode = currentMode();
       void import("@/lib/pocketbaseData/pbRealtime")
         .then((m) => {

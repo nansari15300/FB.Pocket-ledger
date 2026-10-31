@@ -32,6 +32,7 @@ const SERVER_ROOTS = new Set([
   "pending_subscription_checkouts",
   "pending_plan_changes",
   "pending_addon_purchases",
+  "ad_wallets",
 ]);
 const FALLBACK_READ_ROOTS = new Set(["app_settings"]);
 const TX_ATTEMPTS = 5;

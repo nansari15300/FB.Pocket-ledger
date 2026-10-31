@@ -4,17 +4,8 @@
  * Cloud restore: SQLite + reload (BackupRestore) → data upload (progress) → reload → attachments background.
  */
 
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  query,
-  serverTimestamp,
-  setDoc,
-  writeBatch,
-} from "firebase/firestore";
+import { setDoc, writeBatch } from "@/lib/writeGateway/pbWrites";
+import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { COLLECTIONS_TO_BACKUP } from "@/lib/companyBackupCore";
 import { getLocalCompanyById, upsertLocalCompany } from "@/lib/localCompanyStore";
@@ -128,7 +119,7 @@ export async function patchSqliteHttpsAttachmentsToFirestore(companyId: string):
   const { COMPANY_LOCAL_MIRROR_SUBCOLLECTIONS } = await import("@/lib/firestoreToLocalCompanyPull");
   const { isLocalFileRef } = await import("@/lib/localPendingFiles");
   const { resolveAuthoritativeFirestoreCompanyId } = await import("@/lib/resolveAuthoritativeFirestoreCompanyId");
-  const { doc, setDoc } = await import("firebase/firestore");
+  const { doc, setDoc } = await import("@/lib/pbCompat/firestore");
   const { firestore } = await import("@/lib/firebase");
 
   const fsCompanyId = await resolveAuthoritativeFirestoreCompanyId(cid);

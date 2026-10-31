@@ -19,11 +19,14 @@ import { listActivePocketBaseCompanyIds } from "@/lib/pocketbaseData/pbCompanyRe
 import { SELECTED_COMPANY_CHANGED_EVENT } from "@/lib/selectedCompanyStorage";
 
 /** PocketBase pull after a flush — SSE is primary; this poll is the fallback. */
+// Selected company only (listActivePocketBaseCompanyIds). While the realtime stream is connected the
+// fallback is slow (60s, 30s on focus); only when SSE is down does it poll every 8s.
 function pullPocketBaseCompaniesInBackground(opts?: { force?: boolean; visible?: boolean }): void {
   if (!listActivePocketBaseCompanyIds().length) return;
-  void import("@/lib/pocketbaseData/pbSync")
-    .then((sync) => {
-      const minIntervalMs = opts?.force ? 0 : opts?.visible ? 2_000 : 8_000;
+  void Promise.all([import("@/lib/pocketbaseData/pbSync"), import("@/lib/pocketbaseData/pbRealtime")])
+    .then(([sync, rt]) => {
+      const sseUp = rt.isPocketBaseRealtimeConnected();
+      const minIntervalMs = opts?.force ? 0 : opts?.visible ? (sseUp ? 30_000 : 2_000) : sseUp ? 60_000 : 8_000;
       return sync.pullAllPocketBaseCompaniesThrottled(minIntervalMs, opts?.force ? { force: true } : undefined);
     })
     .catch(() => {});

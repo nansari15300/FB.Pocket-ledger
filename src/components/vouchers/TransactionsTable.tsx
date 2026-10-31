@@ -187,6 +187,7 @@ import {
 } from "@/lib/attachmentNetworkGate";
 import { shouldAutoWarmAttachmentForLedgerRow } from "@/lib/fyPagination/attachmentFyAutoLoadPolicy";
 import { companyUsesOnlineSelectorSyncTicks } from "@/lib/onlineCompanySelectorSyncPolicy";
+import { isPocketBaseCompany } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { FIREBASE_LEDGER_COMPANY_SYNC_PREFS_CHANGED_EVENT } from "@/lib/firebaseLedgerCompanySyncPrefs";
 import { shouldSkipVisibleRowFullIdlePrewarmOnWeb } from "@/lib/webAttachmentLazyLoadPolicy";
 import { getVoucherAttachmentUrlsForUi, voucherAttachmentUiOptionsForCompany } from "@/lib/voucherAttachmentNormalize";
@@ -2107,9 +2108,13 @@ export function TransactionsTable({
     ? "border-b-0"
     : "border-b-2 border-border";
   /** Online + Files tick ON: auto warm current FY only; prior FY = click/hover grant. */
+  // Pocket Ledger Server (PocketBase) companies: all files are pulled to this device, so there is no
+  // "older FY loads on click" rule - every row's file shows as soon as it is on screen.
+  const pbCompanyNoFyAttachmentGate = isPocketBaseCompany(companyId, company);
   const restrictAutoLoadToCurrentFy =
-    dashboardRecentFyAttachmentGate ||
-    (filesTickEnabled && companyUsesOnlineSelectorSyncTicks(company));
+    !pbCompanyNoFyAttachmentGate &&
+    (dashboardRecentFyAttachmentGate ||
+      (filesTickEnabled && companyUsesOnlineSelectorSyncTicks(company)));
   const dateCols = dateSystem === "Both" ? 2 : 1;
   const userCol = context === 'note' ? 0 : 1;
   const fileCol = showFileBySelection ? 1 : 0;
@@ -2234,7 +2239,7 @@ export function TransactionsTable({
   );
 
   const rowsForRender = displayLedgerRows;
-  const enforceCurrentFyAttachmentAutoLoad = dashboardRecentFyAttachmentGate;
+  const enforceCurrentFyAttachmentAutoLoad = dashboardRecentFyAttachmentGate && !pbCompanyNoFyAttachmentGate;
   const attachmentWarmSourceRows = tableTransactions;
   const dashboardRecentPagedList =
     hideFooter && context === "daybook";

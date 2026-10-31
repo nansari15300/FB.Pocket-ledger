@@ -5,7 +5,8 @@
  * Any doubt => "soft" => caller runs today's soft delete unchanged.
  */
 
-import { deleteDoc, doc, getDocFromCache } from "firebase/firestore";
+import { deleteDoc } from "@/lib/writeGateway/pbWrites";
+import { doc, getDocFromCache } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { getBrowserDbForCompanyId, scheduleBrowserDbPersistAfterWrite, flushPendingBrowserDbSave } from "@/lib/localSqlite";
 import { getLocalCompanyById } from "@/lib/localCompanyStore";

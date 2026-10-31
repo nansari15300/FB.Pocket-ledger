@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { collection, query, where } from "firebase/firestore";
+import { collection, query, where } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Label } from "@/components/ui/label";

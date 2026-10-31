@@ -7,6 +7,7 @@ import { PocketBaseSignInBox } from "@/components/settings/PocketBaseSignInBox";
 import {
   ONLINE_DATA_SERVERS,
   getActiveOnlineDataServer,
+  resolvePocketBaseServerUrl,
   type OnlineDataServerId,
   type OnlineDataServerSettings,
 } from "@/lib/onlineDataServer";
@@ -75,7 +76,7 @@ export function OnlineDataServerTable({
               {ONLINE_DATA_SERVERS.map((server) => {
                 const selected = server.id === active.id;
                 const radioId = `${idPrefix}-${server.id}`;
-                const url = server.id === "pocketbase" ? settings.pocketbaseUrl || server.defaultUrl : server.defaultUrl;
+                const url = server.id === "pocketbase" ? resolvePocketBaseServerUrl(settings) || server.defaultUrl : server.defaultUrl;
                 const clickable = selected && !!onActiveRowClick;
                 return (
                   <tr
@@ -139,7 +140,7 @@ export function OnlineDataServerTable({
       </RadioGroup>
       {readOnly ? <p className="text-[11px] text-muted-foreground">Set by admin.</p> : null}
       {active.id === "pocketbase" && !hidePocketBaseSignIn ? (
-        <PocketBaseSignInBox url={settings.pocketbaseUrl || active.defaultUrl} />
+        <PocketBaseSignInBox url={resolvePocketBaseServerUrl(settings) || active.defaultUrl} />
       ) : null}
     </div>
   );

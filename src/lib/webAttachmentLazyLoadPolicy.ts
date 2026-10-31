@@ -9,6 +9,7 @@ import type { Company } from "@/hooks/useCompany";
 import { isEmbeddedOfflinePreloadClient } from "@/lib/isEmbeddedOfflinePreloadClient";
 import { readFirebaseLedgerCompanySyncPrefs } from "@/lib/firebaseLedgerCompanySyncPrefs";
 import { companyUsesOnlineSelectorSyncTicks } from "@/lib/onlineCompanySelectorSyncPolicy";
+import { isPocketBaseCompany } from "@/lib/pocketbaseData/pbCompanyRegistry";
 
 /** Web browser, or embedded Online (Company Selector) company — same lazy rules. */
 export function shouldUseAttachmentLazyLoad(
@@ -16,6 +17,8 @@ export function shouldUseAttachmentLazyLoad(
   companyId?: string | null
 ): boolean {
   if (typeof window === "undefined") return false;
+  // PocketBase companies: files are pulled to the device (no visible-page / click-to-load rule).
+  if (isPocketBaseCompany(companyId, company)) return false;
   if (!isEmbeddedOfflinePreloadClient()) return true;
   if (company != null) return companyUsesOnlineSelectorSyncTicks(company);
   const id = String(companyId || "").trim();

@@ -1,5 +1,6 @@
 "use client";
 
+import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -7,7 +8,7 @@ import { Loader2, Trash2, CalendarIcon } from "lucide-react";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
-import { doc, updateDoc, serverTimestamp, query, collection } from "firebase/firestore";
+import { doc, serverTimestamp, query, collection } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { checkStorageLimit, incrementCompanyStorage } from "@/lib/storageUsageClient";
 import {
@@ -434,7 +435,7 @@ export function EditStaffDialog({
             groupId: normalizeStaffGroupIdForStorage(values.groupId, values.accountType),
             isLoanAccount: values.accountType === LOAN_LIABILITY_GROUP_ID,
             companyId,
-            fileUrl: fileUrl ?? (base.fileUrl as string | null) ?? null,
+            fileUrl: fileSnap == null ? null : (fileUrl ?? (base.fileUrl as string | null) ?? null),
             documentFileUrls: documentFileUrls.length ? documentFileUrls : [],
             ...attachmentLockFieldsForFinalUrls(documentFileUrls, {
               existingLockedPdfFileUrls: readLockedPdfFileUrlsFromRow(

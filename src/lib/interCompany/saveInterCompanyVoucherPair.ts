@@ -2,7 +2,7 @@
  * Inter Company — source + target company par linked `inter_company` vouchers save/update.
  */
 import type { InterCompanyEntityKind } from "@/components/inter-company/InterCompanyEntitySide";
-import { collection, doc, query, where, Timestamp } from "firebase/firestore";
+import { collection, doc, query, where, Timestamp } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { auth, firestore } from "@/lib/firebase";
 import {

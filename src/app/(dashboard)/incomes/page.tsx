@@ -1,5 +1,6 @@
 "use client";
 
+import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { Suspense, useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
@@ -35,7 +36,7 @@ import { collectInterCompanyIdsForPendingApproval } from "@/lib/interCompany/int
 import { useResponsiveListLayout } from "@/hooks/useResponsiveListLayout";
 import { ResponsiveMasterDetail } from "@/components/layout/ResponsiveMasterDetail";
 import { LoadingSpinner } from "@/components/layout/LoadingSpinner";
-import { doc, collection, query, where, updateDoc } from "firebase/firestore";
+import { doc, collection, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useMasterDetailQueryNav } from "@/hooks/useMasterDetailQueryNav";

@@ -1,6 +1,7 @@
 "use client";
 
-import { doc, setDoc } from "firebase/firestore";
+import { setDoc } from "@/lib/writeGateway/pbWrites";
+import { doc } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { fySnapshotDocPath } from "@/lib/ledgerModes/online/fyMonthQueries";
 import type { FyBalanceSnapshot } from "@/lib/fyPagination/types";

@@ -1,4 +1,5 @@
-import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { updateDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
+import { doc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { deleteCompanyComplete } from "@/lib/actions/deleteCompanyAction";

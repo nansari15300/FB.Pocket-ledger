@@ -180,12 +180,8 @@ export function OfflineWarmSyncManager() {
       const rows =
         snapshot?.filter((c) => shouldPrefetchAttachmentsForCompany(c as Company | null)) ?? [];
       const prioritizeId = companyIdLatestRef.current?.trim() || null;
-      const ordered = prioritizeId
-        ? [
-            ...rows.filter((c) => c.id === prioritizeId),
-            ...rows.filter((c) => c.id !== prioritizeId),
-          ]
-        : rows;
+      // Selected company only: every other company sleeps (no background warm / prefetch).
+      const ordered = prioritizeId ? rows.filter((c) => c.id === prioritizeId) : [];
 
       if (ordered.length === 0) return;
       try {

@@ -103,6 +103,7 @@
   function countryAppUrl(rec) {
     rec = rec || detect();
     if (!rec) return "/app";
+    if (isLocalHost()) return "/app";
     return "https://" + rec.host + "/app";
   }
 
@@ -130,17 +131,6 @@
     if (!rec) return;
     if (!rec.live) return;
     remember(rec.cc);
-    var next = "";
-    try { next = new URLSearchParams(location.search).get("next") || ""; } catch (e) { next = ""; }
-    if (next === "console") {
-      var cfg = countries();
-      if (cfg.useSubdomains && !isLocalHost()) {
-        location.href = "https://" + rec.host + "/console/";
-        return;
-      }
-      location.href = "/console/?c=" + encodeURIComponent(rec.cc);
-      return;
-    }
     location.href = countryHomeUrl(rec);
   }
 
@@ -334,8 +324,6 @@
             "<strong>" + escapeHtml(rec.name) + "</strong>" +
             "<span>" + escapeHtml(rec.host) + " · country site</span>" +
           "</div>" +
-          '<a class="pl-country-chrome-link" href="/console/?c=' + encodeURIComponent(rec.cc) + '">Country server</a>' +
-          '<a class="pl-country-chrome-link" href="/">Change country</a>' +
         "</div>";
     } else {
       bar.innerHTML =

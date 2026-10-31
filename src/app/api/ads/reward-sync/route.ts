@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import { corsHeadersForPocketLedgerBillingApi } from "@/lib/server/billingApiCors";
-import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
+import { resolveBillingCaller } from "@/lib/server/billingCaller";
 import { todayDayKey, type AdActiveUnlock, type AdPendingEvent } from "@/lib/ads/adWalletTypes";
 
 const MAX_EVENTS = 80;
@@ -68,25 +68,15 @@ export async function OPTIONS(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const cors = corsHeadersForPocketLedgerBillingApi(req);
   try {
-    if (!isFirebaseAdminConfigured()) {
-      return NextResponse.json({ error: "Firebase Admin not configured" }, { status: 503, headers: cors });
+    const caller = await resolveBillingCaller(req);
+    if (caller.ok === false) {
+      return NextResponse.json({ error: caller.error }, { status: caller.status, headers: cors });
     }
-    const header = req.headers.get("authorization") || req.headers.get("Authorization") || "";
-    const token = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
-    if (!token) {
-      return NextResponse.json({ error: "Missing auth token" }, { status: 401, headers: cors });
-    }
-    getAdminDb();
-    let decoded: admin.auth.DecodedIdToken;
-    try {
-      decoded = await admin.auth().verifyIdToken(token);
-    } catch {
-      return NextResponse.json({ error: "Invalid auth token" }, { status: 401, headers: cors });
-    }
+    const decoded = caller.decoded;
     const uid = decoded.uid;
     const body = (await req.json().catch(() => ({}))) as Body;
     const pending = parsePending(body.pending);
-    const db = getAdminDb();
+    const db = caller.db;
     const ref = db.collection("ad_wallets").doc(uid);
     const snap = await ref.get();
     const prev = snap.exists ? (snap.data() as Record<string, unknown>) : {};

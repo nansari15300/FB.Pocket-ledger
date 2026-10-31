@@ -76,8 +76,6 @@
     "recycle-bin",
     "settings",
   ];
-  var auth;
-  var db;
 
   function setStatus(msg, ok) {
     if (!statusEl) return;
@@ -145,8 +143,8 @@
 
   function formatEngage(videoId) {
     var e = engagement[videoId] || { views: 0, likes: 0, ratingAvg: 0, ratingCount: 0 };
-    var avg = e.ratingCount ? Number(e.ratingAvg || 0).toFixed(1) : "—";
-    return "👁 " + (e.views || 0) + " · ♥ " + (e.likes || 0) + " · ★ " + avg +
+    var avg = e.ratingCount ? Number(e.ratingAvg || 0).toFixed(1) : "-";
+    return "Views " + (e.views || 0) + " \u00b7 Likes " + (e.likes || 0) + " \u00b7 Rating " + avg +
       (e.ratingCount ? " (" + e.ratingCount + ")" : "");
   }
 
@@ -325,65 +323,52 @@
   }
 
   async function loadFeatures() {
+    // Every category is offered (the old per-feature hiding came from the retired Firebase settings).
     featureConfig = {};
-    try {
-      var snap = await db.doc("app_settings/features").get();
-      featureConfig = snap.exists ? snap.data() || {} : {};
-    } catch (_) {
-      featureConfig = {};
-    }
     fillCategorySelect();
   }
 
-  async function loadEngagement() {
+  function applyEngagement(byVideo) {
     engagement = {};
-    try {
-      var snap = await db.doc("app_settings/website_video_stats").get();
-      var data = snap.exists ? snap.data() : {};
-      var byVideo = data && data.byVideo && typeof data.byVideo === "object" ? data.byVideo : {};
-      Object.keys(byVideo).forEach(function (id) {
-        var row = byVideo[id] || {};
-        var ratingSum = Math.max(0, Math.floor(Number(row.ratingSum) || 0));
-        var ratingCount = Math.max(0, Math.floor(Number(row.ratingCount) || 0));
-        engagement[id] = {
-          views: Math.max(0, Math.floor(Number(row.views) || 0)),
-          likes: Math.max(0, Math.floor(Number(row.likes) || 0)),
-          ratingSum: ratingSum,
-          ratingCount: ratingCount,
-          ratingAvg: ratingCount ? Math.round((ratingSum / ratingCount) * 10) / 10 : 0,
-        };
-      });
-    } catch (_) {
-      engagement = {};
-    }
+    var src = byVideo && typeof byVideo === "object" ? byVideo : {};
+    Object.keys(src).forEach(function (id) {
+      var row = src[id] || {};
+      var ratingSum = Math.max(0, Math.floor(Number(row.ratingSum) || 0));
+      var ratingCount = Math.max(0, Math.floor(Number(row.ratingCount) || 0));
+      engagement[id] = {
+        views: Math.max(0, Math.floor(Number(row.views) || 0)),
+        likes: Math.max(0, Math.floor(Number(row.likes) || 0)),
+        ratingSum: ratingSum,
+        ratingCount: ratingCount,
+        ratingAvg: ratingCount ? Math.round((ratingSum / ratingCount) * 10) / 10 : 0,
+      };
+    });
   }
 
   async function load() {
-    setStatus("Loading…", true);
+    setStatus("Loading.", true);
     try {
-      var snap = await db.doc("app_settings/website_videos").get();
-      videos = sanitize(snap.exists ? snap.data() : {});
-      await Promise.all([loadEngagement(), loadFeatures()]);
+      var data = await window.SiteData.adminGet("/admin/videos");
+      videos = sanitize(data);
+      applyEngagement(data && data.stats && data.stats.byVideo);
+      await loadFeatures();
       render();
       setStatus("Ready.", true);
     } catch (e) {
       videos = [];
       render();
-      setStatus("Could not load videos.", false);
+      setStatus("Could not load videos. " + ((e && e.message) || ""), false);
     }
   }
 
   async function persist(next) {
     try {
-      await db.doc("app_settings/website_videos").set(
-        { videos: next, updatedAt: Date.now() },
-        { merge: true }
-      );
-      videos = next;
+      var res = await window.SiteData.adminPost("/admin/videos", { videos: next });
+      videos = sanitize(res);
       render();
       setStatus("Saved.", true);
-    } catch (_) {
-      setStatus("Save failed.", false);
+    } catch (err) {
+      setStatus("Save failed. " + ((err && err.message) || ""), false);
     }
   }
 
@@ -423,55 +408,20 @@
     fillCategorySelect("getting-started");
   }
 
-  function showSignedOut() {
-    if (authBox) authBox.hidden = false;
-    if (adminBox) adminBox.hidden = true;
-    if (outBtn) outBtn.hidden = true;
-    if (whoEl) whoEl.textContent = "";
-  }
-
-  function showAdmin(user) {
-    if (authBox) authBox.hidden = true;
-    if (adminBox) adminBox.hidden = false;
-    if (outBtn) outBtn.hidden = false;
-    if (whoEl) whoEl.textContent = user.email || "";
-  }
-
   function init() {
-    if (!window.firebase || !window.POCKET_LEDGER_FIREBASE || !window.WebsiteSettingsAuth) return;
-    if (!firebase.apps.length) firebase.initializeApp(window.POCKET_LEDGER_FIREBASE);
-    auth = firebase.auth();
-    db = firebase.firestore();
-
-    document.getElementById("googleBtn").onclick = function () {
-      auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(function () {});
-    };
-    if (outBtn) {
-      outBtn.onclick = function () {
-        auth.signOut();
-      };
-    }
     document.getElementById("addVideoBtn").onclick = function () {
       void addVideo();
     };
     bindListTools();
-
-    auth.onAuthStateChanged(function (user) {
-      if (!user) {
-        showSignedOut();
-        setStatus("", true);
-        return;
-      }
-      window.WebsiteSettingsAuth.resolveSuperAdmin(user, db).then(function (ok) {
-        if (!ok) {
-          showSignedOut();
-          setStatus("Super Admin only.", false);
-          auth.signOut();
-          return;
-        }
-        showAdmin(user);
+    window.SiteData.gate({
+      authBox: authBox,
+      adminBox: adminBox,
+      whoEl: whoEl,
+      outBtn: outBtn,
+      setStatus: setStatus,
+      onReady: function () {
         void load();
-      });
+      },
     });
   }
 

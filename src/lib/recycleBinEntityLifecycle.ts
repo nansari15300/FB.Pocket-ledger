@@ -5,16 +5,8 @@
  * permanent delete → SQLite row + Drive attachments + `plPermanentlyPurged` op (doosre devices).
  */
 
-import {
-  Timestamp,
-  collection,
-  deleteDoc,
-  doc,
-  query,
-  serverTimestamp,
-  updateDoc,
-  where,
-} from "firebase/firestore";
+import { deleteDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
+import { Timestamp, collection, doc, query, serverTimestamp, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore, auth } from "@/lib/firebase";
 import { isLocalOnlyMode } from "@/lib/localMode";
@@ -439,7 +431,7 @@ export async function deleteFirebaseStorageFilesForDoc(
     await deleteFirebaseStorageUrlsWithRegistry(cid, urls, { traceEntityId: entityId });
   } else if (urls.length > 0) {
     // No company id — best-effort delete (no reuse scan).
-    const { ref, deleteObject } = await import("firebase/storage");
+    const { ref, deleteObject } = await import("@/lib/pocketbaseData/pbStorage");
     const { storage } = await import("@/lib/firebase");
     for (const filePath of urls) {
       const storagePath = resolveFirebaseStoragePath(filePath);
@@ -455,7 +447,7 @@ export async function deleteFirebaseStorageFilesForDoc(
   // Non-URL legacy paths only — never re-force-delete HTTPS objects already handled above
   // (warna reused source file delete ho jati).
   if (directPaths.length === 0) return;
-  const { ref, deleteObject } = await import("firebase/storage");
+  const { ref, deleteObject } = await import("@/lib/pocketbaseData/pbStorage");
   const { storage } = await import("@/lib/firebase");
   const { tryGetStoragePathFromFirebaseDownloadUrl: pathFromHttps } = await import(
     "@/lib/firebaseStorageDownloadUrl"
@@ -674,7 +666,7 @@ async function deleteVoucherFirebaseStorageObjectsReuseSafe(input: {
   const vid = String(input.voucherId || "").trim();
   if (!cid || !vid) return 0;
   const { buildVoucherStorageScanPrefixes } = await import("@/lib/companyStorageWipePrefixes");
-  const { ref, list, deleteObject } = await import("firebase/storage");
+  const { ref, list, deleteObject } = await import("@/lib/pocketbaseData/pbStorage");
   const { storage } = await import("@/lib/firebase");
   const typeHint = String(input.voucherType || "").trim();
   // Missing type → sirf us voucherId ke orphans dhoondo, saare type folders me — bilkul journal pe force default mat.

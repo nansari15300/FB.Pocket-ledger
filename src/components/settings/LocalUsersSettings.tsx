@@ -1,5 +1,6 @@
 "use client";
 
+import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,7 @@ import { Loader2, UserPlus } from "lucide-react";
 import { useLivePlans, getPlanFromPlans } from "@/hooks/useLivePlans";
 import { numericEntitlement, isAtOrOverEntitlementCap, formatEntitlementCapLabel, type PlanId } from "@/config/plans";
 import { isCloudLinkedCompanyStorage } from "@/lib/companyUnlockGate";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { updateCompanyDocRoot } from "@/lib/companyDocsClient";
 

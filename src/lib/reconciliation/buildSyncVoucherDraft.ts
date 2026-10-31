@@ -1,6 +1,6 @@
 import { STAFF_ENTITY_LABEL } from "@/lib/staffEntityDisplayName";
 import { startOfDay } from "date-fns";
-import { collection, query, where } from "firebase/firestore";
+import { collection, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";

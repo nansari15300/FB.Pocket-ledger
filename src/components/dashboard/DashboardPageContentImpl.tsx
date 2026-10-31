@@ -1,4 +1,5 @@
 'use client';
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { STAFF_ENTITY_LABEL, STAFF_ENTITY_TYPE_KEY, STAFF_ENTITY_SEARCH_PLACEHOLDER, STAFF_ENTITY_ADD_BUTTON, staffEntityDisplayLabel } from "@/lib/staffEntityDisplayName";
 
 import {
@@ -14,14 +15,7 @@ import { getActiveGate } from "@/lib/gates/gateStore";
 import { isServerGateCompany } from "@/lib/companyStorageKind";
 import { voucherIdFingerprint } from "@/lib/plServerLiveChangeTrace";
 import { firestore } from "@/lib/firebase";
-import {
-  doc,
-  getDoc,
-  collection,
-  query,
-  getDocs,
-  where,
-} from 'firebase/firestore';
+import { doc, collection, query, where } from "@/lib/pbCompat/firestore";
 import { applyPaymentBillWiseLinkAllocations } from '@/lib/voucherActionsClient';
 import * as React from 'react';
 import { useEffect, useLayoutEffect, useState, useMemo, useRef, useCallback, startTransition } from 'react';

@@ -166,7 +166,7 @@ import { getFiscalMergePartitionsFromCompany } from "@/lib/fiscalPartitionRows";
 import { applyStatementCheckModeHiddenToLedgerList } from "@/lib/statementCheckModeLedger";
 import { getTransactionQuickSearchHaystack } from "@/components/vouchers/transactionTableShared";
 import { SpendWiseBlinkInfoDialog } from "../vouchers/SpendWiseBlinkInfoDialog";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Checkbox } from "../ui/checkbox";

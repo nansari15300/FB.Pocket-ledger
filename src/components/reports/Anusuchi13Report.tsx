@@ -134,7 +134,7 @@ export function Anusuchi13Report() {
   );
 
   const [selectedPartyRaw, setSelectedParty] = useState<Party | null>(null);
-  const selectedParty = useLiveMasterSelection(selectedPartyRaw, setSelectedParty, processedParties);
+  const selectedParty = useLiveMasterSelection<Party>(selectedPartyRaw, setSelectedParty, processedParties);
   const [searchTerm, setSearchTerm] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [confirmationRunning, setConfirmationRunning] = useState(

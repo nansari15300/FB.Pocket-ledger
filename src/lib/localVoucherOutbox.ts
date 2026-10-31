@@ -7,6 +7,7 @@
  */
 
 import { isServerQuotaHoldActive, startServerQuotaHold } from "@/lib/serverQuotaHold";
+import { isPocketBaseOnlyAppSession } from "@/lib/pbOnlySessionMarker";
 import {
   doc,
   getDoc,
@@ -15,7 +16,7 @@ import {
   Timestamp,
   enableNetwork,
   deleteField,
-} from "firebase/firestore";
+} from "@/lib/pbCompat/firestore";
 import { firestoreRunTransaction as runTransaction } from "@/lib/writeGateway/firestoreMutationsInternal";
 import {
   firestore,
@@ -32,6 +33,20 @@ import {
 import { isFirebaseLedgerDataSyncDisabled } from "@/lib/firebaseLedgerDataSyncDisabled";
 import { isFirebaseLedgerCompanyDataSyncEnabled } from "@/lib/firebaseLedgerCompanySyncPrefs";
 import { isPocketBaseCompany, isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import {
+  PB_OUTBOX_BLOCKED_PREFIX,
+  blockPbOutboxCompany,
+  clearPbOutboxCompanyBlock,
+  clearPbOutboxRowBackoff,
+  clearPbServerBackoff,
+  deferPbOutboxCompanyProbe,
+  getPbOutboxCompanyBlock,
+  isPbOutboxRowBackedOff,
+  isPbServerBackedOff,
+  isPocketBaseCompanyMissingError,
+  notePbOutboxRowFailure,
+  notePbServerDown,
+} from "@/lib/pocketbaseData/pbOutboxBlock";
 import { mirrorCompanyDocToBrowserDb, getCompanyDocFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { getLocalCompanyById, type LocalCompanyDoc } from "@/lib/localCompanyStore";
 import { coerceVoucherDocumentDate } from "@/lib/voucherDateNormalize";
@@ -940,9 +955,70 @@ export async function getOutboxStatusCounts(companyId?: string): Promise<OutboxS
   return out;
 }
 
+/**
+ * Permanent server answer for a company (404 "company not found" / no access): stop flushing that company.
+ * Rows stay in the outbox (never purged) but are marked failed with a "[blocked]" reason; the company is
+ * skipped with exponential backoff (1..30 min) and only re-probed with one cheap lookup. Logs once.
+ */
+async function blockPbOutboxCompanyRows(companyId: string, triggerOutboxId: string, e: unknown): Promise<void> {
+  const reason = outboxErrorText(e).slice(0, 300);
+  const { first, block } = blockPbOutboxCompany(companyId, reason);
+  await markOutboxRowAttemptFailed(triggerOutboxId, companyId, e, "failed");
+  try {
+    const db = await getBrowserDbForCompanyId(companyId);
+    if (db) {
+      ensureOutboxRetryColumns(db);
+      db.prepare(
+        `UPDATE sync_outbox SET status = 'failed', last_error = ?, last_attempt_at = ? WHERE company_id = ?`
+      ).run(
+        `${PB_OUTBOX_BLOCKED_PREFIX}${reason} (company blocked, next check ${new Date(block.until).toISOString()})`,
+        Date.now(),
+        companyId
+      );
+    }
+  } catch (err) {
+    console.warn("[localVoucherOutbox] could not mark blocked outbox rows", err);
+  }
+  if (first) {
+    console.warn(
+      "[flushVoucherOutbox] Pocket Ledger Server company missing/no access: outbox for this company is blocked (rows kept, retry with backoff / manual retry)",
+      companyId,
+      reason
+    );
+  }
+}
+
+/** One cheap lookup for a blocked company. "found" lifts the block and re-queues its [blocked] rows. */
+async function probeBlockedPbCompany(companyId: string): Promise<"found" | "missing" | "unknown"> {
+  try {
+    const { ensurePocketBaseCompany } = await import("@/lib/pocketbaseData/pbSync");
+    await ensurePocketBaseCompany(companyId);
+    clearPbOutboxCompanyBlock(companyId);
+    try {
+      const db = await getBrowserDbForCompanyId(companyId);
+      db?.prepare(
+        `UPDATE sync_outbox SET status = 'pending', last_error = NULL WHERE company_id = ? AND last_error LIKE ?`
+      ).run(companyId, `${PB_OUTBOX_BLOCKED_PREFIX}%`);
+    } catch {
+      /* rows are flushed regardless of status */
+    }
+    return "found";
+  } catch (e) {
+    if (isPocketBaseCompanyMissingError(e)) {
+      blockPbOutboxCompany(companyId, outboxErrorText(e).slice(0, 300));
+      return "missing";
+    }
+    deferPbOutboxCompanyProbe(companyId);
+    return "unknown";
+  }
+}
+
 /** Clear the session permission-denied parking and mark every failed/paused row pending again. */
 export async function requeueFailedOutboxRows(companyId?: string): Promise<number> {
   permissionDeniedOutboxKeys.clear();
+  // Manual retry: lift PocketBase company blocks + row/server backoff so the next flush tries again.
+  clearPbOutboxCompanyBlock(companyId);
+  clearPbServerBackoff();
   let n = 0;
   try {
     const { getBrowserDbForNamespace } = await import("@/lib/localSqlite");
@@ -983,7 +1059,7 @@ export async function findUnsyncedLocalDocs(
   if (!db) return result;
   const reg = await getLocalCompanyById(cid, { includeDeleted: true });
   const fsCompanyId = String((reg as Record<string, unknown> | null)?.authoritativeCompanyId || cid).trim() || cid;
-  const { getDocFromCache } = await import("firebase/firestore");
+  const { getDocFromCache } = await import("@/lib/pbCompat/firestore");
   const { mirrorDocEditTimeMs, deserializeLocalDbValue } = await import("@/lib/localCompanyDocMirror");
   const { LOCAL_MIRROR_META_SERVER_CONFIRMED_KEY } = await import("@/lib/localMirrorServerMeta");
   const collections = opts?.collections ?? ["vouchers"];
@@ -1270,6 +1346,7 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
   /** Yield to the UI every N network attempts so a large outbox cannot freeze the tab. */
   const YIELD_EVERY = 4;
   let attemptsSinceYield = 0;
+  const pbProbeResult = new Map<string, "found" | "missing" | "unknown">();
   try {
   for (const row of rows) {
     outboxRowInFlightKey = null;
@@ -1277,6 +1354,14 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
     if (permissionDeniedOutboxKeys.has(denyKey)) {
       continue;
     }
+    // Blocked PocketBase company / row in backoff: skip silently (no request, no failure count).
+    const pbBlock = getPbOutboxCompanyBlock(row.company_id);
+    if (pbBlock) {
+      if (Date.now() < pbBlock.until) continue;
+      if (!pbProbeResult.has(row.company_id)) pbProbeResult.set(row.company_id, await probeBlockedPbCompany(row.company_id));
+      if (pbProbeResult.get(row.company_id) !== "found") continue;
+    }
+    if (isPbOutboxRowBackedOff(row.outbox_id)) continue;
     attemptsSinceYield += 1;
     if (attemptsSinceYield >= YIELD_EVERY) {
       attemptsSinceYield = 0;
@@ -1319,6 +1404,7 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
         const { getValidPocketBaseAuth } = await import("@/lib/pocketbaseData/pbClient");
         // Not signed in to the server yet: keep the row for later.
         if (!getValidPocketBaseAuth()) continue;
+        if (isPbServerBackedOff()) continue;
         try {
           const pbData = data as Record<string, unknown>;
           if (row.collection_name === "vouchers") {
@@ -1330,9 +1416,25 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
           await pausePbForThisFlush();
           await pushOutboxRowToPocketBase({ ...row, payload: outboxJsonStringify(pbData) });
           await deleteOutboxRow(row.outbox_id, row.company_id);
+          clearPbOutboxRowBackoff(row.outbox_id);
+          clearPbServerBackoff();
           ok++;
         } catch (pbErr) {
-          console.warn("[flushVoucherOutbox] Pocket Ledger Server push failed", row.collection_name, row.doc_id, pbErr);
+          if (isPocketBaseCompanyMissingError(pbErr)) {
+            // Permanent: block the whole company instead of retrying every row on every tick.
+            await blockPbOutboxCompanyRows(row.company_id, row.outbox_id, pbErr);
+            failed++;
+            continue;
+          }
+          const pbStatus = Number((pbErr as { status?: number })?.status ?? -1);
+          if (pbStatus === 0 || pbStatus >= 500) notePbServerDown();
+          const waitMs = notePbOutboxRowFailure(row.outbox_id);
+          console.warn(
+            "[flushVoucherOutbox] Pocket Ledger Server push failed (next try in " + Math.round(waitMs / 1000) + "s)",
+            row.collection_name,
+            row.doc_id,
+            pbErr
+          );
           await markOutboxRowAttemptFailed(row.outbox_id, row.company_id, pbErr, "failed");
           failed++;
         }
@@ -1715,10 +1817,13 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
       }
       if (isOutboxQuotaOrBillingError(e)) {
         // Quota / billing (incl. PERMISSION_DENIED "billing account ... disabled"): keep row, global pause.
-        await markOutboxRowAttemptFailed(row.outbox_id, row.company_id, e, "paused");
+        // PocketBase-only login: no hold starts (Firebase quota is irrelevant), so keep the row retryable ("failed"), not "paused".
+        const pbOnlyOutbox = isPocketBaseOnlyAppSession();
+        await markOutboxRowAttemptFailed(row.outbox_id, row.company_id, e, pbOnlyOutbox ? "failed" : "paused");
         startServerQuotaHold();
         console.warn("[flushVoucherOutbox] quota/billing error: row kept, quota hold started", outboxErrorText(e));
         failed++;
+        if (pbOnlyOutbox) continue;
         break;
       }
       if (isOutboxPermissionDenied(e)) {

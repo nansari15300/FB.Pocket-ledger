@@ -1,4 +1,4 @@
-import type { Timestamp } from "firebase/firestore";
+import type { Timestamp } from "@/lib/pbCompat/firestore";
 import type { PlanId } from "@/config/plans";
 
 /**

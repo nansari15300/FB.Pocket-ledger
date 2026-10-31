@@ -1,21 +1,11 @@
 
 "use client";
 
+import { updateDoc, writeBatch, deleteDoc } from "@/lib/writeGateway/pbWrites";
 import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
-import {
-  collection,
-  query,
-  where,
-  doc,
-  updateDoc,
-  serverTimestamp,
-  writeBatch,
-  deleteDoc,
-  arrayUnion,
-  arrayRemove,
-} from "firebase/firestore";
+import { collection, query, where, doc, serverTimestamp, arrayUnion, arrayRemove } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDocs, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import {

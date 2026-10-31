@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { doc, arrayRemove, collection, query, where } from "firebase/firestore";
+import { doc, arrayRemove, collection, query, where } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { updateCompanyRootFirestore } from "@/lib/writeGateway/companyRootFirestore";

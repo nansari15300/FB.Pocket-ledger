@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { DEFAULT_PLANS, type Plan, type PlanId } from "@/config/plans";

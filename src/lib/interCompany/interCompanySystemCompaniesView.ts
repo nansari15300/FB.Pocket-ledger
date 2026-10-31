@@ -2,7 +2,7 @@
  * Centralized system card — owned + other companies (View com popup).
  * Owned = current user's companies in this system; Other = everyone else's.
  */
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import type { Company } from "@/hooks/useCompany";

@@ -1,6 +1,7 @@
 
 "use client";
 
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useRouter } from "next/navigation";
@@ -8,7 +9,7 @@ import type { TaxGroup } from "@/components/tax/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
-import { doc, setDoc, collection, serverTimestamp, Timestamp } from "firebase/firestore";
+import { doc, collection, serverTimestamp, Timestamp } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";

@@ -6,7 +6,7 @@
  * devices par ab tak use hue slots ke baad sabse chhota khali number; kick ke baad woh number dubara mil sakta hai.
  */
 
-import { collectionGroup, query, where } from "firebase/firestore";
+import { collectionGroup, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 

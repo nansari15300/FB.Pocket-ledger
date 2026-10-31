@@ -18,11 +18,19 @@ import {
   type DocumentReference,
   type Transaction,
   type WriteBatch,
-} from "firebase/firestore";
+} from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { isPocketBaseCompanyId, notePocketBaseRootWrite, listPocketBaseCompanyIds } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import type { PbBatchOp, PbExpect, PbOpResult, PbWriteMode } from "@/lib/pocketbaseData/pbSync";
 import { isPocketBaseAppSessionActive } from "@/lib/pocketbaseData/pbAppSession";
+import {
+  makeUdocWrite,
+  udocCollectionPath,
+  udocCommit,
+  udocDocPath,
+  udocReadDoc,
+  type UdocWrite,
+} from "@/lib/pocketbaseData/pbGlobalDocs";
 
 export { collection, doc, serverTimestamp };
 /** Raw Firestore transaction (Firebase-only paths, e.g. the outbox flush). */
@@ -111,6 +119,15 @@ async function writePocketBaseLedgerDoc(
   await commitPocketBaseOps(parsed.fsCompanyId, [
     { coll: parsed.collectionName, id: parsed.docId, mode, data: data || {} },
   ]);
+}
+
+/** set / update / delete call -> general document store write. */
+function udocWriteOf(kind: "set" | "update" | "delete", path: string, args: unknown[]): UdocWrite {
+  if (kind === "set") {
+    return makeUdocWrite(path, setOptionsMode(args[2]) === "merge" ? "merge" : "set", (args[1] as Record<string, unknown>) || {});
+  }
+  if (kind === "update") return makeUdocWrite(path, "update", updateArgsToPatch(args));
+  return makeUdocWrite(path, "delete");
 }
 
 /** `update(ref, data)` or `update(ref, "field", value, ...)` -> dotted-path patch. */
@@ -206,6 +223,11 @@ function scheduleLedgerChangeLog(ref: unknown, op: "create" | "update" | "delete
 
 export const setDoc: typeof firestoreSetDoc = (async (...args: unknown[]) => {
   if (isPocketBaseChangeLogRef(args[0])) return;
+  const udocSet = udocDocPath(args[0]);
+  if (udocSet) {
+    await udocCommit([udocWriteOf("set", udocSet, args)]);
+    return;
+  }
   const pb = pocketBaseLedgerPath(args[0]);
   if (pb) {
     await writePocketBaseLedgerDoc(pb, (args[1] as Record<string, unknown>) || {}, setOptionsMode(args[2]));
@@ -225,6 +247,11 @@ export const setDoc: typeof firestoreSetDoc = (async (...args: unknown[]) => {
 }) as typeof firestoreSetDoc;
 
 export const updateDoc: typeof firestoreUpdateDoc = (async (...args: unknown[]) => {
+  const udocUpd = udocDocPath(args[0]);
+  if (udocUpd) {
+    await udocCommit([udocWriteOf("update", udocUpd, args)]);
+    return;
+  }
   const pb = pocketBaseLedgerPath(args[0]);
   if (pb) {
     // updateDoc(ref, data) or updateDoc(ref, "field", value, ...)
@@ -245,6 +272,11 @@ export const updateDoc: typeof firestoreUpdateDoc = (async (...args: unknown[]) 
 
 export const deleteDoc: typeof firestoreDeleteDoc = (async (...args: unknown[]) => {
   if (isPocketBaseChangeLogRef(args[0])) return;
+  const udocDel = udocDocPath(args[0]);
+  if (udocDel) {
+    await udocCommit([udocWriteOf("delete", udocDel, args)]);
+    return;
+  }
   const pb = pocketBaseLedgerPath(args[0]);
   if (pb) {
     // soft delete on the server so other devices see it
@@ -257,6 +289,12 @@ export const deleteDoc: typeof firestoreDeleteDoc = (async (...args: unknown[]) 
 }) as typeof firestoreDeleteDoc;
 
 export const addDoc: typeof firestoreAddDoc = (async (...args: unknown[]) => {
+  const udocColl = udocCollectionPath(args[0]);
+  if (udocColl) {
+    const newRef = doc(args[0] as CollectionReference);
+    await udocCommit([makeUdocWrite(`${udocColl}/${newRef.id}`, "set", (args[1] as Record<string, unknown>) || {})]);
+    return newRef;
+  }
   const pbColl = parseLedgerCollectionPath(args[0]);
   if (pbColl && isPocketBaseCompanyId(pbColl.fsCompanyId)) {
     // same auto-id as Firestore (generated locally), written to the server
@@ -294,7 +332,7 @@ function noPocketBaseCompanies(): boolean {
  * (`/api/pl/data/batch`, all or nothing); every other doc goes to a normal Firestore batch.
  */
 export const writeBatch: typeof firestoreWriteBatch = ((fs: Parameters<typeof firestoreWriteBatch>[0]) => {
-  if (noPocketBaseCompanies()) return firestoreWriteBatch(fs);
+  if (noPocketBaseCompanies() && !isPocketBaseAppSessionActive()) return firestoreWriteBatch(fs);
   const calls: { kind: "set" | "update" | "delete"; args: unknown[] }[] = [];
   let committed = false;
   const guard = () => {
@@ -320,9 +358,15 @@ export const writeBatch: typeof firestoreWriteBatch = ((fs: Parameters<typeof fi
       guard();
       committed = true;
       const pbByCompany = new Map<string, PbBatchOp[]>();
+      const udocBatch: UdocWrite[] = [];
       let fsBatch: WriteBatch | null = null;
       for (const c of calls) {
         if (isPocketBaseChangeLogRef(c.args[0])) continue;
+        const up = udocDocPath(c.args[0]);
+        if (up) {
+          udocBatch.push(udocWriteOf(c.kind, up, c.args));
+          continue;
+        }
         const pb = pocketBaseLedgerPath(c.args[0]);
         if (pb) {
           const list = pbByCompany.get(pb.fsCompanyId) || [];
@@ -334,6 +378,7 @@ export const writeBatch: typeof firestoreWriteBatch = ((fs: Parameters<typeof fi
         }
       }
       for (const [companyId, ops] of pbByCompany) await commitPocketBaseOps(companyId, ops);
+      if (udocBatch.length) await udocCommit(udocBatch);
       if (fsBatch) await fsBatch.commit();
       for (const c of calls) {
         const rootId = c.kind === "delete" ? null : pocketBaseRootCompanyId(c.args[0]);
@@ -451,7 +496,7 @@ export const runTransaction: typeof firestoreRunTransaction = (async <T>(
   updateFn: (tx: Transaction) => Promise<T>,
   options?: Parameters<typeof firestoreRunTransaction>[2]
 ): Promise<T> => {
-  if (noPocketBaseCompanies()) return firestoreRunTransaction(fs, updateFn, options);
+  if (noPocketBaseCompanies() && !isPocketBaseAppSessionActive()) return firestoreRunTransaction(fs, updateFn, options);
   const { pbReadAppDoc } = await import("@/lib/pocketbaseData/pbSync");
   const { PocketBaseRequestError } = await import("@/lib/pocketbaseData/pbClient");
   const maxAttempts = Math.max(1, Math.min(5, Number(options?.maxAttempts) || 5));
@@ -461,6 +506,7 @@ export const runTransaction: typeof firestoreRunTransaction = (async <T>(
     const expects: PbExpect[] = [];
     const seen = new Set<string>();
     const ops: PbBatchOp[] = [];
+    const udocOps: UdocWrite[] = [];
     const pbRef = (ref: unknown): LedgerDocPath => {
       const pb = pocketBaseLedgerPath(ref);
       if (!pb) {
@@ -476,6 +522,11 @@ export const runTransaction: typeof firestoreRunTransaction = (async <T>(
     };
     const tx = {
       async get(ref: unknown) {
+        const up = udocDocPath(ref);
+        if (up) {
+          if (companyId) throw new Error(MIXED_TX_MESSAGE);
+          return pbSnapshot(ref, await udocReadDoc(up));
+        }
         const pb = pbRef(ref);
         const r = await pbReadAppDoc(pb.fsCompanyId, pb.collectionName, pb.docId);
         const key = `${pb.collectionName}/${pb.docId}`;
@@ -486,14 +537,29 @@ export const runTransaction: typeof firestoreRunTransaction = (async <T>(
         return pbSnapshot(ref, r);
       },
       set(...a: unknown[]) {
+        const up = udocDocPath(a[0]);
+        if (up) {
+          udocOps.push(udocWriteOf("set", up, a));
+          return tx;
+        }
         if (!isPocketBaseChangeLogRef(a[0])) ops.push(callToPbOp("set", pbRef(a[0]), a));
         return tx;
       },
       update(...a: unknown[]) {
+        const up = udocDocPath(a[0]);
+        if (up) {
+          udocOps.push(udocWriteOf("update", up, a));
+          return tx;
+        }
         ops.push(callToPbOp("update", pbRef(a[0]), a));
         return tx;
       },
       delete(ref: unknown) {
+        const up = udocDocPath(ref);
+        if (up) {
+          udocOps.push(udocWriteOf("delete", up, [ref]));
+          return tx;
+        }
         if (!isPocketBaseChangeLogRef(ref)) ops.push(callToPbOp("delete", pbRef(ref), [ref]));
         return tx;
       },
@@ -504,6 +570,11 @@ export const runTransaction: typeof firestoreRunTransaction = (async <T>(
     } catch (e) {
       if (fallback && !companyId) return runGuardedFirestoreTransaction(fs, updateFn, options);
       throw e;
+    }
+    if (udocOps.length) {
+      if (companyId || ops.length) throw new Error(MIXED_TX_MESSAGE);
+      await udocCommit(udocOps);
+      return result;
     }
     if (fallback && !companyId) return runGuardedFirestoreTransaction(fs, updateFn, options);
     if (!companyId || !ops.length) return result;
@@ -525,6 +596,8 @@ export const runTransaction: typeof firestoreRunTransaction = (async <T>(
  * SQLite mirror when the server is not reachable. Everything else: Firestore.
  */
 export const getDoc: typeof firestoreGetDoc = (async (...args: unknown[]) => {
+  const up = udocDocPath(args[0]);
+  if (up) return pbSnapshot(args[0], await udocReadDoc(up));
   const pb = pocketBaseLedgerPath(args[0]);
   if (!pb) return (firestoreGetDoc as (...inner: unknown[]) => Promise<unknown>)(...args);
   let r: PbDocRead;

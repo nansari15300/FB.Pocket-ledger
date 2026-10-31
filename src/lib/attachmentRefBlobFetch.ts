@@ -19,6 +19,8 @@ export function isOfflineCacheableAttachmentRef(raw: string): boolean {
   if (/^https?:\/\//i.test(u)) return true;
   if (looksLikeFirebaseStorageObjectPath(u)) return true;
   if (isLocalFileRef(u) || isDriveFileRef(u)) return true;
+  // Pocket Ledger Server file (`pbatt:<recordId>/<name>`): kept on this device (IndexedDB / native disk).
+  if (u.startsWith("pbatt:")) return true;
   return false;
 }
 

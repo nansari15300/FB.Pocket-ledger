@@ -4,7 +4,7 @@ import { numToWords } from "@/lib/number-to-words";
 import { useCompany } from "@/hooks/useCompany";
 import { useDate } from "@/hooks/useDate";
 import { firestore } from "@/lib/firebase";
-import { doc, Timestamp } from "firebase/firestore";
+import { doc, Timestamp } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { useParams } from "next/navigation";
 import { useEffect, useState, useRef, useCallback } from "react";

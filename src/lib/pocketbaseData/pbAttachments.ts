@@ -54,7 +54,7 @@ function categoryForCollection(coll: string): string {
 }
 
 // ---- small in-memory blob cache (keeps previews instant after upload / first view) ----
-const MAX_CACHED = 24;
+const MAX_CACHED = 12;
 const blobCache = new Map<string, { blob: Blob; url: string | null }>();
 let fileToken: { token: string; atMs: number; url: string } | null = null;
 /** Signed-in server user the cache belongs to (cleared when the user / server changes). */
@@ -119,6 +119,62 @@ async function getFileToken(): Promise<string> {
 
 const inflight = new Map<string, Promise<Blob | null>>();
 
+async function fetchPbAttachmentBytesFromServer(p: { recordId: string; fileName: string }): Promise<Blob | null> {
+  const token = await getFileToken();
+  return pbFileBlob(
+    `/api/files/pl_attachments/${encodeURIComponent(p.recordId)}/${encodeURIComponent(p.fileName)}?token=${encodeURIComponent(token)}`
+  );
+}
+
+async function readPbAttachmentFromDevice(ref: string): Promise<Blob | null> {
+  try {
+    const { tryOfflineCachedAttachmentBlobMultiKey } = await import("@/lib/offlineAttachmentUrlCache");
+    const b = await tryOfflineCachedAttachmentBlobMultiKey(ref);
+    return b && b.size > 0 ? b : null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveToDevice(ref: string, blob: Blob): Promise<boolean> {
+  try {
+    const { seedOfflineAttachmentCacheFromBlob } = await import("@/lib/offlineAttachmentUrlCache");
+    return await seedOfflineAttachmentCacheFromBlob(ref, blob);
+  } catch {
+    return false;
+  }
+}
+
+export type PbDeviceDownloadResult = "cached" | "downloaded" | "missing" | "failed";
+
+/**
+ * Bulk file pull helper: make sure one server file is stored on this device (IndexedDB / native disk).
+ * Does NOT keep the bytes in the in-memory preview cache, so a 1000-file pull never grows RAM.
+ * "missing" = the server says the file / record does not exist (404): it will never download.
+ */
+export async function downloadPbAttachmentToDevice(ref: string, signal?: AbortSignal): Promise<PbDeviceDownloadResult> {
+  const p = parsePbAttachmentRef(ref);
+  if (!p) return "missing";
+  try {
+    const { isOfflineCachedAttachmentOnDevice } = await import("@/lib/offlineAttachmentUrlCache");
+    if (await isOfflineCachedAttachmentOnDevice(ref)) return "cached";
+  } catch {
+    /* fall through to download */
+  }
+  if (signal?.aborted || !getValidPocketBaseAuth()) return "failed";
+  syncCacheOwner();
+  try {
+    const blob = await fetchPbAttachmentBytesFromServer(p);
+    if (signal?.aborted) return "failed";
+    if (!blob || blob.size <= 0) return "failed";
+    return (await saveToDevice(ref, blob)) ? "downloaded" : "failed";
+  } catch (e) {
+    const status = Number((e as { status?: unknown })?.status);
+    if (status === 404) return "missing";
+    return "failed";
+  }
+}
+
 /** Attachment bytes from the server (cached). Null when missing / not allowed / offline. */
 export async function fetchPbAttachmentBlob(ref: string): Promise<Blob | null> {
   const p = parsePbAttachmentRef(ref);
@@ -130,12 +186,19 @@ export async function fetchPbAttachmentBlob(ref: string): Promise<Blob | null> {
   if (running) return running;
   const job = (async () => {
     try {
+      // 1) this device (IndexedDB / native disk): filled by the background file pull and earlier views
+      const onDisk = await readPbAttachmentFromDevice(ref);
+      if (onDisk) {
+        cachePut(ref, onDisk);
+        return onDisk;
+      }
       if (!getValidPocketBaseAuth()) return null;
-      const token = await getFileToken();
-      const blob = await pbFileBlob(
-        `/api/files/pl_attachments/${encodeURIComponent(p.recordId)}/${encodeURIComponent(p.fileName)}?token=${encodeURIComponent(token)}`
-      );
-      if (blob && blob.size > 0) cachePut(ref, blob);
+      // 2) server, then keep a copy on this device so the next open (and offline) needs no network
+      const blob = await fetchPbAttachmentBytesFromServer(p);
+      if (blob && blob.size > 0) {
+        cachePut(ref, blob);
+        void saveToDevice(ref, blob);
+      }
       return blob && blob.size > 0 ? blob : null;
     } catch {
       return null;

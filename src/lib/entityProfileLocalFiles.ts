@@ -4,7 +4,7 @@
  * Party / Bank / Staff / Item: offline/local = IndexedDB + `local:uuid` + `syncPendingFiles`.
  * Online `uploadEntityAvatarAndDocumentsRemote` — turant Storage URL Firestore me (dusre device par turant kaam).
  */
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
 import { storage } from "@/lib/firebase";
 import { isOfflineCompanyStorage } from "@/lib/companyUnlockGate";
 import { companyRowUsesSqliteLedgerWrites, isServerGateCompany } from "@/lib/companyStorageKind";

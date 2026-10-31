@@ -12,6 +12,7 @@
  * Pocket Ledger Server (`src/lib/pocketbaseData/*`, URL = `pocketbaseUrl` below).
  * A server that is not implemented falls back to Firebase with a logged warning.
  */
+import { getCountryAppRecord, LIVE_COUNTRY_CODES, resolveAppCountry, type CountryAppRecord } from "@/lib/countryAppHosts";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
 
@@ -161,6 +162,89 @@ export function applyLocalDevPocketBaseGuard(settings: OnlineDataServerSettings)
   return { ...settings, pocketbaseUrl: fallback };
 }
 
+/** True for localhost / 127.x / 0.0.0.0 / ::1 addresses (a server "on this very device"). */
+function isLoopbackServerUrl(url: string): boolean {
+  try {
+    const u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : `http://${url}`);
+    const h = u.hostname.trim().toLowerCase().replace(/^\[|\]$/g, "");
+    return h === "localhost" || h.endsWith(".localhost") || h === "0.0.0.0" || h === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Production only: is `url` an address somebody really chose? Empty, the build default / this-PC
+ * placeholder (127.0.0.1:8090) and any other loopback address count as "not set". A non-loopback
+ * address (https://np.pocket-ledger.com, a LAN host the page itself runs on, ...) is explicit.
+ */
+export function isExplicitPocketBaseUrl(url: unknown): boolean {
+  const s = typeof url === "string" ? url.trim().replace(/\/+$/, "") : "";
+  if (!s) return false;
+  if (s === DEFAULT_POCKETBASE_SERVER_URL.replace(/\/+$/, "")) return false;
+  return !isLoopbackServerUrl(s);
+}
+
+/** `https://{cc}.pocket-ledger.com` for a country record. */
+export function countryPocketBaseUrl(rec: CountryAppRecord): string {
+  return `https://${rec.host}`;
+}
+
+export type PocketBaseServerResolution = {
+  /** The PocketBase address the app (and the login) really uses. */
+  url: string;
+  /** dev = local dev runtime (unchanged), admin = explicitly saved URL, country = country-derived live host. */
+  source: "dev" | "admin" | "country";
+  /** Country the user picked / the host belongs to (null when none known yet). */
+  chosenCountry: CountryAppRecord | null;
+  /** Country whose server is in use (chosen one if live, else the live fallback = Nepal). */
+  serverCountry: CountryAppRecord | null;
+  /** False when the chosen country has no live server yet (fell back to the live one). */
+  chosenCountryLive: boolean;
+};
+
+/**
+ * Which PocketBase server to talk to.
+ *  1. Local dev (`isLocalDevRuntime()`, SSR): the saved/default URL exactly as before (127.0.0.1:8090).
+ *  2. Production (EXE, APK, static/packed builds, hosted web on a non-local host):
+ *     a) an explicitly saved `pocketbaseUrl` (admin settings / typed server address, not loopback/placeholder)
+ *     b) the chosen country's live host `https://{cc}.pocket-ledger.com`
+ *     c) chosen country not live / unknown -> the live country (np).
+ * Never writes anything back (the cache keeps only what was explicitly saved).
+ */
+export function resolvePocketBaseServer(settings?: OnlineDataServerSettings | null): PocketBaseServerResolution {
+  const s = settings ?? readCachedOnlineDataServerSettings();
+  let chosen: CountryAppRecord | null = null;
+  try {
+    chosen = resolveAppCountry();
+  } catch {
+    chosen = null;
+  }
+  const liveFallback = getCountryAppRecord(LIVE_COUNTRY_CODES[0] || "np");
+  const serverCountry = chosen && chosen.live ? chosen : liveFallback;
+  const chosenCountryLive = !chosen || chosen.live;
+  if (typeof window === "undefined" || isLocalDevRuntime()) {
+    return { url: s.pocketbaseUrl, source: "dev", chosenCountry: chosen, serverCountry, chosenCountryLive };
+  }
+  if (isExplicitPocketBaseUrl(s.pocketbaseUrl)) {
+    return { url: s.pocketbaseUrl.trim(), source: "admin", chosenCountry: chosen, serverCountry, chosenCountryLive };
+  }
+  if (serverCountry) {
+    return { url: countryPocketBaseUrl(serverCountry), source: "country", chosenCountry: chosen, serverCountry, chosenCountryLive };
+  }
+  return { url: s.pocketbaseUrl, source: "dev", chosenCountry: chosen, serverCountry, chosenCountryLive };
+}
+
+/** Admin settings input value: production shows the saved URL only when it is explicit (else empty + country placeholder). */
+export function pocketBaseUrlDraftValue(url: string): string {
+  return isLocalDevRuntime() || isExplicitPocketBaseUrl(url) ? url : "";
+}
+
+/** Resolved PocketBase server address (see `resolvePocketBaseServer`). */
+export function resolvePocketBaseServerUrl(settings?: OnlineDataServerSettings | null): string {
+  return resolvePocketBaseServer(settings).url;
+}
+
 export function readCachedOnlineDataServerSettings(): OnlineDataServerSettings {
   if (typeof window === "undefined") return { ...DEFAULT_ONLINE_DATA_SERVER_SETTINGS };
   try {
@@ -195,7 +279,7 @@ export async function ensureOnlineDataServerSettingsHydrated(opts?: {
       try {
         // Login type (email / Google / Pocket Ledger Server account) does not pick the backend.
         // SuperAdmin Settings (Firebase vs Pocket Ledger Server) is the only source.
-        const { doc, getDoc } = await import("firebase/firestore");
+        const { doc, getDoc } = await import("@/lib/pbCompat/firestore");
         const { firestore } = await import("@/lib/firebase");
         const snap = await Promise.race([
           getDoc(doc(firestore, ONLINE_DATA_SERVER_SETTINGS_COLLECTION, ONLINE_DATA_SERVER_SETTINGS_ID)),

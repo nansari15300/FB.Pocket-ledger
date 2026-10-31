@@ -8,7 +8,7 @@
  * token is kept (localStorage), never the password.
  */
 
-import { DEFAULT_POCKETBASE_SERVER_URL, readCachedOnlineDataServerSettings } from "@/lib/onlineDataServer";
+import { resolvePocketBaseServerUrl } from "@/lib/onlineDataServer";
 import { isPlServerPackedApp, plServerPackedSameOrigin } from "@/lib/plServerPackedApp";
 
 const AUTH_KEY = "pl_pb_data_auth_v1";
@@ -36,7 +36,7 @@ export class PocketBaseRequestError extends Error {
 
 export function normalizePocketBaseUrl(raw: unknown): string {
   const s = String(raw || "").trim().replace(/\/+$/, "");
-  return viaDevGatewayProxy(s || DEFAULT_POCKETBASE_SERVER_URL);
+  return viaDevGatewayProxy(s || resolvePocketBaseServerUrl());
 }
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "0.0.0.0", "[::1]", "::1"]);
@@ -61,13 +61,16 @@ function viaDevGatewayProxy(url: string): string {
   }
 }
 
-/** URL from `app_settings/online_data_server` (cached locally). Packed My Company = this PocketBase. */
+/**
+ * Server the app talks to (also pre-login). Resolved by `resolvePocketBaseServer`: dev = saved/default
+ * 127.0.0.1:8090; production = explicitly saved URL, else the chosen country's live host. Packed My Company = this PocketBase.
+ */
 export function getPocketBaseServerUrl(): string {
   if (isPlServerPackedApp()) {
     const origin = plServerPackedSameOrigin();
     if (origin) return origin;
   }
-  return normalizePocketBaseUrl(readCachedOnlineDataServerSettings().pocketbaseUrl);
+  return normalizePocketBaseUrl(resolvePocketBaseServerUrl());
 }
 
 function jwtExpMs(token: string): number {
@@ -222,6 +225,106 @@ export async function pocketBaseSignIn(email: string, password: string, url?: st
   return state;
 }
 
+/** Why "Login with Google" on the server did not finish. */
+export class PocketBaseGoogleLoginError extends Error {
+  code: "popup_blocked" | "not_configured" | "timeout" | "denied" | "unsupported" | "failed";
+  constructor(code: PocketBaseGoogleLoginError["code"], message: string) {
+    super(message);
+    this.name = "PocketBaseGoogleLoginError";
+    this.code = code;
+  }
+}
+
+/**
+ * "Login with Google" on the Pocket Ledger Server (PocketBase OAuth2 on `pl_users`), no Firebase.
+ * Same flow as the PocketBase JS SDK `authWithOAuth2`: popup -> Google -> `<server>/api/oauth2-redirect`
+ * -> realtime event (`@oauth2`) -> `auth-with-oauth2` exchange. Stores only the server token, so every
+ * read / write afterwards uses the server. Call it directly from the click handler (popup blockers).
+ * Server errors (pending / rejected account) are thrown as PocketBaseRequestError (see pocketBaseApprovalState).
+ */
+export async function pocketBaseGoogleSignIn(url?: string): Promise<PocketBaseAuthState> {
+  if (typeof window === "undefined" || typeof EventSource === "undefined") {
+    throw new PocketBaseGoogleLoginError("unsupported", "Google sign-in is not available here");
+  }
+  const base = normalizePocketBaseUrl(url || getPocketBaseServerUrl());
+  // open the popup first, inside the click gesture
+  const popup = window.open("about:blank", "pl_pb_google_login", "width=520,height=720");
+  if (!popup) throw new PocketBaseGoogleLoginError("popup_blocked", "Allow pop-ups for this app, then try again");
+  let es: EventSource | null = null;
+  const cleanup = () => {
+    try {
+      es?.close();
+    } catch {
+      /* ignore */
+    }
+    try {
+      popup.close();
+    } catch {
+      /* ignore */
+    }
+  };
+  try {
+    const methods = (await rawRequest(base, "/api/collections/pl_users/auth-methods")) as {
+      oauth2?: { enabled?: boolean; providers?: { name?: string; authURL?: string; codeVerifier?: string }[] };
+    };
+    const provider = (methods?.oauth2?.providers || []).find((p) => p?.name === "google");
+    if (!methods?.oauth2?.enabled || !provider?.authURL) {
+      throw new PocketBaseGoogleLoginError(
+        "not_configured",
+        "Google sign-in is not set up on this server yet (PocketBase admin > pl_users > OAuth2 > Google)"
+      );
+    }
+    const stream = new EventSource(base + "/api/realtime");
+    es = stream;
+    const clientId = await new Promise<string>((resolve, reject) => {
+      const t = setTimeout(() => reject(new PocketBaseGoogleLoginError("failed", "Server realtime did not answer")), 15_000);
+      stream.addEventListener("PB_CONNECT", (ev) => {
+        clearTimeout(t);
+        resolve((ev as MessageEvent).lastEventId);
+      });
+      stream.onerror = () => {
+        clearTimeout(t);
+        reject(new PocketBaseGoogleLoginError("failed", "Pocket Ledger Server: not reachable"));
+      };
+    });
+    const waiting = new Promise<{ state?: string; code?: string; error?: string }>((resolve, reject) => {
+      const t = setTimeout(() => reject(new PocketBaseGoogleLoginError("timeout", "Google sign-in timed out")), 240_000);
+      stream.addEventListener("@oauth2", (ev) => {
+        clearTimeout(t);
+        try {
+          resolve(JSON.parse((ev as MessageEvent).data || "{}"));
+        } catch {
+          resolve({});
+        }
+      });
+    });
+    waiting.catch(() => undefined);
+    await rawRequest(base, "/api/realtime", { method: "POST", body: { clientId, subscriptions: ["@oauth2"] } });
+    const redirectURL = base + "/api/oauth2-redirect";
+    const authUrl = new URL(provider.authURL + encodeURIComponent(redirectURL));
+    authUrl.searchParams.set("state", clientId);
+    popup.location.href = authUrl.toString();
+    const got = await waiting;
+    if (got.error || !got.code) throw new PocketBaseGoogleLoginError("denied", "Google sign-in was cancelled");
+    if (got.state !== clientId) throw new PocketBaseGoogleLoginError("failed", "Google sign-in state mismatch");
+    const res = (await rawRequest(base, "/api/collections/pl_users/auth-with-oauth2", {
+      method: "POST",
+      body: { provider: "google", code: got.code, codeVerifier: provider.codeVerifier || "", redirectURL },
+    })) as { token?: string; record?: { id?: string; email?: string } };
+    if (!res?.token || !res.record?.id) throw new PocketBaseRequestError("Pocket Ledger Server: sign-in failed", 400);
+    const state: PocketBaseAuthState = {
+      url: base,
+      token: res.token,
+      userId: res.record.id,
+      email: String(res.record.email || "").toLowerCase(),
+      expMs: jwtExpMs(res.token),
+    };
+    writePocketBaseAuth(state, true);
+    return state;
+  } finally {
+    cleanup();
+  }
+}
 /** Self-registration (Pocket Ledger Server login). The server's "New account approval"
  *  setting decides the result: "approved" (Auto, can sign in right away) or "pending"
  *  (Manual, cannot sign in until a main admin approves it in the server panel).
@@ -393,7 +496,15 @@ export type PbListResult<T> = { page: number; perPage: number; totalItems: numbe
 export async function pbListAll<T = Record<string, unknown>>(
   collection: string,
   filter: string,
-  opts?: { sort?: string; fields?: string; maxPages?: number }
+  opts?: {
+    sort?: string;
+    fields?: string;
+    maxPages?: number;
+    /** Called after each page (500 rows) so the caller can write it out right away. */
+    onPage?: (items: T[], page: number) => void | Promise<void>;
+    /** With `onPage`: do not keep rows in the returned array (bounded memory on big pulls). */
+    discard?: boolean;
+  }
 ): Promise<T[]> {
   const out: T[] = [];
   const maxPages = opts?.maxPages ?? 200;
@@ -408,7 +519,8 @@ export async function pbListAll<T = Record<string, unknown>>(
     if (opts?.fields) q.set("fields", opts.fields);
     const res = (await pbRequest(`/api/collections/${collection}/records?${q.toString()}`)) as PbListResult<T>;
     const items = Array.isArray(res?.items) ? res.items : [];
-    out.push(...items);
+    if (!(opts?.onPage && opts.discard)) out.push(...items);
+    if (opts?.onPage) await opts.onPage(items, page);
     if (items.length < 500) break;
   }
   return out;

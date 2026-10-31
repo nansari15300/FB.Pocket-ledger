@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { signInWithEmailAndPassword, type User } from "firebase/auth";
 import { Loader2, Mail, Trash2, UserPlus, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
-import { signInWithGoogleForApp } from "@/lib/googleFirebaseSignIn";
+import { pocketBaseGoogleSignIn, pocketBaseSignIn, pocketBaseSignOut } from "@/lib/pocketbaseData/pbClient";
+import { pocketBaseSessionUid, readPocketBaseAppProfile, startPocketBaseAppSession } from "@/lib/pocketbaseData/pbAppSession";
 import { resolvePostAuthCompanyRoute } from "@/lib/postAuthCompanyRoute";
 import { isFeatureEnabled } from "@/config/plans";
 import { useLivePlans, getPlanFromPlans } from "@/hooks/useLivePlans";
@@ -41,12 +41,22 @@ export function SavedAccountsLoginPanel({ onBack }: Props) {
     [rows, livePlans]
   );
 
-  const navigateAfterAuth = useCallback(
-    (firebaseUid: string | undefined, userEmail?: string | null) => {
-      router.replace(resolvePostAuthCompanyRoute(firebaseUid, userEmail));
-    },
-    [router]
-  );
+  /** After a Pocket Ledger Server sign-in: open the session and load the app fresh (server data only). */
+  const finishServerLogin = useCallback(async () => {
+    try {
+      await auth.signOut();
+    } catch {
+      /* no Firebase session */
+    }
+    try {
+      await startPocketBaseAppSession();
+    } catch (e) {
+      pocketBaseSignOut();
+      throw e;
+    }
+    const p = readPocketBaseAppProfile();
+    window.location.assign(resolvePostAuthCompanyRoute(p ? pocketBaseSessionUid(p) : undefined, p?.email ?? undefined));
+  }, []);
 
   const switchTo = async (record: SavedLoginAccountRecord) => {
     setBusyUid(record.uid);
@@ -61,14 +71,12 @@ export function SavedAccountsLoginPanel({ onBack }: Props) {
           });
           return;
         }
-        await signInWithEmailAndPassword(auth, record.email, password);
-        navigateAfterAuth(auth.currentUser?.uid, auth.currentUser?.email);
+        await pocketBaseSignIn(record.email, password);
+        await finishServerLogin();
         return;
       }
-      const result = await signInWithGoogleForApp({ loginHint: record.email });
-      if (result?.user) {
-        navigateAfterAuth(result.user.uid, result.user.email);
-      }
+      await pocketBaseGoogleSignIn();
+      await finishServerLogin();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Sign-in failed.";
       toast({ variant: "destructive", title: "Could not switch account", description: msg });
@@ -80,10 +88,8 @@ export function SavedAccountsLoginPanel({ onBack }: Props) {
   const signInWithAnotherGoogleAccount = async () => {
     setBusyOther(true);
     try {
-      const result = await signInWithGoogleForApp({ forceAccountPicker: true });
-      if (result?.user) {
-        navigateAfterAuth(result.user.uid, result.user.email);
-      }
+      await pocketBaseGoogleSignIn();
+      await finishServerLogin();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Sign-in failed.";
       toast({ variant: "destructive", title: "Google sign-in failed", description: msg });

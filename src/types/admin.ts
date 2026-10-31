@@ -1,7 +1,7 @@
 /**
  * Shared admin types - used when (admin) app is excluded from static build.
  */
-import type { Timestamp } from "firebase/firestore";
+import type { Timestamp } from "@/lib/pbCompat/firestore";
 import type { PlanId } from "@/config/plans";
 import type { Role } from "@/utils/rbac";
 

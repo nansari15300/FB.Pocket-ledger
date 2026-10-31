@@ -53,7 +53,7 @@ import type { Party, Group } from "@/components/party/types";
 import { useResponsiveListLayout } from "@/hooks/useResponsiveListLayout";
 import { ResponsiveMasterDetail } from "@/components/layout/ResponsiveMasterDetail";
 import { LoadingSpinner } from "@/components/layout/LoadingSpinner";
-import { collection, doc, query, where } from "firebase/firestore";
+import { collection, doc, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { applyPaymentBillWiseLinkAllocations } from "@/lib/voucherActionsClient";
@@ -1564,7 +1564,7 @@ function PartyPageContent() {
                   ? "Search parties..."
                   : activeView === "ic_ac"
                     ? "Search companies..."
-                    : packedMyCompanyMode && activeView === "agents"
+                    : packedMyCompanyMode && (activeView as PartyListTab) === "agents"
                       ? "Search agents..."
                       : "Search groups/party"
           }

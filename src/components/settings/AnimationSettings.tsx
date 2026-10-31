@@ -1,6 +1,7 @@
 
 "use client";
 
+import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/useAuth";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Loader2, CaseSensitive, Rows, RefreshCw } from "lucide-react";

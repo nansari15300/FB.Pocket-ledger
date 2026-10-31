@@ -1,7 +1,7 @@
 /**
  * Inter-company A/c No — prefix + 14 digit (15 total); company legacy 15-digit bhi valid.
  */
-import { collection, collectionGroup, limit, query, where } from "firebase/firestore";
+import { collection, collectionGroup, limit, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import type { InterCompanyEntityKind } from "@/components/inter-company/InterCompanyEntitySide";
 import { firestore } from "@/lib/firebase";

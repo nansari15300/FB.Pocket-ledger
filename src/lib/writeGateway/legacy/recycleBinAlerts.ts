@@ -1,16 +1,8 @@
 "use client";
+import { addDoc, deleteDoc, writeBatch } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { STAFF_ENTITY_LABEL } from "@/lib/staffEntityDisplayName";
 
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  query,
-  serverTimestamp,
-  where,
-  writeBatch,
-} from "firebase/firestore";
+import { collection, doc, query, serverTimestamp, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import type { Company } from "@/hooks/useCompany";

@@ -8,6 +8,7 @@ import { shouldUseAttachmentLazyLoad } from "@/lib/webAttachmentLazyLoadPolicy";
 import { isLocalFileRef } from "@/lib/localPendingFiles";
 import { isDriveFileRef } from "@/lib/legacyDriveFileRef";
 import { looksLikeFirebaseStorageDownloadUrl } from "@/lib/storageGetBlobFromDownloadUrl";
+import { isPocketBaseCompany } from "@/lib/pocketbaseData/pbCompanyRegistry";
 
 const EXPLICIT_GRANT_MS = 8 * 60 * 1000;
 
@@ -104,6 +105,8 @@ export function isRemoteAttachmentNetworkFetchAllowed(
   if (isLocalFileRef(trimmed) || isDriveFileRef(trimmed)) return true;
 
   const cid = normCompanyId(opts?.companyId);
+  // PocketBase company: no Files tick, no visible-page or older-FY click rule.
+  if (cid && isPocketBaseCompany(cid, opts?.company)) return true;
   if (cid && !isOnlineCompanyAttachmentFilesTickEnabled(cid)) {
     return false;
   }

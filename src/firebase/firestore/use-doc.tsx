@@ -7,7 +7,7 @@ import {
   DocumentData,
   FirestoreError,
   DocumentSnapshot,
-} from 'firebase/firestore';
+} from '@/lib/pbCompat/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { isLocalOnlyMode } from '@/lib/localMode';

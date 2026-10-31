@@ -2,10 +2,8 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
-  signInWithEmailAndPassword,
-  getRedirectResult,
   signOut as firebaseSignOut,
-} from "firebase/auth";
+} from "@/lib/pbCompat/auth";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useLayoutEffect, useCallback } from "react";
@@ -32,7 +30,6 @@ import {
   readRememberedEmail,
 } from "@/lib/loginRememberEmail";
 import { resolvePostAuthCompanyRoute } from "@/lib/postAuthCompanyRoute";
-import { signInWithGoogleForApp } from "@/lib/googleFirebaseSignIn";
 import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
 import { stashSessionPasswordForSavedAccount } from "@/lib/savedLoginSessionPassword";
 import { ServerLoginInfoButton } from "@/components/auth/ServerLoginInfoButton";
@@ -42,6 +39,8 @@ import {
   pocketBaseErrorCode,
   pocketBaseResendSignUpOtp,
   pocketBaseSignIn,
+  pocketBaseGoogleSignIn,
+  PocketBaseGoogleLoginError,
   pocketBaseSignOut,
   pocketBaseSignUp,
   pocketBaseVerifySignUpOtp,
@@ -62,11 +61,11 @@ import {
 } from "@/lib/pocketbaseData/pbAppSession";
 import {
   readCachedOnlineDataServerSettings,
+  resolvePocketBaseServer,
   writeCachedOnlineDataServerSettings,
 } from "@/lib/onlineDataServer";
 
 // One-time handling of redirect result (survives Strict Mode double-mount so we don't consume result twice)
-let redirectResultHandledThisLoad = false;
 
 const formSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email." }),
@@ -82,12 +81,8 @@ const SERVER_SIGN_IN_TIMEOUT_MS = 12_000;
 const SERVER_ONLY_LOGIN_KEY = "pl_login_server_only_v1";
 
 function readServerOnlyLoginEnabled(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    return localStorage.getItem(SERVER_ONLY_LOGIN_KEY) === "1";
-  } catch {
-    return false;
-  }
+  // Pocket Ledger Server is the only login now (no Firebase sign-in).
+  return true;
 }
 
 /** Server sign-in error -> the same codes the toast already explains. */
@@ -170,9 +165,26 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
   const [isSignUp, setIsSignUp] = useState(false);
   const [rememberEmail, setRememberEmail] = useState(() => readRememberEmailEnabled());
   /** Server-only login: no Firebase sign-in, Firestore stays off for the whole session. */
-  const [serverOnlyLogin, setServerOnlyLogin] = useState(() => readServerOnlyLoginEnabled());
+  const [serverOnlyLogin] = useState(() => readServerOnlyLoginEnabled());
   const [showServerAddress, setShowServerAddress] = useState(false);
   const [serverAddress, setServerAddress] = useState("");
+  /** Which country server the sign-in really calls (same resolver as `getPocketBaseServerUrl`). Set after mount (no SSR mismatch). */
+  const [serverInfo, setServerInfo] = useState<{ name: string; url: string; notLiveName: string } | null>(null);
+  const refreshServerInfo = useCallback(() => {
+    try {
+      const r = resolvePocketBaseServer();
+      setServerInfo({
+        name: r.serverCountry?.name ?? "Nepal",
+        url: getPocketBaseServerUrl(),
+        notLiveName: r.chosenCountryLive ? "" : r.chosenCountry?.name ?? "",
+      });
+    } catch {
+      setServerInfo(null);
+    }
+  }, []);
+  useEffect(() => {
+    refreshServerInfo();
+  }, [refreshServerInfo]);
   /** "Login as recovery mode?" (desktop app, super admin email only; never remembered). */
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [otpStep, setOtpStep] = useState<OtpStep | null>(null);
@@ -290,33 +302,6 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
     }
   }
 
-  // Handle return from Google sign-in redirect — run once per load so result isn't consumed twice (e.g. Strict Mode)
-  useEffect(() => {
-    if (redirectResultHandledThisLoad) return;
-    redirectResultHandledThisLoad = true;
-    getRedirectResult(auth)
-      .then((result) => {
-        if (result?.user) {
-          // Redirect-flow login should also honor remembered company unlock on static/local builds.
-          navigateAfterAuth(result.user.uid, result.user.email, true);
-        }
-      })
-      .catch((error: any) => {
-        redirectResultHandledThisLoad = false; // allow retry on next mount
-        let description = "Could not complete Google sign-in. Please try again.";
-        if (error.code === "auth/operation-not-allowed") {
-          description = "Google Sign-In is not enabled for this project. Enable it in Firebase Console > Authentication > Sign-in method.";
-        } else if (error.code === "auth/popup-blocked") {
-          description = "Sign-in was blocked. Use the redirect flow (you were redirected back here).";
-        }
-        toast({
-          variant: "destructive",
-          title: "Google Sign-In Failed",
-          description,
-        });
-      });
-  }, [navigateAfterAuth, toast]);
-
   useLayoutEffect(() => {
     const enabled = readRememberEmailEnabled();
     setRememberEmail(enabled);
@@ -362,10 +347,14 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
       });
       return false;
     }
-    const cur = readCachedOnlineDataServerSettings();
-    if (cur.pocketbaseUrl !== clean) {
-      writeCachedOnlineDataServerSettings({ ...cur, pocketbaseUrl: clean });
+    // Unchanged from the address in use (e.g. the country server) -> keep nothing saved, so a later country change still applies.
+    if (clean !== getPocketBaseServerUrl()) {
+      const cur = readCachedOnlineDataServerSettings();
+      if (cur.pocketbaseUrl !== clean) {
+        writeCachedOnlineDataServerSettings({ ...cur, pocketbaseUrl: clean });
+      }
     }
+    refreshServerInfo();
     return true;
   }
 
@@ -430,11 +419,8 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
         // Recovery mode (desktop app, super admin only): opens only the /recovery page.
         // Pocket Ledger Server sign-in is checked by the server (main admin); the older account
         // sign-in counts for the super admin email when the server is not reachable.
-        const [serverRes, olderRes] = await Promise.allSettled([
+        const [serverRes] = await Promise.allSettled([
           withTimeout(pocketBaseSignIn(values.email, values.password), SERVER_SIGN_IN_TIMEOUT_MS),
-          serverOnlyLogin
-            ? Promise.reject(Object.assign(new Error("skipped"), { code: "skipped" }))
-            : signInWithEmailAndPassword(auth, values.email, values.password),
         ]);
         let serverVerified = false;
         if (serverRes.status === "fulfilled") {
@@ -442,15 +428,7 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
           serverVerified = chk.ok;
           if (!chk.ok) pocketBaseSignOut();
         }
-        const olderOk = olderRes.status === "fulfilled" && isSuperAdminEmail(olderRes.value.user.email);
-        if (!serverVerified && !olderOk) {
-          if (olderRes.status === "fulfilled") {
-            try {
-              await firebaseSignOut(auth);
-            } catch {
-              /* ignore */
-            }
-          }
+        if (!serverVerified) {
           throw Object.assign(new Error("RECOVERY_NOT_ALLOWED"), {
             code:
               serverRes.status === "fulfilled"
@@ -469,7 +447,7 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
         form.setValue("password", "");
         window.location.assign(RECOVERY_ROUTE);
         return;
-      } else if (serverOnlyLogin) {
+      } else {
         // Pocket Ledger Server login only: no Firebase sign-in, so this session never uses Firestore
         // (only Pocket Ledger Server companies plus local ones are listed).
         try {
@@ -499,51 +477,6 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
           });
         }
         serverOnly = true;
-      } else {
-        // Both logins at once: Pocket Ledger Server (pl_users) and the older account.
-        const [serverRes, olderRes] = await Promise.allSettled([
-          withTimeout(pocketBaseSignIn(values.email, values.password), SERVER_SIGN_IN_TIMEOUT_MS),
-          signInWithEmailAndPassword(auth, values.email, values.password),
-        ]);
-        if (olderRes.status === "rejected" && serverRes.status !== "fulfilled") {
-          const olderCode = String((olderRes.reason as { code?: unknown })?.code || "");
-          const serverStatus =
-            serverRes.reason instanceof PocketBaseRequestError ? serverRes.reason.status : 0;
-          const approval = pocketBaseApprovalState(serverRes.reason);
-          throw Object.assign(new Error("SIGN_IN_FAILED"), {
-            code:
-              approval === "pending"
-                ? "pl-account-pending"
-                : approval === "rejected"
-                ? "pl-account-rejected"
-                : approval === "otp"
-                ? "pl-account-otp"
-                : serverStatus === 403
-                ? "pl-account-disabled"
-                : olderCode === "auth/invalid-credential" || serverStatus === 400
-                ? "auth/invalid-credential"
-                : olderCode || "sign-in-failed",
-          });
-        }
-        if (olderRes.status === "fulfilled") {
-          // Firebase sign-in worked: the Firebase session wins. Keep the server token (pl_pb_data_auth_v1)
-          // so Pocket Ledger Server companies still sync, but do NOT set the server-only marker
-          // (pl_app_session_kind_v1) - and drop a stale one - so Firestore stays on and Firebase
-          // companies stay visible after a reload. (firebase.ts reloads once if a stale marker was blocking Firestore.)
-          clearPocketBaseAppSession();
-        } else if (serverRes.status === "fulfilled") {
-          // Only the server login worked: server-only session (same as the checkbox path).
-          try {
-            await startPocketBaseAppSession();
-          } catch (e) {
-            pocketBaseSignOut();
-            throw Object.assign(new Error(e instanceof Error ? e.message : "SIGN_IN_FAILED"), {
-              code: "pl-server-profile",
-            });
-          }
-        }
-        if (olderRes.status === "rejected") serverOnly = true;
-        // Books show/save from Settings (Firebase vs Pocket Ledger Server), not from email vs Google.
       }
 
       // Logout save-account: isi session ka password memory me (plain storage nahi).
@@ -626,65 +559,64 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
   async function handleGoogleSignIn() {
     setIsGoogleLoading(true);
     try {
-      const result = await signInWithGoogleForApp();
-      if (result?.user) {
-        navigateAfterAuth(result.user.uid, result.user.email, true);
+      // Login with Google on the Pocket Ledger Server (PocketBase OAuth2): no Firebase sign-in,
+      // every read / write after this uses the server only.
+      await pocketBaseGoogleSignIn();
+      try {
+        await withTimeout(auth.authStateReady(), 4000);
+      } catch {
+        /* ignore */
       }
-      // Redirect flow (EXE fallback): page Google par navigate — `getRedirectResult` login par complete karega.
-    } catch (error: any) {
-      // Keep native plugin failure details visible (status code 10/7/12501 etc.) so APK issues become diagnosable on-device.
-      const rawCode = String(error?.code ?? error?.errorCode ?? "");
-      const rawMessage = String(error?.message ?? "");
-      const statusCodeMatch = rawMessage.match(/\b(10|7|12500|12501|12502)\b/);
-      const nativeStatusCode = rawCode || statusCodeMatch?.[1] || "";
-      let description = "Could not start Google sign-in. Please try again.";
-      if (error.code === "auth/operation-not-allowed") {
-        description = "Google Sign-In is not enabled for this project. Enable it in Firebase Console > Authentication > Sign-in method.";
-      } else if (error.code === "auth/popup-blocked") {
-        description = "Popup was blocked. Please allow popups for this site or try again.";
-      } else if (
-        error.message?.includes("NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID") ||
-        error.message?.includes("Google Web client ID missing")
-      ) {
-        // NEXT_PUBLIC_* bakes in at `next build` / build:static — .env.local alone does nothing until rebuild + cap copy.
-        description =
-          "Google client ID missing. Set NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID in .env.local, run build:static + cap copy, then rebuild APK. Remote WebView APK: set the same var on your host (e.g. Vercel) and redeploy.";
-      } else if (nativeStatusCode === "10") {
-        description = "Google Sign-In config mismatch (status 10). Firebase/Google Console me is APK ke SHA-1 and SHA-256 add karke naya google-services.json download karo.";
-      } else if (nativeStatusCode === "7") {
-        description = "Network error (status 7). Internet/VPN/firewall check karke dubara try karo.";
-      } else if (nativeStatusCode === "12501") {
-        description = "Google sign-in cancel hua (status 12501). Account chooser complete karke phir try karo.";
-      } else if (nativeStatusCode === "12500" || nativeStatusCode === "12502") {
-        description = "Google sign-in setup issue (status " + nativeStatusCode + "). Google provider + OAuth client + SHA fingerprints verify karo.";
-      } else if (
-        rawMessage.includes("GOOGLE_AUTH_TIMEOUT") ||
-        rawMessage.includes("GOOGLE_AUTH_NO_TOKEN")
-      ) {
-        description =
-          "Browser sign-in time out ya cancel ho gaya. Dubara try karein aur Chrome/Edge me account choose karke tab band karein.";
-      } else if (
-        rawMessage.includes("redirect_uri_mismatch") ||
-        rawMessage.toLowerCase().includes("redirect")
-      ) {
-        description =
-          "Google OAuth redirect setup missing. Google Cloud Console me ye URI add karein: http://127.0.0.1:28741/__pl_google_auth_callback/";
+      if (auth.currentUser) {
+        try {
+          await firebaseSignOut(auth);
+        } catch {
+          /* ignore */
+        }
       }
-      if (nativeStatusCode && !description.includes("status " + nativeStatusCode)) {
-        // Append machine-readable code to help quick support/debug screenshots.
-        description += ` (status ${nativeStatusCode})`;
+      try {
+        await startPocketBaseAppSession();
+      } catch (e) {
+        pocketBaseSignOut();
+        throw Object.assign(new Error(e instanceof Error ? e.message : "SIGN_IN_FAILED"), { code: "pl-server-profile" });
       }
-      console.error("Google sign-in native error details:", error);
-      toast({
-        variant: "destructive",
-        title: "Google Sign-In Failed",
-        description,
-      });
+      const p = readPocketBaseAppProfile();
+      // Full page load: the server-login session starts clean (no Firestore).
+      window.location.assign(resolvePostAuthCompanyRoute(p ? pocketBaseSessionUid(p) : undefined, p?.email ?? undefined));
+    } catch (error: unknown) {
+      const approval = pocketBaseApprovalState(error);
+      const gCode = error instanceof PocketBaseGoogleLoginError ? error.code : "";
+      const eCode = String((error as { code?: unknown })?.code || "");
+      let description = "Could not sign in with Google. Please try again.";
+      if (approval === "pending") {
+        description = "Your account is waiting for approval by the server admin. You can sign in after it is approved.";
+      } else if (approval === "rejected") {
+        description = "This account was not approved by the server admin. Please contact the server admin.";
+      } else if (gCode === "popup_blocked") {
+        description = "The Google window was blocked. Allow pop-ups for this app and try again.";
+      } else if (gCode === "not_configured") {
+        description = "Google sign-in is not set up on this server yet. Ask the server admin to add the Google client in the PocketBase admin (pl_users > OAuth2).";
+      } else if (gCode === "denied") {
+        description = "Google sign-in was cancelled.";
+      } else if (gCode === "timeout") {
+        description = "Google sign-in took too long. Please try again.";
+      } else if (gCode === "unsupported") {
+        description = "Google sign-in is not available in this window. Use the email and password form.";
+      } else if (eCode === "pl-server-profile") {
+        description = String((error as Error).message || "Could not open your server account. Please try again.");
+      } else if (error instanceof PocketBaseRequestError) {
+        description =
+          error.status === 0
+            ? "Could not reach the server. Check the internet connection and the server address."
+            : error.status === 403
+            ? "This account cannot sign in (turned off or not allowed). Please ask the server admin."
+            : "Google sign-in failed on the server. Please try again.";
+      }
+      toast({ variant: "destructive", title: "Google Sign-In Failed", description });
     } finally {
       setIsGoogleLoading(false);
     }
   }
-
   const GoogleIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 48 48">
       <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/>
@@ -809,25 +741,6 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
           </p>
           {!isSignUp ? (
             <>
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={serverOnlyLogin}
-                  onChange={(event) => {
-                    const next = event.target.checked;
-                    setServerOnlyLogin(next);
-                    try {
-                      localStorage.setItem(SERVER_ONLY_LOGIN_KEY, next ? "1" : "0");
-                    } catch (_) {}
-                  }}
-                  className="h-4 w-4 rounded border-input"
-                />
-                Pocket Ledger Server login only
-              </label>
-              <p className="text-xs text-muted-foreground">
-                Signs in to the Pocket Ledger Server only. Where books show and save still follows Settings
-                (Firebase or Pocket Ledger Server), not email vs Google.
-              </p>
               {canRecover ? (
                 <>
                   <label className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -855,6 +768,12 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
             </p>
           ) : null}
           <div className="space-y-2">
+            {serverInfo ? (
+              <p className="text-xs text-muted-foreground" data-testid="login-server-info">
+                {serverInfo.notLiveName ? `${serverInfo.notLiveName} is not live yet. ` : ""}
+                {`You are on ${serverInfo.name} server \u00b7 ${serverInfo.url}`}
+              </p>
+            ) : null}
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <button
                 type="button"

@@ -7,7 +7,7 @@ import { Suspense, useEffect, useState, useMemo } from "react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { auth, firestore } from "@/lib/firebase";
 import { useCompany } from "@/hooks/useCompany";

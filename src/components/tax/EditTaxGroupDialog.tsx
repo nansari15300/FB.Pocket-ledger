@@ -1,10 +1,11 @@
 
 "use client";
 
+import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { NESTED_LEDGER_MASTER_EDIT_CONTENT_CN, NESTED_LEDGER_MASTER_EDIT_OVERLAY_CN } from "@/lib/nestedLedgerMasterEditPresentation";
 import { Loader2 } from "lucide-react";
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 
 import { Button } from "@/components/ui/button";
 import {

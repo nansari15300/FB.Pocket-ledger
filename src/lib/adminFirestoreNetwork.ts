@@ -4,7 +4,7 @@
  * Static / local-first build me `firebase.ts` globally `disableNetwork(firestore)` karta hai.
  * Admin Panel ko Firestore server se data chahiye — `/admin` par aate hi network on, chhodte waqt local mode me wapas off.
  */
-import { disableNetwork, enableNetwork } from "firebase/firestore";
+import { disableNetwork, enableNetwork } from "@/lib/pbCompat/firestore";
 import {
   firestore,
   firestoreNetworkDisabledByApi,

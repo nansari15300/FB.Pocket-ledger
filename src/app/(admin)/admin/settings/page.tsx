@@ -1,8 +1,9 @@
 "use client";
 
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { doc, setDoc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { adminServerSetDoc, getDocFromServer, isAdminServerDataActive } from "@/lib/pocketbaseData/pbReadSeam";
 import { Fingerprint, Loader2, Search } from "lucide-react";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
@@ -41,6 +42,8 @@ import {
   POCKETBASE_BACKEND_NOT_IMPLEMENTED_MESSAGE,
   getActiveOnlineDataServer,
   normalizeOnlineDataServerSettings,
+  pocketBaseUrlDraftValue,
+  resolvePocketBaseServerUrl,
   writeCachedOnlineDataServerSettings,
   type OnlineDataServerSettings,
 } from "@/lib/onlineDataServer";
@@ -140,11 +143,11 @@ function GlobalSettingsPage() {
       );
       const next = normalizeOnlineDataServerSettings(snap.exists() ? snap.data() : undefined);
       setOnlineServer(next);
-      setPocketbaseUrlDraft(next.pocketbaseUrl);
+      setPocketbaseUrlDraft(pocketBaseUrlDraftValue(next.pocketbaseUrl));
       writeCachedOnlineDataServerSettings(next);
     } catch {
       setOnlineServer(DEFAULT_ONLINE_DATA_SERVER_SETTINGS);
-      setPocketbaseUrlDraft(DEFAULT_ONLINE_DATA_SERVER_SETTINGS.pocketbaseUrl);
+      setPocketbaseUrlDraft(pocketBaseUrlDraftValue(DEFAULT_ONLINE_DATA_SERVER_SETTINGS.pocketbaseUrl));
       toast({ title: "Could not load online data server settings", variant: "destructive" });
     } finally {
       setOnlineServerLoading(false);
@@ -236,7 +239,7 @@ function GlobalSettingsPage() {
         });
       }
       writeCachedOnlineDataServerSettings(next);
-      setPocketbaseUrlDraft(next.pocketbaseUrl);
+      setPocketbaseUrlDraft(pocketBaseUrlDraftValue(next.pocketbaseUrl));
       const server = getActiveOnlineDataServer(next);
       toast({
         title: "Saved",
@@ -437,7 +440,7 @@ function GlobalSettingsPage() {
                       id="admin-pocketbase-url"
                       value={pocketbaseUrlDraft}
                       onChange={(e) => setPocketbaseUrlDraft(e.target.value)}
-                      placeholder={DEFAULT_POCKETBASE_SERVER_URL}
+                      placeholder={resolvePocketBaseServerUrl(DEFAULT_ONLINE_DATA_SERVER_SETTINGS)}
                       disabled={onlineServerSaving}
                       className="h-9 font-mono text-xs"
                     />

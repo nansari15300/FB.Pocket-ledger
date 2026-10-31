@@ -3,8 +3,9 @@
 /**
  * Join → Notifications — pending Inter Com System join requests only.
  */
+import { deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { useEffect, useMemo, useState } from "react";
-import { doc, query, collection, where, deleteDoc } from "firebase/firestore";
+import { doc, query, collection, where } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";

@@ -1,10 +1,12 @@
 
 "use client";
 
-import { ADMIN_SERVER_UNAVAILABLE_MESSAGE, adminServerWriteBlocked, isAdminServerMode } from "@/lib/adminData/adminServerMode";
+import { updateDoc, deleteDoc } from "@/lib/writeGateway/pbWrites";
+import { adminServerWriteBlocked, isAdminServerMode } from "@/lib/adminData/adminServerMode";
+import { pbRequest } from "@/lib/pocketbaseData/pbClient";
 import { useState, useEffect, useMemo } from "react";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
-import { collection, query, where, updateDoc, doc, deleteDoc, serverTimestamp, deleteField } from "firebase/firestore";
+import { collection, query, where, doc, serverTimestamp, deleteField } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,7 +61,15 @@ export default function AdminRecycleBinPage() {
      * Fallback sirf tab jab server admin config unavailable ho (503), taaki true delete guarantee rahe.
      */
     const hardDeleteCompanyAsSuperAdmin = async (companyId: string): Promise<{ success: boolean; error?: string }> => {
-        if (isAdminServerMode()) return { success: false, error: ADMIN_SERVER_UNAVAILABLE_MESSAGE };
+        if (isAdminServerMode()) {
+            // Pocket Ledger Server login: the server's main-admin route hard-deletes the company and its records.
+            try {
+                await pbRequest("/api/pl/admin/recycle-delete", { method: "POST", body: { companyId } });
+                return { success: true };
+            } catch (e) {
+                return { success: false, error: e instanceof Error ? e.message : "Server hard delete failed." };
+            }
+        }
         if (!user) return { success: false, error: "Authentication required to delete." };
         const serverRes = await adminPermanentDeleteCompanyOnServer({
             companyId,
@@ -317,7 +327,6 @@ export default function AdminRecycleBinPage() {
     };
 
     const handlePermanentDelete = async (item: DeletedItem) => {
-        if (adminServerWriteBlocked()) return;
         setIsProcessing(true);
         try {
             if (item.isRootCollection) {

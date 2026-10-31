@@ -13,7 +13,7 @@
  */
 
 import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
-import { doc, getDoc, Timestamp } from "firebase/firestore";
+import { doc, getDoc, Timestamp } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { clearBrowserDbCache, getBrowserDbForCompanyId } from "@/lib/localSqlite";
 import { yieldToMain } from "@/lib/yieldToMain";
@@ -1244,7 +1244,8 @@ function traceServerDocTimestampLifecycle(
   });
 }
 
-export type DeltaCollectionSilentResult = { upserted: number; skipped: number };
+/** `failed`: docs that were NOT written because the SQLite write failed/paused (not an intentional merge skip). */
+export type DeltaCollectionSilentResult = { upserted: number; skipped: number; failed?: number };
 
 export async function mirrorCollectionDocsToBrowserDbSilent(
   companyId: string,
@@ -1279,6 +1280,7 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
   const tiePrefersLocal = options?.mergePreferNewerTieBreak !== "incoming";
   let upserted = 0;
   let skipped = 0;
+  let failed = 0;
   let pendingApprovalOutboxById: Map<string, Record<string, unknown>> | null = null;
   let pendingBillWiseOutboxById: Map<string, Record<string, unknown>> | null = null;
   if (collectionName === "vouchers") {
@@ -1494,12 +1496,15 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
       skipPlanMutationGate: collectionName === "vouchers",
     });
     if (written) upserted += 1;
-    else skipped += 1;
+    else {
+      skipped += 1;
+      failed += 1;
+    }
   }
   if (authoritative) {
     await reconcileAuthoritativeCollectionSnapshot(companyId, collectionName, incomingIds);
   }
-  return { upserted, skipped };
+  return { upserted, skipped, failed };
 }
 
 /** P2P authoritative pull: server par na ho wale local rows hatao (pending push chhod ke). */

@@ -2,7 +2,7 @@
  * Firebase Storage helpers. No "use server" - works in browser for static export.
  * Buffer.from replaced with Uint8Array for client compatibility.
  */
-import { ref, uploadBytes, getDownloadURL, deleteObject, getBlob } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL, deleteObject, getBlob } from "@/lib/pocketbaseData/pbStorage";
 import { storage } from "./firebase";
 import { format } from "date-fns";
 import { shouldStageEntityProfileFilesLocally } from "@/lib/entityProfileLocalFiles";

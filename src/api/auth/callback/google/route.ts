@@ -1,8 +1,9 @@
 export const runtime = "nodejs";
 
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
-import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 
 type DecodedState = {

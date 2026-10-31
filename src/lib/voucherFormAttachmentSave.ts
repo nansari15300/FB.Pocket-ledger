@@ -19,7 +19,7 @@ import {
   resolveCompanyUsesPocketLedgerStorage,
 } from "@/lib/firebaseStoragePaths";
 import { storage } from "@/lib/firebase";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
 import {
   dedupeVoucherAttachmentUrlList,
   getVoucherAttachmentUrlsForUi,

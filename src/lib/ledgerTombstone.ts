@@ -5,7 +5,7 @@
  * `deletedAt` / `isDeleted` / `deletedBy` existing recycler patterns se align (`voucherActionsClient`).
  */
 
-import { Timestamp } from "firebase/firestore";
+import { Timestamp } from "@/lib/pbCompat/firestore";
 import { auth } from "@/lib/firebase";
 
 const DEVICE_STORAGE_KEY = "pl_ledger_device_id_v1";

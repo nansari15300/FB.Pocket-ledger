@@ -8,7 +8,13 @@ import {
   isPlServerSharedCompanyRow,
 } from "@/lib/plServerAccessContext";
 import { isPlRemoteServerClientMode, isPlSharingServerPortOrigin } from "@/lib/plRemoteServerClient";
-import { filterPackedMyCompanyRows, isPlServerPackedApp } from "@/lib/plServerPackedApp";
+import {
+  filterPackedMyCompanyRows,
+  isPackedMyCompanyOnly,
+  isPackedServerManageCompany,
+  isPlServerPackedApp,
+} from "@/lib/plServerPackedApp";
+import { ADMIN_PANEL_COMPANY_LOCAL_ID } from "@/lib/adminPanelCompany/constants";
 import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { isServerOnlyLoginSession } from "@/lib/pocketbaseData/serverSessionCompanyScope";
 
@@ -109,10 +115,22 @@ export function isPocketBaseSelectorCompanyRow(
   c: CompanyStorageRow | null | undefined
 ): boolean {
   if (!c) return false;
-  if (isPocketBaseCompanyId(c.id)) return true;
   const server = String(c.onlineServerId ?? "").trim().toLowerCase();
   const backend = String(c.onlineDataBackend ?? "").trim().toLowerCase();
-  return server === "pocketbase" || backend === "pocketbase";
+  // Row explicitly says PocketBase -> always PB.
+  if (server === "pocketbase" || backend === "pocketbase") return true;
+  // Strict device-local rows are never PB, even when a stale id sits in the PB id registry.
+  if (isStrictLocalOnlyCompany(c)) return false;
+  const so = String(c.storageOption ?? "").toLowerCase().trim();
+  if (
+    so === "local" &&
+    c.syncedFromCloud !== true &&
+    String(c.syncPolicy ?? "").toLowerCase().trim() !== "online" &&
+    !String(c.authoritativeCompanyId ?? "").trim()
+  ) {
+    return false;
+  }
+  return isPocketBaseCompanyId(c.id);
 }
 
 /**
@@ -330,8 +348,10 @@ export function partitionCompaniesForUnlockDialog(companies: Company[]): Selecto
 /** Mutual-exclusive Local vs Online buckets for company picker / settings dropdowns. */
 export function partitionCompaniesForSelector(companies: Company[]): SelectorCompanyBuckets {
   const rows = dedupeCompaniesById(companies.filter((c): c is Company => c != null && Boolean(c?.id)));
-  if (isPlServerPackedApp()) {
-    const packed = filterPackedMyCompanyRows(rows);
+  // Packed app: scope rows first (server-manage-only on the server panel; no server-manage on country hosts).
+  const scopedRows = filterPackedMyCompanyRows(rows);
+  if (isPlServerPackedApp() && isPackedMyCompanyOnly()) {
+    // Server panel build: only the "server manage company" lives here, always in the PocketBase tab.
     return {
       localOwnedCompanies: [],
       sharedLocalCompanies: [],
@@ -341,13 +361,14 @@ export function partitionCompaniesForSelector(companies: Company[]): SelectorCom
       localTabCompanies: [],
       onlineTabCompanies: [],
       serverTabCompanies: [],
-      pocketbaseTabCompanies: packed,
+      pocketbaseTabCompanies: scopedRows,
     };
   }
+  // Normal per-source split (also for country-public packed hosts).
   const gateId = getPlServerContextGateId();
-  const pocketbaseTabCompanies = dedupeCompaniesById(rows.filter((c) => isPocketBaseSelectorCompanyRow(c)));
-  const serverSharedCompanies = rows.filter((c) => isServerSelectorCompanyRow(c, gateId));
-  const rest = rows.filter(
+  const pocketbaseTabCompanies = dedupeCompaniesById(scopedRows.filter((c) => isPocketBaseSelectorCompanyRow(c)));
+  const serverSharedCompanies = scopedRows.filter((c) => isServerSelectorCompanyRow(c, gateId));
+  const rest = scopedRows.filter(
     (c) => !isPocketBaseSelectorCompanyRow(c) && !isServerSelectorCompanyRow(c, gateId)
   );
   const owned = rest.filter((c) => c.isOwned);
@@ -469,6 +490,14 @@ export function mergeOwnedCompaniesForUser(
     for (const c of list) {
       if (!c?.id || c.isDeleted) continue;
       if ((c as Company & { movedToAdminRecycleAt?: unknown }).movedToAdminRecycleAt != null) continue;
+      // Delete / Handover lists: never offer the server manage company (normal app) or the admin panel company.
+      if (isPackedServerManageCompany(c) && !isPackedMyCompanyOnly()) continue;
+      if (
+        String(c.id).trim() === ADMIN_PANEL_COMPANY_LOCAL_ID ||
+        String((c as { kind?: unknown }).kind ?? "").trim() === "admin-panel-company"
+      ) {
+        continue;
+      }
       if (!resolveOwned(c, user)) continue;
       byId.set(c.id, { ...c, isOwned: true });
     }

@@ -1,9 +1,10 @@
 
 "use client";
 
+import { updateDoc, writeBatch } from "@/lib/writeGateway/pbWrites";
 import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
 import { useState, useMemo, useCallback } from "react";
-import { doc, updateDoc, writeBatch, Timestamp, deleteField } from "firebase/firestore";
+import { doc, Timestamp, deleteField } from "@/lib/pbCompat/firestore";
 import { firestore as db } from "@/lib/firebase";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -39,7 +40,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 
 /** Admin SDK reconcile — `users` canonical + owned companies drift (CompanyDetails jaisa). */
 async function postReconcileOwnerPlanFromAdmin(
-  firebaseUser: import("firebase/auth").User | null,
+  firebaseUser: import("@/lib/pbCompat/auth").User | null,
   ownerId: string
 ): Promise<void> {
   const oid = ownerId.trim();
@@ -208,7 +209,6 @@ export function UserDetails({ user, currentUser, allUsers, onUpdate, ownedCompan
     );
 
     const onChangeRole = async (uid: string, role: Role) => {
-        if (adminServerWriteBlocked()) return;
         if (currentUser?.role !== 'SuperAdmin') return;
         setIsUpdating(true);
         try {

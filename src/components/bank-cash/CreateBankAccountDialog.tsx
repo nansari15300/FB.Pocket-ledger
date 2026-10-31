@@ -1,6 +1,7 @@
 
 "use client";
 
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { MasterGroupTreeCombobox } from "@/components/entity/MasterGroupTreeCombobox";
 import { BANK_ENTITY_GROUP_PRESET } from "@/lib/masterEntityGroupFormPresets";
 import {
@@ -17,7 +18,7 @@ import { Loader2, CalendarIcon, Upload } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { doc, setDoc, collection, serverTimestamp, query, Timestamp } from "firebase/firestore";
+import { doc, collection, serverTimestamp, query, Timestamp } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import {
   stageEntityAvatarAndDocuments,

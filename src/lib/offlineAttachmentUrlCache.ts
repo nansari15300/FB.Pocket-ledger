@@ -31,7 +31,7 @@ import {
   upsertAttachmentFileRef,
 } from "@/lib/attachmentFileRefStore";
 import { Capacitor } from "@capacitor/core";
-import { getBlob, ref } from "firebase/storage";
+import { getBlob, ref } from "@/lib/pocketbaseData/pbStorage";
 import {
   fetchAttachmentRefBlob,
   isOfflineCacheableAttachmentRef,
@@ -1409,4 +1409,88 @@ export async function prefetchHttpsAttachmentUrls(
     });
   }
   return progress;
+}
+/**
+ * Offline-cache rows whose original ref starts with `prefix` (e.g. `pbatt:` = Pocket Ledger Server files):
+ * count + bytes, optionally removing them (IndexedDB rows and native disk files). Used by the
+ * "files on this device" storage control.
+ */
+export async function scanOrClearOfflineCachedAttachmentsByPrefix(
+  prefix: string,
+  clear: boolean
+): Promise<{ count: number; bytes: number }> {
+  let count = 0;
+  let bytes = 0;
+  const seenPaths = new Set<string>();
+  if (usesEmbeddedNativeAttachmentStorage()) {
+    try {
+      const { listAttachmentFileRefs, deleteAttachmentFileRef } = await import("@/lib/attachmentFileRefStore");
+      const { deleteAttachmentBlobFromDataDir } = await import("@/lib/capacitorAttachmentFs");
+      const rows = await listAttachmentFileRefs("offline_cache");
+      for (const row of rows) {
+        let url = "";
+        try {
+          url = String((JSON.parse(row.metaJson || "{}") as { url?: string }).url || "");
+        } catch {
+          url = "";
+        }
+        if (!url.startsWith(prefix)) continue;
+        if (!seenPaths.has(row.filePath)) {
+          seenPaths.add(row.filePath);
+          count += 1;
+          bytes += Math.max(0, Number(row.size || 0));
+          if (clear) {
+            try {
+              await deleteAttachmentBlobFromDataDir(row.filePath);
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+        if (clear) {
+          try {
+            await deleteAttachmentFileRef("offline_cache", row.id);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    } catch {
+      /* native index optional */
+    }
+  }
+  if (typeof indexedDB === "undefined") return { count, bytes };
+  try {
+    const db = await openDB();
+    await new Promise<void>((resolve) => {
+      try {
+        const tx = db.transaction("offlineAttachmentBlobs", clear ? "readwrite" : "readonly");
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+        tx.onabort = () => resolve();
+        const req = tx.objectStore("offlineAttachmentBlobs").openCursor();
+        req.onerror = () => resolve();
+        req.onsuccess = () => {
+          const cur = req.result;
+          if (!cur) return;
+          const row = cur.value as CachedRow | undefined;
+          if (row && typeof row.url === "string" && row.url.startsWith(prefix)) {
+            // two keys (exact + stable) can hold the same file: count once per url
+            count += 1;
+            bytes += Math.max(0, Number(row.size || 0));
+            if (clear) cur.delete();
+          }
+          cur.continue();
+        };
+      } catch {
+        resolve();
+      }
+    });
+  } catch {
+    /* ignore */
+  }
+  if (clear) {
+    void import("@/lib/attachmentLoadReady").then((m) => m.requestAttachmentUiRefresh()).catch(() => {});
+  }
+  return { count, bytes };
 }

@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { firestore } from "@/lib/firebase";
-import { collection, query, where } from "firebase/firestore";
+import { collection, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { Loader2 } from "lucide-react";
 import { CreateDistributorForm } from "@/components/auth/CreateDistributorForm";

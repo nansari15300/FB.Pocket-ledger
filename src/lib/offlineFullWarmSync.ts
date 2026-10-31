@@ -6,7 +6,7 @@
  * `OfflineWarmSyncManager` ise debounced call karta — UI block na ho.
  */
 
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import type { Company } from "@/hooks/useCompany";
 import {

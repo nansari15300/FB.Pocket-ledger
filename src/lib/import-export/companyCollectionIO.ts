@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, query } from "firebase/firestore";
+import { collection, query } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";

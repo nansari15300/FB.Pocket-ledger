@@ -1,6 +1,7 @@
 "use client";
 
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc } from "@/lib/writeGateway/pbWrites";
+import { collection, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { RECON_SHARE_HEADER_LABEL } from "@/lib/reconciliation/labels";
 import {
   reconciliationPagePath,

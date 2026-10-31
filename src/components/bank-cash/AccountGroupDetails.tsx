@@ -1,6 +1,7 @@
 
 "use client";
 
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import * as React from "react";
 import type { Account, AccountGroup } from "@/components/bank-cash/types";
 import { Button } from "@/components/ui/button";
@@ -133,7 +134,7 @@ import {
   filterSpendWiseUnapprovedOnly,
 } from "@/lib/spendWiseDateRangeGroups";
 import { applySpendWiseStatementRunningBalances } from "@/lib/spendWiseStatementRunningBalance";
-import { doc, getDoc } from 'firebase/firestore';
+import { doc } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import usePermissions from "@/hooks/usePermissions";
 import { useAuth } from "@/hooks/useAuth";

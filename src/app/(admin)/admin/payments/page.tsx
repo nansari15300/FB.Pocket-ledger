@@ -1,14 +1,15 @@
 
 "use client";
 
-import { ADMIN_SERVER_VIEW_UNAVAILABLE_MESSAGE, isAdminServerMode } from "@/lib/adminData/adminServerMode";
+import { isAdminServerMode } from "@/lib/adminData/adminServerMode";
+import { listServerSubscriptionPayments } from "@/lib/adminData/serverSubscriptionPayments";
 import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { useAdminAccess } from '@/hooks/useAdminAccess';
 import { useAuth } from '@/hooks/useAuth';
 import {
   collection,
   query,
-} from 'firebase/firestore';
+} from '@/lib/pbCompat/firestore';
 import { onSnapshot } from '@/lib/pocketbaseData/pbReadSeam';
 import { firestore } from '@/lib/firebase';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -1256,24 +1257,28 @@ export default function PaymentsPage() {
         (async () => {
             setLoading(true);
             try {
-                if (isAdminServerMode()) throw new Error(ADMIN_SERVER_VIEW_UNAVAILABLE_MESSAGE);
-                const token = await firebaseUser.getIdToken();
-                const res = await fetch(appApiUrl("/api/admin/subscription-payments"), {
-                    headers: { Authorization: `Bearer ${token}` },
-                    cache: "no-store",
-                });
-                const raw = await res.text();
                 let data: { error?: string; payments?: unknown[] } = {};
-                try {
-                    data = raw ? (JSON.parse(raw) as { error?: string; payments?: unknown[] }) : {};
-                } catch {
-                    throw new Error(
-                        res.ok
-                            ? "Invalid JSON from subscription-payments API"
-                            : `HTTP ${res.status} — expected JSON (check /app basePath in dev gateway)`
-                    );
+                if (isAdminServerMode()) {
+                    // Pocket Ledger Server login: payments come from the server.
+                    data = { payments: await listServerSubscriptionPayments(500) };
+                } else {
+                    const token = await firebaseUser.getIdToken();
+                    const res = await fetch(appApiUrl("/api/admin/subscription-payments"), {
+                        headers: { Authorization: `Bearer ${token}` },
+                        cache: "no-store",
+                    });
+                    const raw = await res.text();
+                    try {
+                        data = raw ? (JSON.parse(raw) as { error?: string; payments?: unknown[] }) : {};
+                    } catch {
+                        throw new Error(
+                            res.ok
+                                ? "Invalid JSON from subscription-payments API"
+                                : `HTTP ${res.status} - expected JSON (check /app basePath in dev gateway)`
+                        );
+                    }
+                    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
                 }
-                if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
                 const list = (data.payments ?? []).map(
                     (p: {
                         id: string;

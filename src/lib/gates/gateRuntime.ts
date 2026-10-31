@@ -8,6 +8,7 @@ import {
   ONLINE_DATA_SERVER_POCKETBASE_ID,
   readCachedOnlineDataServerSettings,
   resolveOnlineDataBackend,
+  resolvePocketBaseServerUrl,
   type OnlineDataServerSettings,
 } from "@/lib/onlineDataServer";
 import {
@@ -376,7 +377,7 @@ export function activeGateAllowsCompanyCreate(gate: GateRecord): boolean {
 export function onlineGateServerLabel(settings?: OnlineDataServerSettings | null): string {
   const { effective } = resolveOnlineDataBackend(settings, "gate hint");
   if (effective.id === ONLINE_DATA_SERVER_POCKETBASE_ID) {
-    const url = (settings ?? readCachedOnlineDataServerSettings()).pocketbaseUrl;
+    const url = resolvePocketBaseServerUrl(settings ?? readCachedOnlineDataServerSettings());
     return url ? `${effective.name} (${url})` : effective.name;
   }
   return `your online account (${effective.name})`;

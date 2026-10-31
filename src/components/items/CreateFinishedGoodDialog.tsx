@@ -33,7 +33,7 @@ import { useAuth } from "@/hooks/useAuth";
 import usePermissions from "@/hooks/usePermissions";
 import { useDate } from "@/hooks/useDate";
 import { firestore } from "@/lib/firebase";
-import { collection, doc, Timestamp } from "firebase/firestore";
+import { collection, doc, Timestamp } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { checkStorageLimit, incrementCompanyStorage } from "@/lib/storageUsageClient";
 import { Calendar } from "@/components/ui/calendar";

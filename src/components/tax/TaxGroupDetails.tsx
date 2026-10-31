@@ -1,6 +1,7 @@
 
 'use client';
 
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import * as React from "react";
 import { openPrintDirect } from "@/lib/printDirect";
 import { applyLedgerPageToPrintPayload } from "@/lib/ledgerPagePrint";
@@ -138,7 +139,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { doc, getDoc } from 'firebase/firestore';
+import { doc } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";
 

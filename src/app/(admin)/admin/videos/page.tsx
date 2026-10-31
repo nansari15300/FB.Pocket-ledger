@@ -1,12 +1,9 @@
 "use client";
 
-import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
+import { pbRequest } from "@/lib/pocketbaseData/pbClient";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { doc, setDoc } from "firebase/firestore";
-import { getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
 import { Video } from "lucide-react";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
-import { firestore } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,8 +46,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const DOC_REF = () => doc(firestore, "app_settings", "website_videos");
-const STATS_REF = () => doc(firestore, "app_settings", "website_video_stats");
 
 export default function WebsiteVideosAdminPage() {
   useAdminAccess(["SuperAdmin"]);
@@ -83,12 +78,13 @@ export default function WebsiteVideosAdminPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [snap, statsSnap] = await Promise.all([
-        getDocFromServer(DOC_REF()),
-        getDocFromServer(STATS_REF()).catch(() => null),
-      ]);
-      setVideos(sanitizeWebsiteVideos(snap.exists() ? snap.data() : undefined));
-      setEngagement(mergeVideoStatsDoc(statsSnap && statsSnap.exists() ? statsSnap.data() : undefined));
+      // Website videos live on the Pocket Ledger Server (site admin route), same store the website reads.
+      const json = (await pbRequest("/api/pl/site/admin/videos", { method: "GET" })) as {
+        videos?: unknown;
+        stats?: { byVideo?: unknown };
+      };
+      setVideos(sanitizeWebsiteVideos({ videos: json?.videos }));
+      setEngagement(mergeVideoStatsDoc({ byVideo: json?.stats?.byVideo }));
     } catch {
       setVideos([]);
       setEngagement({});
@@ -133,10 +129,9 @@ export default function WebsiteVideosAdminPage() {
   }, [videos, platformTab, searchQuery]);
 
   async function persist(next: WebsiteVideo[]) {
-    if (adminServerWriteBlocked()) return;
     setSaving(true);
     try {
-      await setDoc(DOC_REF(), { videos: next, updatedAt: Date.now() }, { merge: true });
+      await pbRequest("/api/pl/site/admin/videos", { method: "POST", body: { videos: next } });
       setVideos(next);
       toast({ title: "Website videos saved" });
     } catch {

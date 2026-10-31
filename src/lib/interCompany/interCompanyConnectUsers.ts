@@ -2,12 +2,8 @@
  * Inter Company — Connect User tab: email + IC-only visibility permissions.
  * Firestore: companies/{companyId}/inter_company_config/connect_users
  */
-import {
-  doc,
-  serverTimestamp,
-  setDoc,
-  type Unsubscribe,
-} from "firebase/firestore";
+import { setDoc } from "@/lib/writeGateway/pbWrites";
+import { doc, serverTimestamp, type Unsubscribe } from "@/lib/pbCompat/firestore";
 import { getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import type { InterCompanyEntityKind } from "@/components/inter-company/InterCompanyEntitySide";

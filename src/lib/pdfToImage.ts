@@ -212,7 +212,7 @@ export async function uploadPdfThumbnail(
   originalPdfPath: string,
   storage: any
 ): Promise<string> {
-  const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
+  const { ref, uploadBytes, getDownloadURL } = await import("@/lib/pocketbaseData/pbStorage");
   const thumbnailPath = originalPdfPath.replace(/\.pdf$/i, "_thumb.jpg");
   const storageRef = ref(storage, thumbnailPath);
   await uploadBytes(storageRef, thumbnailBlob);

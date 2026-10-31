@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
-import { getAdminDb } from "@/lib/firebaseAdmin";
+import { resolveBillingCaller } from "@/lib/server/billingCaller";
 import { isCompanyOwner } from "@/lib/server/companyOwner";
 
 type Body = {
@@ -11,19 +11,11 @@ type Body = {
 
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization");
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    if (!token) {
-      return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
+    const caller = await resolveBillingCaller(req);
+    if (caller.ok === false) {
+      return NextResponse.json({ error: caller.error }, { status: caller.status });
     }
-
-    getAdminDb();
-    let decoded: admin.auth.DecodedIdToken;
-    try {
-      decoded = await admin.auth().verifyIdToken(token);
-    } catch {
-      return NextResponse.json({ error: "Invalid auth token" }, { status: 401 });
-    }
+    const decoded = caller.decoded;
 
     const body = (await req.json()) as Body;
     const companyId = typeof body.companyId === "string" ? body.companyId.trim() : "";
@@ -35,7 +27,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "autoDowngradeToBasicWhenExpired boolean required" }, { status: 400 });
     }
 
-    const db = getAdminDb();
+    const db = caller.db;
     const companyRef = db.collection("companies").doc(companyId);
     const companySnap = await companyRef.get();
     if (!companySnap.exists) {

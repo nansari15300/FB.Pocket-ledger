@@ -1,6 +1,7 @@
 
 "use client";
 
+import { onSnapshot, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import {
   BookText,
   Factory,
@@ -36,7 +37,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { pruneRememberedLoginEmailIfDisabled } from "@/lib/loginRememberEmail";
 import React, { useEffect, useState, useCallback, useMemo, startTransition } from 'react';
-import { doc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, collection, query, where } from "@/lib/pbCompat/firestore";
 import { isSuppressibleNewTransactionAlert } from "@/lib/transactionAlerts";
 import { IC_ALERTS_CHANGED } from "@/lib/interCompany/interCompanyAlerts";
 import { interCompanySystemJoinAlertVisibleForCompany } from "@/lib/interCompany/interCompanySystemJoinRequest";

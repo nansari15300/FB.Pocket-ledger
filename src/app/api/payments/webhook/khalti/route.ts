@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { serverTimestamp } from "firebase/firestore";
+import { serverTimestamp } from "@/lib/pbCompat/firestore";
 import { writeEntity } from "@/lib/writeGateway";
 
 export async function POST(req: NextRequest) {

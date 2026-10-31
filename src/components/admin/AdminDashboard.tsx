@@ -34,7 +34,7 @@ import {
   FileClock,
   Globe,
 } from "lucide-react";
-import { collection, query, where, Timestamp, orderBy } from "firebase/firestore";
+import { collection, query, where, Timestamp, orderBy } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";

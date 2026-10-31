@@ -30,8 +30,9 @@ async function runCompanyRowSync(kind: CompanyRowSyncKind, companyId: string): P
     } catch {
       /* push is best-effort; pull below still runs */
     }
-    const { pullPocketBaseCompanyToLocal } = await import("@/lib/pocketbaseData/pbSync");
-    await pullPocketBaseCompanyToLocal(companyId);
+    // On demand for any company (selected or not); heals an empty local mirror with a full pull.
+    const { pullPocketBaseCompanyToLocalHealed } = await import("@/lib/pocketbaseData/pbSync");
+    await pullPocketBaseCompanyToLocalHealed(companyId);
     return;
   }
   if (kind === "server") {

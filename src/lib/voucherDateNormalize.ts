@@ -1,7 +1,7 @@
 "use client";
 
 import { format, startOfDay, differenceInCalendarDays } from "date-fns";
-import { Timestamp } from "firebase/firestore";
+import { Timestamp } from "@/lib/pbCompat/firestore";
 import { PL_CLIENT_OFFLINE_FIRST_PERSIST_MS } from "@/lib/localMirrorServerMeta";
 import { bsToAd } from "@/lib/bs-date";
 

@@ -37,7 +37,7 @@ import { Badge } from "@/components/ui/badge";
 import { Check, Download, Loader2, Printer, X } from "lucide-react";
 import { AppFreshInfoButton } from "@/components/ui/AppFreshInfoButton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { auth, firestore } from "@/lib/firebase";
 import { getBillingApiIdToken, getServerLoginBillingAuthHeader } from "@/lib/firebaseAuthForApi";

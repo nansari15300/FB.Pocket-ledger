@@ -43,7 +43,7 @@ ok(r.ok && r.id === "N" && r.method === "paid-from", "paid-from decides: " + r.r
 r = matchFromAccount(Pp("Advance paid from Prabhu Bank Biratnagar"), [prI, prB]);
 ok(r.ok && r.id === "PB", "paid-from narrows same bank: " + r.reason);
 r = matchFromAccount(P, [cash, nic]);
-ok(!r.ok && r.candidates.length === 0, "none -> not found: " + r.reason);
+ok(!r.ok && (r as { ok: false; candidates: string[] }).candidates.length === 0, "none -> not found: " + r.reason);
 
 const parties = [{ id: "P1", name: "Bharaman Iron Pvt. Ltd." }, { id: "P2", name: "Shree Hardware" }];
 const staff = [{ id: "S1", name: "Ram Bahadur Thapa" }];

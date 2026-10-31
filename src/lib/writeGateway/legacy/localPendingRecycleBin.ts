@@ -1,6 +1,7 @@
 "use client";
 
-import { doc, deleteDoc, updateDoc, writeBatch, serverTimestamp } from "firebase/firestore";
+import { deleteDoc, updateDoc, writeBatch } from "@/lib/writeGateway/firestoreMutationsInternal";
+import { doc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { openDB } from "@/lib/offlineDb";
@@ -102,7 +103,7 @@ function getStoragePath(filePath: string): string | null {
 }
 
 async function deleteStorageFilesForDoc(data: Record<string, unknown>): Promise<void> {
-  const { ref, deleteObject } = await import("firebase/storage");
+  const { ref, deleteObject } = await import("@/lib/pocketbaseData/pbStorage");
   const { storage } = await import("@/lib/firebase");
   const paths: string[] = [];
   if (Array.isArray(data.filePaths)) paths.push(...(data.filePaths as string[]));

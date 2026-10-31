@@ -3,7 +3,7 @@
  * → ek winner; vouchers remap; losers purge.
  */
 
-import { collection } from "firebase/firestore";
+import { collection } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import {

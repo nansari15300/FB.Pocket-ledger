@@ -4,8 +4,12 @@
  * Recovery mode: push one company from this PC's SQLite to the Pocket Ledger Server.
  * Same steps as the backup-restore upload (pbRestoreUpload): company root -> attachments
  * (`local:` and Firebase Storage URLs -> `pbatt:`) -> every record in small batches; then a count check.
- * Firebase files: bytes from this PC's cache first, then Firebase Storage (signed-in recovery session).
+ * Firebase files: bytes from this PC's cache first. source "local" (default) stops there: nothing is read from
+ * Firebase (no Firestore, no Storage); a file that is only a Firebase link is skipped and listed in `notOnPc`.
+ * source "firebase" then also tries Firebase Storage (signed-in recovery session).
  * Missing bytes keep the original URL and count as `missingFiles`. SQLite on this PC is not rewritten.
+ * While a push runs, 429 / 402 replies never start the app-wide quota pause (serverQuotaHold); a 429 from the
+ * Pocket Ledger Server is waited out and retried (withRetry).
  *
  * Differences: the server main admin does the upload through /api/pl/recovery/* so the company
  * is owned by the ORIGINAL owner email (a placeholder server account when that person has none
@@ -31,6 +35,9 @@ import { replaceRefsDeep } from "@/lib/pocketbaseData/pbAttachments";
 import { ONLINE_DATA_SERVER_POCKETBASE_ID } from "@/lib/onlineDataServer";
 import { pocketLedgerStorageDocFields } from "@/lib/firebaseStoragePaths";
 import { readCompanyDocs, type RecoveryCompany, type RecoveryDoc } from "@/lib/recovery/recoveryReader";
+import { beginRecoveryQuotaSuppress } from "@/lib/serverQuotaHold";
+import { noteUserInitiatedServerAction } from "@/lib/quotaAdminNotice";
+import { RECOVERY_TEXT, readRecoveryLang, type RecoveryPushSource } from "@/lib/recovery/recoveryLocales";
 
 const UPLOADED_KEY = "pl_recovery_uploaded_v1";
 const RESUME_KEY = "pl_recovery_resume_v1";
@@ -76,6 +83,16 @@ export type RecoveryPushResult = RecoveryUploadedMark & {
   /** Records the server could not take (bad data). */
   failedRecords: number;
   tooBigFiles: number;
+  /** Same counts split by Masters / Vouchers / Files. */
+  byKind: RecoveryKindSplit;
+  /** Files sent to the server in this push (they were missing there). */
+  uploadedFiles: number;
+  /** Files the server already had: nothing was sent, no second copy was made. */
+  alreadyOnServerFiles: number;
+  /** Where this push took its data from ("local" never touched Firebase). */
+  source: RecoveryPushSource;
+  /** Names of files that were not on this PC (skipped or not copyable), capped. */
+  notOnPc: string[];
   countMismatch: Array<{ coll: string; source: number; server: number }>;
   resumedFromBatch: number;
 };
@@ -111,6 +128,7 @@ export function recoveryErrorMessage(err: unknown): string {
   if (err instanceof PocketBaseRequestError) {
     if (err.status === 401) return "Your server sign-in has ended. Sign in to the server again, then press Retry.";
     if (err.status === 403) return "This account is not the server's main admin, so recovery upload is not allowed.";
+    if (err.status === 429) return "The Pocket Ledger Server is busy (too many requests). Wait a minute, then press Retry.";
     if (err.status === 0 || err.status >= 500) return "The Pocket Ledger Server could not be reached. Check the server, then press Retry.";
     return `The server refused the upload (${err.status}). Press Retry, or check the server log.`;
   }
@@ -160,6 +178,28 @@ export function readUploadedMarks(url?: string): Record<string, RecoveryUploaded
   return out;
 }
 
+/** Counts of one kind of item in a push. */
+export type RecoveryKindCounts = { created: number; updated: number; unchanged: number; failed: number };
+/**
+ * Push counts split by kind.
+ * - masters: every record that is not a voucher (parties, groups, items, bank / expense accounts, staff,
+ *   taxes, expense groups, unassigned documents, docs / settings ...).
+ * - vouchers: the `vouchers` collection only.
+ * - files: created = uploaded, unchanged = already on the server, failed = too big / rejected,
+ *   notOnPc = bytes not on this PC (not uploaded). Files have no "updated".
+ */
+export type RecoveryKindSplit = {
+  masters: RecoveryKindCounts;
+  vouchers: RecoveryKindCounts;
+  files: RecoveryKindCounts & { notOnPc: number };
+};
+
+const emptyKind = (): RecoveryKindCounts => ({ created: 0, updated: 0, unchanged: 0, failed: 0 });
+const emptyRecordKinds = (): { masters: RecoveryKindCounts; vouchers: RecoveryKindCounts } => ({
+  masters: emptyKind(),
+  vouchers: emptyKind(),
+});
+
 type ResumeSum = { create: number; update: number; same: number; kept_server: number; unsupported: number; bad: number };
 
 type ResumeMark = {
@@ -170,7 +210,9 @@ type ResumeMark = {
   sent?: number;
   total?: number;
   sum?: ResumeSum;
-  files?: { files: number; missing: number; tooBig: number };
+  /** masters / vouchers split of `sum` (older marks do not have it) */
+  kinds?: { masters: RecoveryKindCounts; vouchers: RecoveryKindCounts };
+  files?: { files: number; missing: number; tooBig: number; uploaded?: number; alreadyOnServer?: number };
 };
 
 /** Unfinished push (batches already on the server) for this company, if any. */
@@ -204,20 +246,53 @@ function transient(e: unknown): boolean {
   return e.status === 0 || e.status === 408 || e.status === 429 || e.status >= 500;
 }
 
-/** Two quiet retries for network / server hiccups, then the error goes to the dialog. */
+/** Waits (ms) after a 429 from the Pocket Ledger Server: back off and retry instead of failing / pausing the app. */
+const RATE_WAITS_MS = [2000, 4000, 8000, 15000, 30000, 30000];
+/** Set by pushCompanyToServer while a push runs: shows "server busy, waiting" in the progress line. */
+let rateBackoffNote: (() => void) | null = null;
+
+function sleepAbortable(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Stopped", "AbortError"));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(t);
+      reject(new DOMException("Stopped", "AbortError"));
+    };
+    const t = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * Two quiet retries for network / server hiccups, then the error goes to the dialog.
+ * A 429 (server rate limit) gets its own longer back-off (up to ~90 s in total) before it is reported.
+ */
 async function withRetry<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-  let last: unknown = null;
-  for (let i = 0; i < 3; i++) {
+  let quiet = 0;
+  let rate = 0;
+  for (;;) {
     throwIfAborted(signal);
     try {
       return await fn();
     } catch (e) {
-      last = e;
-      if (!transient(e) || i === 2) throw e;
-      await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+      if (!transient(e)) throw e;
+      if (e instanceof PocketBaseRequestError && e.status === 429) {
+        if (rate >= RATE_WAITS_MS.length) throw e;
+        rateBackoffNote?.();
+        await sleepAbortable(RATE_WAITS_MS[rate++], signal);
+        continue;
+      }
+      quiet += 1;
+      if (quiet >= 3) throw e;
+      await sleepAbortable(1500 * quiet, signal);
     }
   }
-  throw last;
 }
 
 function str(v: unknown): string {
@@ -287,6 +362,7 @@ function makeBatches(docs: RecoveryDoc[]): RecoveryDoc[][] {
 function collectFileRefs(v: unknown, into: Set<string>): void {
   if (typeof v === "string") {
     if (v.startsWith("local:") && v.length > 6) into.add(v);
+    else if (pbRefRecordId(v)) into.add(v);
     else if (isFirebaseFileRef(v)) into.add(v);
     return;
   }
@@ -296,6 +372,12 @@ function collectFileRefs(v: unknown, into: Set<string>): void {
   }
   if (!v || typeof v !== "object") return;
   for (const x of Object.values(v as Record<string, unknown>)) collectFileRefs(x, into);
+}
+
+/** Record id of a server file ref `pbatt:<id>/<name>` (15 chars a-z0-9), else "". */
+function pbRefRecordId(s: string): string {
+  const m = /^pbatt:([a-z0-9]{15})\/[^/]+$/.exec(s);
+  return m ? m[1]! : "";
 }
 
 function isFirebaseFileRef(s: string): boolean {
@@ -429,7 +511,7 @@ async function blobFromFirebaseFile(url: string, signal?: AbortSignal): Promise<
   if (path) {
     try {
       const [{ getBlob, ref }, { storage }] = await Promise.all([
-        import("firebase/storage"),
+        import("@/lib/pocketbaseData/pbStorage"),
         import("@/lib/firebase"),
       ]);
       const blob = await withTimeout(getBlob(ref(storage, path)), FILE_FETCH_MS, signal);
@@ -466,7 +548,34 @@ function categoryForCollection(coll: string): string {
 
 const attAppId = (localRef: string) => `att_${localRef.slice("local:".length)}`.slice(0, 200);
 
-type FileStats = { files: number; missing: number; tooBig: number };
+type FileStats = {
+  files: number;
+  missing: number;
+  tooBig: number;
+  notOnPc?: string[];
+  /** Files sent to the server in this push (new bytes). */
+  uploaded?: number;
+  /** Files the server already had (nothing sent, no second copy made). */
+  alreadyOnServer?: number;
+};
+
+/** Count a file whose bytes are not on this PC (and could not be fetched); remember its name (capped). */
+function noteMissingFile(stats: FileStats, fileName: string): void {
+  stats.missing += 1;
+  const list = stats.notOnPc || (stats.notOnPc = []);
+  if (list.length < 200) list.push(fileName);
+}
+
+/** This PC's attachment cache only (IndexedDB): never Firebase, never the network. */
+async function blobFromLocalCacheOnly(url: string): Promise<Blob | null> {
+  try {
+    const { tryOfflineCachedAttachmentBlobMultiKey } = await import("@/lib/offlineAttachmentUrlCache");
+    const cached = await tryOfflineCachedAttachmentBlobMultiKey(url);
+    return cached && cached.size > 0 ? cached : null;
+  } catch {
+    return null;
+  }
+}
 
 type FileProgress = (label: string) => void;
 
@@ -476,7 +585,8 @@ async function pushBatchFiles(
   batch: RecoveryDoc[],
   stats: FileStats,
   signal?: AbortSignal,
-  onFileProgress?: FileProgress
+  onFileProgress?: FileProgress,
+  source: RecoveryPushSource = "local"
 ): Promise<Map<string, string>> {
   const owner = new Map<string, RecoveryDoc>();
   for (const d of batch) {
@@ -485,36 +595,63 @@ async function pushBatchFiles(
     for (const r of refs) if (!owner.has(r)) owner.set(r, d);
   }
   const map = new Map<string, string>();
+  /** `pbatt:` refs whose record is already on the server (nothing to send). */
+  const existingPb = new Set<string>();
   if (!owner.size) return map;
   const all = Array.from(owner.keys());
   const appIdByRef = new Map<string, string>();
   for (const r of all) {
-    appIdByRef.set(r, r.startsWith("local:") ? attAppId(r) : await attAppIdForRemote(r));
+    const pbId = pbRefRecordId(r);
+    // A `pbatt:` ref already points at a server record id: its app_id is derived from that id, so a
+    // re-push of the same ref can never make a second record.
+    appIdByRef.set(r, pbId ? `att_pb_${pbId}` : r.startsWith("local:") ? attAppId(r) : await attAppIdForRemote(r));
   }
   for (let i = 0; i < all.length; i += 500) {
     const part = all.slice(i, i + 500);
+    const partPb = part.filter((r) => pbRefRecordId(r));
     const res = (await withRetry(
       () =>
         pbRequest("/api/pl/recovery/attachments/exist", {
           method: "POST",
-          body: { company: companyId, appIds: part.map((r) => appIdByRef.get(r) || attAppId(r)) },
+          body: {
+            company: companyId,
+            appIds: part.filter((r) => !pbRefRecordId(r)).map((r) => appIdByRef.get(r) || attAppId(r)),
+            recordIds: partPb.map((r) => pbRefRecordId(r)),
+          },
         }),
       signal
-    )) as { refs?: Record<string, string> };
+    )) as { refs?: Record<string, string>; byId?: Record<string, string> };
+    if (partPb.length && !res?.byId) {
+      // Old server hook (no id support): stop instead of risking a second copy of every file.
+      throw new Error("The server must be restarted once to re-push files by id (server hook updated).");
+    }
     for (const r of part) {
+      const pbId = pbRefRecordId(r);
+      if (pbId) {
+        const have = res.byId?.[pbId];
+        if (have) {
+          stats.alreadyOnServer = (stats.alreadyOnServer || 0) + 1;
+          stats.files += 1;
+          existingPb.add(r);
+          // same record, different stored file name: point the doc at the name the server has
+          if (have !== r) map.set(r, have);
+        }
+        continue;
+      }
       const appId = appIdByRef.get(r) || attAppId(r);
       const ref = res?.refs?.[appId];
       if (ref) {
         map.set(r, ref);
         stats.files += 1;
+        stats.alreadyOnServer = (stats.alreadyOnServer || 0) + 1;
       }
     }
   }
   const lp = await import("@/lib/localPendingFiles");
   let done = 0;
-  const pending = all.filter((r) => !map.has(r)).length;
+  const pending = all.filter((r) => !map.has(r) && !existingPb.has(r)).length;
   for (const [fileRef, doc] of owner) {
-    if (map.has(fileRef)) continue;
+    if (map.has(fileRef) || existingPb.has(fileRef)) continue;
     throwIfAborted(signal);
     done += 1;
     onFileProgress?.(`Copying files to server ${done} / ${pending}`);
@@ -544,11 +681,15 @@ async function pushBatchFiles(
           blob = null;
         }
       }
+    } else if (pbRefRecordId(fileRef)) {
+      // Dangling server ref (record missing on this server): the bytes can only come from this device's
+      // file cache (the old server's files that were downloaded here); the original Firebase URL is not kept.
+      blob = await blobFromLocalCacheOnly(fileRef);
     } else {
-      blob = await blobFromFirebaseFile(fileRef, signal);
+      blob = source === "firebase" ? await blobFromFirebaseFile(fileRef, signal) : await blobFromLocalCacheOnly(fileRef);
     }
     if (!blob || blob.size <= 0) {
-      stats.missing += 1;
+      noteMissingFile(stats, fileName);
       continue;
     }
     const type = mime || blob.type || "application/octet-stream";
@@ -559,6 +700,8 @@ async function pushBatchFiles(
         const fd = new FormData();
         fd.append("company", companyId);
         fd.append("app_id", appId);
+        // keep the id the voucher already points at, so the existing ref resolves to this record
+        if (pbRefRecordId(fileRef)) fd.append("id", pbRefRecordId(fileRef));
         fd.append("category", categoryForCollection(doc.coll));
         fd.append("owner_coll", doc.coll);
         fd.append("owner_app_id", doc.id);
@@ -569,12 +712,15 @@ async function pushBatchFiles(
         fd.append("updatedAtMs", String(Date.now()));
         fd.append("file", typed, fileName);
         return pbFormRequest("/api/pl/recovery/attachment", fd);
-      }, signal)) as { ref?: string };
+      }, signal)) as { ref?: string; existed?: boolean };
       if (rec?.ref) {
-        map.set(fileRef, rec.ref);
+        if (!pbRefRecordId(fileRef) || rec.ref !== fileRef) map.set(fileRef, rec.ref);
         stats.files += 1;
+        // server says it already had it (parallel / earlier push): counted as existing, not uploaded
+        if (rec.existed) stats.alreadyOnServer = (stats.alreadyOnServer || 0) + 1;
+        else stats.uploaded = (stats.uploaded || 0) + 1;
       } else {
-        stats.missing += 1;
+        noteMissingFile(stats, fileName);
       }
     } catch (e) {
       const code = e instanceof PocketBaseRequestError ? String((e.data as { code?: unknown } | null)?.code || "") : "";
@@ -596,10 +742,41 @@ export async function pushCompanyToServer(input: {
   company: RecoveryCompany;
   password?: string;
   ownerEmail?: string;
+  /** "local" (default): only SQLite + files cached on this PC, Firebase never touched. "firebase": also copy files from Firebase Storage. */
+  source?: RecoveryPushSource;
+  onProgress?: (p: RecoveryProgress) => void;
+  signal?: AbortSignal;
+}): Promise<RecoveryPushResult> {
+  // A push is a user action: no startup quota popup for it, and 429 / 402 replies never start the app-wide pause.
+  noteUserInitiatedServerAction();
+  const endSuppress = beginRecoveryQuotaSuppress();
+  let lastProgress: RecoveryProgress = { phase: "company", label: "", done: 0, total: 1 };
+  const userProgress = input.onProgress;
+  rateBackoffNote = () => userProgress?.({ ...lastProgress, label: RECOVERY_TEXT[readRecoveryLang()].serverBusy });
+  try {
+    return await pushCompanyToServerInner({
+      ...input,
+      onProgress: (p) => {
+        lastProgress = p;
+        userProgress?.(p);
+      },
+    });
+  } finally {
+    rateBackoffNote = null;
+    endSuppress();
+  }
+}
+
+async function pushCompanyToServerInner(input: {
+  company: RecoveryCompany;
+  password?: string;
+  ownerEmail?: string;
+  source?: RecoveryPushSource;
   onProgress?: (p: RecoveryProgress) => void;
   signal?: AbortSignal;
 }): Promise<RecoveryPushResult> {
   const c = input.company;
+  const source: RecoveryPushSource = input.source === "firebase" ? "firebase" : "local";
   const progress = input.onProgress ?? (() => {});
   const signal = input.signal;
   if (!getValidPocketBaseAuth()) throw new PocketBaseRequestError("not signed in", 401);
@@ -635,8 +812,13 @@ export async function pushCompanyToServer(input: {
   const rootStats: FileStats = { files: 0, missing: 0, tooBig: 0 };
   {
     const rootDoc: RecoveryDoc = { coll: "company", id: c.id, data: root, at: c.updatedAt || Date.now() };
-    const rootMap = await pushBatchFiles(c.id, [rootDoc], rootStats, signal, (label) =>
-      progress({ phase: "company", label, done: 1, total: 1 })
+    const rootMap = await pushBatchFiles(
+      c.id,
+      [rootDoc],
+      rootStats,
+      signal,
+      (label) => progress({ phase: "company", label, done: 1, total: 1 }),
+      source
     );
     if (rootMap.size) {
       const nextRoot = replaceRefsDeep(root, rootMap);
@@ -674,15 +856,29 @@ export async function pushCompanyToServer(input: {
     stats.files += rootStats.files;
     stats.missing += rootStats.missing;
     stats.tooBig += rootStats.tooBig;
+    stats.uploaded = (stats.uploaded || 0) + (rootStats.uploaded || 0);
+    stats.alreadyOnServer = (stats.alreadyOnServer || 0) + (rootStats.alreadyOnServer || 0);
+    stats.notOnPc = [...(rootStats.notOnPc || [])];
   }
   const sum: ResumeSum = { create: 0, update: 0, same: 0, kept_server: 0, unsupported: 0, bad: 0, ...(resumed?.sum || {}) };
+  // Masters / Vouchers split (a resume mark from before this field existed restarts the split at zero).
+  const kinds = emptyRecordKinds();
+  if (resumed?.kinds) {
+    Object.assign(kinds.masters, resumed.kinds.masters);
+    Object.assign(kinds.vouchers, resumed.kinds.vouchers);
+  }
   let sent = batches.slice(0, start).reduce((n, b) => n + b.length, 0);
   progress({ phase: "records", label: "Uploading records and files", done: sent, total: docs.length });
   for (let i = start; i < batches.length; i++) {
     throwIfAborted(signal);
     const batch = batches[i];
-    const map = await pushBatchFiles(c.id, batch, stats, signal, (label) =>
-      progress({ phase: "records", label, done: sent, total: docs.length })
+    const map = await pushBatchFiles(
+      c.id,
+      batch,
+      stats,
+      signal,
+      (label) => progress({ phase: "records", label, done: sent, total: docs.length }),
+      source
     );
     const convertedKeys = new Set<string>();
     if (map.size) {
@@ -713,9 +909,15 @@ export async function pushCompanyToServer(input: {
       () => pbRequest("/api/pl/recovery/docs", { method: "POST", body, timeoutMs: REQ_TIMEOUT_MS }),
       signal
     )) as { counts?: Record<string, Record<string, number>> };
-    for (const per of Object.values(r?.counts || {})) {
+    for (const [collName, per] of Object.entries(r?.counts || {})) {
+      const kind = collName === "vouchers" ? kinds.vouchers : kinds.masters;
       for (const [k, n] of Object.entries(per || {})) {
-        if (k in sum) sum[k as keyof typeof sum] += Number(n) || 0;
+        const v = Number(n) || 0;
+        if (k in sum) sum[k as keyof typeof sum] += v;
+        if (k === "create") kind.created += v;
+        else if (k === "update") kind.updated += v;
+        else if (k === "same" || k === "kept_server") kind.unchanged += v;
+        else if (k === "bad" || k === "unsupported") kind.failed += v;
       }
     }
     sent += batch.length;
@@ -726,6 +928,7 @@ export async function pushCompanyToServer(input: {
       sent,
       total: docs.length,
       sum: { ...sum },
+      kinds: { masters: { ...kinds.masters }, vouchers: { ...kinds.vouchers } },
       files: { ...stats },
     });
     progress({ phase: "records", label: "Uploading records and files", done: sent, total: docs.length });
@@ -771,6 +974,21 @@ export async function pushCompanyToServer(input: {
     unsupported: sum.unsupported,
     failedRecords: sum.bad,
     tooBigFiles: stats.tooBig,
+    byKind: {
+      masters: kinds.masters,
+      vouchers: kinds.vouchers,
+      files: {
+        created: stats.uploaded || 0,
+        updated: 0,
+        unchanged: stats.alreadyOnServer || 0,
+        failed: stats.tooBig,
+        notOnPc: stats.missing,
+      },
+    },
+    uploadedFiles: stats.uploaded || 0,
+    alreadyOnServerFiles: stats.alreadyOnServer || 0,
+    source,
+    notOnPc: stats.notOnPc || [],
     countMismatch,
     resumedFromBatch: start,
   };

@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var NOTICE_URL = "/app/api/public/website-notice";
+  var NOTICE_URL = (String(window.SITE_DATA_BASE || "https://np.pocket-ledger.com").replace(/\/+$/, "") + "/api/pl/site/public/notice");
   var bannerEl = document.getElementById("marketingNoticeBanner");
   var textEl = document.getElementById("marketingNoticeText");
 

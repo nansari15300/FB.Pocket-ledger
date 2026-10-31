@@ -2,7 +2,7 @@
  * Online company FY/month pagination — Firestore query builders.
  * Full listener replacement is phased; these queries hydrate SQLite month pages.
  */
-import { collection, orderBy, query, where, type Query } from "firebase/firestore";
+import { collection, orderBy, query, where, type Query } from "@/lib/pbCompat/firestore";
 import { endOfMonth, startOfMonth } from "date-fns";
 import { firestore } from "@/lib/firebase";
 import type { FyDateRangeMs } from "@/lib/fyPagination/types";

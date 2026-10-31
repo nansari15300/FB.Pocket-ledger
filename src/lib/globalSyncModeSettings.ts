@@ -109,7 +109,7 @@ export async function ensureGlobalSyncModeSettingsHydrated(): Promise<GlobalSync
   if (!syncModeHydratePromise) {
     syncModeHydratePromise = (async () => {
       try {
-        const { doc, getDoc: fsGetDoc } = await import("firebase/firestore");
+        const { doc, getDoc: fsGetDoc } = await import("@/lib/pbCompat/firestore");
         const { isPocketBaseAppSessionActive } = await import("@/lib/pocketbaseData/pbAppSession");
         let getDoc = fsGetDoc;
         if (isPocketBaseAppSessionActive()) {

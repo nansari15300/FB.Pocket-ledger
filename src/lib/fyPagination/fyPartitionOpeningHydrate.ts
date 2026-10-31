@@ -1,7 +1,7 @@
 "use client";
 
 import { startOfDay } from "date-fns";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { isCloudLinkedCompanyStorage } from "@/lib/companyUnlockGate";
 import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";

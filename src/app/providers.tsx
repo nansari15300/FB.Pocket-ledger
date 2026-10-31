@@ -18,6 +18,7 @@ import { CapacitorAndroidBackButton } from "@/components/CapacitorAndroidBackBut
 import { AppUiZoomBootstrap } from "@/components/layout/AppUiZoomBootstrap";
 import { VoucherOutboxFlushManager } from "@/components/VoucherOutboxFlushManager";
 import { PocketBaseLiveSyncManager } from "@/components/PocketBaseLiveSyncManager";
+import { PocketBaseSyncProgressBadge } from "@/components/PocketBaseFilesStatus";
 import { LocalCompanyCloudSyncManager } from "@/components/LocalCompanyCloudSyncManager";
 import { CapacitorDriveOAuthReturnHandler } from "@/components/CapacitorDriveOAuthReturnHandler";
 import { DriveOAuthReturnBootstrap } from "@/components/DriveOAuthReturnBootstrap";
@@ -195,6 +196,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
                                 <FyMasterOpeningSaveBootstrap />
                                 <VoucherOutboxFlushManager />
                                 <PocketBaseLiveSyncManager />
+<PocketBaseSyncProgressBadge />
                                 <DaybookWedgeSyncManager />
                                 <LocalCompanyCloudSyncManager />
                                 <CapacitorDriveOAuthReturnHandler />

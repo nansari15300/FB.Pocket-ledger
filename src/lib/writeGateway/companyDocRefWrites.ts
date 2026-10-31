@@ -2,7 +2,7 @@
  * `DocumentReference` / `CollectionReference` se company-scoped paths parse karke `writeEntity` call —
  * UI components me seedha `updateDoc(ref)` ki jagah yahi use karo.
  */
-import type { CollectionReference, DocumentReference } from "firebase/firestore";
+import type { CollectionReference, DocumentReference } from "@/lib/pbCompat/firestore";
 import { writeEntity, type WriteEntityResult } from "@/lib/writeGateway/writeEntity";
 
 function parseCompanySubdoc(path: string): { companyId: string; collectionName: string; docId: string } | null {

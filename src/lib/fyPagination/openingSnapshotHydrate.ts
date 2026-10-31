@@ -1,7 +1,7 @@
 "use client";
 
 import { endOfDay, startOfDay } from "date-fns";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import type { Context } from "@/components/vouchers/TransactionsTable";
 import { getTransactionAmounts } from "@/hooks/use-transactions";

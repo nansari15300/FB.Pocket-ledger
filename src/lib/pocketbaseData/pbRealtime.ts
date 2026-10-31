@@ -20,7 +20,7 @@ import {
   applyPocketBaseRealtimeRecord,
   pbDeviceId,
   pocketBaseCompanyRecId,
-  pullPocketBaseCompanyToLocal,
+  pullPocketBaseCompanyToLocalHealed,
 } from "@/lib/pocketbaseData/pbSync";
 import {
   activePocketBaseCompanyId,
@@ -33,6 +33,8 @@ import { SELECTED_COMPANY_CHANGED_EVENT } from "@/lib/selectedCompanyStorage";
 export type PocketBaseRealtimeMode = "live" | "delta";
 
 const CHANGE_LOG_TOPIC = "pl_change_log";
+/** Custom server event (pb_hooks/lib/udoc.js): messages / users / settings changed on another device. */
+const UDOC_TOPIC = "pl_udoc";
 /** Migration-fixed collection ids (subscribe both name and id). */
 const COLLECTION_IDS: Record<string, string> = {
   pl_change_log: "plc_change_log",
@@ -134,7 +136,7 @@ function wildcard(name: string): string {
 /** PocketBase 0.23+ collection-wide topic is `name/*` (id/* as alias). */
 function topicsFor(mode: PocketBaseRealtimeMode): string[] {
   const names = mode === "live" ? [CHANGE_LOG_TOPIC, ...LIVE_COLLECTIONS] : [CHANGE_LOG_TOPIC];
-  const out: string[] = [];
+  const out: string[] = [UDOC_TOPIC];
   const add = (n: string) => {
     if (!n || out.includes(n)) return;
     out.push(n);
@@ -197,6 +199,8 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
   if (typeof window === "undefined") return () => {};
   let closed = false;
   let retryMs = RECONNECT_MIN_MS;
+  /** Consecutive failed subscribe POSTs (e.g. 404 stale client id): back off even while the tab is visible. */
+  let subFailStreak = 0;
   let retryTimer: number | null = null;
   let pullTimer: number | null = null;
   let connectWatch: number | null = null;
@@ -267,8 +271,9 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
     try {
       for (const id of ids) {
         if (closed) break;
+        if (!isActivePocketBaseCompanyId(id)) continue; // switched away mid-loop: that company sleeps
         try {
-          await pullPocketBaseCompanyToLocal(id);
+          await pullPocketBaseCompanyToLocalHealed(id, { oncePerSession: true });
         } catch (e) {
           console.warn("[pbRealtime] pull failed", id, e instanceof Error ? e.message : e);
         }
@@ -323,6 +328,14 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
     if (closed) return;
     // Server keep-alive ping (pb_hooks/realtime_ping.pb.js): only keeps the tunnel stream open.
     if (eventName === "pl_ping") return;
+    if (eventName === UDOC_TOPIC) {
+      try {
+        window.dispatchEvent(new Event("pl-udoc-written"));
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
     if (eventName === "PB_CONNECT") {
       let clientId = "";
       try {
@@ -336,6 +349,7 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
         .then(() => {
           if (closed) return;
           retryMs = RECONNECT_MIN_MS;
+          subFailStreak = 0;
           clearConnectWatch();
           setConnected(true);
           // Every (re)connect: forced catch-up from the change-log cursor, so events missed while the
@@ -344,6 +358,7 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
         })
         .catch((e) => {
           console.warn("[pbRealtime] subscribe failed", e instanceof Error ? e.message : e);
+          subFailStreak = Math.min(subFailStreak + 1, 6);
           dropStream();
           scheduleReconnect();
         });
@@ -371,7 +386,8 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
   const scheduleReconnect = () => {
     if (closed || retryTimer != null || pushPauseDepth > 0) return;
     setConnected(false);
-    const wait = document.visibilityState === "visible" ? Math.min(retryMs, RECONNECT_MIN_MS) : retryMs;
+    const baseWait = document.visibilityState === "visible" ? Math.min(retryMs, RECONNECT_MIN_MS) : retryMs;
+    const wait = subFailStreak > 0 ? Math.max(baseWait, Math.min(RECONNECT_MIN_MS * 2 ** subFailStreak, 60_000)) : baseWait;
     retryMs = Math.min(retryMs * 2, RECONNECT_MAX_MS);
     retryTimer = window.setTimeout(() => {
       retryTimer = null;

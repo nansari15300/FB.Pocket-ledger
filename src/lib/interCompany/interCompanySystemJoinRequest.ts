@@ -1,18 +1,8 @@
 /**
  * Inter Com System — join request from visitor to target company owner (Other companies row).
  */
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-  type Unsubscribe,
-} from "firebase/firestore";
+import { addDoc, deleteDoc, setDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
+import { collection, doc, query, serverTimestamp, where, type Unsubscribe } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { auth, firestore } from "@/lib/firebase";
 import type { InterCompanyGroupCompanyOwner } from "@/lib/interCompany/interCompanyGroups";

@@ -6,7 +6,7 @@
  * save the voucher's live master lists refresh (`pl-master-edited` event also fired) and the current value stays.
  */
 import React, { useCallback, useMemo, useState } from "react";
-import { doc, collection } from "firebase/firestore";
+import { doc, collection } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { toast } from "sonner";
 import { firestore } from "@/lib/firebase";

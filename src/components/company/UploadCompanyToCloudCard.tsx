@@ -1,12 +1,13 @@
 "use client";
 
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { useState } from "react";
 import { CloudUpload, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useCompany } from "@/hooks/useCompany";
 import { useAuth } from "@/hooks/useAuth";
-import { doc, setDoc, serverTimestamp, deleteField } from "firebase/firestore";
+import { doc, serverTimestamp, deleteField } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { promoteLocalCompanyRowToOnline } from "@/lib/localCompanyStore";
 import { canUploadOneMoreOnline } from "@/lib/companyOnlineSlots";
@@ -18,6 +19,7 @@ import { pushAllLocalCompanyDocsToFirestore } from "@/lib/migrateLocalCompanySub
 import { useLivePlans, getPlanFromPlans } from "@/hooks/useLivePlans";
 import { removeLocalCompanyDeltaFromFolder } from "@/lib/liveDataFolderMirror";
 import { pocketLedgerStorageDocFields } from "@/lib/firebaseStoragePaths";
+import { isPocketBaseLoginActive } from "@/lib/makeLocalCompanyOnlinePocketBase";
 
 /** Manual push of company root + local SQLite subcollections to Firestore (plan online slots). */
 export function UploadCompanyToCloudCard() {
@@ -47,6 +49,9 @@ export function UploadCompanyToCloudCard() {
   );
 
   if (!company || !companyId || !isOwner) return null;
+
+  // Pocket Ledger Server login: this card pushes to Firestore - use "Make online on PocketBase" instead.
+  if (isPocketBaseLoginActive(user)) return null;
 
   // Online repair card hamesha hide — Force upload button docs + files handle karta hai.
   if (!isLocal) {

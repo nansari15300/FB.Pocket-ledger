@@ -13,7 +13,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { signOut as firebaseSignOut } from "firebase/auth";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -40,7 +39,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useDate } from "@/hooks/useDate";
-import { auth } from "@/lib/firebase";
 import { getPocketBaseServerUrl, getValidPocketBaseAuth, pocketBaseSignIn, pocketBaseSignOut } from "@/lib/pocketbaseData/pbClient";
 import {
   clearPocketBaseAppSession,
@@ -66,6 +64,14 @@ import {
   recoveryModeSupported,
   writeRecoveryMode,
 } from "@/lib/recovery/recoveryMode";
+import {
+  RECOVERY_LANGS,
+  RECOVERY_TEXT,
+  readRecoveryLang,
+  writeRecoveryLang,
+  type RecoveryLang,
+  type RecoveryPushSource,
+} from "@/lib/recovery/recoveryLocales";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -86,6 +92,8 @@ type Job = {
   message: string;
   ownerProblem: boolean;
   result: RecoveryPushResult | null;
+  /** "local" = only this PC's data, Firebase never touched; "firebase" = also copy files from Firebase. */
+  source: RecoveryPushSource;
 };
 
 type PromptInput = { owner: string; password: string; ownerEditable: boolean };
@@ -123,6 +131,9 @@ export default function RecoveryPage() {
   const [promptIds, setPromptIds] = useState<string[] | null>(null);
   const [promptInputs, setPromptInputs] = useState<Record<string, PromptInput>>({});
   const [promptError, setPromptError] = useState("");
+  // What the push takes its data from (asked in the push popup; default: only this PC's data) + popup language.
+  const [pushSource, setPushSource] = useState<RecoveryPushSource>("local");
+  const [lang, setLang] = useState<RecoveryLang>("en");
 
   // Server sign-in (inside the popup, only when needed)
   const [srvEmail, setSrvEmail] = useState("");
@@ -168,6 +179,10 @@ export default function RecoveryPage() {
   }, []);
 
   useEffect(() => {
+    setLang(readRecoveryLang());
+  }, []);
+
+  useEffect(() => {
     const st = readRecoveryMode();
     if (!recoveryModeSupported() || !st) {
       setAllowed(false);
@@ -205,11 +220,6 @@ export default function RecoveryPage() {
     } catch {
       /* ignore */
     }
-    try {
-      await firebaseSignOut(auth);
-    } catch {
-      /* ignore */
-    }
     window.location.assign("/");
   }, []);
 
@@ -223,19 +233,9 @@ export default function RecoveryPage() {
     setGoAppError("");
     setBusyExit(true);
     try {
-      try {
-        await Promise.race([auth.authStateReady(), new Promise((r) => setTimeout(r, 4000))]);
-      } catch {
-        /* ignore */
-      }
-      const fbUser = auth.currentUser;
       let uid: string | undefined;
       let email: string | null | undefined;
-      if (fbUser) {
-        clearPocketBaseAppSession();
-        uid = fbUser.uid;
-        email = fbUser.email;
-      } else if (getValidPocketBaseAuth()) {
+      if (getValidPocketBaseAuth()) {
         const p = await startPocketBaseAppSession();
         uid = pocketBaseSessionUid(p);
         email = p.email;
@@ -284,6 +284,7 @@ export default function RecoveryPage() {
           company,
           ownerEmail: job.ownerEmail,
           password: job.password || undefined,
+          source: job.source,
           signal: ac.signal,
           onProgress: (p) =>
             updateJob(id, (j) => ({
@@ -358,6 +359,7 @@ export default function RecoveryPage() {
     }
     if (!use.length) return;
     setPromptInputs(inputs);
+    setPushSource("local");
     setPromptIds(use);
     setPromptError("");
     setSrvPassword("");
@@ -417,6 +419,7 @@ export default function RecoveryPage() {
           message: "",
           ownerProblem: false,
           result: null,
+          source: pushSource,
         };
       }
       return next;
@@ -477,6 +480,7 @@ export default function RecoveryPage() {
   }
 
   const nameOf = (id: string) => (companies ?? []).find((c) => c.id === id)?.name || "(no name)";
+  const tx = RECOVERY_TEXT[lang];
 
   return (
     <main className="min-h-screen bg-background p-4 md:p-8">
@@ -542,15 +546,32 @@ export default function RecoveryPage() {
               </Button>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-xs">
+              <table className="w-full min-w-[56rem] border-collapse text-xs">
                 <thead>
                   <tr className="text-left">
-                    <th className="border px-2 py-1 font-medium">Company</th>
-                    <th className="border px-2 py-1 font-medium">Result</th>
-                    <th className="border px-2 py-1 text-right font-medium">New</th>
-                    <th className="border px-2 py-1 text-right font-medium">Updated</th>
-                    <th className="border px-2 py-1 text-right font-medium">Unchanged</th>
-                    <th className="border px-2 py-1 text-right font-medium">Failed</th>
+                    <th rowSpan={2} className="border px-2 py-1 font-medium">Company</th>
+                    <th rowSpan={2} className="border px-2 py-1 font-medium">Result</th>
+                    {["New", "Updated", "Unchanged", "Failed"].map((g) => (
+                      <th key={g} colSpan={3} className="border px-2 py-1 text-center font-medium">
+                        {g}
+                      </th>
+                    ))}
+                    <th rowSpan={2} className="border px-2 py-1 text-right font-medium" title="Files whose bytes are not on this PC">
+                      Files not on PC
+                    </th>
+                  </tr>
+                  <tr className="text-right text-[11px] text-muted-foreground">
+                    {[0, 1, 2, 3].flatMap((g) => [
+                      <th key={`m${g}`} className="border px-1.5 py-0.5 font-medium" title="Masters (parties, groups, items, accounts, staff, taxes, documents...)">
+                        Masters
+                      </th>,
+                      <th key={`v${g}`} className="border px-1.5 py-0.5 font-medium">
+                        Vouchers
+                      </th>,
+                      <th key={`f${g}`} className="border px-1.5 py-0.5 font-medium">
+                        Files
+                      </th>,
+                    ])}
                   </tr>
                 </thead>
                 <tbody>
@@ -571,10 +592,14 @@ export default function RecoveryPage() {
                             </span>
                           )}
                         </td>
-                        <td className="border px-2 py-1 text-right">{r ? r.created : "-"}</td>
-                        <td className="border px-2 py-1 text-right">{r ? r.updated : "-"}</td>
-                        <td className="border px-2 py-1 text-right">{r ? r.same + r.keptServer : "-"}</td>
-                        <td className="border px-2 py-1 text-right">{r ? r.failedRecords + r.unsupported : "-"}</td>
+                        {(["created", "updated", "unchanged", "failed"] as const).flatMap((k) =>
+                          (["masters", "vouchers", "files"] as const).map((kind) => (
+                            <td key={`${k}-${kind}`} className="border px-1.5 py-1 text-right tabular-nums">
+                              {!r ? "-" : kind === "files" && k === "updated" ? "-" : r.byKind[kind][k]}
+                            </td>
+                          ))
+                        )}
+                        <td className="border px-2 py-1 text-right tabular-nums">{r ? r.byKind.files.notOnPc : "-"}</td>
                       </tr>
                     );
                   })}
@@ -728,19 +753,36 @@ export default function RecoveryPage() {
                             ) : null}
                           </div>
                           {job.status === "done" && job.result ? (
+                            <>
                             <p className="text-xs text-muted-foreground">
-                              {job.result.created} new, {job.result.updated} updated, {job.result.same + job.result.keptServer} unchanged
-                              {job.result.keptServer ? ` (${job.result.keptServer} newer on the server kept)` : ""},{" "}
-                              {job.result.failedRecords + job.result.unsupported} failed.                               {job.result.files} files uploaded
-                              {job.result.missingFiles
-                                ? `, ${job.result.missingFiles} not on this PC and could not be copied from Firebase`
-                                : ""}
-                              {job.result.tooBigFiles ? `, ${job.result.tooBigFiles} too big for the server` : ""}.
+                              <span className="font-medium">Masters:</span> {job.result.byKind.masters.created} new, {job.result.byKind.masters.updated} updated, {job.result.byKind.masters.unchanged} unchanged, {job.result.byKind.masters.failed} failed.{" "}
+<span className="font-medium">Vouchers:</span> {job.result.byKind.vouchers.created} new, {job.result.byKind.vouchers.updated} updated, {job.result.byKind.vouchers.unchanged} unchanged, {job.result.byKind.vouchers.failed} failed.{" "}
+<span className="font-medium">Files:</span> {job.result.byKind.files.created} uploaded, {job.result.byKind.files.unchanged} already on the server, {job.result.byKind.files.failed} failed{job.result.tooBigFiles ? " (too big for the server)" : ""}, {job.result.byKind.files.notOnPc}{" "}
+{job.result.source === "local" ? tx.notOnPc : "not on this PC and could not be copied from Firebase"}.
+{job.result.keptServer ? ` (${job.result.keptServer} records were newer on the server and kept.)` : ""}
                               {job.result.resumedFromBatch ? ` Continued from part ${job.result.resumedFromBatch + 1}.` : ""}
                               {job.result.countMismatch.length
                                 ? ` Count check differs: ${job.result.countMismatch.map((m) => `${m.coll} ${m.server}/${m.source}`).join(", ")}. Push again to retry.`
                                 : " Count check passed."}
+                              {" "}
+                              {job.result.source === "local" ? tx.modeLocalDone : tx.modeFirebaseDone}
                             </p>
+                            {job.result.notOnPc.length ? (
+                              <details className="text-xs text-muted-foreground">
+                                <summary className="cursor-pointer">
+                                  {job.result.notOnPc.length} {tx.skippedFiles}
+                                </summary>
+                                <ul className="mt-1 list-disc pl-5">
+                                  {job.result.notOnPc.slice(0, 50).map((n, i) => (
+                                    <li key={`${i}-${n}`} className="break-all">
+                                      {n} - {tx.notOnPc}
+                                    </li>
+                                  ))}
+                                  {job.result.notOnPc.length > 50 ? <li>...</li> : null}
+                                </ul>
+                              </details>
+                            ) : null}
+                            </>
                           ) : null}
                         </>
                       )}
@@ -764,7 +806,7 @@ export default function RecoveryPage() {
             <DialogDescription>
               {promptIds && promptIds.length > 1
                 ? `${promptIds.length} companies. They upload one after another, each with its own progress, Stop and Retry.`
-                : "Pushing again is safe: records already on the server are not duplicated. Firebase files on this PC (or still on Firebase) are copied to Pocket Ledger Server URLs."}
+                : "Pushing again is safe: records already on the server are not duplicated. Choose below where the data comes from."}
             </DialogDescription>
           </DialogHeader>
 
@@ -794,6 +836,47 @@ export default function RecoveryPage() {
                 </Button>
               </div>
             ) : null}
+
+            <div className="space-y-2 rounded-md border p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-medium">{tx.sourceTitle}</p>
+                <div className="flex items-center gap-1" aria-label={tx.langLabel}>
+                  {RECOVERY_LANGS.map((l) => (
+                    <Button
+                      key={l.value}
+                      type="button"
+                      size="sm"
+                      variant={lang === l.value ? "default" : "outline"}
+                      className="h-7 px-2 text-xs"
+                      onClick={() => {
+                        setLang(l.value);
+                        writeRecoveryLang(l.value);
+                      }}
+                    >
+                      {l.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              {(["local", "firebase"] as RecoveryPushSource[]).map((v) => (
+                <label
+                  key={v}
+                  className={`flex cursor-pointer items-start gap-2 rounded-md border p-2 ${pushSource === v ? "border-primary bg-primary/5" : ""}`}
+                >
+                  <input
+                    type="radio"
+                    name="recovery-push-source"
+                    className="mt-1"
+                    checked={pushSource === v}
+                    onChange={() => setPushSource(v)}
+                  />
+                  <span className="space-y-0.5">
+                    <span className="block font-medium">{v === "local" ? tx.localTitle : tx.firebaseTitle}</span>
+                    <span className="block text-xs text-muted-foreground">{v === "local" ? tx.localDesc : tx.firebaseDesc}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
 
             {(promptIds ?? []).map((id) => {
               const c = (companies ?? []).find((x) => x.id === id);

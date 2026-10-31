@@ -1,4 +1,5 @@
-import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { updateDoc } from "@/lib/writeGateway/pbWrites";
+import { doc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { getCompanyDocFromBrowserDb, upsertCompanyDocInBrowserDb } from "@/lib/localCompanyDocMirror";
 import { enqueueCompanyDocOutbox } from "@/lib/localVoucherOutbox";

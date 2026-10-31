@@ -50,7 +50,7 @@ export function CountryAppPicker({
   const onContinue = () => {
     const result = applyAppCountry(cc);
     if (!result.ok) {
-      onError?.(result.reason);
+      onError?.((result as { ok: false; reason: string }).reason);
       return;
     }
     if (result.redirected) return;

@@ -176,7 +176,7 @@ import { MasterLedgerDateRangePresetRow } from "@/components/ui/MasterLedgerDate
 import type { BSDate } from "@/lib/bs-date";
 import { Badge } from "../ui/badge";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { doc, query, collection, where } from "firebase/firestore";
+import { doc, query, collection, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { batchFetchUserDisplayNamesFromFirestore } from "@/lib/batchFetchUserDisplayNames";
 import { firestore } from "@/lib/firebase";

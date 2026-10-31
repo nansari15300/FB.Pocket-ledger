@@ -1,29 +1,16 @@
 
 "use client";
 
+import { writeBatch, setDoc, addDoc } from "@/lib/writeGateway/pbWrites";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, Upload, Loader2, FileWarning, ShieldCheck, ShieldOff, Eye, EyeOff, Folder, Info, Settings, Plus, X, Cloud } from "lucide-react";
 import { useCompany } from "@/hooks/useCompany";
 import type { Company } from "@/hooks/useCompany";
-import {
-  collection,
-  query,
-  writeBatch,
-  doc,
-  Timestamp,
-  setDoc,
-  serverTimestamp,
-  addDoc,
-  where,
-  orderBy,
-  limit,
-  startAfter,
-  documentId,
-} from "firebase/firestore";
+import { collection, query, doc, Timestamp, serverTimestamp, where, orderBy, limit, startAfter, documentId } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import type { QueryDocumentSnapshot } from "firebase/firestore";
+import type { QueryDocumentSnapshot } from "@/lib/pbCompat/firestore";
 import { firestore, isFirestoreBlockedForServerSession } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";

@@ -1,20 +1,11 @@
 
 "use client";
 
+import { updateDoc, deleteDoc, writeBatch } from "@/lib/writeGateway/pbWrites";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { STAFF_ENTITY_GROUPS_LABEL, STAFF_ENTITY_LABEL } from "@/lib/staffEntityDisplayName";
 import { PermissionRouteGuard } from "@/components/permission/PermissionRouteGuard";
-import {
-  collection,
-  query,
-  where,
-  updateDoc,
-  doc,
-  deleteDoc,
-  writeBatch,
-  serverTimestamp,
-  type QueryDocumentSnapshot,
-} from "firebase/firestore";
+import { collection, query, where, doc, serverTimestamp, type QueryDocumentSnapshot } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -76,7 +67,7 @@ import {
 import { LOCAL_AUTH_CHANGED_EVENT } from "@/lib/localApiClient";
 import { ownerFinalizeRecycleBinCompanyOnServer } from "@/lib/ownerRecycleBinApiClient";
 import { deleteCompanyFirebaseStorageFolder } from "@/lib/deleteCompanyStorageFolder";
-import type { User } from "firebase/auth";
+import type { User } from "@/lib/pbCompat/auth";
 import type { Permission } from "@/lib/permissions";
 
 /** Recycle bin me company row — header me shared company select ho to bhi owner apni deleted company manage kar sake. */

@@ -11,6 +11,7 @@
  */
 
 import { getActiveGate } from "@/lib/gates/gateStore";
+import { isPocketBaseOnlyAppSession } from "@/lib/pbOnlySessionMarker";
 import { isPlServerThinStaffClient } from "@/lib/plServerThinStaffClient";
 import { isPlHubServerClientMode, isPlRemoteServerClientMode, isPlSharingServerPortOrigin } from "@/lib/plRemoteServerClient";
 
@@ -137,6 +138,10 @@ export function blockFirebaseStorageHitOnPlServer(
   if (!raw) return false;
   const isHttps = /^https?:\/\//i.test(raw);
   if (!looksLikeFirebaseStorageUrlOrPath(raw) && isHttps) return false;
+
+  // Pocket Ledger Server login only (PocketBase attachments `pbatt:`): Firebase Storage is not the file server and
+  // there is no Firebase sign-in, so never fall back to a Storage read.
+  if (isPocketBaseOnlyAppSession()) return true;
 
   if (shouldBlockFirebaseStorageOnPlServer()) {
     tracePlServerFirebaseHit(isHttps ? "storage_https" : "storage_object_path", {

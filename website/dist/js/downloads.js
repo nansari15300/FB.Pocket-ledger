@@ -12,32 +12,22 @@
     return h === "localhost" || h === "127.0.0.1" || h === "::1";
   }
 
-  function firebaseLatestUrl() {
-    var cfg = window.POCKET_LEDGER_FIREBASE || {};
-    var bucket = cfg.storageBucket || "";
-    var prefix = window.POCKET_LEDGER_RELEASE_PREFIX || "public-releases";
-    if (!bucket) return "";
-    return (
-      "https://firebasestorage.googleapis.com/v0/b/" +
-      bucket +
-      "/o/" +
-      encodeURIComponent(prefix + "/latest.json") +
-      "?alt=media"
-    );
+  function siteBase() {
+    return String(window.SITE_DATA_BASE || "https://np.pocket-ledger.com").replace(/\/+$/, "");
   }
 
-  function firebaseSettingsUrl() {
-    var cfg = window.POCKET_LEDGER_FIREBASE || {};
-    var bucket = cfg.storageBucket || "";
-    var prefix = window.POCKET_LEDGER_RELEASE_PREFIX || "public-releases";
-    if (!bucket) return "";
-    return (
-      "https://firebasestorage.googleapis.com/v0/b/" +
-      bucket +
-      "/o/" +
-      encodeURIComponent(prefix + "/release-settings.json") +
-      "?alt=media"
-    );
+  function pbAuth() {
+    return window.SiteData && typeof window.SiteData.getAuth === "function" ? window.SiteData.getAuth() : null;
+  }
+
+  /** Signed-in visitor: Firebase account or Pocket Ledger Server login (same as website-auth.js). */
+  function resolveIdentity() {
+    if (auth && auth.currentUser && auth.currentUser.email) return { email: auth.currentUser.email };
+    try {
+      var a = JSON.parse(window.localStorage.getItem("pl_pb_data_auth_v1") || "null");
+      if (a && a.token && !(a.expMs && Number(a.expMs) <= Date.now())) return { email: a.email || "server user" };
+    } catch (_) { /* ignore */ }
+    return null;
   }
 
   function normalizeSettings(raw) {
@@ -221,10 +211,12 @@
     window.location.href = url;
   }
 
-  function trackDownload(platform, extras, token) {
+  function trackDownload(platform, extras) {
     var headers = { "Content-Type": "application/json" };
-    if (token) headers.Authorization = "Bearer " + token;
-    return fetch("/app/api/public/download-events", {
+    var a = pbAuth();
+    if (a && a.token) headers.Authorization = a.token;
+    var who = currentUser && currentUser.email ? String(currentUser.email) : "";
+    return fetch(siteBase() + "/api/pl/site/public/download-event", {
       method: "POST",
       headers: headers,
       body: JSON.stringify({
@@ -232,6 +224,7 @@
         version: (extras && extras.version) || "",
         fileName: (extras && extras.fileName) || "",
         source: (extras && extras.source) || "",
+        userEmail: who,
         eventKind: "new",
       }),
       keepalive: true,
@@ -249,11 +242,20 @@
     };
   }
 
+  function finishDownload(platform, url) {
+    if (platform === "play") {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      startFileDownload(url);
+    }
+  }
+
   function beginTrackedDownload(link) {
     if (!link || link.getAttribute("aria-disabled") === "true") return;
     var platform = link.getAttribute("data-track-platform");
     var url = link.getAttribute("href") || "";
     if (!platform || !url || url === "#") return;
+    currentUser = resolveIdentity();
 
     if (!currentUser) {
       writePendingDownload({
@@ -267,18 +269,9 @@
       return;
     }
 
-    currentUser
-      .getIdToken()
-      .then(function (token) {
-        return trackDownload(platform, downloadExtrasFromLink(link), token);
-      })
-      .finally(function () {
-        if (platform === "play") {
-          window.open(url, "_blank", "noopener,noreferrer");
-        } else {
-          startFileDownload(url);
-        }
-      });
+    trackDownload(platform, downloadExtrasFromLink(link)).then(function () {
+      finishDownload(platform, url);
+    });
   }
 
   function maybeResumePendingDownload() {
@@ -287,39 +280,47 @@
     var pending = readPendingDownload();
     if (!pending) return;
     clearPendingDownload();
-    currentUser
-      .getIdToken()
-      .then(function (token) {
-        return trackDownload(pending.platform, pending, token);
-      })
-      .finally(function () {
-        if (pending.platform === "play") {
-          window.open(pending.url, "_blank", "noopener,noreferrer");
-        } else {
-          startFileDownload(pending.url);
-        }
-      });
+    trackDownload(pending.platform, pending).then(function () {
+      finishDownload(pending.platform, pending.url);
+    });
   }
 
   function initDownloadAuth() {
     var signOutBtn = $("downloadSignOutBtn");
     if (signOutBtn) {
       signOutBtn.onclick = function () {
-        if (auth) auth.signOut();
+        try {
+          window.localStorage.removeItem("pl_app_session_kind_v1");
+          window.localStorage.removeItem("pl_pb_app_profile_v1");
+          window.localStorage.removeItem("pl_pb_data_auth_v1");
+        } catch (_) { /* ignore */ }
+        if (auth) {
+          auth.signOut().catch(function () { /* ignore */ }).then(function () {
+            currentUser = resolveIdentity();
+            updateAuthBanner();
+          });
+        } else {
+          currentUser = resolveIdentity();
+          updateAuthBanner();
+        }
       };
     }
-    if (!window.firebase || !window.POCKET_LEDGER_FIREBASE) {
-      updateAuthBanner();
+    // Visitor sign-in (identity only) still uses the same login page as the rest of the site.
+    if (window.firebase && window.POCKET_LEDGER_FIREBASE) {
+      if (!firebase.apps.length) firebase.initializeApp(window.POCKET_LEDGER_FIREBASE);
+      auth = firebase.auth();
+      auth.onAuthStateChanged(function () {
+        currentUser = resolveIdentity();
+        authReady = true;
+        updateAuthBanner();
+        maybeResumePendingDownload();
+      });
       return;
     }
-    if (!firebase.apps.length) firebase.initializeApp(window.POCKET_LEDGER_FIREBASE);
-    auth = firebase.auth();
-    auth.onAuthStateChanged(function (user) {
-      currentUser = user;
-      authReady = true;
-      updateAuthBanner();
-      maybeResumePendingDownload();
-    });
+    currentUser = resolveIdentity();
+    authReady = true;
+    updateAuthBanner();
+    maybeResumePendingDownload();
   }
 
   function bindDownloadTracking() {
@@ -386,49 +387,26 @@
   }
 
   async function loadSettings() {
-    async function applySettingsText(text) {
-      var raw =
-        typeof window.parseReleaseSettingsJson === "function"
-          ? window.parseReleaseSettingsJson(text)
-          : null;
-      if (!raw) return false;
+    function apply(raw) {
+      if (!raw || typeof raw !== "object") return false;
       cachedSettings = normalizeSettings(raw);
       return true;
     }
-
+    try {
+      var res = await fetch(siteBase() + "/api/pl/site/public/release-settings", { cache: "no-store" });
+      if (res.ok && apply(await res.json())) return cachedSettings;
+    } catch (_) {
+      /* try local file / defaults */
+    }
     if (isLocalHost()) {
-      var remoteUrl = firebaseSettingsUrl();
-      if (remoteUrl) {
-        try {
-          var remoteRes = await fetch(remoteUrl, { cache: "no-store" });
-          if (remoteRes.ok && (await applySettingsText(await remoteRes.text()))) {
-            return cachedSettings;
-          }
-        } catch (_) {
-          /* try local file */
-        }
-      }
       try {
         var localRes = await fetch("/releases/release-settings.json", { cache: "no-store" });
-        if (localRes.ok && (await applySettingsText(await localRes.text()))) {
-          return cachedSettings;
-        }
+        if (localRes.ok && apply(await localRes.json())) return cachedSettings;
       } catch (_) {
         /* use defaults */
       }
-      cachedSettings = normalizeSettings(null);
-      return cachedSettings;
     }
-
-    var url = firebaseSettingsUrl();
-    if (!url) return cachedSettings;
-    try {
-      var res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error(String(res.status));
-      if (!(await applySettingsText(await res.text()))) throw new Error("invalid settings");
-    } catch (_) {
-      cachedSettings = normalizeSettings(null);
-    }
+    cachedSettings = normalizeSettings(null);
     return cachedSettings;
   }
 

@@ -1,7 +1,8 @@
 /**
  * Inter Company — company-level 12-char alphanumeric code (letters + digits mix).
  */
-import { collection, doc, limit, query, updateDoc, where } from "firebase/firestore";
+import { updateDoc } from "@/lib/writeGateway/pbWrites";
+import { collection, doc, limit, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { getLocalCompanyById, listLocalCompanies, upsertLocalCompany } from "@/lib/localCompanyStore";

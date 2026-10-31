@@ -12,7 +12,7 @@ import {
   query,
   where,
   type Query,
-} from "firebase/firestore";
+} from "@/lib/pbCompat/firestore";
 import { auth, firestore, ensureEmbeddedFirestoreOnlineForCloudCompanyLoad } from "@/lib/firebase";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { isFirebaseLedgerDataSyncDisabled } from "@/lib/firebaseLedgerDataSyncDisabled";

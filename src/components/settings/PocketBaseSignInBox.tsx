@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PocketBaseFilesPanel } from "@/components/PocketBaseFilesStatus";
 import {
   getPocketBaseServerUrl,
   getValidPocketBaseAuth,
@@ -45,6 +46,7 @@ export function PocketBaseSignInBox({ url }: { url?: string }) {
 
   if (auth) {
     return (
+      <div className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2 text-xs">
         <span className="text-muted-foreground">Pocket Ledger Server:</span>
         <span className="font-medium text-foreground" translate="no">
@@ -62,6 +64,8 @@ export function PocketBaseSignInBox({ url }: { url?: string }) {
         >
           Sign out
         </Button>
+      </div>
+      <PocketBaseFilesPanel />
       </div>
     );
   }

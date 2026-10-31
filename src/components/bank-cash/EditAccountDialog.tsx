@@ -1,6 +1,7 @@
 
 "use client";
 
+import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Trash2, CalendarIcon, Upload } from "lucide-react";
@@ -8,7 +9,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useLiveEntityDocAttachments } from "@/hooks/useLiveEntityDocAttachments";
 import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
-import { doc, updateDoc, serverTimestamp, Timestamp, collection, query } from "firebase/firestore";
+import { doc, serverTimestamp, Timestamp, collection, query } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import {
   uploadEntityAvatarAndDocumentsRemote,

@@ -1,18 +1,7 @@
 "use client";
 
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  deleteField,
-  doc,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-  type Unsubscribe,
-} from "firebase/firestore";
+import { addDoc, deleteDoc, setDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
+import { collection, deleteField, doc, query, serverTimestamp, where, type Unsubscribe } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { getPlServerSharedCompanies } from "@/lib/plServerAccessContext";

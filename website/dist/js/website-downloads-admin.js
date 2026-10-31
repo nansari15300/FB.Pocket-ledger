@@ -6,8 +6,6 @@
   var adminBox = document.getElementById("adminBox");
   var whoEl = document.getElementById("who");
   var outBtn = document.getElementById("outBtn");
-  var auth;
-  var db;
   var cachedRecent = [];
   var cachedRecentAll = [];
   var cachedStatsNew = { total: 0, byPlatform: {} };
@@ -814,52 +812,10 @@
     });
   }
 
-  function parseApiJsonResponse(res, text) {
-    var body = String(text || "").trim();
-    if (!body) {
-      throw new Error("Empty response from app API (HTTP " + res.status + ").");
-    }
-    if (body.indexOf("[dev-gateway]") === 0) {
-      throw new Error(
-        "App server not ready. Run npm run dev, wait until Next starts on port 3001, then Refresh."
-      );
-    }
-    try {
-      return JSON.parse(body);
-    } catch (_) {
-      throw new Error(
-        "App API did not return JSON. Use http://localhost:3000/website-settings/downloads/ with npm run dev, or deploy the latest app."
-      );
-    }
-  }
-
-  async function fetchDownloadStats(token, attempt) {
-    var res = await fetch("/app/api/admin/download-stats", {
-      headers: { Authorization: "Bearer " + token },
-      cache: "no-store",
-    });
-    var text = await res.text();
-    if (
-      !res.ok &&
-      res.status === 502 &&
-      text.indexOf("[dev-gateway]") === 0 &&
-      attempt < 8
-    ) {
-      await new Promise(function (resolve) {
-        window.setTimeout(resolve, 1500);
-      });
-      return fetchDownloadStats(token, attempt + 1);
-    }
-    var json = parseApiJsonResponse(res, text);
-    if (!res.ok) throw new Error(json.error || "HTTP " + res.status);
-    return json;
-  }
-
   async function load() {
-    setStatus("Loading…", true);
+    setStatus("Loading.", true);
     try {
-      var token = await auth.currentUser.getIdToken();
-      var json = await fetchDownloadStats(token, 0);
+      var json = await window.SiteData.adminGet("/admin/download-stats");
       cachedStatsNew = json.stats || { total: 0, byPlatform: {} };
       cachedStatsUpdate = json.statsUpdate || { total: 0, byPlatform: {} };
       currentReleaseVersion = String(json.currentReleaseVersion || "").trim();
@@ -874,30 +830,7 @@
     }
   }
 
-  function showSignedOut() {
-    if (authBox) authBox.hidden = false;
-    if (adminBox) adminBox.hidden = true;
-    if (outBtn) outBtn.hidden = true;
-    if (whoEl) whoEl.textContent = "";
-  }
-
-  function showAdmin(user) {
-    if (authBox) authBox.hidden = true;
-    if (adminBox) adminBox.hidden = false;
-    if (outBtn) outBtn.hidden = false;
-    if (whoEl) whoEl.textContent = user.email || "";
-  }
-
   function init() {
-    if (!window.firebase || !window.POCKET_LEDGER_FIREBASE || !window.WebsiteSettingsAuth) return;
-    if (!firebase.apps.length) firebase.initializeApp(window.POCKET_LEDGER_FIREBASE);
-    auth = firebase.auth();
-    db = firebase.firestore();
-
-    document.getElementById("googleBtn").onclick = function () {
-      auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(function () {});
-    };
-    if (outBtn) outBtn.onclick = function () { auth.signOut(); };
     document.getElementById("refreshBtn").onclick = function () { void load(); };
     document.querySelectorAll("[data-dl-analytics-tab]").forEach(function (btn) {
       btn.onclick = function () {
@@ -941,23 +874,16 @@
       };
     }
 
-    auth.onAuthStateChanged(function (user) {
-      if (!user) {
-        showSignedOut();
-        setStatus("", true);
-        return;
-      }
-      window.WebsiteSettingsAuth.resolveSuperAdmin(user, db).then(function (ok) {
-        if (!ok) {
-          showSignedOut();
-          setStatus("Super Admin only.", false);
-          auth.signOut();
-          return;
-        }
-        showAdmin(user);
+    window.SiteData.gate({
+      authBox: authBox,
+      adminBox: adminBox,
+      whoEl: whoEl,
+      outBtn: outBtn,
+      setStatus: setStatus,
+      onReady: function () {
         setAnalyticsTab("new");
         void load();
-      });
+      },
     });
   }
 

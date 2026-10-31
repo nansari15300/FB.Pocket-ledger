@@ -1,5 +1,6 @@
 "use client";
 
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { STAFF_ENTITY_LABEL } from "@/lib/staffEntityDisplayName";
 
 import {
@@ -12,14 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { useCompany } from "@/hooks/useCompany";
 import { sortRecentTransactionsDesc } from "@/lib/recentTransactionsSort";
 import { firestore } from "@/lib/firebase";
-import {
-  doc,
-  getDoc,
-  collection,
-  query,
-  getDocs,
-  where,
-} from 'firebase/firestore';
+import { doc, collection, query, where } from "@/lib/pbCompat/firestore";
 import * as React from 'react';
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import {

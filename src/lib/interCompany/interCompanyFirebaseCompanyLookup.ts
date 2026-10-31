@@ -2,15 +2,8 @@
  * IC voucher Target company — Code / A/c No / PAN lookup on Firebase (global).
  * Local-only mode falls back to device company registry scan.
  */
-import {
-  collection,
-  getDoc,
-  getDocs,
-  limit,
-  query,
-  where,
-  doc,
-} from "firebase/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
+import { collection, limit, query, where, doc } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { listLocalCompanies } from "@/lib/localCompanyStore";

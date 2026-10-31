@@ -10,7 +10,7 @@ import {
   serverTimestamp,
   Timestamp,
   where,
-} from "firebase/firestore";
+} from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { deleteDoc, setDoc, updateDoc, runTransaction } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { firestore } from "@/lib/firebase";

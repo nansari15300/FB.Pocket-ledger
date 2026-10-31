@@ -1,5 +1,5 @@
 import { ANDROID_APP_VERSION, DESKTOP_APP_VERSION } from "@/config/releaseVersion";
-import { liveCountryPublicOrigin } from "@/lib/countryAppHosts";
+import { liveCountryPublicOrigin, resolveAppCountry } from "@/lib/countryAppHosts";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
 
@@ -56,8 +56,20 @@ function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function latestReleaseManifestUrl(): string {
+/** Default (Nepal) manifest URL; also the fallback when the user's country is unknown/not live/unreachable. */
+export function defaultReleaseManifestUrl(): string {
   return `${liveCountryPublicOrigin()}/releases/latest.json`;
+}
+
+/** Manifest URL for the user's selected/detected app country (live countries only), else the default. */
+export function latestReleaseManifestUrl(): string {
+  try {
+    const rec = resolveAppCountry();
+    if (rec && rec.live && rec.host) return `https://${rec.host}/releases/latest.json`;
+  } catch {
+    /* fall through to default */
+  }
+  return defaultReleaseManifestUrl();
 }
 
 export function installedReleaseVersion(): { kind: "desktop" | "android" | null; version: string } {
@@ -82,10 +94,21 @@ export function markDailyAutoReleaseCheckDone(): void {
   }
 }
 
-export async function fetchReleaseManifest(): Promise<ReleaseManifest> {
-  const response = await fetch(latestReleaseManifestUrl(), { cache: "no-store" });
+async function fetchManifestFrom(url: string): Promise<ReleaseManifest> {
+  const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error(`Release check failed: ${response.status}`);
   return (await response.json()) as ReleaseManifest;
+}
+
+export async function fetchReleaseManifest(): Promise<ReleaseManifest> {
+  const countryUrl = latestReleaseManifestUrl();
+  const defaultUrl = defaultReleaseManifestUrl();
+  try {
+    return await fetchManifestFrom(countryUrl);
+  } catch (e) {
+    if (countryUrl === defaultUrl) throw e;
+    return await fetchManifestFrom(defaultUrl);
+  }
 }
 
 export function evaluateReleaseManifest(manifest: ReleaseManifest): ReleaseCheckResult {

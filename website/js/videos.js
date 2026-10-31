@@ -1,8 +1,8 @@
 (function () {
   "use strict";
 
-  var VIDEOS_URL = "/app/api/public/website-videos";
-  var ENGAGE_URL = "/app/api/public/website-video-engagement";
+  var VIDEOS_URL = (String(window.SITE_DATA_BASE || "https://np.pocket-ledger.com").replace(/\/+$/, "") + "/api/pl/site/public/videos");
+  var ENGAGE_URL = (String(window.SITE_DATA_BASE || "https://np.pocket-ledger.com").replace(/\/+$/, "") + "/api/pl/site/public/video-engagement");
   var CACHE_KEY = "pocket-ledger:website-videos:v3";
   var LOCAL_KEY = "pocket-ledger:video-engagement:v1";
   var LABEL_COPY = {

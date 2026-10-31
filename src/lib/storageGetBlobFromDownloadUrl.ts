@@ -1,6 +1,6 @@
 "use client";
 
-import { getBlob, ref } from "firebase/storage";
+import { getBlob, ref } from "@/lib/pocketbaseData/pbStorage";
 import { storage } from "@/lib/firebase";
 import { tryGetStoragePathFromFirebaseDownloadUrl } from "@/lib/firebaseStorageDownloadUrl";
 

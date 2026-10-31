@@ -8,7 +8,7 @@ import type { AppUser } from "@/app/(admin)/admin/users/page";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Badge } from "../ui/badge";
 import { useEffect, useState } from "react";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore as db } from "@/lib/firebase";
 import { computePresenceLooksOnline } from "@/lib/presenceDisplay";

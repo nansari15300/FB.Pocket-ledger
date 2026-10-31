@@ -1,6 +1,7 @@
 "use client";
 
-import { ADMIN_SERVER_VIEW_UNAVAILABLE_MESSAGE, isAdminServerMode } from "@/lib/adminData/adminServerMode";
+import { isAdminServerMode } from "@/lib/adminData/adminServerMode";
+import { pbRequest } from "@/lib/pocketbaseData/pbClient";
 import { useCallback, useEffect, useState } from "react";
 import { Download } from "lucide-react";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
@@ -48,20 +49,26 @@ export default function WebsiteDownloadsAdminPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      if (isAdminServerMode()) throw new Error(ADMIN_SERVER_VIEW_UNAVAILABLE_MESSAGE);
-      const token = await auth.currentUser?.getIdToken();
-      if (!token) throw new Error("Not signed in");
-      const res = await fetch(appApiUrl("/api/admin/download-stats"), {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-      });
-      const json = (await res.json()) as {
+      type StatsJson = {
         error?: string;
         stats?: WebsiteDownloadStats;
         byCountry?: Array<{ country: string; count: number }>;
         recent?: WebsiteDownloadEvent[];
       };
-      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      let json: StatsJson;
+      if (isAdminServerMode()) {
+        // Pocket Ledger Server login: the download counters live on the server (pb_hooks/lib/site_data.js).
+        json = (await pbRequest("/api/pl/site/admin/download-stats", { method: "GET" })) as StatsJson;
+      } else {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) throw new Error("Not signed in");
+        const res = await fetch(appApiUrl("/api/admin/download-stats"), {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        json = (await res.json()) as StatsJson;
+        if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      }
       setStats(json.stats || emptyDownloadStats());
       setByCountry(Array.isArray(json.byCountry) ? json.byCountry : []);
       setRecent(Array.isArray(json.recent) ? json.recent : []);

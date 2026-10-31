@@ -1,13 +1,11 @@
 
 "use client"
 
-import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
+import { setDoc } from "@/lib/writeGateway/pbWrites";
+import { getBillingApiIdToken } from "@/lib/firebaseAuthForApi";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useAdminAccess } from '@/hooks/useAdminAccess'
-import {
-  doc,
-  setDoc,
-} from 'firebase/firestore';
+import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDocFromServer } from '@/lib/pocketbaseData/pbReadSeam';
 import { firestore as db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
@@ -153,14 +151,13 @@ export default function PlansPage() {
 
     /** Pehli baar project: sirf SuperAdmin button dabane par defaults Firestore me — refresh auto-upload band. */
     const handleCreateDefaultPlansDocOnce = useCallback(async () => {
-        if (adminServerWriteBlocked()) return;
         if (!user) {
             toast({ variant: "destructive", title: "Login required" });
             return;
         }
         setSeedBusy(true);
         try {
-            const token = await user.getIdToken();
+            const token = await getBillingApiIdToken(user);
             const res = await fetch(ADMIN_PLANS_API, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -211,7 +208,6 @@ export default function PlansPage() {
     }, [plans, selectedPlan]);
 
     const handleUpdateAndSave = async (updatedPlan: Plan) => {
-        if (adminServerWriteBlocked()) return false;
         setPlans(prev => prev.map(p => p.id === updatedPlan.id ? updatedPlan : p));
 
         if (!user) {
@@ -230,7 +226,7 @@ export default function PlansPage() {
         };
 
         try {
-            const token = await user.getIdToken();
+            const token = await getBillingApiIdToken(user);
             const { demo: _d, ...planWithoutDemo } = updatedPlan as Plan & { demo?: unknown };
             const planPayload = sanitizePlanForFirestoreWrite(planWithoutDemo as Plan);
             const res = await fetch(ADMIN_PLANS_API, {
@@ -295,13 +291,12 @@ export default function PlansPage() {
         offer: OnlineDemoOffer,
         options?: { existingDemoAction?: "retain" | "reset" | "replace" }
     ) => {
-        if (adminServerWriteBlocked()) return false;
         if (!user) {
             toast({ variant: "destructive", title: "Not signed in", description: "Login required to save demo offer." });
             return false;
         }
         try {
-            const token = await user.getIdToken();
+            const token = await getBillingApiIdToken(user);
             const res = await fetch(ADMIN_PLANS_API, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -337,7 +332,6 @@ export default function PlansPage() {
     };
 
     const handleSaveDeviceUserAddOns = async (offer: DeviceUserAddOnOffer) => {
-        if (adminServerWriteBlocked()) return false;
         if (!user) {
             toast({ variant: "destructive", title: "Not signed in", description: "Login required to save add-ons." });
             return false;
@@ -356,7 +350,7 @@ export default function PlansPage() {
             serverHydratedRef.current = true;
         };
         try {
-            const token = await user.getIdToken();
+            const token = await getBillingApiIdToken(user);
             const res = await fetch(ADMIN_PLANS_API, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -401,7 +395,6 @@ export default function PlansPage() {
     };
 
     const handleTogglePlanBillingVisibility = async (plan: Plan, showOnBilling: boolean) => {
-        if (adminServerWriteBlocked()) return;
         const hiddenFromBilling = !showOnBilling;
         const previous = plan.hiddenFromBilling === true;
         const updated = { ...plan, hiddenFromBilling };
@@ -421,7 +414,7 @@ export default function PlansPage() {
         }
 
         try {
-            const token = await user.getIdToken();
+            const token = await getBillingApiIdToken(user);
             const res = await fetch(ADMIN_PLANS_API, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

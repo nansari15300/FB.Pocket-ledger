@@ -22,7 +22,7 @@ import { normalizePlanIdForClient, planTierIndex } from "@/config/plans";
 import { highestPlanIdAmongOwnedCompanies } from "@/lib/accountPlanForOwner";
 import { verifyPlanEntitlementJws } from "@/lib/security/planEntitlementJwtVerify";
 import { getOrCreateClientDeviceId } from "@/lib/security/deviceIdentity";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { isPocketBaseAppSessionMarked } from "@/lib/pocketbaseData/pbAppSession";
@@ -209,6 +209,8 @@ export async function syncLocalOnlyCompanyPlanFromOwnerAccount(opts: {
   const localCompanyId = String(opts.localCompanyId || "").trim();
   const uid = String(opts.firebaseUid || "").trim();
   if (!localCompanyId || !uid) return { ok: false, applied: false, reason: "missing_ids" };
+  // Pocket Ledger Server login: the owner-account plan read is a Firestore `users/{uid}` read - skip it.
+  if (isPocketBaseAppSessionMarked()) return { ok: true, applied: false, reason: "server_login_session" };
 
   if (isHostedPlanSyncDisabled()) {
     return { ok: true, applied: false, reason: "hosted_plan_sync_disabled" };
@@ -544,6 +546,11 @@ export async function syncCompanyPlanFromServer(opts: {
   // Gate→Connect staff tab (host origin): hosted sync-plan CORS noise avoid.
   if (typeof window !== "undefined" && isPlRemoteServerClientMode()) {
     return { ok: false, applied: false, reason: "pl_remote_client" };
+  }
+  // Pocket Ledger Server login: never call the Firebase-backed hosted plan route / Firestore plan reads (checked early,
+  // before the local-only owner-account branch below).
+  if (isPocketBaseAppSessionMarked()) {
+    return { ok: true, applied: false, reason: "server_login_session" };
   }
   const firebaseCompanyId = opts.firebaseCompanyId.trim();
   const localCompanyId = opts.localCompanyId.trim();

@@ -14,7 +14,7 @@ import {
   query,
   doc,
   DocumentData,
-} from 'firebase/firestore';
+} from '@/lib/pbCompat/firestore';
 import { getDocs, onSnapshot } from '@/lib/pocketbaseData/pbReadSeam';
 import { firestore as db } from '@/lib/firebase'
 import type { Company } from '@/app/(admin)/admin/companies/page';

@@ -4,7 +4,7 @@
 import { Suspense, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Search, Pencil } from "lucide-react";
@@ -180,7 +180,7 @@ function StaffPageContent() {
   const [voucherDefaultTab, setVoucherDefaultTab] = useState<'add_salary' | 'payment_out'>('add_salary');
 
   const selectedStaffRaw = activeView === 'staff' ? selected as Staff : null;
-  const selectedStaff = useLiveMasterSelection(selectedStaffRaw, setSelected, processedStaff);
+  const selectedStaff = useLiveMasterSelection<Staff>(selectedStaffRaw, setSelected, processedStaff);
   const payEmiSelectedAccountId =
     selectedStaff && isLoanLiabilityStaff(selectedStaff) ? selectedStaff.id : null;
   const { show: showPayEmiButton, emiDue: payEmiDue } = useStaffPayEmiButtonState({

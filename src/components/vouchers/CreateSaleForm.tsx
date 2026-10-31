@@ -1,6 +1,7 @@
 
 "use client";
 
+import { addDoc } from "@/lib/writeGateway/pbWrites";
 import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -105,17 +106,9 @@ import {
 import { assertCan, assertCanPerformBackdated, assertCanEdit, PermissionDeniedError, determineVoucherOwnership } from "@/lib/permissions/enforcePermission";
 
 import { firestore, storage } from "@/lib/firebase";
-import {
-  collection,
-  query,
-  where,
-  addDoc,
-  serverTimestamp,
-  doc,
-  Timestamp,
-} from "firebase/firestore";
+import { collection, query, where, serverTimestamp, doc, Timestamp } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
 import { useRouter } from 'next/navigation';
 
 import type { Party } from "@/components/party/types";

@@ -1,13 +1,8 @@
 "use client";
 
+import { writeBatch } from "@/lib/writeGateway/pbWrites";
 import { useEffect, useRef } from "react";
-import {
-  collection,
-  query,
-  where,
-  orderBy,
-  writeBatch,
-} from "firebase/firestore";
+import { collection, query, where, orderBy } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";

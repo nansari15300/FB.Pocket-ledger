@@ -5,7 +5,7 @@
  * `saveVoucher` se likhta hai. Dubara copy par naya doc nahi: `crossCopySourceRef` + Compare-signature match se merge update.
  */
 
-import { collection, query, Timestamp, where, doc } from "firebase/firestore";
+import { collection, query, Timestamp, where, doc } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { saveVoucher } from "@/lib/voucherActionsClient";

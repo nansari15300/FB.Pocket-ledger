@@ -2,6 +2,7 @@
 
 "use client";
 
+import { addDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
 import { useForm, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -25,9 +26,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { firestore, storage } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, query, where, doc, updateDoc } from "firebase/firestore";
+import { collection, serverTimestamp, query, where, doc } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
 import { Loader2, Upload, Trash2, FileText, PlusCircle, Eye, EyeOff } from "lucide-react";
 import Image from "next/image";
 import { useState, useRef, useEffect, useCallback } from "react";

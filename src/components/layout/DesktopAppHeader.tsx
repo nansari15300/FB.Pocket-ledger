@@ -85,6 +85,7 @@ import { chromeProPillCn } from "@/lib/chromePillButton";
 import { isInterCompanyVoucherFeatureDisabled } from "@/lib/interCompany/interCompanyVoucherAccess";
 import usePermissions from "@/hooks/usePermissions";
 import { DriveCloudSyncHeaderIndicator } from "@/components/layout/DriveCloudSyncHeaderIndicator";
+import { HeaderSyncButton } from "@/components/layout/HeaderSyncButton";
 import { usePendingInterCompanySystemJoinCount } from "@/lib/interCompany/usePendingInterCompanySystemJoinCount";
 import { useMasterDetailHeaderIdSnapshot } from "@/hooks/useMasterDetailHeaderIdSnapshot";
 import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
@@ -112,7 +113,7 @@ import {
   planUserCapWithAddOns,
   type PurchasedPlanAddOns,
 } from "@/lib/planAddOns";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { GlobalFileHoverPreviewSwitch } from "@/components/layout/GlobalFileHoverPreviewSwitch";
@@ -2477,6 +2478,7 @@ export function DesktopAppHeader() {
               </div>
             </div>
               <div className="ml-2 flex shrink-0 items-center gap-1">
+                <HeaderSyncButton />
                 <PlServerCompanyConnectionStatus />
                 <DriveCloudSyncHeaderIndicator />
                 <HeaderAppearanceMenu />
@@ -2531,6 +2533,7 @@ export function DesktopAppHeader() {
             <div className="flex min-w-0 flex-shrink-0 items-center gap-2">
               {/* Desktop: pehle Add New (mobile pe stripe me profile ke pehle) — purani daen-cluster order */}
               <AddNewButtonOnReportPage />
+              <HeaderSyncButton />
               <DriveCloudSyncHeaderIndicator />
               <PlServerCompanyConnectionStatus />
               <HeaderServerSwitch />

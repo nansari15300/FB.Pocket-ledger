@@ -39,7 +39,7 @@ import { useLiveMasterSelection } from "@/hooks/useLiveMasterSelection";
 import type { Account, AccountGroup } from "@/components/bank-cash/types";
 import { ResponsiveMasterDetail } from "@/components/layout/ResponsiveMasterDetail";
 import { LoadingSpinner } from "@/components/layout/LoadingSpinner";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { bankAccountDisplayName } from "@/lib/bankAccountDisplayName";
@@ -183,7 +183,7 @@ function BankCashPageContent() {
 
   // `clearing` tab bhi account detail use karta hai.
   const selectedAccountRaw = activeView !== 'groups' ? selected as Account : null;
-  const selectedAccount = useLiveMasterSelection(selectedAccountRaw, setSelected, processedAccounts);
+  const selectedAccount = useLiveMasterSelection(selectedAccountRaw, setSelected, processedAccounts) as Account | null;
   const selectedGroupRaw = activeView === "groups" ? (selected as AccountGroup) : null;
   const handleAccountUpdated = useCallback((patch?: Partial<Account>) => {
     if (!patch?.id || !selectedAccountRaw || selectedAccountRaw.id !== patch.id) return;

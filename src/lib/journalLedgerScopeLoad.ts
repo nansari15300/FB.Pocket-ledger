@@ -6,7 +6,7 @@
  *
  * Local / PL server companies: SQLite pehle — Firestore permission-denied se masters khali mat karo.
  */
-import { collection } from "firebase/firestore";
+import { collection } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";

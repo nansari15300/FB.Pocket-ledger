@@ -27,7 +27,7 @@ import {
   getDocsFromServer as fsGetDocsFromServer,
   onSnapshot as fsOnSnapshot,
   Timestamp,
-} from "firebase/firestore";
+} from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import {
   isPocketBaseCompanyId,
@@ -36,6 +36,7 @@ import {
 } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { isPocketBaseAppSessionActive, readPocketBaseAppProfile } from "@/lib/pocketbaseData/pbAppSession";
 import { pbRequest } from "@/lib/pocketbaseData/pbClient";
+import { USER_GLOBAL_ROOTS } from "@/lib/pocketbaseData/pbGlobalDocs";
 import { isSuperAdminEmail } from "@/lib/recovery/recoveryMode";
 
 
@@ -593,9 +594,24 @@ async function pbGetRootSnapshot(fsFn: Fn, args: unknown[], t: Extract<PbTarget,
  * off for the whole server session). Queries run in memory like the company seam.
  */
 
+/** "admin" = super-admin Admin Panel routes; "user" = the signed-in user's own udoc routes (pb_hooks/lib/udoc.js). */
+type GlobalMode = "admin" | "user";
+
 type AdminTarget =
-  | { kind: "doc"; path: string; id: string }
-  | { kind: "query"; parent: string; q: ParsedQuery | null };
+  | { kind: "doc"; path: string; id: string; mode: GlobalMode }
+  | { kind: "query"; parent: string; q: ParsedQuery | null; mode: GlobalMode };
+
+/** Non-company document roots served by the server's general document store in a server login. */
+
+function globalModeFor(parts: string[]): GlobalMode | null {
+  if (isAdminServerDataActive()) return "admin";
+  try {
+    if (!isPocketBaseAppSessionActive()) return null;
+  } catch {
+    return null;
+  }
+  return USER_GLOBAL_ROOTS.has(parts[0]) ? "user" : null;
+}
 
 function isAdminPanelPage(): boolean {
   try {
@@ -639,17 +655,18 @@ export function isAdminServerDataActive(): boolean {
 }
 
 function adminTargetOf(refOrQuery: unknown): AdminTarget | null {
-  if (!isAdminServerDataActive()) return null;
   const o = refOrQuery as AnyRec | null;
   if (!o || typeof o !== "object") return null;
   try {
     if (o.type === "document" || o.type === "collection") {
       const parts = String(o.path || "").split("/").filter(Boolean);
       if (!parts.length) return null;
+      const m = globalModeFor(parts);
+      if (!m) return null;
       if (o.type === "document" && parts.length % 2 === 0) {
-        return { kind: "doc", path: parts.join("/"), id: parts[parts.length - 1] };
+        return { kind: "doc", path: parts.join("/"), id: parts[parts.length - 1], mode: m };
       }
-      if (o.type === "collection" && parts.length % 2 === 1) return { kind: "query", parent: parts.join("/"), q: null };
+      if (o.type === "collection" && parts.length % 2 === 1) return { kind: "query", parent: parts.join("/"), q: null, mode: m };
       return null;
     }
     if (o.type === "query") {
@@ -657,7 +674,9 @@ function adminTargetOf(refOrQuery: unknown): AdminTarget | null {
       if (!qi || qi.collectionGroup) return null;
       const parts = segmentsOf(qi.path);
       if (!parts || parts.length % 2 !== 1) return null;
-      return { kind: "query", parent: parts.join("/"), q: parseQueryImpl(qi) };
+      const m = globalModeFor(parts);
+      if (!m) return null;
+      return { kind: "query", parent: parts.join("/"), q: parseQueryImpl(qi), mode: m };
     }
   } catch {
     return null;
@@ -675,11 +694,36 @@ async function decodeAdmin(data: unknown): Promise<AnyRec> {
   return m.decodeDocFromPocketBase(data);
 }
 
-function adminList(parent: string): Promise<AdminRow[]> {
-  const hit = adminListCache.get(parent);
+/** Equality / simple filters the server can apply itself (primitive values only). */
+function udocHints(q: ParsedQuery | null): { where: unknown[]; orderBy?: unknown[]; limit?: number } {
+  const where: unknown[] = [];
+  let complete = true;
+  const SERVER_OPS = new Set(["==", "in", "array-contains", "array-contains-any"]);
+  const prim = (v: unknown) => v === null || ["string", "number", "boolean"].includes(typeof v);
+  for (const f of q?.filters || []) {
+    if (f.type === "field" && !f.key && SERVER_OPS.has(f.op) && (prim(f.value) || (Array.isArray(f.value) && f.value.every(prim)))) {
+      where.push([f.field.join("."), f.op, f.value]);
+    } else complete = false;
+  }
+  const out: { where: unknown[]; orderBy?: unknown[]; limit?: number } = { where };
+  if (q && complete && !q.startAt && !q.endAt && !q.limitToLast && q.orderBy.length <= 1) {
+    if (q.orderBy.length === 1 && !q.orderBy[0].key) out.orderBy = [q.orderBy[0].field.join("."), q.orderBy[0].dir];
+    if (q.limit && (q.orderBy.length === 0 || out.orderBy)) out.limit = q.limit;
+  }
+  return out;
+}
+
+function adminList(parent: string, mode: GlobalMode = "admin", q: ParsedQuery | null = null): Promise<AdminRow[]> {
+  const hints = mode === "user" ? udocHints(q) : null;
+  const cacheKey = mode === "user" ? `u|${parent}|${JSON.stringify(hints)}` : parent;
+  const hit = adminListCache.get(cacheKey);
   if (hit && Date.now() - hit.at < ADMIN_CACHE_MS) return hit.p;
   const p = (async () => {
-    const r = (await adminPbRequest("/api/pl/admin/list", { method: "POST", body: { parent }, timeoutMs: 60_000 })) as {
+    const r = (await adminPbRequest(mode === "user" ? "/api/pl/udoc/list" : "/api/pl/admin/list", {
+      method: "POST",
+      body: mode === "user" ? { parent, ...hints } : { parent },
+      timeoutMs: 60_000,
+    })) as {
       docs?: { id?: unknown; path?: unknown; data?: unknown }[];
     };
     const out: AdminRow[] = [];
@@ -690,23 +734,30 @@ function adminList(parent: string): Promise<AdminRow[]> {
     }
     return out;
   })();
-  adminListCache.set(parent, { at: Date.now(), p });
-  p.catch(() => adminListCache.delete(parent));
+  adminListCache.set(cacheKey, { at: Date.now(), p });
+  p.catch(() => adminListCache.delete(cacheKey));
   return p;
 }
 
-function adminDoc(path: string): Promise<AnyRec | null> {
-  const hit = adminDocCache.get(path);
+function adminDoc(path: string, mode: GlobalMode = "admin"): Promise<AnyRec | null> {
+  const cacheKey = mode === "user" ? `u|${path}` : path;
+  const hit = adminDocCache.get(cacheKey);
   if (hit && Date.now() - hit.at < ADMIN_CACHE_MS) return hit.p;
   const p = (async () => {
-    const r = (await adminPbRequest("/api/pl/admin/get", { method: "POST", body: { paths: [path] } })) as {
-      docs?: { exists?: unknown; data?: unknown }[];
+    const r = (await adminPbRequest(mode === "user" ? "/api/pl/udoc/get" : "/api/pl/admin/get", {
+      method: "POST",
+      body: { paths: [path] },
+    })) as {
+      docs?: { exists?: unknown; data?: unknown; denied?: unknown }[];
     };
     const d = Array.isArray(r?.docs) ? r.docs[0] : null;
+    if (d && d.denied === true) {
+      throw Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" });
+    }
     return d && d.exists === true ? decodeAdmin(d.data) : null;
   })();
-  adminDocCache.set(path, { at: Date.now(), p });
-  p.catch(() => adminDocCache.delete(path));
+  adminDocCache.set(cacheKey, { at: Date.now(), p });
+  p.catch(() => adminDocCache.delete(cacheKey));
   return p;
 }
 
@@ -718,7 +769,7 @@ function adminRefFor(path: string, converter: unknown): unknown {
 
 async function adminGetDocSnapshot(ref: unknown, t: Extract<AdminTarget, { kind: "doc" }>): Promise<AnyRec> {
   const converter = (ref as { converter?: unknown }).converter || null;
-  const data = await adminDoc(t.path);
+  const data = await adminDoc(t.path, t.mode);
   return makeDocSnapshot(ref, t.id, data, converter);
 }
 
@@ -728,7 +779,7 @@ async function adminGetQuerySnapshot(
   prev: Map<string, string> | null
 ): Promise<{ snap: AnyRec; sig: Map<string, string> }> {
   const converter = (query as { converter?: unknown }).converter || null;
-  const all = await adminList(t.parent);
+  const all = await adminList(t.parent, t.mode, t.q);
   const byId = new Map(all.map((r) => [r.id, r.path]));
   const rows = runQuery(all.map((r) => ({ id: r.id, data: r.data })), t.q);
   const sig = new Map<string, string>();
@@ -743,6 +794,7 @@ async function adminGetQuerySnapshot(
 }
 
 const ADMIN_POLL_MS = 30_000;
+const USER_POLL_MS = 10_000;
 
 /** Admin `onSnapshot`: server read now, on server change events, and every 30s (only changes emit). */
 function onAdminSnapshot(args: unknown[], t: AdminTarget): () => void {
@@ -807,16 +859,18 @@ function onAdminSnapshot(args: unknown[], t: AdminTarget): () => void {
   });
   window.addEventListener("pl-pb-company-root-updated", schedule);
   const poll = setInterval(() => {
-    adminListCache.delete(t.kind === "query" ? t.parent : "");
-    adminDocCache.delete(t.kind === "doc" ? t.path : "");
+    adminListCache.clear();
+    adminDocCache.clear();
     void emit();
-  }, ADMIN_POLL_MS);
+  }, t.mode === "user" ? USER_POLL_MS : ADMIN_POLL_MS);
+  window.addEventListener("pl-udoc-written", schedule);
   void emit();
   return () => {
     closed = true;
     clearInterval(poll);
     if (timer) clearTimeout(timer);
     window.removeEventListener("pl-pb-company-root-updated", schedule);
+    window.removeEventListener("pl-udoc-written", schedule);
     if (bumpEvent) window.removeEventListener(bumpEvent, schedule);
   };
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import type { CollectionReference, DocumentReference, SetOptions } from 'firebase/firestore';
+import type { CollectionReference, DocumentReference, SetOptions } from '@/lib/pbCompat/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { writeEntity, writeEntityNonBlocking } from '@/lib/writeGateway';

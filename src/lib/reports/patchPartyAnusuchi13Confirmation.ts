@@ -1,4 +1,5 @@
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { updateDoc } from "@/lib/writeGateway/pbWrites";
+import { doc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import type { Party } from "@/components/party/types";
 import {

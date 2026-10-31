@@ -1,5 +1,6 @@
 "use client";
 
+import { addDoc, updateDoc, deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
 import { STAFF_ENTITY_LABEL, STAFF_ENTITY_SEARCH_PLACEHOLDER } from "@/lib/staffEntityDisplayName";
@@ -9,7 +10,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useForm, type FieldErrors } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { addDoc, collection, serverTimestamp, doc, updateDoc, deleteDoc, query, where } from "firebase/firestore";
+import { collection, serverTimestamp, doc, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, onSnapshot, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore, storage } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
@@ -63,7 +64,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Calendar } from "../ui/calendar";
 import { format, startOfDay } from "date-fns";
 import BsDatePicker from "@/components/ui/BsDatePicker";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
 import { saveVoucher, isVoucherLimitError, patchVoucherFields, softDeleteVoucherMoveToRecycleBin } from "@/lib/voucherActionsClient";
 import { normalizePrefix } from "@/lib/voucherNumberFormat";
 import { getNextVoucherNumberForCompany } from "@/lib/nextVoucherNumber";

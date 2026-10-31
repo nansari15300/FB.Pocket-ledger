@@ -1,6 +1,7 @@
 "use client";
 
-import { doc, setDoc } from "firebase/firestore";
+import { setDoc } from "@/lib/writeGateway/pbWrites";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore, isFirestoreBlockedForServerSession } from "@/lib/firebase";
 import type { Entitlements, PlanId } from "@/config/plans";

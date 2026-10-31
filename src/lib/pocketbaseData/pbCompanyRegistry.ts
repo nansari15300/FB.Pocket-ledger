@@ -50,6 +50,28 @@ export function notePocketBaseCompanyRow(companyId: string, company: unknown): v
   if (!id) return;
   const s = load();
   const uses = companyUsesPocketBase(company);
+  // Strict device-local rows (SQLite-only markers, no PocketBase flags) must never stay registered as PB.
+  if (!uses && s.has(id) && company && typeof company === "object") {
+    const r = company as {
+      localOnly?: unknown;
+      firestoreSyncDisabled?: unknown;
+      localPersistence?: unknown;
+      plServerShared?: unknown;
+      syncedFromCloud?: unknown;
+    };
+    const strictLocal =
+      r.plServerShared !== true &&
+      r.syncedFromCloud !== true &&
+      (r.localOnly === true ||
+        r.firestoreSyncDisabled === true ||
+        String(r.localPersistence ?? "").toLowerCase().trim() === "sqlite");
+    if (strictLocal && !wasPocketBaseCompanyRegisteredRecently(id, 60_000)) {
+      s.delete(id);
+      registeredAtMs.delete(id);
+      save(s);
+      return;
+    }
+  }
   if (uses && !s.has(id)) {
     s.add(id);
     save(s);
@@ -59,9 +81,49 @@ export function notePocketBaseCompanyRow(companyId: string, company: unknown): v
   }
 }
 
+/** When each id was last registered in this session (guards a company that is just being created / restored). */
+const registeredAtMs = new Map<string, number>();
+
+/** True when `registerPocketBaseCompanyId` ran for this id within the last `withinMs` (this session). */
+export function wasPocketBaseCompanyRegisteredRecently(companyId: string, withinMs: number): boolean {
+  const at = registeredAtMs.get(String(companyId || "").trim());
+  return at != null && Date.now() - at < withinMs;
+}
+
+/** Forget a PocketBase company id on this device (company is gone from the server). */
+export function unregisterPocketBaseCompanyId(companyId: string): void {
+  const id = String(companyId || "").trim();
+  if (!id) return;
+  registeredAtMs.delete(id);
+  const s = load();
+  if (s.delete(id)) save(s);
+}
+
+/**
+ * Ids removed from this device because the server no longer lists them. Local-registry merge and the
+ * SQLite mirror skip these so a stale in-memory row cannot bring them back. Cleared when the server lists
+ * the id again (registry pull) or the company is (re)created / found on the server.
+ */
+const prunedIds = new Set<string>();
+
+export function markPocketBaseCompanyPruned(companyId: string): void {
+  const id = String(companyId || "").trim();
+  if (id) prunedIds.add(id);
+}
+
+export function clearPocketBaseCompanyPruned(companyId: string): void {
+  prunedIds.delete(String(companyId || "").trim());
+}
+
+export function isPocketBaseCompanyPruned(companyId: string | null | undefined): boolean {
+  const id = String(companyId || "").trim();
+  return !!id && prunedIds.has(id);
+}
+
 export function registerPocketBaseCompanyId(companyId: string): void {
   const id = String(companyId || "").trim();
   if (!id) return;
+  registeredAtMs.set(id, Date.now());
   const s = load();
   if (!s.has(id)) {
     s.add(id);

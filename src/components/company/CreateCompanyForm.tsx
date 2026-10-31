@@ -1,6 +1,7 @@
 
 "use client";
 
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, CalendarIcon, Eye, EyeOff, CheckCircle, AlertTriangle, Upload, UserPlus } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
@@ -41,7 +42,7 @@ import { compressImageForCompany, attachmentImageStillTooLargeToastFields } from
 import { usePcFileDropZone } from "@/lib/attachmentPcFileDrop";
 import { FilePreview } from "../vouchers/FilePreview";
 import { RestrictedFileUploader } from "../ui/RestrictedFileUploader";
-import { doc, setDoc, serverTimestamp, Timestamp, collection, query, where } from "firebase/firestore";
+import { doc, serverTimestamp, Timestamp, collection, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { initializeCompanyDataClient } from "@/lib/initializeCompanyDataClient";
 import { ensureSuperAdminInSharedEmails } from "@/lib/superAdminEmails";

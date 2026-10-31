@@ -29,7 +29,7 @@ export function useMasterGroupListForest<G extends MasterGroupListRow>({
   config: MasterGroupListConfig;
   searchTerm: string;
   quickFilter: EntityListQuickFilter;
-  groupMembersByGroupId: Record<string, { name?: string }[]>;
+  groupMembersByGroupId: Record<string, { id?: string; name?: string }[]>;
   visibleGroupFilter: (group: G) => boolean;
 }) {
   const lastVoucherMsById = useLastVoucherMsByEntityId();

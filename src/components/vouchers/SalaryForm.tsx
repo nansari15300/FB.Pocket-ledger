@@ -1,4 +1,5 @@
 "use client";
+import { addDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
 import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
 import { isPlaceholderNoneTax } from "@/lib/salePurchaseLineColumnLabels";
@@ -104,18 +105,9 @@ import { getPaymentOutRemaining, getTaxFromAllocation, getNetFromAllocation, get
 import type { Allocation } from "@/lib/payment-allocation-utils";
 
 import { firestore, storage } from "@/lib/firebase";
-import {
-  collection,
-  query,
-  where,
-  addDoc,
-  serverTimestamp,
-  doc,
-  updateDoc,
-  Timestamp,
-} from "firebase/firestore";
+import { collection, query, where, serverTimestamp, doc, Timestamp } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
 
 import type { Party } from "@/components/party/types";
 import type { Item } from "@/components/items/types";

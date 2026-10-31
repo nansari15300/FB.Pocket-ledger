@@ -1,18 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { signOut } from "firebase/auth";
 import { CloudOff, Download, Loader2, LogOut, RefreshCw, ShieldCheck, TrendingUp } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { auth, clearPocketBaseAppSessionOnLogout } from "@/lib/firebase";
+import { clearPocketBaseAppSessionOnLogout } from "@/lib/firebase";
 import { isPocketBaseSessionUser } from "@/lib/pocketbaseData/pbAppSession";
 import { isServerOnlyLoginSession } from "@/lib/pocketbaseData/serverSessionCompanyScope";
 import { webAppBasePath } from "@/lib/webAppBasePath";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
 import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
-import { pullSharedOnlineCompaniesFromFirestore } from "@/lib/sharedCompaniesFirestorePull";
 import { Button } from "@/components/ui/button";
 
 const SESSION_ALLOW_KEY = "pl.webAppOnlineAccess.allowed";
@@ -54,7 +52,6 @@ export function WebAppOnlineAccessGate({ children }: { children: React.ReactNode
   // Signed-out + auth resolved: SPA `router.replace` miss ho to turant hard redirect.
   useLayoutEffect(() => {
     if (isEmbeddedApp || billingRoute || authLoading || userUid) return;
-    if (auth.currentUser) return;
     try {
       const inner = pathname?.replace(/\/+$/, "") || "/";
       if (inner === "/" || inner === "") return;
@@ -70,8 +67,7 @@ export function WebAppOnlineAccessGate({ children }: { children: React.ReactNode
     const loginHref = `${webAppBasePath()}/`;
     const timer = window.setTimeout(() => {
       if (userUid) return;
-      if (auth.currentUser) return;
-      try {
+        try {
         const inner = pathname?.replace(/\/+$/, "") || "/";
         if (inner === "/" || inner === "") return;
       } catch {
@@ -118,86 +114,16 @@ export function WebAppOnlineAccessGate({ children }: { children: React.ReactNode
         // and the server decides which companies it can open.
         // Also when a stale Firebase user is still being signed out on this page load: no
         // `/api/auth/web-access` (firebase-admin Firestore read) and no shared-company Firestore pull.
-        if (isServerOnlyLoginSession() || (isPocketBaseSessionUser(user) && !auth.currentUser)) {
+        if (isServerOnlyLoginSession() || isPocketBaseSessionUser(user)) {
           setAllowed(true);
           allowedRef.current = true;
           setDenyDetail(null);
           return;
         }
-        const tokenUser = auth.currentUser;
-        if (!tokenUser) {
-          if (!cancelled && !allowedRef.current) setAllowed(false);
-          return;
-        }
-        const token = await tokenUser.getIdToken();
-        const res = await fetch(`${webAppBasePath()}/api/auth/web-access`, {
-          headers: { Authorization: `Bearer ${token}` },
-          cache: "no-store",
-        });
-        let data: { allowed?: boolean; reason?: string; error?: string; sharedCompanyCount?: number } = {};
-        try {
-          data = (await res.json()) as typeof data;
-        } catch {
-          data = { error: "non_json_response" };
-        }
-        if (cancelled) return;
-
-        let ok = res.ok && data.allowed === true;
-
-        // Server miss / deploy lag / email-array casing: same Firestore share queries the
-        // company selector uses — if client can see shared companies, allow web access.
-        if (!ok) {
-          try {
-            const shared = await pullSharedOnlineCompaniesFromFirestore(
-              tokenUser.email || userEmail || null
-            );
-            if (shared.length > 0) {
-              ok = true;
-              data = { ...data, allowed: true, reason: "shared_online_company_client", sharedCompanyCount: shared.length };
-            }
-          } catch {
-            /* keep server result */
-          }
-        }
-
-        setAllowed(ok);
-        allowedRef.current = ok;
-        setDenyDetail(
-          ok
-            ? null
-            : data.error
-              ? `Check failed: ${data.error}`
-              : data.sharedCompanyCount === 0
-                ? "No shared Online Company invitation found for this email."
-                : null
-        );
-        try {
-          if (ok) sessionStorage.setItem(SESSION_ALLOW_KEY, userUid);
-          else sessionStorage.removeItem(SESSION_ALLOW_KEY);
-        } catch {
-          /* ignore */
-        }
+        // Pocket Ledger Server is the only login now: no server session = no access.
+        if (!cancelled && !allowedRef.current) setAllowed(false);
       } catch {
-        if (!cancelled) {
-          // Last chance: client-visible shares.
-          try {
-            const shared = await pullSharedOnlineCompaniesFromFirestore(userEmail || null);
-            if (shared.length > 0) {
-              setAllowed(true);
-              allowedRef.current = true;
-              setDenyDetail(null);
-              try {
-                sessionStorage.setItem(SESSION_ALLOW_KEY, userUid);
-              } catch {
-                /* ignore */
-              }
-              return;
-            }
-          } catch {
-            /* ignore */
-          }
-          if (!allowedRef.current) setAllowed(false);
-        }
+        if (!cancelled && !allowedRef.current) setAllowed(false);
       } finally {
         if (!cancelled) setChecking(false);
       }
@@ -296,7 +222,7 @@ export function WebAppOnlineAccessGate({ children }: { children: React.ReactNode
         <Button
           variant="link"
           className="mt-5 h-auto px-0 text-muted-foreground"
-          onClick={() => void clearPocketBaseAppSessionOnLogout().then(() => signOut(auth))}
+          onClick={() => void clearPocketBaseAppSessionOnLogout()}
         >
           <LogOut className="mr-2 h-4 w-4" />
           Sign out and use another account

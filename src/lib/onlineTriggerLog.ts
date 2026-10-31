@@ -2,6 +2,7 @@
 
 import { adToBs } from "@/lib/bs-date";
 import { isServerQuotaHoldActive, startServerQuotaHold } from "@/lib/serverQuotaHold";
+import { isPocketBaseOnlyAppSession } from "@/lib/pbOnlySessionMarker";
 import {
   addOnlineTriggerOps,
   clearOnlineTriggerOps,
@@ -47,7 +48,6 @@ export type OnlineTriggerScope = {
 };
 
 const STORAGE_KEY = "pl_online_trigger_log_v1";
-const QUOTA_HOLD_STORAGE_KEY = "pl_online_trigger_quota_hold_until";
 const MAX_ROWS = 4000;
 const PERSIST_MAX = 4000;
 const PERSIST_PER_SOURCE = 500;
@@ -57,8 +57,6 @@ const scopeStack: OnlineTriggerScope[] = [];
 let rows: OnlineTriggerLogRow[] = [];
 let installed = false;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
-let quotaHoldTimer: ReturnType<typeof setTimeout> | null = null;
-let quotaHoldUntil = 0;
 let idSeq = 0;
 
 export function pushOnlineTriggerScope(scope: OnlineTriggerScope): () => void {
@@ -144,13 +142,13 @@ function classifyUrl(url: string, method: string): { api: string; feature: strin
 
   if (/firebasestorage\.googleapis\.com|storage\.googleapis\.com\/.*firebasestorage/i.test(u)) {
     const isList = /[?&]prefix=/i.test(u) || /\/o\?/.test(u) && /delimiter=/i.test(u);
-    if (m === "DELETE") return { api: "delete", feature: "storage", codePath: "firebase/storage" };
+    if (m === "DELETE") return { api: "delete", feature: "storage", codePath: "@/lib/pocketbaseData/pbStorage" };
     if (m === "POST" || m === "PUT" || m === "PATCH") {
-      return { api: "upload", feature: "storage", codePath: "firebase/storage" };
+      return { api: "upload", feature: "storage", codePath: "@/lib/pocketbaseData/pbStorage" };
     }
-    if (isList && m === "GET") return { api: "list", feature: "storage", codePath: "firebase/storage" };
-    if (/alt=media/i.test(u)) return { api: "download", feature: "storage", codePath: "firebase/storage" };
-    return { api: "getURL", feature: "storage", codePath: "firebase/storage" };
+    if (isList && m === "GET") return { api: "list", feature: "storage", codePath: "@/lib/pocketbaseData/pbStorage" };
+    if (/alt=media/i.test(u)) return { api: "download", feature: "storage", codePath: "@/lib/pocketbaseData/pbStorage" };
+    return { api: "getURL", feature: "storage", codePath: "@/lib/pocketbaseData/pbStorage" };
   }
 
   if (/firestore\.googleapis\.com/i.test(u)) {
@@ -958,17 +956,44 @@ function isQuotaHoldTarget(url: string, method: string): boolean {
   return /\/api\/auth\/web-access/i.test(u) || /\/api\/company\//i.test(u);
 }
 
-function isQuotaHoldActive(): boolean {
-  return isServerQuotaHoldActive();
+/** PocketBase-native routes: a 429/402 here is the Pocket Ledger Server, never Firebase quota. */
+const PB_NATIVE_PATH_RE =
+  /\/api\/(pl|collections|files|realtime|admins|superusers|health|batch|settings|backups|logs|crons?)(\/|\?|$)/i;
+
+/**
+ * Quota detection is limited to Firebase / Google endpoints (Firestore, Storage, Identity Toolkit, any
+ * *.googleapis.com / firebaseio / firebasestorage.app) and the hosted pocket-ledger.com Next API. PocketBase
+ * URLs (/api/pl/*, /api/collections/*, /api/files/*, /api/realtime ...) and the localhost app server never count.
+ */
+function isQuotaEligibleUrl(rawUrl: string): boolean {
+  const raw = String(rawUrl || "").trim();
+  if (!raw) return false;
+  let u: URL;
+  try {
+    u = new URL(raw, typeof location !== "undefined" ? location.href : "http://localhost/");
+  } catch {
+    return false;
+  }
+  const host = u.hostname.toLowerCase();
+  if (host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1") return false;
+  if (PB_NATIVE_PATH_RE.test(u.pathname)) return false;
+  if (
+    host === "googleapis.com" ||
+    host.endsWith(".googleapis.com") ||
+    host.endsWith(".firebaseio.com") ||
+    host.endsWith(".firebasestorage.app") ||
+    host.endsWith(".firebaseapp.com")
+  ) {
+    return true;
+  }
+  if (host === "pocket-ledger.com" || host.endsWith(".pocket-ledger.com")) {
+    return /\/api\//i.test(u.pathname);
+  }
+  return false;
 }
 
-function clearPersistedQuotaHold(): void {
-  quotaHoldUntil = 0;
-  try {
-    localStorage.removeItem(QUOTA_HOLD_STORAGE_KEY);
-  } catch {
-    /* ignore */
-  }
+function isQuotaHoldActive(): boolean {
+  return isServerQuotaHoldActive();
 }
 
 function rowStampMs(r: OnlineTriggerLogRow): number {
@@ -1019,6 +1044,7 @@ export function reportOnlineTriggerQuotaExceeded(message?: string): void {
 }
 
 let quotaNoteBusy = false;
+let pbOnlyQuotaSignalLogged = false;
 let quotaNoteLastAt = 0;
 let quotaNoteTrailing: ReturnType<typeof setTimeout> | null = null;
 const QUOTA_NOTE_THROTTLE_MS = 3000;
@@ -1026,6 +1052,18 @@ const QUOTA_NOTE_THROTTLE_MS = 3000;
 /** Throttled + re-entrancy safe entry for every quota signal (warn, SDK log, XHR, stream). */
 function noteQuotaExceeded(): void {
   if (quotaNoteBusy) return;
+  if (isPocketBaseOnlyAppSession()) {
+    // PocketBase-only login: Firebase is not the data server. Log once, never hold / popup / admin notice.
+    if (!pbOnlyQuotaSignalLogged) {
+      pbOnlyQuotaSignalLogged = true;
+      try {
+        console.info("[quota] Firebase quota signal ignored: Pocket Ledger Server login session (no hold, no popup)");
+      } catch {
+        /* ignore */
+      }
+    }
+    return;
+  }
   const now = Date.now();
   const wait = quotaNoteLastAt + QUOTA_NOTE_THROTTLE_MS - now;
   if (wait > 0) {
@@ -1151,8 +1189,9 @@ function installQuotaLogObservers(): void {
       }
       // Firestore resource-exhausted SDK logs (RestConnection/WebChannel BatchGetDocuments/Commit/RunQuery/Listen,
       // outbox quota rows): hidden from console like Storage quota; counted in Qta exceeded instead.
-      if (!quotaLine) prevWarn.apply(console, args as []);
-      if (!quotaLine) return;
+      const pbOnlyNow = isPocketBaseOnlyAppSession();
+      if (!quotaLine || pbOnlyNow) prevWarn.apply(console, args as []);
+      if (!quotaLine || pbOnlyNow) return;
       const quotaText = argsText(args).slice(0, 4000);
       void Promise.all([import("@/lib/quotaAdminNotice"), import("@/lib/firebase")])
         .then(([n, fb]) => n.notifyQuotaErrorForAdmin(quotaText, fb.auth?.currentUser?.email))
@@ -1168,7 +1207,7 @@ function installQuotaLogObservers(): void {
     /* ignore */
   }
   // Firebase SDK logger (independent of console filtering).
-  void import("firebase/app")
+  void import("@/lib/pbCompat/app")
     .then((m) => {
       m.onLog(
         (entry) => {
@@ -1219,7 +1258,7 @@ export function installOnlineTriggerLog(): void {
   if (typeof window === "undefined" || installed) return;
   installed = true;
   hydrate();
-  // Hold is NOT cleared on load any more: a refresh continues an active quota pause.
+  // Hold persistence lives only in serverQuotaHold.ts: it is cleared on every page load (a refresh never continues a pause).
   window.addEventListener("storage", (e) => {
     if (e.key && e.key !== STORAGE_KEY) return;
     if (e.key === STORAGE_KEY && e.newValue == null) {
@@ -1251,6 +1290,7 @@ export function installOnlineTriggerLog(): void {
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = requestUrl(input);
     const method = requestMethod(input, init);
+    const quotaUrlOk = isQuotaEligibleUrl(url);
     const classified = classifyUrl(url, method);
     const ops = classified ? countRequestOps(url, method, init?.body) : 0;
     const sentId = classified && ops > 0 ? recordOnlineTrigger({ ...classified, count: ops, success: 0, failed: 0 }) : null;
@@ -1261,7 +1301,7 @@ export function installOnlineTriggerLog(): void {
       if (classified && /firestore\.googleapis\.com/i.test(url) && /\/channel/i.test(url)) {
         sniffFirestoreStreamForQuota(res);
       }
-      const quotaHit = await responseLooksLikeQuota(res);
+      const quotaHit = quotaUrlOk ? await responseLooksLikeQuota(res) : false;
       if (quotaHit) noteQuotaExceeded();
       const outcome = quotaHit ? "quota" : res.ok ? "received" : "failed";
       if (sentId) settleOnlineTrigger(sentId, outcome);
@@ -1282,7 +1322,7 @@ export function installOnlineTriggerLog(): void {
       return res;
     } catch (err) {
       // fetch rejects for network / abort / offline: never quota unless the error carries the strict code.
-      const quotaErr = isStreamQuota(String(err));
+      const quotaErr = quotaUrlOk && isStreamQuota(String(err));
       if (quotaErr) noteQuotaExceeded();
       if (sentId) settleOnlineTrigger(sentId, quotaErr ? "quota" : "failed");
       settleOnlineTriggerOps(evs, quotaErr ? "quota" : "failed", {
@@ -1309,6 +1349,7 @@ export function installOnlineTriggerLog(): void {
     const meta = (this as XMLHttpRequest & { __plOt?: { method: string; url: string } }).__plOt;
     const url = meta?.url || "";
     const method = meta?.method || "GET";
+    const quotaUrlOk = isQuotaEligibleUrl(url);
     const classified = meta ? classifyUrl(url, method) : null;
     const ops = classified ? countRequestOps(url, method, body) : 0;
     const sentId = classified && ops > 0 ? recordOnlineTrigger({ ...classified, count: ops, success: 0, failed: 0 }) : null;
@@ -1327,7 +1368,7 @@ export function installOnlineTriggerLog(): void {
         const t = Date.now();
         if (this.readyState !== 4 && t - lastSniff < 500) return;
         lastSniff = t;
-        if (xhrLooksLikeQuota(this)) {
+        if (quotaUrlOk && xhrLooksLikeQuota(this)) {
           (this as XMLHttpRequest & { __plOtQuota?: boolean }).__plOtQuota = true;
           noteQuotaExceeded();
         }
@@ -1336,8 +1377,9 @@ export function installOnlineTriggerLog(): void {
       this.addEventListener("readystatechange", sniffQuota);
       this.addEventListener("loadend", () => {
         const quotaHit =
-          Boolean((this as XMLHttpRequest & { __plOtQuota?: boolean }).__plOtQuota) ||
-          xhrLooksLikeQuota(this);
+          quotaUrlOk &&
+          (Boolean((this as XMLHttpRequest & { __plOtQuota?: boolean }).__plOtQuota) ||
+            xhrLooksLikeQuota(this));
         if (quotaHit) noteQuotaExceeded();
         if (sentId) {
           // loadend also fires on error / timeout / abort (status 0) -> Failed.

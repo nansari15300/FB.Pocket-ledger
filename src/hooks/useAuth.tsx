@@ -1,14 +1,14 @@
 
 "use client";
 
-import type { User } from "firebase/auth";
-import { onAuthStateChanged } from "firebase/auth";
+import type { User } from "@/lib/pbCompat/auth";
+import { onAuthStateChanged } from "@/lib/pbCompat/auth";
 import { useRouter, usePathname } from "next/navigation";
 import React, { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { auth, firestore, isFirestoreBlockedForServerSession } from "@/lib/firebase";
 import { slugify } from "@/lib/slugify";
 import { getCountryByIP } from "@/lib/getCountryByIP";
-import { doc, onSnapshot, serverTimestamp, collection, query, where, getDocs, getDoc } from "firebase/firestore";
+import { doc, onSnapshot, serverTimestamp, collection, query, where, getDocs, getDoc } from "@/lib/pbCompat/firestore";
 import {
   voidUpdateUsersDoc,
   voidSetUsersDocMerge,

@@ -1,4 +1,5 @@
 "use client";
+import { addDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
 import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
 import { STAFF_ENTITY_LABEL, STAFF_ENTITY_TYPE_KEY, STAFF_ENTITY_SEARCH_PLACEHOLDER, STAFF_ENTITY_ADD_BUTTON, staffEntityDisplayLabel } from "@/lib/staffEntityDisplayName";
@@ -89,18 +90,9 @@ import { useResetLinkStateOnCopyTargetCompany } from "@/hooks/useResetLinkStateO
 import { useCopyDraftFirstSave } from "@/hooks/useCopyDraftFirstSave";
 
 import { firestore, storage } from "@/lib/firebase";
-import {
-  collection,
-  query,
-  where,
-  addDoc,
-  serverTimestamp,
-  doc,
-  updateDoc,
-  Timestamp,
-} from "firebase/firestore";
+import { collection, query, where, serverTimestamp, doc, Timestamp } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
 
 import type { Party } from "@/components/party/types";
 import type { Account } from "@/components/bank-cash/types";

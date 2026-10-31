@@ -1,6 +1,6 @@
 "use client";
 
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { isLocalFileRef, LOCAL_FILE_PREFIX } from "@/lib/localPendingFiles";

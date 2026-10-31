@@ -1,21 +1,9 @@
 
 /* No 'use server' - static export compatible */
 
-import { 
-  doc, 
-  getDoc, 
-  updateDoc, 
-  addDoc, 
-  collection, 
-  serverTimestamp, 
-  Timestamp, 
-  writeBatch,
-  setDoc,
-  deleteField,
-  query,
-  where,
-  getDocs,
-} from "firebase/firestore";
+import { updateDoc, addDoc, writeBatch, setDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
+import { doc, collection, serverTimestamp, Timestamp, deleteField, query, where } from "@/lib/pbCompat/firestore";
 import { firestore } from '@/lib/firebase';
 import { ensureSuperAdminInSharedEmails } from '@/lib/superAdminEmails';
 import { diff } from 'deep-object-diff';

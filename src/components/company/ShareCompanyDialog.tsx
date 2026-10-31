@@ -15,7 +15,7 @@ import {
   where,
   serverTimestamp,
   deleteField,
-} from "firebase/firestore";
+} from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { updateCompanyRootFirestore } from "@/lib/writeGateway/companyRootFirestore";

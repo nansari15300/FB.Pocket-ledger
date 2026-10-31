@@ -1,17 +1,8 @@
 /**
  * Public Inter Company systems — global search + user link list ("Add to my system").
  */
-import {
-  collection,
-  deleteDoc,
-  doc,
-  limit,
-  query,
-  serverTimestamp,
-  setDoc,
-  where,
-  type Unsubscribe,
-} from "firebase/firestore";
+import { deleteDoc, setDoc } from "@/lib/writeGateway/pbWrites";
+import { collection, doc, limit, query, serverTimestamp, where, type Unsubscribe } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import {

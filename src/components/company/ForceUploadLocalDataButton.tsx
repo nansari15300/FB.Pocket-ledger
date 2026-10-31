@@ -22,6 +22,7 @@ import {
 } from "@/lib/forceUploadLocalCompanyToServer";
 import { useToast } from "@/hooks/use-toast";
 import { yieldToMain } from "@/lib/yieldToMain";
+import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 
 export type ForceUploadInlineProgress = {
   phase: string;
@@ -99,13 +100,16 @@ export function ForceUploadLocalDataButton({ onInlineProgress }: Props = {}) {
         },
       });
 
-      try {
-        const { patchSqliteHttpsAttachmentsToFirestore } = await import(
-          "@/lib/restoreCloudBackgroundSync"
-        );
-        await patchSqliteHttpsAttachmentsToFirestore(companyId);
-      } catch {
-        /* best-effort */
+      // Pocket Ledger Server (PocketBase) company: files already went to the server; nothing to patch in Firestore.
+      if (!isPocketBaseCompanyId(companyId)) {
+        try {
+          const { patchSqliteHttpsAttachmentsToFirestore } = await import(
+            "@/lib/restoreCloudBackgroundSync"
+          );
+          await patchSqliteHttpsAttachmentsToFirestore(companyId);
+        } catch {
+          /* best-effort */
+        }
       }
 
       if (!result.ok && result.message && result.docsPushed === 0 && result.filesSynced === 0 && result.localRefsRelinked === 0) {
@@ -175,7 +179,8 @@ export function ForceUploadLocalDataButton({ onInlineProgress }: Props = {}) {
         description,
       });
 
-      triggerSync();
+      // triggerSync rebinds every listener (extra reads); a PocketBase push already refreshes local lists itself.
+      if (!isPocketBaseCompanyId(companyId)) triggerSync();
       window.setTimeout(() => publishProgress(null), 8_000);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -208,7 +213,7 @@ export function ForceUploadLocalDataButton({ onInlineProgress }: Props = {}) {
           size="sm"
           className="shrink-0 rounded-md border border-black whitespace-normal h-auto min-h-9 py-1.5 text-left leading-tight sm:max-w-xs"
           disabled={isRunning || (typeof navigator !== "undefined" && !navigator.onLine)}
-          title="Scan local SQLite + files, upload to cloud, and write HTTPS URLs"
+          title="Push pending changes and files only to the server"
         >
           {isRunning ? (
             <Loader2 className="mr-1.5 h-4 w-4 shrink-0 animate-spin" />
@@ -222,9 +227,11 @@ export function ForceUploadLocalDataButton({ onInlineProgress }: Props = {}) {
         <AlertDialogHeader>
           <AlertDialogTitle>Force upload to server?</AlertDialogTitle>
           <AlertDialogDescription>
-            This will scan all local SQLite records and pending attachments for this company, upload
-            documents and files to the server, and write HTTPS URLs on vouchers/masters. Progress will
-            show at the top of Company Profile until finished.
+            This will push pending changes and files only: records still queued on this device and
+            attachments that are not on the server yet. Anything already on the server is left alone.
+            Pocket Ledger Server companies are sent to their own server (never Firebase). Progress will
+            show at the top of Company Profile until finished. You can also run this from the Sync
+            button in the app header.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

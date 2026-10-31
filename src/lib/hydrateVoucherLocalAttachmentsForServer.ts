@@ -4,7 +4,7 @@
  * Local-first outbox flush: voucher JSON may still contain `local:uuid` (IndexedDB pending blobs).
  * Firestore + other devices cannot resolve those — upload bytes to Storage here and swap in HTTPS URLs.
  */
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
 import { storage } from "@/lib/firebase";
 import {
   getPendingPayloadForLocalRef,
@@ -12,7 +12,7 @@ import {
   isLocalFileRef,
   resolvePendingAttachmentCloudSyncProvider,
 } from "@/lib/localPendingFiles";
-import { Timestamp } from "firebase/firestore";
+import { Timestamp } from "@/lib/pbCompat/firestore";
 import { tryResolveRemoteUrlForStaleLocalAttachment } from "@/lib/resolveVoucherAttachmentRemoteUrl";
 import { normalizeFileUrlsField } from "@/lib/voucherAttachmentNormalize";
 import { isFirebaseLedgerDataSyncDisabled } from "@/lib/firebaseLedgerDataSyncDisabled";

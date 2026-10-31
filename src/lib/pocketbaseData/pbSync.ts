@@ -15,7 +15,7 @@
  * Deletes are soft (`deleted: true`, data = tombstone) so other devices see them.
  */
 
-import { Timestamp } from "firebase/firestore";
+import { Timestamp } from "@/lib/pbCompat/firestore";
 import {
   getValidPocketBaseAuth,
   pbCreate,
@@ -30,13 +30,17 @@ import {
   appCollectionForPbRecord,
   pbTargetForAppCollection,
   PB_DATA_COLLECTIONS,
+  PB_GROUP_KINDS,
 } from "@/lib/pocketbaseData/pbMapping";
 import {
+  clearPocketBaseCompanyPruned,
   isActivePocketBaseCompanyId,
   listActivePocketBaseCompanyIds,
   listPocketBaseCompanyIds,
 } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { clearPbOutboxCompanyBlock, isPocketBaseCompanyMissingError } from "@/lib/pocketbaseData/pbOutboxBlock";
 import { isPocketBaseAppSessionActive } from "@/lib/pocketbaseData/pbAppSession";
+import { resetPbDataPullProgress, setPbDataPullProgress } from "@/lib/pocketbaseData/pbSyncProgress";
 
 type PbRecord = Record<string, unknown> & { id: string };
 
@@ -340,6 +344,8 @@ export async function ensurePocketBaseCompany(
   const found = await pbFirst<PbRecord>("pl_companies", `app_id = ${pbQuote(appCompanyId)}`);
   if (found?.id) {
     rememberCompanyRec(appCompanyId, found.id);
+    clearPocketBaseCompanyPruned(appCompanyId);
+    clearPbOutboxCompanyBlock(appCompanyId);
     return found.id;
   }
   if (!opts?.createIfMissing || !auth) {
@@ -365,6 +371,8 @@ export async function ensurePocketBaseCompany(
   try {
     const rec = await pbCreate<PbRecord>("pl_companies", body);
     rememberCompanyRec(appCompanyId, rec.id);
+    clearPocketBaseCompanyPruned(appCompanyId);
+    clearPbOutboxCompanyBlock(appCompanyId);
     return rec.id;
   } catch (e) {
     if (e instanceof PocketBaseRequestError && e.status === 400) {
@@ -387,7 +395,8 @@ export async function ensurePocketBaseCompany(
 // pushes the Firestore copy again.
 
 const ROOT_DIRTY_KEY = "pl_pb_company_root_dirty_v1";
-const ROOT_CACHE_MS = 3000;
+/** Root doc (pl_companies list) cache. 30s: realtime / change-log pulls delete the entry on any remote root change. */
+const ROOT_CACHE_MS = 30_000;
 const rootCache = new Map<string, { at: number; value: { exists: boolean; data: Record<string, unknown> | null } }>();
 
 function readRootDirty(): Set<string> {
@@ -579,7 +588,7 @@ export async function pbPushCompanyRootFromFirestore(
   // Server login: no Firestore session; the server copy is the only one.
   if (isPocketBaseAppSessionActive()) return null;
   try {
-    const [{ doc, getDoc }, { firestore }] = await Promise.all([import("firebase/firestore"), import("@/lib/firebase")]);
+    const [{ doc, getDoc }, { firestore }] = await Promise.all([import("@/lib/pbCompat/firestore"), import("@/lib/firebase")]);
     const snap = await getDoc(doc(firestore, "companies", companyId));
     if (!snap.exists()) return null;
     return await pbWriteCompanyRoot(companyId, snap.data() as Record<string, unknown>, "set");
@@ -680,10 +689,31 @@ export async function pbBatchWrite(appCompanyId: string, ops: PbBatchOp[], expec
     info: await companyInfoFromLocalRegistry(appCompanyId),
   });
   const sentAt = Date.now();
-  const res = (await pbRequest("/api/pl/data/batch", {
-    method: "POST",
-    body: { company: appCompanyId, deviceId: pbDeviceId(), ops: body, expects: expects || [] },
-  })) as { ok?: boolean; results?: PbOpResult[]; serverNow?: number };
+  type BatchRes = { ok?: boolean; results?: PbOpResult[]; serverNow?: number };
+  const sendBatch = async () =>
+    (await pbRequest("/api/pl/data/batch", {
+      method: "POST",
+      body: { company: appCompanyId, deviceId: pbDeviceId(), ops: body, expects: expects || [] },
+    })) as BatchRes;
+  let res: BatchRes;
+  try {
+    res = await sendBatch();
+  } catch (e) {
+    if (!(e instanceof PocketBaseRequestError) || e.status !== 404 || !isPocketBaseCompanyMissingError(e)) throw e;
+    // 404 "company not found": the cached server record id is stale (company deleted / server restored).
+    // Forget it, look the company up ONCE; retry the write only if it is really there. Otherwise the
+    // caller (outbox flush) treats this as a permanent error and stops retrying that company.
+    rememberCompanyRec(appCompanyId, null);
+    let again: PbRecord | null = null;
+    try {
+      again = await pbFirst<PbRecord>("pl_companies", `app_id = ${pbQuote(appCompanyId)}`);
+    } catch {
+      throw e;
+    }
+    if (!again?.id) throw e;
+    rememberCompanyRec(appCompanyId, again.id);
+    res = await sendBatch();
+  }
   noteServerNow(res?.serverNow, sentAt);
   const results = Array.isArray(res?.results) ? res.results : [];
   for (const r of results) {
@@ -912,9 +942,20 @@ export function pbRecordToAppDoc(rec: Record<string, unknown>): Record<string, u
   return out;
 }
 
-export type PbPullResult = { full: boolean; changed: number; collections: Record<string, number> };
+export type PbPullResult = {
+  full: boolean;
+  changed: number;
+  collections: Record<string, number>;
+  /** Docs the local SQLite write failed/paused on. The pull cursor is NOT advanced when > 0. */
+  failed?: number;
+};
 
-async function mirrorDocs(companyId: string, byColl: Map<string, Record<string, unknown>[]>): Promise<Record<string, number>> {
+async function mirrorDocs(
+  companyId: string,
+  byColl: Map<string, Record<string, unknown>[]>,
+  failedOut?: { n: number },
+  mirrorOpts?: { notify?: boolean }
+): Promise<Record<string, number>> {
   const { mirrorCollectionDocsToBrowserDbSilent, notifyBrowserDbCollectionUpdated } = await import(
     "@/lib/localCompanyDocMirror"
   );
@@ -925,10 +966,13 @@ async function mirrorDocs(companyId: string, byColl: Map<string, Record<string, 
       force: true,
       mergePreferNewer: true,
     });
+    if (failedOut && result.failed) failedOut.n += result.failed;
     if (!result.upserted) continue;
     counts[coll] = result.upserted;
     // Open lists (dashboard, daybook, ledgers, vouchers, parties, items) re-read SQLite on this bump.
-    notifyBrowserDbCollectionUpdated(companyId, coll, { source: "pl_server_pull", immediate: true });
+    if (mirrorOpts?.notify !== false) {
+      notifyBrowserDbCollectionUpdated(companyId, coll, { source: "pl_server_pull", immediate: true });
+    }
   }
   return counts;
 }
@@ -1007,6 +1051,8 @@ export async function applyPocketBaseRealtimeRecord(
       /* collection bump already refreshed open lists */
     }
   }
+  // A voucher / document from another device may carry a new file: fetch it to this device (debounced).
+  if (String(action || "").toLowerCase() !== "delete") queuePbFilesForCompany(hit.appCompanyId);
   return "applied";
 }
 
@@ -1048,20 +1094,71 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
     const latest = await pbFirst<{ at_ms?: number }>("pl_change_log", cf, "-at_ms");
     const maxAt = Number(latest?.at_ms) || 0;
     let changed = 0;
-    for (const coll of PB_DATA_COLLECTIONS) {
-      const recs = await pbListAll<PbRecord>(coll, cf);
-      changed += groupRecords(coll, recs, byColl);
-    }
-    const collections = await mirrorDocs(companyId, byColl);
-    if (Object.keys(collections).length) {
-      try {
-        await dispatchPbMirrorLivePatches(companyId, byColl);
-      } catch {
-        /* collection bump already refreshed open lists */
+    const failedOut = { n: 0 };
+    const collections: Record<string, number> = {};
+    // Write page by page (500 rows) straight into local SQLite: bounded memory, visible progress, and a
+    // killed / offline pull keeps what was already written (the cursor below is saved only after a full success).
+    let totalDocs: number | null = 0;
+    try {
+      const counts = await Promise.all(PB_DATA_COLLECTIONS.map((c) => pbServerCount(c, cf)));
+      for (const n of counts) {
+        if (n == null) {
+          totalDocs = null;
+          break;
+        }
+        totalDocs += n;
       }
+    } catch {
+      totalDocs = null;
+    }
+    setPbDataPullProgress({ active: true, companyId, collection: "", docs: 0, total: totalDocs }, true);
+    let docsDone = 0;
+    try {
+      const { notifyBrowserDbCollectionUpdated } = await import("@/lib/localCompanyDocMirror");
+      for (const coll of PB_DATA_COLLECTIONS) {
+        setPbDataPullProgress({ collection: coll });
+        const touched = new Set<string>();
+        await pbListAll<PbRecord>(coll, cf, {
+          discard: true,
+          onPage: async (recs, page) => {
+            const pageMap = new Map<string, Record<string, unknown>[]>();
+            changed += groupRecords(coll, recs, pageMap);
+            const part = await mirrorDocs(companyId, pageMap, failedOut, { notify: page === 1 });
+            for (const [k, v] of Object.entries(part)) {
+              collections[k] = (collections[k] || 0) + v;
+              touched.add(k);
+            }
+            if (Object.keys(part).length) {
+              try {
+                await dispatchPbMirrorLivePatches(companyId, pageMap);
+              } catch {
+                /* collection bump already refreshed open lists */
+              }
+            }
+            docsDone += recs.length;
+            setPbDataPullProgress({ docs: docsDone });
+          },
+        });
+        for (const k of touched) {
+          notifyBrowserDbCollectionUpdated(companyId, k, { source: "pl_server_pull", immediate: true });
+        }
+      }
+    } finally {
+      resetPbDataPullProgress();
     }
     await syncCompanyRoot(companyId, true);
+    if (failedOut.n > 0) {
+      // Partial mirror write: never record a cursor over a mirror with holes (next pull is a full pull again).
+      console.warn("[pbSync] full pull: local write failed for", failedOut.n, "docs - cursor not saved", companyId);
+      writeCursor(companyId, null);
+      return { full: true, changed, collections, failed: failedOut.n };
+    }
+    // Cursor only after the mirror write fully succeeded.
     writeCursor(companyId, { atMs: maxAt, url: auth.url });
+    // First login / full pull: bring every server file of this company to the device too.
+    void import("@/lib/pocketbaseData/pbFilesPull")
+      .then((m) => m.queuePbFilesSync(companyId, { full: true, delayMs: 500 }))
+      .catch(() => {});
     return { full: true, changed, collections };
   }
 
@@ -1098,7 +1195,8 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
       changed += groupRecords(coll, recs, byColl, { skipOwnDevice: true });
     }
   }
-  const collections = await mirrorDocs(companyId, byColl);
+  const failedOut = { n: 0 };
+  const collections = await mirrorDocs(companyId, byColl, failedOut);
   if (Object.keys(collections).length) {
     try {
       await dispatchPbMirrorLivePatches(companyId, byColl);
@@ -1110,8 +1208,135 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
     rootCache.delete(companyId);
     await syncCompanyRoot(companyId, rootChanged);
   }
+  if (failedOut.n > 0) {
+    // Keep the old cursor: the same change-log window is read again next pull (idempotent merge).
+    console.warn("[pbSync] pull: local write failed for", failedOut.n, "docs - cursor not advanced", companyId);
+    return { full: false, changed, collections, failed: failedOut.n };
+  }
   writeCursor(companyId, { atMs: maxAt, url: auth.url });
+  if (changed > 0) queuePbFilesForCompany(companyId);
   return { full: false, changed, collections };
+}
+
+/** New / changed server rows may carry new files: queue the (debounced, incremental) device file pull. */
+function queuePbFilesForCompany(companyId: string): void {
+  void import("@/lib/pocketbaseData/pbFilesPull")
+    .then((m) => m.queuePbFilesSync(companyId))
+    .catch(() => {});
+}
+
+/** Min gap between server-count integrity checks per user+company (background / idle paths). */
+const HEAL_CHECK_MIN_INTERVAL_MS = 5 * 60_000;
+/** After a heal full pull that still left the mirror short of the server, wait longer before retrying. */
+const HEAL_STILL_SHORT_BACKOFF_MS = 30 * 60_000;
+const healNextCheckAt = new Map<string, number>();
+
+/** Core collections whose absence makes the app look empty (accounts / parties / groups / vouchers / expense heads). */
+const HEAL_CORE_COLLECTIONS: ReadonlyArray<{ label: string; pb: string; appColls: readonly string[]; kindFilter?: boolean }> = [
+  { label: "parties", pb: "pl_parties", appColls: ["parties"] },
+  { label: "bank_accounts", pb: "pl_bank_accounts", appColls: ["bank_accounts"] },
+  { label: "groups", pb: "pl_groups", appColls: PB_GROUP_KINDS as readonly string[], kindFilter: true },
+  { label: "vouchers", pb: "pl_vouchers", appColls: ["vouchers"] },
+  { label: "expense_accounts", pb: "pl_expense_accounts", appColls: ["expense_accounts"] },
+];
+
+/** Cheap server count for one company collection (perPage=1 -> totalItems); null when unknown. */
+async function pbServerCount(collection: string, filter: string): Promise<number | null> {
+  try {
+    const q = new URLSearchParams({ page: "1", perPage: "1", filter });
+    const res = (await pbRequest(`/api/collections/${collection}/records?${q.toString()}`)) as { totalItems?: unknown };
+    const n = Number(res?.totalItems);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Compare local mirror counts with the server (live rows only) for the core collections.
+ * Returns a reason string when the mirror is missing rows the server has, else "".
+ * Local count includes tombstones, so local >= server-alive is the healthy case.
+ */
+async function localMirrorShortReason(companyId: string, companyRec: string): Promise<string> {
+  const { countCompanyDocsInBrowserDb } = await import("@/lib/localCompanyDocMirror");
+  const cf = `company = ${pbQuote(companyRec)} && deleted = false`;
+  const localCounts: Record<string, number> = {};
+  for (const c of HEAL_CORE_COLLECTIONS) {
+    let n = 0;
+    for (const appColl of c.appColls) n += await countCompanyDocsInBrowserDb(companyId, appColl);
+    localCounts[c.label] = n;
+  }
+  const allLocalEmpty = localCounts.parties === 0 && localCounts.vouchers === 0;
+  const short: string[] = [];
+  let serverUnknown = false;
+  for (const c of HEAL_CORE_COLLECTIONS) {
+    const filter = c.kindFilter
+      ? `${cf} && (${(PB_GROUP_KINDS as readonly string[]).map((k) => `kind = ${pbQuote(k)}`).join(" || ")})`
+      : cf;
+    const server = await pbServerCount(c.pb, filter);
+    if (server == null) {
+      serverUnknown = true;
+      continue;
+    }
+    const local = localCounts[c.label];
+    if (server > 0 && (local === 0 || local < server)) short.push(`${c.label} local=${local} server=${server}`);
+  }
+  if (short.length) return short.join(", ");
+  // Server counts unavailable: keep the legacy emptiness heal (no parties and no vouchers locally).
+  if (serverUnknown && allLocalEmpty) return "local empty (server counts unavailable)";
+  return "";
+}
+
+/**
+ * Pull with self-heal. When a pull cursor exists but this origin's local mirror is missing rows the
+ * server has (empty/wiped SQLite, copied or stale cursor, partial earlier write), do a FULL pull instead
+ * of an incremental one - an incremental pull only replays change-log rows and never repairs holes.
+ * The check compares per-collection local counts with a cheap server count (parties, bank accounts,
+ * groups, vouchers, expense heads) and is throttled per user+company.
+ * `oncePerSession`: background paths - run the check at most once per few minutes. Explicit callers
+ * (manual sync button) always check.
+ */
+export async function pullPocketBaseCompanyToLocalHealed(
+  companyId: string,
+  opts?: { oncePerSession?: boolean }
+): Promise<PbPullResult> {
+  let full = false;
+  const key = `${getValidPocketBaseAuth()?.userId || ""}:${companyId}`;
+  const now = Date.now();
+  const throttled = opts?.oncePerSession === true && now < (healNextCheckAt.get(key) || 0);
+  if (!throttled && readCursor(companyId)) {
+    healNextCheckAt.set(key, now + HEAL_CHECK_MIN_INTERVAL_MS);
+    try {
+      const companyRec = await ensurePocketBaseCompany(companyId);
+      const reason = await localMirrorShortReason(companyId, companyRec);
+      if (reason) {
+        console.warn("[pbSync] local mirror short of server but pull cursor exists - full pull", companyId, reason);
+        full = true;
+      }
+    } catch {
+      /* count/check failed: keep the normal incremental pull */
+    }
+  }
+  try {
+    const res = await pullPocketBaseCompanyToLocal(companyId, full ? { full: true } : undefined);
+    if (full) {
+      if (res.failed) {
+        healNextCheckAt.set(key, Date.now() + 30_000); // write failed: retry soon
+      } else {
+        // Still short after a clean full pull (e.g. rows the server has that cannot mirror): back off.
+        try {
+          const rec = await ensurePocketBaseCompany(companyId);
+          if (await localMirrorShortReason(companyId, rec)) healNextCheckAt.set(key, Date.now() + HEAL_STILL_SHORT_BACKOFF_MS);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    return res;
+  } catch (e) {
+    healNextCheckAt.set(key, Date.now() + 30_000);
+    throw e;
+  }
 }
 
 let pullAllRunning = false;
@@ -1133,7 +1358,8 @@ export async function pullAllPocketBaseCompaniesThrottled(
   try {
     for (const id of ids) {
       try {
-        await pullPocketBaseCompanyToLocal(id);
+        if (!isActivePocketBaseCompanyId(id)) continue; // switched away mid-loop: that company sleeps
+        await pullPocketBaseCompanyToLocalHealed(id, { oncePerSession: true });
       } catch (e) {
         console.warn("[pbSync] pull failed", id, e instanceof Error ? e.message : e);
       }

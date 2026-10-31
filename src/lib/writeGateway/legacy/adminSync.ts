@@ -1,8 +1,9 @@
-import { doc, setDoc } from "firebase/firestore";
+import { setDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { isPocketBaseAppSessionActive } from "@/lib/pocketbaseData/pbAppSession";
-import type { User } from "firebase/auth";
+import type { User } from "@/lib/pbCompat/auth";
 
 /**
  * Ensures Firestore has users/{uid} and optional app_settings/admin_config so

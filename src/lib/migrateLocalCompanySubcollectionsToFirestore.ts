@@ -5,7 +5,7 @@
  * yahan browser SQLite (`company_docs`) se saari subcollections Firestore me push (batched set).
  */
 
-import { doc, writeBatch, Timestamp, type Firestore } from "firebase/firestore";
+import { doc, writeBatch, Timestamp, type Firestore } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { COMPANY_LOCAL_MIRROR_SUBCOLLECTIONS } from "@/lib/firestoreToLocalCompanyPull";

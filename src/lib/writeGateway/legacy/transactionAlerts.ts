@@ -1,6 +1,7 @@
 "use client";
 
-import { collection, addDoc, serverTimestamp, doc, query, where } from "firebase/firestore";
+import { addDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
+import { collection, serverTimestamp, doc, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore, firestoreNetworkDisabledByApi } from "@/lib/firebase";
 import type { Company } from "@/hooks/useCompany";

@@ -4,7 +4,7 @@
 import React, { createContext, useContext, useState, useEffect, useLayoutEffect, ReactNode, useCallback, useRef, useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "./useAuth";
-import { collection, query, where, Timestamp, doc } from "firebase/firestore";
+import { collection, query, where, Timestamp, doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDocs, getDocsFromServer, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import {
   auth,
@@ -121,7 +121,8 @@ import {
   PB_APP_SESSION_EVENTS,
   pullPocketBaseCompanyRegistry,
 } from "@/lib/pocketbaseData/pbAppSession";
-import { companyUsesPocketBase, isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { companyUsesPocketBase, isPocketBaseCompanyId, isPocketBaseCompanyPruned } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { prunePocketBaseCompaniesMissingOnServer } from "@/lib/pocketbaseData/pbRegistryPrune";
 
 /**
  * Server login (pl_users): Firebase cloud companies stay hidden - only Pocket Ledger Server
@@ -311,6 +312,9 @@ export type Company = {
     handoverStatus?: 'pending' | 'accepted' | null;
     handoverInitiatedAt?: Timestamp | null;
     storageOption?: 'firebase' | 'drive' | 'local';
+    /** Online data server (e.g. "pocketbase"); read by companyStorageKind / onlineDataServer. */
+    onlineServerId?: string | null;
+    onlineDataBackend?: string | null;
     /** PL Server gate se mirrored / shared company — Server tab + SQLite-only ledger. */
     plServerShared?: boolean;
     /** Firestore mirror / SQLite row: company cloud se aayi */
@@ -1018,6 +1022,8 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
   const sqliteRegistryListHydratedRef = useRef(false);
   /** Firestore `triggerUpdate` — `reloadLocalCompanyRegistry` par SQLite rows turant selector me. */
   const triggerRegistryUpdateRef = useRef<(() => void) | null>(null);
+  /** After Pocket Ledger Server companies were pruned from this device (server no longer lists them). */
+  const pbPrunedHandlerRef = useRef<((activePruned: boolean) => void) | null>(null);
   const isSuperAdmin = customUser?.role === "SuperAdmin";
   const isSuperAdminByEmail = useMemo(() => {
     const e = (user?.email || "").toLowerCase().trim();
@@ -1817,6 +1823,7 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
           const norm = normalizeLocalCompany(c as unknown as Company);
           if (!isCompanyVisibleInMainApp(norm)) continue;
           if (!isLocalCompanyVisibleToAppAccount(c, user)) continue;
+          if (isPocketBaseCompanyPruned(norm.id)) continue;
           if (pbLoginSession && isFirebaseCloudRowHiddenInServerSession(norm)) continue;
           if (isStrictLocalOnlyCompany(norm)) {
             companyById.set(norm.id, {
@@ -1916,7 +1923,10 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
           companyById.set(norm.id, { ...norm, isOwned });
         }
 
-        const normalizedLocalCompanies = Array.from(companyById.values());
+        // Never re-upsert a Pocket Ledger Server company that was just pruned (server hard-deleted it).
+        const normalizedLocalCompanies = Array.from(companyById.values()).filter(
+          (c) => !isPocketBaseCompanyPruned(c.id)
+        );
         await Promise.all(normalizedLocalCompanies.map((c) => upsertLocalCompany(c as any)));
         latestLocalNormalizedCompaniesRef.current = normalizedLocalCompanies;
 
@@ -2667,6 +2677,13 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [user, customUser, companyId, clearCompanyId, setCompanyId, authLoading]);
 
+  pbPrunedHandlerRef.current = (activePruned: boolean) => {
+    reloadLocalCompanyRegistry();
+    if (activePruned) {
+      clearCompanyId({ force: true, reason: "pb_company_pruned" });
+      router.push("/company");
+    }
+  };
   const handleSnapshotUpdate = useCallback(async (ownedSnap: any, sharedSnap: any, ownedByEmailSnap?: any, localCompanies?: Company[]) => {
     const isOwnedByUser = (c: Company) =>
       c.ownerId === user?.uid ||
@@ -2755,6 +2772,8 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
     // Merge local DB companies — live plan entitlements ke liye normalizeLocalCompany (online jaisa).
     for (const c of localCompanies || []) {
       if (!isLocalCompanyVisibleToAppAccount(c as never, user)) continue;
+      // Pocket Ledger Server company removed from this device because the server no longer lists it.
+      if (isPocketBaseCompanyPruned(c.id)) continue;
       const normalized = normalizeLocalCompany(c);
       const row = c as unknown as import("@/lib/localCompanyStore").LocalCompanyDoc;
       const isStrictLocalOnlyRow = isStrictLocalOnlyCompany(row as Company);
@@ -3029,14 +3048,29 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
           );
         })();
       };
+      let lastPbRegistryRefreshAt = 0;
       const refreshFromServer = async () => {
         if (inFlight || disposed) return;
         inFlight = true;
+        lastPbRegistryRefreshAt = Date.now();
         try {
           const res = await pullPocketBaseCompanyRegistry();
           if (disposed) return;
           ownedSnapRef.current = { docs: res.rows.filter((r) => r.isOwned).map((r) => asDoc(r.id, r.data)) };
           sharedSnapRef.current = { docs: res.rows.filter((r) => !r.isOwned).map((r) => asDoc(r.id, r.data)) };
+          // Successful, non-empty pull only: drop device copies of PB companies the server no longer has.
+          if (res.presentIds.size > 0) {
+            try {
+              const pruned = await prunePocketBaseCompaniesMissingOnServer({
+                serverIds: res.presentIds,
+                user: { uid: user?.uid ?? null, email: user?.email ?? null },
+                activeCompanyId: companyIdLiveRef.current,
+              });
+              if (pruned.prunedIds.length && !disposed) pbPrunedHandlerRef.current?.(pruned.activePruned);
+            } catch (pe) {
+              console.warn("[useCompany] pruning server-deleted companies failed", pe);
+            }
+          }
         } catch (e) {
           if (disposed) return;
           console.warn("[useCompany] Pocket Ledger Server company list failed (keeping the last list)", e);
@@ -3059,12 +3093,22 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
       const onRootUpdated = () => void refreshFromServer();
       window.addEventListener("pl-pb-company-root-updated", onRootUpdated);
       for (const name of PB_APP_SESSION_EVENTS) window.addEventListener(name, onRootUpdated);
-      const poll = window.setInterval(() => void refreshFromServer(), 60_000);
+      // Company list (pl_companies): light 5 min poll, visible tab only; also on focus / tab visible (max 1 per 60s).
+      const poll = window.setInterval(() => {
+        if (document.visibilityState === "visible") void refreshFromServer();
+      }, 300_000);
+      const onRegistryVisible = () => {
+        if (document.visibilityState === "visible" && Date.now() - lastPbRegistryRefreshAt >= 60_000) void refreshFromServer();
+      };
+      document.addEventListener("visibilitychange", onRegistryVisible);
+      window.addEventListener("focus", onRegistryVisible);
       triggerRegistryUpdateRef.current = () => void refreshFromServer();
       void refreshFromServer();
       return () => {
         disposed = true;
         window.clearInterval(poll);
+        document.removeEventListener("visibilitychange", onRegistryVisible);
+        window.removeEventListener("focus", onRegistryVisible);
         window.removeEventListener("pl-pb-company-root-updated", onRootUpdated);
         for (const name of PB_APP_SESSION_EVENTS) window.removeEventListener(name, onRootUpdated);
         triggerRegistryUpdateRef.current = null;

@@ -1,11 +1,4 @@
 (function () {
-  var prefix = window.POCKET_LEDGER_RELEASE_PREFIX || "public-releases";
-  var OWNER = String(window.RELEASE_ADMIN_OWNER || "nansari15300@gmail.com")
-    .trim()
-    .toLowerCase();
-  var ADMINS_PATH = prefix + "/admins.json";
-  var runtimeAdmins = [];
-  var currentUser = null;
 
   var statusEl = document.getElementById("status");
   var authBox = document.getElementById("authBox");
@@ -33,11 +26,10 @@
   var visibleListHintApk = document.getElementById("visibleListHintApk");
   var outdatedListHintExe = document.getElementById("outdatedListHintExe");
   var outdatedListHintApk = document.getElementById("outdatedListHintApk");
-  var storagePathHint = document.getElementById("storagePathHint");
   var cachedManifest = null;
   var cachedSettings = normalizeReleaseSettings(null);
   var settingsFileCorrupt = false;
-  var SETTINGS_PATH = prefix + "/release-settings.json";
+  var adminState = { owners: [], emails: [], canEdit: false };
 
   function normalizeReleaseSettings(raw) {
     return typeof window.normalizeReleaseSettings === "function"
@@ -79,83 +71,45 @@
     });
   }
 
-  async function saveSettingsFile(settings) {
-    var payload = Object.assign({ updatedAt: new Date().toISOString() }, settings);
-    var json = JSON.stringify(payload, null, 2);
-    if (!json || json === "undefined") {
-      throw new Error("Invalid release settings payload.");
-    }
-    JSON.parse(json);
-    var blob = new Blob([json], { type: "application/json" });
-    await storage.ref().child(SETTINGS_PATH).put(blob, {
-      contentType: "application/json",
-      cacheControl: "public,max-age=60",
-    });
-    settingsFileCorrupt = false;
-  }
-
   async function applySettingsSave(mode) {
-    if (!currentUser || !allowedEmail(currentUser.email)) {
-      setStatus("Not allowed.", false);
-      return;
-    }
     var nextSettings = readSettingsFromForm();
     try {
-      setStatus("Saving release settings…", true);
-      if (!cachedManifest) {
-        await loadManifest();
-      }
-      var recon = reconcileManifest(cachedManifest, nextSettings, mode);
-      var manifestChanged =
-        JSON.stringify(cachedManifest && cachedManifest.history) !== JSON.stringify(recon.history) ||
-        JSON.stringify(cachedManifest && cachedManifest.outdated) !== JSON.stringify(recon.outdated);
-      var deleteList = Array.isArray(recon.deleteEntries) ? recon.deleteEntries : [];
-
+      setStatus("Saving release settings.", true);
+      var dry = await window.SiteData.adminPost("/admin/releases/settings", {
+        mode: mode,
+        settings: nextSettings,
+        dryRun: true,
+      });
+      var deleteList = Array.isArray(dry.deleteEntries) ? dry.deleteEntries : [];
       if (deleteList.length > 0) {
         var okDelete = await confirmDialog({
           title: "Delete builds?",
-          message:
-            "Delete " +
-            deleteList.length +
-            " build(s) from Firebase Storage permanently?",
+          message: "Delete " + deleteList.length + " build(s) from the server permanently?",
           items: deleteList.map(entrySummaryLabel),
           confirmLabel: "Delete permanently",
           danger: true,
         });
         if (!okDelete) {
           applySettingsToForm();
-          setStatus("Settings not saved — delete cancelled.", false);
+          setStatus("Settings not saved - delete cancelled.", false);
           return;
         }
-        for (var d = 0; d < deleteList.length; d++) {
-          await deleteReleaseFiles(deleteList[d]);
-        }
       }
-
-      if (manifestChanged && cachedManifest) {
-        var nextManifest = Object.assign({}, cachedManifest);
-        nextManifest.history = recon.history;
-        nextManifest.outdated = recon.outdated;
-        await saveManifest(nextManifest);
-        renderVisibleReleaseList();
-        renderOutdatedList();
-      }
-
-      cachedSettings = nextSettings;
-      await saveSettingsFile(cachedSettings);
+      var res = await window.SiteData.adminPost("/admin/releases/settings", {
+        mode: mode,
+        settings: nextSettings,
+      });
+      cachedManifest = res.manifest || cachedManifest;
+      cachedSettings = normalizeReleaseSettings(res.settings || nextSettings);
       applySettingsToForm();
-      if (mode === "downloads" && recon.spilledCount > 0 && nextSettings.outdatedPolicy === "keep") {
-        setStatus(
-          "Settings saved. Moved " + recon.spilledCount + " build(s) to Hidden / outdated.",
-          true
-        );
-      } else if (mode === "downloads" && recon.promotedCount > 0) {
-        setStatus(
-          "Settings saved. Moved " + recon.promotedCount + " build(s) to Downloads dropdown.",
-          true
-        );
+      renderVisibleReleaseList();
+      renderOutdatedList();
+      if (mode === "downloads" && res.spilledCount > 0 && nextSettings.outdatedPolicy === "keep") {
+        setStatus("Settings saved. Moved " + res.spilledCount + " build(s) to Hidden / outdated.", true);
+      } else if (mode === "downloads" && res.promotedCount > 0) {
+        setStatus("Settings saved. Moved " + res.promotedCount + " build(s) to Downloads dropdown.", true);
       } else if (deleteList.length > 0) {
-        setStatus("Settings saved. Deleted " + deleteList.length + " build(s) from Storage.", true);
+        setStatus("Settings saved. Deleted " + deleteList.length + " build(s) from the server.", true);
       } else {
         setStatus("Release settings saved.", true);
       }
@@ -171,6 +125,10 @@
 
   async function saveHiddenSettings() {
     await applySettingsSave("hidden");
+  }
+
+  async function saveSettings() {
+    await saveHiddenSettings();
   }
 
   function entrySummaryLabel(entry) {
@@ -263,16 +221,6 @@
       : Boolean(item && item.url);
   }
 
-  function settingsPublicUrl() {
-    return (
-      "https://firebasestorage.googleapis.com/v0/b/" +
-      window.POCKET_LEDGER_FIREBASE.storageBucket +
-      "/o/" +
-      encodeURIComponent(SETTINGS_PATH) +
-      "?alt=media"
-    );
-  }
-
   function entryLabelExe(entry) {
     var bits = [entry.date || "unknown"];
     if (entry.windows && entry.windows.version) bits.push("EXE v" + entry.windows.version);
@@ -340,7 +288,7 @@
 
     var hiddenHint =
       cachedSettings.outdatedPolicy === "auto_delete"
-        ? "Hidden builds are auto-deleted from Firebase Storage when they leave the downloads list."
+        ? "Hidden builds are auto-deleted from the server when they leave the downloads list."
         : cachedSettings.outdatedMaxKeep <= 0
           ? "Hidden builds are kept here (no limit). Delete removes files permanently."
           : "Hidden builds are kept here (max " +
@@ -397,71 +345,9 @@
     return window.buildPublicDownloadEntries(cachedManifest, cachedSettings, kind);
   }
 
-  async function loadSettings() {
-    settingsFileCorrupt = false;
-    try {
-      var res = await fetch(settingsPublicUrl(), { cache: "no-store" });
-      if (res.ok) {
-        var text = await res.text();
-        var raw =
-          typeof window.parseReleaseSettingsJson === "function"
-            ? window.parseReleaseSettingsJson(text)
-            : null;
-        if (!raw) {
-          settingsFileCorrupt = true;
-        }
-        cachedSettings = normalizeReleaseSettings(raw);
-      } else {
-        settingsFileCorrupt = res.status === 404;
-        cachedSettings = normalizeReleaseSettings(null);
-      }
-    } catch (_) {
-      settingsFileCorrupt = true;
-      cachedSettings = normalizeReleaseSettings(null);
-    }
-    applySettingsToForm();
-    if (settingsFileCorrupt && currentUser && allowedEmail(currentUser.email)) {
-      setStatus(
-        "Release settings file was missing or invalid — using defaults until you save.",
-        false
-      );
-    }
-  }
-
-  async function saveSettings() {
-    await saveHiddenSettings();
-  }
-
   function setStatus(msg, ok) {
     statusEl.textContent = msg || "";
     statusEl.className = "status " + (ok ? "ok" : "err");
-  }
-
-  function uniqueEmails(list) {
-    var seen = {};
-    var out = [];
-    list.forEach(function (raw) {
-      var e = String(raw || "")
-        .trim()
-        .toLowerCase();
-      if (!e || seen[e]) return;
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return;
-      seen[e] = true;
-      out.push(e);
-    });
-    return out;
-  }
-
-  function bootstrapEmails() {
-    return uniqueEmails([OWNER].concat(window.RELEASE_ADMIN_EMAILS || []));
-  }
-
-  function adminEmails() {
-    return uniqueEmails(bootstrapEmails().concat(runtimeAdmins));
-  }
-
-  function allowedEmail(email) {
-    return adminEmails().indexOf(String(email || "").trim().toLowerCase()) !== -1;
   }
 
   function todayStamp() {
@@ -481,96 +367,8 @@
     return (n / (1024 * 1024)).toFixed(1) + " MB";
   }
 
-  function safeName(name) {
-    return String(name || "file")
-      .replace(/[\\/]/g, "-")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
   function optionalText(id) {
     return String(document.getElementById(id).value || "").trim();
-  }
-
-  function adminsPublicUrl() {
-    return (
-      "https://firebasestorage.googleapis.com/v0/b/" +
-      window.POCKET_LEDGER_FIREBASE.storageBucket +
-      "/o/" +
-      encodeURIComponent(ADMINS_PATH) +
-      "?alt=media"
-    );
-  }
-
-  firebase.initializeApp(window.POCKET_LEDGER_FIREBASE);
-  var auth = firebase.auth();
-  var storage = firebase.storage();
-
-  function renderAdminList() {
-    if (!adminListEl) return;
-    var emails = adminEmails();
-    adminListEl.innerHTML = "";
-    emails.forEach(function (email) {
-      var li = document.createElement("li");
-      var left = document.createElement("span");
-      left.textContent = email + (email === OWNER ? " (owner)" : "");
-      li.appendChild(left);
-      if (email !== OWNER) {
-        var rm = document.createElement("button");
-        rm.type = "button";
-        rm.className = "btn btn-outline btn-sm";
-        rm.textContent = "Remove";
-        rm.onclick = function () {
-          void removeAdmin(email);
-        };
-        li.appendChild(rm);
-      }
-      adminListEl.appendChild(li);
-    });
-  }
-
-  function latestPublicUrl() {
-    return (
-      "https://firebasestorage.googleapis.com/v0/b/" +
-      window.POCKET_LEDGER_FIREBASE.storageBucket +
-      "/o/" +
-      encodeURIComponent(prefix + "/latest.json") +
-      "?alt=media"
-    );
-  }
-
-  async function deleteReleaseFiles(entry) {
-    await deleteStorageFile(entry && entry.windows);
-    var apk = entry && entry.android && isApkAndroid(entry.android) ? entry.android : null;
-    await deleteStorageFile(apk);
-  }
-
-  async function saveManifest(manifest) {
-    var blob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
-    await storage.ref().child(prefix + "/latest.json").put(blob, {
-      contentType: "application/json",
-      cacheControl: "public,max-age=60",
-    });
-    cachedManifest = manifest;
-  }
-
-  async function deleteStorageFile(item) {
-    if (!item) return;
-    if (item.path) {
-      try {
-        await storage.ref().child(item.path).delete();
-        return;
-      } catch (_) {
-        /* try URL */
-      }
-    }
-    if (item.url && /^https?:\/\//i.test(item.url)) {
-      try {
-        await storage.refFromURL(item.url).delete();
-      } catch (_) {
-        /* already gone */
-      }
-    }
   }
 
   function renderVisibleReleaseList() {
@@ -687,36 +485,58 @@
     tbodyEl.appendChild(tr);
   }
 
+  function renderAdminList() {
+    if (!adminListEl) return;
+    adminListEl.innerHTML = "";
+    adminState.owners.forEach(function (email) {
+      var li = document.createElement("li");
+      var left = document.createElement("span");
+      left.textContent = email + " (owner)";
+      li.appendChild(left);
+      adminListEl.appendChild(li);
+    });
+    adminState.emails.forEach(function (email) {
+      var li = document.createElement("li");
+      var left = document.createElement("span");
+      left.textContent = email;
+      li.appendChild(left);
+      if (adminState.canEdit) {
+        var rm = document.createElement("button");
+        rm.type = "button";
+        rm.className = "btn btn-outline btn-sm";
+        rm.textContent = "Remove";
+        rm.onclick = function () {
+          void removeAdmin(email);
+        };
+        li.appendChild(rm);
+      }
+      adminListEl.appendChild(li);
+    });
+    var addRow = document.getElementById("addAdminRow");
+    if (addRow) addRow.hidden = !adminState.canEdit;
+  }
+
   async function loadManifest() {
     try {
-      var res = await fetch(latestPublicUrl(), { cache: "no-store" });
-      if (res.ok) {
-        cachedManifest = await res.json();
-      } else {
-        cachedManifest = { history: [], outdated: [] };
-      }
-    } catch (_) {
+      var res = await window.SiteData.adminGet("/admin/releases");
+      cachedManifest = res.manifest || { history: [], outdated: [] };
+      cachedSettings = normalizeReleaseSettings(res.settings);
+      settingsFileCorrupt = false;
+    } catch (err) {
       cachedManifest = { history: [], outdated: [] };
+      setStatus("Could not load releases. " + (err.message || ""), false);
     }
-    updateSettingsHint();
+    applySettingsToForm();
     renderVisibleReleaseList();
     renderOutdatedList();
   }
 
-  async function deleteHistoryRelease(index) {
-    if (!currentUser || !allowedEmail(currentUser.email)) {
-      setStatus("Not allowed.", false);
-      return;
-    }
-    if (!cachedManifest || !Array.isArray(cachedManifest.history)) return;
-    var entry = cachedManifest.history[index];
-    if (!entry) return;
+  async function deleteBuild(body, title, message, items, okStatus) {
     if (
       !(await confirmDialog({
-        title: "Remove from Downloads?",
-        message:
-          "Remove this build from the public Downloads list and delete its files from Firebase Storage?",
-        items: [entrySummaryLabel(entry)],
+        title: title,
+        message: message,
+        items: items,
         confirmLabel: "Delete",
         danger: true,
       }))
@@ -724,132 +544,82 @@
       return;
     }
     try {
-      setStatus("Deleting release files…", true);
-      await deleteReleaseFiles(entry);
-      var next = Object.assign({}, cachedManifest);
-      next.history = cachedManifest.history.filter(function (_, i) {
-        return i !== index;
-      });
-      await saveManifest(next);
+      setStatus("Deleting release files.", true);
+      var res = await window.SiteData.adminPost("/admin/releases/delete", body);
+      cachedManifest = res.manifest || cachedManifest;
       renderVisibleReleaseList();
       renderOutdatedList();
-      setStatus("Deleted older release " + entrySummaryLabel(entry), true);
+      setStatus(okStatus, true);
     } catch (err) {
       setStatus(err.message || String(err), false);
     }
   }
 
+  async function deleteHistoryRelease(index) {
+    if (!cachedManifest || !Array.isArray(cachedManifest.history)) return;
+    var entry = cachedManifest.history[index];
+    if (!entry) return;
+    await deleteBuild(
+      { list: "history", index: index, date: entry.date },
+      "Remove from Downloads?",
+      "Remove this build from the public Downloads list and delete its files from the server?",
+      [entrySummaryLabel(entry)],
+      "Deleted older release " + entrySummaryLabel(entry)
+    );
+  }
+
   async function deleteAllOutdated() {
-    if (!currentUser || !allowedEmail(currentUser.email)) {
-      setStatus("Not allowed.", false);
-      return;
-    }
     var list = (cachedManifest && Array.isArray(cachedManifest.outdated) ? cachedManifest.outdated : []).slice();
     if (!list.length) {
       setStatus("No outdated builds to delete.", true);
       return;
     }
-    if (
-      !(await confirmDialog({
-        title: "Delete all outdated?",
-        message:
-          "Delete ALL " + list.length + " outdated build(s) from Firebase Storage permanently?",
-        confirmLabel: "Delete all",
-        danger: true,
-      }))
-    ) {
-      return;
-    }
-    try {
-      setStatus("Deleting all outdated files…", true);
-      for (var i = 0; i < list.length; i++) {
-        await deleteReleaseFiles(list[i]);
-      }
-      var next = Object.assign({}, cachedManifest);
-      next.outdated = [];
-      await saveManifest(next);
-      renderOutdatedList();
-      setStatus("Deleted all outdated builds (" + list.length + ").", true);
-    } catch (err) {
-      setStatus(err.message || String(err), false);
-    }
+    await deleteBuild(
+      { list: "outdatedAll" },
+      "Delete all outdated?",
+      "Delete ALL " + list.length + " outdated build(s) from the server permanently?",
+      null,
+      "Deleted all outdated builds (" + list.length + ")."
+    );
   }
 
   async function hardDeleteOutdated(index) {
-    if (!currentUser || !allowedEmail(currentUser.email)) {
-      setStatus("Not allowed.", false);
-      return;
-    }
     if (!cachedManifest || !Array.isArray(cachedManifest.outdated)) return;
     var entry = cachedManifest.outdated[index];
     if (!entry) return;
-    if (
-      !(await confirmDialog({
-        title: "Hard delete?",
-        message: "Hard delete this outdated release from Firebase Storage?",
-        items: [entrySummaryLabel(entry)],
-        confirmLabel: "Delete",
-        danger: true,
-      }))
-    ) {
-      return;
-    }
-    try {
-      setStatus("Deleting outdated files…", true);
-      await deleteReleaseFiles(entry);
-      var next = Object.assign({}, cachedManifest);
-      next.outdated = cachedManifest.outdated.filter(function (_, i) {
-        return i !== index;
-      });
-      await saveManifest(next);
-      renderOutdatedList();
-      setStatus("Hard-deleted outdated release " + entrySummaryLabel(entry), true);
-    } catch (err) {
-      setStatus(err.message || String(err), false);
-    }
+    await deleteBuild(
+      { list: "outdated", index: index, date: entry.date },
+      "Hard delete?",
+      "Hard delete this outdated release from the server?",
+      [entrySummaryLabel(entry)],
+      "Hard-deleted outdated release " + entrySummaryLabel(entry)
+    );
   }
 
   async function loadAdmins() {
     try {
-      var res = await fetch(adminsPublicUrl(), { cache: "no-store" });
-      if (res.ok) {
-        var data = await res.json();
-        runtimeAdmins = uniqueEmails([].concat(data.emails || data.admins || []));
-      }
+      var data = await window.SiteData.adminGet("/admin/admins");
+      adminState.owners = Array.isArray(data.owners) ? data.owners : [];
+      adminState.emails = Array.isArray(data.emails) ? data.emails : [];
+      adminState.canEdit = data.canEdit === true;
     } catch (_) {
-      runtimeAdmins = [];
+      adminState.owners = [];
+      adminState.emails = [];
+      adminState.canEdit = false;
     }
-    runtimeAdmins = uniqueEmails(bootstrapEmails().concat(runtimeAdmins));
     renderAdminList();
   }
 
   async function saveAdmins(nextEmails) {
-    var emails = uniqueEmails([OWNER].concat(nextEmails));
-    var blob = new Blob(
-      [JSON.stringify({ owner: OWNER, emails: emails, updatedAt: new Date().toISOString() }, null, 2)],
-      { type: "application/json" }
-    );
-    await storage.ref().child(ADMINS_PATH).put(blob, {
-      contentType: "application/json",
-      cacheControl: "public,max-age=60",
-    });
-    runtimeAdmins = emails;
+    var res = await window.SiteData.adminPost("/admin/admins", { emails: nextEmails });
+    adminState.emails = Array.isArray(res.emails) ? res.emails : [];
     renderAdminList();
   }
 
-  async function ensureAdminsSeeded() {
-    await loadAdmins();
-    if (adminEmails().length === 0 || adminEmails().indexOf(OWNER) < 0) {
-      await saveAdmins(bootstrapEmails());
-    }
-  }
-
   async function addAdmin(email) {
-    var e = String(email || "")
-      .trim()
-      .toLowerCase();
+    var e = String(email || "").trim().toLowerCase();
     if (!e) {
-      setStatus("Enter a Gmail / email.", false);
+      setStatus("Enter an email.", false);
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
@@ -857,7 +627,7 @@
       return;
     }
     try {
-      await saveAdmins(adminEmails().concat([e]));
+      await saveAdmins(adminState.emails.concat([e]));
       document.getElementById("newAdminEmail").value = "";
       setStatus("Added " + e, true);
     } catch (err) {
@@ -866,56 +636,21 @@
   }
 
   async function removeAdmin(email) {
-    var e = String(email || "")
-      .trim()
-      .toLowerCase();
-    if (e === OWNER) {
-      setStatus("Owner cannot be removed.", false);
-      return;
-    }
+    var e = String(email || "").trim().toLowerCase();
     try {
-      await saveAdmins(adminEmails().filter(function (x) { return x !== e; }));
+      await saveAdmins(adminState.emails.filter(function (x) { return x !== e; }));
       setStatus("Removed " + e, true);
     } catch (err) {
       setStatus(err.message || String(err), false);
     }
   }
 
-  function showAuthedUi(user) {
-    whoEl.textContent = user.email || user.uid;
-    if (outBtn) outBtn.hidden = false;
-    if (!allowedEmail(user.email)) {
-      authBox.hidden = false;
-      uploadBox.hidden = true;
-      setStatus("Not a release admin. Ask owner to add your Gmail on this page.", false);
-      return;
-    }
-    authBox.hidden = true;
-    uploadBox.hidden = false;
-    if (storagePathHint) {
-      storagePathHint.textContent =
-        "Firebase Storage (bucket " +
-        window.POCKET_LEDGER_FIREBASE.storageBucket +
-        ") → " +
-        prefix +
-        "/windows|android/YYYY-MM-DD/  ·  latest.json + release-settings.json";
-    }
-    setStatus("Ready. Files upload to Firebase Storage (not Firestore).", true);
+  function showAuthedUi() {
     renderAdminList();
-    void loadSettings().then(function () {
+    void loadAdmins();
     void loadManifest();
-    });
   }
 
-  document.getElementById("googleBtn").onclick = function () {
-    var provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithPopup(provider).catch(function (err) {
-      setStatus(err.message || String(err), false);
-    });
-  };
-  document.getElementById("outBtn").onclick = function () {
-    auth.signOut();
-  };
   document.getElementById("addAdminBtn").onclick = function () {
     void addAdmin(document.getElementById("newAdminEmail").value);
   };
@@ -935,61 +670,24 @@
     };
   }
 
-  auth.onAuthStateChanged(function (user) {
-    currentUser = user;
-    if (!user) {
-      authBox.hidden = false;
-      uploadBox.hidden = true;
-      if (outBtn) outBtn.hidden = true;
-      whoEl.textContent = "";
-      setStatus("Sign in with Google to upload EXE / APK.", true);
-      return;
-    }
-    void ensureAdminsSeeded()
-      .then(function () {
-        showAuthedUi(user);
-      })
-      .catch(function (err) {
-        showAuthedUi(user);
-        setStatus(
-          "Signed in, but admins.json load/save failed: " + (err.message || err),
-          false
-        );
-      });
+  window.SiteData.gate({
+    authBox: authBox,
+    adminBox: uploadBox,
+    whoEl: whoEl,
+    outBtn: outBtn,
+    setStatus: setStatus,
+    onReady: function () {
+      showAuthedUi();
+    },
   });
 
-  function uploadOne(file, objectPath, onPct) {
-    return new Promise(function (resolve, reject) {
-      var ref = storage.ref().child(objectPath);
-      var task = ref.put(file, {
-        contentType: file.type || "application/octet-stream",
-        contentDisposition: 'attachment; filename="' + safeName(file.name) + '"',
-      });
-      task.on(
-        "state_changed",
-        function (snap) {
-          if (!snap.totalBytes) return;
-          onPct(Math.round((snap.bytesTransferred / snap.totalBytes) * 100));
-        },
-        reject,
-        function () {
-          task.snapshot.ref.getDownloadURL().then(resolve).catch(reject);
-        }
-      );
-    });
-  }
-
   document.getElementById("publishBtn").onclick = async function () {
-    if (!currentUser || !allowedEmail(currentUser.email)) {
-      setStatus("Not allowed to upload.", false);
-      return;
-    }
     var exe = document.getElementById("exeFile").files[0];
     var apk = document.getElementById("apkFile").files[0];
     var windowsVersion = optionalText("windowsVersion");
     var androidVersion = optionalText("androidVersion");
     var playStoreUrl = optionalText("playStoreUrl");
-    if (!exe && !apk) {
+    if (!exe && !apk && !playStoreUrl) {
       setStatus("Pick at least one file (EXE or APK).", false);
       return;
     }
@@ -1015,82 +713,36 @@
     progressEl.hidden = false;
     progressEl.value = 0;
     try {
-      await loadSettings();
-      var prev = null;
-      var latest = { date: date, stagedAt: new Date().toISOString(), windows: null, android: null };
-      try {
-        var existing = await fetch(latestPublicUrl(), { cache: "no-store" });
-        if (existing.ok) {
-          prev = await existing.json();
-          latest.windows = prev.windows || null;
-          latest.android = prev.android || null;
-          latest.playStoreUrl = prev.playStoreUrl || "";
-        }
-      } catch (_) {
-        /* first publish */
-      }
-
+      var body = { date: date };
+      var share = exe && apk ? 50 : 100;
+      var base = 0;
       if (exe) {
-        setStatus("Uploading EXE to Firebase Storage…", true);
-        var exePath = prefix + "/windows/" + date + "/" + safeName(exe.name);
-        var exeUrl = await uploadOne(exe, exePath, function (p) {
-          progressEl.value = Math.round(p * 0.5);
+        setStatus("Uploading EXE to the server.", true);
+        var exeBase = base;
+        var up1 = await window.SiteData.uploadFile(exe, date, function (p) {
+          progressEl.value = exeBase + Math.round((p * share) / 100);
         });
-        latest.windows = {
-          file: exe.name,
-          url: exeUrl,
-          path: exePath,
-          version: windowsVersion,
-          bytes: exe.size,
-          sizeLabel: bytesLabel(exe.size),
-        };
+        body.windows = { file: up1.file, version: windowsVersion };
+        base += share;
       }
       if (apk) {
-        setStatus("Uploading APK to Firebase Storage…", true);
-        var apkPath = prefix + "/android/" + date + "/" + safeName(apk.name);
-        var apkUrl = await uploadOne(apk, apkPath, function (p) {
-          progressEl.value = 50 + Math.round(p * 0.5);
+        setStatus("Uploading APK to the server.", true);
+        var apkBase = base;
+        var up2 = await window.SiteData.uploadFile(apk, date, function (p) {
+          progressEl.value = apkBase + Math.round((p * share) / 100);
         });
-        latest.android = {
-          file: apk.name,
-          url: apkUrl,
-          path: apkPath,
-          version: androidVersion,
-          format: "apk",
-          bytes: apk.size,
-          sizeLabel: bytesLabel(apk.size),
-        };
+        body.android = { file: up2.file, version: androidVersion };
       }
-      if (playStoreUrl) {
-        latest.playStoreUrl = playStoreUrl;
-        latest.android = latest.android || {};
-        latest.android.playStoreUrl = playStoreUrl;
-      }
-
-      var rotation = buildRotation(prev, latest);
-      latest.history = rotation.history;
-      latest.outdated = rotation.outdated;
-
-      if (Array.isArray(rotation.deleteEntries) && rotation.deleteEntries.length) {
-        setStatus("Removing auto-deleted outdated files…", true);
-        for (var d = 0; d < rotation.deleteEntries.length; d++) {
-          await deleteReleaseFiles(rotation.deleteEntries[d]);
-        }
-      }
-
-      await saveManifest(latest);
+      if (playStoreUrl) body.playStoreUrl = playStoreUrl;
+      setStatus("Publishing.", true);
+      var res = await window.SiteData.adminPost("/admin/releases/publish", body);
+      cachedManifest = res.manifest || cachedManifest;
       renderVisibleReleaseList();
       renderOutdatedList();
       progressEl.value = 100;
+      var man = cachedManifest || {};
       setStatus(
-        "Published " +
-          prefix +
-          "/" +
-          date +
-          "/ · kept " +
-          (1 + latest.history.length) +
-          " · outdated " +
-          latest.outdated.length,
+        "Published " + date + " - kept " + (1 + (man.history || []).length) + ", outdated " + (man.outdated || []).length,
         true
       );
     } catch (err) {

@@ -1,8 +1,8 @@
 "use client";
 
-import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { useCallback, useEffect, useState } from "react";
-import { doc, setDoc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
 import { ChevronDown, Info, Loader2, Megaphone, Save, ShieldCheck } from "lucide-react";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
@@ -90,7 +90,6 @@ export default function AdSettingsPage() {
   }, [load]);
 
   async function save(next: AdSettings, message = "Ad Settings saved") {
-    if (adminServerWriteBlocked()) return;
     setSaving(true);
     try {
       const normalized = normalizeAdSettings({ ...next, updatedAtMs: Date.now() });

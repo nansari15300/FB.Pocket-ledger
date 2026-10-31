@@ -4,7 +4,8 @@
  * (entity missing ho to legacy `ic_peer_*` fallback)
  */
 
-import { collection, doc, setDoc, updateDoc } from "firebase/firestore";
+import { setDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
+import { collection, doc } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { interCompanyAcNoForNewEntity } from "@/lib/interCompany/interCompanyAccountNo";

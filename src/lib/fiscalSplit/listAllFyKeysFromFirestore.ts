@@ -7,7 +7,7 @@ import {
   query,
   startAfter,
   type QueryDocumentSnapshot,
-} from "firebase/firestore";
+} from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { startOfDay } from "date-fns";

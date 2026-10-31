@@ -1,8 +1,9 @@
 "use client";
 
-import { doc, updateDoc, collection } from "firebase/firestore";
+import { updateDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
+import { doc, collection } from "@/lib/pbCompat/firestore";
 import { getDoc, getCountFromServer } from "@/lib/pocketbaseData/pbReadSeam";
-import { increment } from "firebase/firestore";
+import { increment } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import {
   numericEntitlement,

@@ -14,7 +14,7 @@ import { useDate } from "@/hooks/useDate";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { PermissionButton } from "@/components/permission";
 import type { DateRange } from "@/components/ui/ad-calendar";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -34,7 +34,7 @@ export function SaleReportDetail() {
   const { formatCurrency, formatCurrencyForPrint } = useDate();
   const { vouchers: allVouchers, loading: vouchersLoading, processedParties } = useFyScopedVouchers();
   const [selectedPartyRaw, setSelectedParty] = useState<Party | null>(null);
-  const selectedParty = useLiveMasterSelection(selectedPartyRaw, setSelectedParty, processedParties);
+  const selectedParty = useLiveMasterSelection<Party>(selectedPartyRaw, setSelectedParty, processedParties);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState("");

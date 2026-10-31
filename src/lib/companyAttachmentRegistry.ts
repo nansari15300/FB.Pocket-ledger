@@ -5,15 +5,10 @@
  * Default reuse model = copy-as-new upload (see attachmentReuseCopyAsNewEnabled).
  * Registry ref-count still helps cleanup of *legacy* shared URLs and permanent-delete safety.
  */
-import {
-  collection,
-  doc,
-  runTransaction,
-  serverTimestamp,
-  setDoc,
-} from "firebase/firestore";
+import { runTransaction, setDoc } from "@/lib/writeGateway/pbWrites";
+import { collection, doc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { ref, deleteObject, getBlob } from "firebase/storage";
+import { ref, deleteObject, getBlob } from "@/lib/pocketbaseData/pbStorage";
 import { firestore, storage } from "@/lib/firebase";
 import { companyAttachmentRegistryEnabled } from "@/lib/firebaseBillingOptimization";
 import { tryGetStoragePathFromFirebaseDownloadUrl } from "@/lib/firebaseStorageDownloadUrl";
@@ -894,7 +889,7 @@ async function forceDeleteStorageUrls(
   urls: string[],
   traceCtx?: { companyId: string; entityId?: string }
 ): Promise<void> {
-  const { deleteObject: delObj } = await import("firebase/storage");
+  const { deleteObject: delObj } = await import("@/lib/pocketbaseData/pbStorage");
   const { storage: st } = await import("@/lib/firebase");
   const trace =
     typeof process !== "undefined" && process.env.NODE_ENV !== "production"
@@ -1098,7 +1093,7 @@ export async function removeFirebaseAttachmentRegistryDoc(
   const cid = await normalizeCompanyIdForReuse(companyId);
   const trimmed = String(url || "").trim();
   if (!cid || !isRegistryEligibleHttpsUrl(trimmed)) return;
-  const { deleteDoc } = await import("firebase/firestore");
+  const { deleteDoc } = await import("@/lib/pbCompat/firestore");
   const refDoc = doc(registryCollection(cid), registryDocId(trimmed));
   try {
     await deleteDoc(refDoc);

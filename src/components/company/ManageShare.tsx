@@ -10,7 +10,7 @@ import {
   query,
   where,
   serverTimestamp,
-} from "firebase/firestore";
+} from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { useDeviceLimitContext } from "@/contexts/DeviceLimitContext";
 import { countAccountScopedDevicesForUser } from "@/lib/accountScopedDeviceCount";

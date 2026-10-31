@@ -1,5 +1,6 @@
 "use client";
 
+import { writeBatch, updateDoc, deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { STAFF_ENTITY_LABEL } from "@/lib/staffEntityDisplayName";
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
@@ -77,7 +78,7 @@ import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
 import { firestore } from "@/lib/firebase";
-import { collection, query, where, serverTimestamp, writeBatch, doc, orderBy, updateDoc, arrayRemove, deleteDoc, Timestamp } from "firebase/firestore";
+import { collection, query, where, serverTimestamp, doc, orderBy, arrayRemove, Timestamp } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { toast } from "sonner";
 import { compressImageForCompany, attachmentImageStillTooLargeToastFields } from "@/lib/attachmentCompressionUi";

@@ -1,4 +1,5 @@
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc } from "@/lib/writeGateway/pbWrites";
+import { collection, serverTimestamp } from "@/lib/pbCompat/firestore";
 import type { Company } from "@/hooks/useCompany";
 import { firestore } from "@/lib/firebase";
 import {

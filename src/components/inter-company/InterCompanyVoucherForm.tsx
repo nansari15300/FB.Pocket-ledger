@@ -9,7 +9,7 @@ import { useForm, useFormState, type Control, type FieldValues } from "react-hoo
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CalendarIcon, ArrowLeftRight } from "lucide-react";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";

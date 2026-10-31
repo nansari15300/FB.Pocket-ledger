@@ -2,7 +2,7 @@
  * Agla voucher number: local company par SQLite (`company_docs`) se serial —
  * Firestore-only query par hamesha 001 reh jata tha.
  */
-import { collection, query, where } from "firebase/firestore";
+import { collection, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { apkEntityWriteUsesLocalSqliteMirror } from "@/lib/apkOnlineFirestoreWritePolicy";

@@ -5,20 +5,8 @@
  *   companies/{companyId}.icConnectInvitedEmailsLower[]  (list query fallback)
  * Local mirror: pl-ic-connect-invites-by-email::{email}
  */
-import {
-  collection,
-  collectionGroup,
-  deleteDoc,
-  deleteField,
-  doc,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-  type DocumentReference,
-  type Unsubscribe,
-} from "firebase/firestore";
+import { deleteDoc, setDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
+import { collection, collectionGroup, deleteField, doc, query, serverTimestamp, where, type DocumentReference, type Unsubscribe } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";

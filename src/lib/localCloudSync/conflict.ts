@@ -1,6 +1,6 @@
 "use client";
 
-import { Timestamp } from "firebase/firestore";
+import { Timestamp } from "@/lib/pbCompat/firestore";
 import type { CloudSyncAction, LocalCloudSyncOperation } from "@/lib/localCloudSync/types";
 import { PL_CLIENT_OFFLINE_FIRST_PERSIST_MS } from "@/lib/localMirrorServerMeta";
 

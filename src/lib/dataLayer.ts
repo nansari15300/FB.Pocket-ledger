@@ -6,7 +6,7 @@
  * When local: fetch from local API, optional refetch interval. When firebase: use Firestore.
  */
 import { useState, useEffect, useRef, useMemo } from "react";
-import { collection, query, QuerySnapshot, DocumentData } from "firebase/firestore";
+import { collection, query, QuerySnapshot, DocumentData } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useDataSource } from "@/contexts/DataSourceContext";

@@ -8,7 +8,6 @@ Static site under `website/`. **Does not use `src/`.**
 |-----|------|
 | `http://localhost:3000/` | Country picker |
 | `http://localhost:3000/home/?c=np` | Country marketing site (Nepal example) |
-| `http://localhost:3000/console/?c=np` | Country server view (this country bills on its own) |
 | `http://localhost:3000/terms/` | Terms (per country site; main is not responsible for a subdomain) |
 | `http://localhost:3000/downloads/` | Downloads (local `/releases/…` if staged) |
 | `http://localhost:3000/company/` | Company profile |
@@ -39,7 +38,6 @@ Then `localhost:3000/downloads` buttons use those local paths.
 |-----|--------|
 | `https://pocket-ledger.com/` | Country picker only (`website/dist` via Firebase Hosting) |
 | `https://pocket-ledger.com/home/?c=np` | Country marketing site until ISO-2 subdomains (`np.pocket-ledger.com`) have DNS |
-| `https://pocket-ledger.com/console/` | Country server view. That country site bills on its own |
 | `https://pocket-ledger.com/app` | Next app (Hosting rewrite → App Hosting Cloud Run) |
 
 1. App Hosting keeps `WEB_APP_BASE_PATH=/app` (see `apphosting.yaml`) — git push rebuilds the app under `/app`.

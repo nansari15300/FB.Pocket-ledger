@@ -4,7 +4,7 @@
  * Inter Company — source attachments ko target company ke apne refs me copy karo
  * taaki dusri device / peer company apni storage se file khol sake (shared HTTPS link kaafi nahi).
  */
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
 import { storage } from "@/lib/firebase";
 import { incrementCompanyStorage } from "@/lib/storageUsageClient";
 import { fetchAttachmentRefBlob } from "@/lib/attachmentRefBlobFetch";

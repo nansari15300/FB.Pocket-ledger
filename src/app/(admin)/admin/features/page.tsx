@@ -2,14 +2,11 @@
 
 "use client";
 
-import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAdminAccess } from '@/hooks/useAdminAccess';
 import { firestore } from '@/lib/firebase';
-import {
-  doc,
-  setDoc,
-} from 'firebase/firestore';
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocFromServer, onSnapshot } from '@/lib/pocketbaseData/pbReadSeam';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -104,7 +101,6 @@ export default function FeaturesPage() {
 
 
     const handleToggleFeature = async (featureId: string, enabled: boolean) => {
-        if (adminServerWriteBlocked()) return;
         setIsUpdating(true);
         const newConfig = { ...featureConfig, [featureId]: enabled };
         try {

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
-import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
-import { isSuperAdminServer } from "@/lib/server/isSuperAdminServer";
+import { resolveSuperAdminCaller } from "@/lib/server/adminCaller";
 import {
   sanitizeOnlineDemoOffer,
   type OnlineDemoOffer,
@@ -96,33 +95,9 @@ async function applyExistingDemoAction(opts: {
 
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization");
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    if (!token) {
-      return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
-    }
-
-    if (!isFirebaseAdminConfigured()) {
-      return NextResponse.json(
-        {
-          error: "Server: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY (.env.local)",
-          code: "ADMIN_NOT_CONFIGURED",
-        },
-        { status: 503 }
-      );
-    }
-
-    getAdminDb();
-    let decoded: admin.auth.DecodedIdToken;
-    try {
-      decoded = await admin.auth().verifyIdToken(token);
-    } catch {
-      return NextResponse.json({ error: "Invalid auth token" }, { status: 401 });
-    }
-
-    const email = decoded.email ?? undefined;
-    if (!(await isSuperAdminServer(decoded.uid, email))) {
-      return NextResponse.json({ error: "Forbidden — SuperAdmin only" }, { status: 403 });
+    const caller = await resolveSuperAdminCaller(req);
+    if (caller.ok === false) {
+      return NextResponse.json({ error: caller.error }, { status: caller.status });
     }
 
     const body = (await req.json()) as {
@@ -136,7 +111,7 @@ export async function POST(req: NextRequest) {
       existingDemoAction?: "retain" | "reset" | "replace";
     };
 
-    const db = getAdminDb();
+    const db = caller.db;
     const ref = db.doc("app_settings/plans");
 
     if (body?.seedDefaults === true) {

@@ -8,7 +8,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { CreateCompanyDialog } from "@/components/company/CreateCompanyDialog";
 import { useCreateCompanyAvailability } from "@/hooks/useCreateCompanyAvailability";
 import { Button } from "@/components/ui/button";
-import { collection, query, where } from "firebase/firestore";
+import { collection, query, where } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { isLocalOnlyMode } from "@/lib/localMode";

@@ -15,7 +15,7 @@ import {
   query,
   collection,
   where,
-} from "firebase/firestore";
+} from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { updateCompanyRootFirestore } from "@/lib/writeGateway/companyRootFirestore";
 import { uploadCompanyLogo, tryDeleteStorageFileByUrl } from "@/lib/storage";

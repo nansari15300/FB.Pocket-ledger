@@ -1,12 +1,13 @@
 
 "use client";
 
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
-import { doc, setDoc, collection, serverTimestamp, query, Timestamp } from "firebase/firestore";
+import { doc, collection, serverTimestamp, query, Timestamp } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 
 import { Button } from "@/components/ui/button";

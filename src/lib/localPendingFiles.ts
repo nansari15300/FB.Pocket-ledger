@@ -1,9 +1,10 @@
 "use client";
 
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { openDB } from "./offlineDb";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { doc, getDoc, getDocFromCache, getDocFromServer, setDoc, type DocumentReference } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
+import { doc, getDoc, getDocFromCache, getDocFromServer, type DocumentReference } from "@/lib/pbCompat/firestore";
 import { storage } from "@/lib/firebase";
 import { firestore } from "@/lib/firebase";
 import { writeEntity } from "@/lib/writeGateway";

@@ -1,6 +1,7 @@
 
 "use client";
 
+import { addDoc } from "@/lib/writeGateway/pbWrites";
 import * as React from "react";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogPortal, DialogOverlay } from "@/components/ui/dialog";
@@ -9,7 +10,7 @@ import type { TaxGroup } from "@/components/tax/types";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { addDoc, collection, serverTimestamp, query, where } from "firebase/firestore";
+import { collection, serverTimestamp, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
@@ -22,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { CreateTaxGroupDialog } from "./CreateTaxGroupDialog";
 import { Combobox } from "../ui/combobox";
 import Image from "next/image";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
 import { compressFile } from "@/lib/compression";
 import { toast as sonnerToast } from "sonner";
 import { FilePreview } from "../vouchers/FilePreview";

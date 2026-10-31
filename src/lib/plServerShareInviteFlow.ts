@@ -1,6 +1,6 @@
 "use client";
 
-import { query, collection, where } from "firebase/firestore";
+import { query, collection, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { getElectronLocalServerApi, type LocalAppServerAccessTokenSummary, isLocalAppServerSharingActive, resolveLocalAppServerSharingPort } from "@/lib/electronLocalServer";

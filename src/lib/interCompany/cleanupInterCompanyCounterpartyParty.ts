@@ -1,5 +1,5 @@
 import { isInterCompanyCounterpartyPartyName } from "@/lib/interCompany/interCompanyCounterpartyPartyName";
-import { collection, doc, query, where } from "firebase/firestore";
+import { collection, doc, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { getCompanyDocFromBrowserDb, listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";

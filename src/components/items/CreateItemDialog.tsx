@@ -1,6 +1,7 @@
 
 "use client";
 
+import { setDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useFieldArray, useForm, useWatch, type Resolver } from "react-hook-form";
@@ -75,15 +76,7 @@ import { saveVoucher } from "@/lib/voucherActionsClient";
 
 import { firestore } from "@/lib/firebase";
 import { checkStorageLimit, incrementCompanyStorage } from "@/lib/storageUsageClient";
-import {
-  collection,
-  query,
-  doc,
-  setDoc,
-  serverTimestamp,
-  updateDoc,
-  Timestamp,
-} from "firebase/firestore";
+import { collection, query, doc, serverTimestamp, Timestamp } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 
 import type { Item, ItemGroup } from "@/components/items/types";

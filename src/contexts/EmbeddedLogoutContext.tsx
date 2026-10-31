@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import type { User } from "firebase/auth";
+import type { User } from "@/lib/pbCompat/auth";
 import {
   AlertDialog,
   AlertDialogAction,

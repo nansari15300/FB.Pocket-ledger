@@ -1,6 +1,6 @@
 "use client";
 
-import { auth } from "@/lib/firebase";
+import { getBillingApiIdToken } from "@/lib/firebaseAuthForApi";
 import type { WebsiteDownloadEventKind, WebsiteDownloadPlatform } from "@/lib/websiteDownloadStats";
 
 /** Log in-app release update download (EXE/APK) for admin Download analytics → Updates tab. */
@@ -11,10 +11,9 @@ export async function recordReleaseUpdateDownload(params: {
   source?: string;
 }): Promise<void> {
   if (typeof window === "undefined") return;
-  const user = auth.currentUser;
-  if (!user) return;
   try {
-    const token = await user.getIdToken();
+    const token = await getBillingApiIdToken(null).catch(() => "");
+    if (!token) return;
     await fetch("/api/public/download-events", {
       method: "POST",
       headers: {

@@ -33,7 +33,7 @@ import { collectInterCompanyIdsForPendingApproval } from "@/lib/interCompany/int
 import { useResponsiveListLayout } from "@/hooks/useResponsiveListLayout";
 import { ResponsiveMasterDetail } from "@/components/layout/ResponsiveMasterDetail";
 import { LoadingSpinner } from "@/components/layout/LoadingSpinner";
-import { doc, collection, query, where } from "firebase/firestore";
+import { doc, collection, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -188,7 +188,7 @@ function TaxPageContent() {
   const [groupMemberFilterId, setGroupMemberFilterId] = useState<string | null>(null);
 
   const selectedTaxRaw = activeView === 'taxes' ? selected as Tax : null;
-  const selectedTax = useLiveMasterSelection(selectedTaxRaw, setSelected, processedTaxes);
+  const selectedTax = useLiveMasterSelection<Tax>(selectedTaxRaw, setSelected, processedTaxes);
   const selectedGroupRaw = activeView === 'groups' ? selected as TaxGroup : null;
   const handleTaxUpdated = useCallback((patch?: Partial<Tax>) => {
     if (!patch?.id || !selectedTaxRaw || selectedTaxRaw.id !== patch.id) return;

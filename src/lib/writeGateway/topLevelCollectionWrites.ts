@@ -2,7 +2,7 @@
  * Root-level collections (`payments`, `admin_notifications`, …) — sirf gateway;
  * webhooks / backup UI yahi se `addDoc` karein.
  */
-import { serverTimestamp } from "firebase/firestore";
+import { serverTimestamp } from "@/lib/pbCompat/firestore";
 import { addDoc, collection } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { firestore } from "@/lib/firebase";
 

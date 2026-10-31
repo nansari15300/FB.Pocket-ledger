@@ -1,23 +1,12 @@
 
 "use client";
 
+import { updateDoc, addDoc, deleteDoc, setDoc } from "@/lib/writeGateway/pbWrites";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
-import {
-  collection,
-  query,
-  orderBy,
-  doc,
-  updateDoc,
-  arrayUnion,
-  where,
-  addDoc,
-  serverTimestamp,
-  deleteDoc,
-  setDoc,
-} from "firebase/firestore";
+import { collection, query, orderBy, doc, arrayUnion, where, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDocs, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useMemo, useRef, useEffect } from "react";

@@ -13,7 +13,7 @@
  * Firebase users are unchanged; a Firebase session always wins over this one.
  */
 
-import type { User } from "firebase/auth";
+import type { User } from "@/lib/pbCompat/auth";
 import {
   getValidPocketBaseAuth,
   pbListAll,
@@ -185,6 +185,8 @@ export async function pullPocketBaseCompanyRegistry(): Promise<{
   ownedIds: Set<string>;
   sharedOnlyIds: Set<string>;
   cloudAllowedIds: Set<string>;
+  /** Every `app_id` the server returned (also soft-deleted ones). Used to prune hard-deleted companies. */
+  presentIds: Set<string>;
 }> {
   const a = getValidPocketBaseAuth();
   if (!a) throw new Error("Pocket Ledger Server: not signed in");
@@ -195,8 +197,10 @@ export async function pullPocketBaseCompanyRegistry(): Promise<{
   const rows: PbRegistryRow[] = [];
   const ownedIds = new Set<string>();
   const sharedOnlyIds = new Set<string>();
+  const presentIds = new Set<string>();
   for (const rec of recs) {
     const id = String(rec.app_id || "").trim();
+    if (id) presentIds.add(id);
     if (!id || rec.deleted === true) continue;
     const raw = rec.data && typeof rec.data === "object" ? (rec.data as Record<string, unknown>) : {};
     const data: Record<string, unknown> = { ...decodeDocFromPocketBase(raw) };
@@ -209,5 +213,5 @@ export async function pullPocketBaseCompanyRegistry(): Promise<{
     rows.push({ id, data, isOwned });
     (isOwned ? ownedIds : sharedOnlyIds).add(id);
   }
-  return { rows, ownedIds, sharedOnlyIds, cloudAllowedIds: new Set() };
+  return { rows, ownedIds, sharedOnlyIds, cloudAllowedIds: new Set(), presentIds };
 }

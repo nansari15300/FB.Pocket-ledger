@@ -1,42 +1,14 @@
 import { NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebaseAdmin";
-import {
-  publishedWebsiteVideos,
-  visibleWebsiteVideoCategories,
-  WEBSITE_VIDEOS_DOC,
-} from "@/lib/websiteVideos";
-import {
-  WEBSITE_VIDEO_STATS_DOC,
-  emptyVideoEngagement,
-  mergeVideoStatsDoc,
-  publicEngagementPayload,
-} from "@/lib/websiteVideoEngagement";
+import { pbSiteForward } from "@/lib/server/pbSiteProxy";
 
 export const dynamic = "force-dynamic";
 
+/** Website videos + engagement: served from the Pocket Ledger Server (`/api/pl/site/public/videos`). */
 export async function GET() {
-  try {
-    const db = getAdminDb();
-    const [videosSnap, statsSnap, featuresSnap] = await Promise.all([
-      db.doc(WEBSITE_VIDEOS_DOC).get(),
-      db.doc(WEBSITE_VIDEO_STATS_DOC).get(),
-      db.doc("app_settings/features").get(),
-    ]);
-    const featureConfig = (featuresSnap.exists ? featuresSnap.data() : {}) as Record<string, boolean>;
-    const categories = visibleWebsiteVideoCategories(featureConfig);
-    const stats = mergeVideoStatsDoc(statsSnap.exists ? statsSnap.data() : undefined);
-    const videos = publishedWebsiteVideos(videosSnap.exists ? videosSnap.data() : undefined).map(
-      (video) => ({
-        ...video,
-        engagement: publicEngagementPayload(stats[video.id] || emptyVideoEngagement()),
-      })
-    );
-    return NextResponse.json(
-      { videos, categories, source: "server" as const },
-      { headers: { "Cache-Control": "no-store, must-revalidate" } }
-    );
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
+  const r = await pbSiteForward("/api/pl/site/public/videos", { method: "GET" });
+  if (r.status !== 200) return NextResponse.json({ error: String(r.json.error || "Server error") }, { status: r.status });
+  return NextResponse.json(
+    { ...r.json, source: "server" as const },
+    { headers: { "Cache-Control": "no-store, must-revalidate" } }
+  );
 }

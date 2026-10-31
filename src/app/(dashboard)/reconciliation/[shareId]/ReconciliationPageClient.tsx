@@ -23,7 +23,7 @@ import {
 import { ReconciliationRowCommentDialog } from "@/components/reconciliation/ReconciliationRowCommentDialog";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { toast } from "sonner";
-import { collection, doc } from "firebase/firestore";
+import { collection, doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { isLocalOnlyMode } from "@/lib/localMode";

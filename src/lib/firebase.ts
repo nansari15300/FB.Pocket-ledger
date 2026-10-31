@@ -1,6 +1,6 @@
 
-import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, onAuthStateChanged, signOut as firebaseAuthSignOut, type Auth } from 'firebase/auth';
+import { initializeApp, getApps } from '@/lib/pbCompat/app';
+import { getAuth, onAuthStateChanged, signOut as firebaseAuthSignOut, type Auth } from '@/lib/pbCompat/auth';
 import {
   disableNetwork,
   enableNetwork,
@@ -10,9 +10,9 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
   persistentSingleTabManager,
-} from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
-import { setLogLevel } from 'firebase/app';
+} from '@/lib/pbCompat/firestore';
+import { getStorage } from '@/lib/pbCompat/storage';
+import { setLogLevel } from '@/lib/pbCompat/app';
 import { detachCompanyPickerFirestoreListenersIfAny } from '@/lib/companyPickerFirestoreDetach';
 import { computeIsLocalOnlyMode } from '@/lib/dataSourceModeDefaults';
 import {

@@ -2,7 +2,8 @@
  * Public Inter Company profile — code / PAN / phone sab signed-in users read kar saken.
  * Company owner join/add par likhta hai; doosre users company doc read nahi kar sakte.
  */
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { setDoc } from "@/lib/writeGateway/pbWrites";
+import { doc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import type { Company } from "@/hooks/useCompany";
@@ -221,7 +222,7 @@ export async function backfillInterCompanyGroupCompanyOwners(args: {
   }
 
   if (dirty) {
-    const { doc, serverTimestamp, updateDoc } = await import("firebase/firestore");
+    const { doc, serverTimestamp, updateDoc } = await import("@/lib/pbCompat/firestore");
     const { firestore } = await import("@/lib/firebase");
     await updateDoc(doc(firestore, "inter_company_groups", systemId), {
       ...patch,

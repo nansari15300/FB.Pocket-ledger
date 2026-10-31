@@ -3,7 +3,7 @@
  * Server session: own profile name/email for own uid, else the caller's fallback (no Firebase user,
  * so Firestore would only fail with "client is offline"). Firebase session: unchanged getDoc users/{uid}.
  */
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { isPocketBaseAppSessionActive, pocketBaseSessionUid, readPocketBaseAppProfile } from "@/lib/pocketbaseData/pbAppSession";
 

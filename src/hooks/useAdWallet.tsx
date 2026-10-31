@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { auth } from "@/lib/firebase";
+import { getBillingApiIdToken } from "@/lib/firebaseAuthForApi";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdSettings } from "@/hooks/useAdSettings";
 import { capDailyEarn, newAdEventId, pointsForCompletedAdSeconds } from "@/lib/ads/adRewardMath";
@@ -106,7 +106,7 @@ export function AdWalletProvider({ children }: { children: ReactNode }) {
       Date.now() - current.lastSyncAtMs >= hours * 60 * 60 * 1000;
     if (!due && hours > 0) return;
 
-    const token = await auth.currentUser?.getIdToken().catch(() => null);
+    const token = await getBillingApiIdToken(null).catch(() => null);
     if (!token) return;
     syncingRef.current = true;
     try {

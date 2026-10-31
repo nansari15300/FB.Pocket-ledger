@@ -64,7 +64,7 @@ export async function resolvePlansCatalogForEntitlements(): Promise<Record<PlanI
   if (!plansCatalogHydratePromise) {
     plansCatalogHydratePromise = (async () => {
       try {
-        const { doc, getDoc: fsGetDoc } = await import("firebase/firestore");
+        const { doc, getDoc: fsGetDoc } = await import("@/lib/pbCompat/firestore");
         const { isPocketBaseAppSessionActive } = await import("@/lib/pocketbaseData/pbAppSession");
         let getDoc = fsGetDoc;
         if (isPocketBaseAppSessionActive()) {

@@ -406,7 +406,7 @@ async function deleteFirebaseStorageObjectsByLocalFileIds(
   const ids = [...new Set(localIds.map((x) => String(x || "").trim()).filter(Boolean))];
   if (!cid || !ids.length) return;
   const trace = await import("@/lib/attachmentDeleteTrace");
-  const { ref, deleteObject } = await import("firebase/storage");
+  const { ref, deleteObject } = await import("@/lib/pocketbaseData/pbStorage");
   const { storage } = await import("@/lib/firebase");
   const { getLocalFileRefMeta } = await import("@/lib/localPendingFiles");
   const {
@@ -516,7 +516,7 @@ async function deleteFirebaseStorageObjectsByVoucherIdPrefix(
     ? [typeHint]
     : [];
   if (!voucherTypes.length) return;
-  const { ref, list, deleteObject } = await import("firebase/storage");
+  const { ref, list, deleteObject } = await import("@/lib/pocketbaseData/pbStorage");
   const { storage } = await import("@/lib/firebase");
   const rootPrefix = usePocketLedger ? `pocket-ledger/${cid}/vouchers` : `voucher-files/${cid}`;
 
@@ -713,7 +713,7 @@ export async function readVoucherEditAttachmentContext(
   }
   if (!skipFsRemotes && needsFirestoreRemotes && typeof navigator !== "undefined" && navigator.onLine !== false) {
     try {
-      const { doc, getDoc } = await import("firebase/firestore");
+      const { doc, getDoc } = await import("@/lib/pbCompat/firestore");
       const { firestore } = await import("@/lib/firebase");
       const { resolveAuthoritativeFirestoreCompanyId } = await import(
         "@/lib/resolveAuthoritativeFirestoreCompanyId"

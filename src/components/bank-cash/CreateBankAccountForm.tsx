@@ -1,5 +1,6 @@
 
 "use client";
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { MasterGroupTreeCombobox } from "@/components/entity/MasterGroupTreeCombobox";
 import { BANK_ENTITY_GROUP_PRESET } from "@/lib/masterEntityGroupFormPresets";
 import { useVouchers } from "@/hooks/useVouchers";
@@ -8,7 +9,7 @@ import { Loader2, PlusCircle } from "lucide-react";
 import { useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import { z } from "zod";
-import { collection, doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { collection, doc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { MasterOpeningBalanceAmountField } from "@/components/common/MasterOpeningBalanceAmountField";

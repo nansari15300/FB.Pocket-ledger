@@ -6,7 +6,7 @@ import { ItemGroupList } from "@/components/items/ItemGroupList";
 import { Suspense, useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
-import { doc, collection, query, where } from "firebase/firestore";
+import { doc, collection, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -181,7 +181,7 @@ function ItemsPageContent() {
   }, [vouchersUserNames]);
 
   const selectedItemRaw = activeView === "items" ? (selected as Item) : null;
-  const selectedItem = useLiveMasterSelection(selectedItemRaw, setSelected, processedItems);
+  const selectedItem = useLiveMasterSelection<Item>(selectedItemRaw, setSelected, processedItems);
   const selectedItemGroupRaw = activeView === "groups" ? (selected as ItemGroup) : null;
   const mobileItemsSelectionLabelClassName = useMemo(() => {
     if (!selected) return undefined;

@@ -1,4 +1,5 @@
 "use client";
+import { deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { VoucherMasterEditHost } from "@/components/vouchers/VoucherMasterEditHost";
 import { VoucherOcrHeaderToggles, OCR_SWITCH_EVENT } from "@/modules/ocr";
 import dynamic from "next/dynamic";
@@ -34,10 +35,10 @@ import { nestedVoucherAlertShell } from "@/lib/dialogShellChrome";
 import { plHang, plHangEnsureLongTaskObserver, plHangStart } from "@/lib/plHangDiag";
 import { startOfDay } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { collection, doc, deleteDoc, query, serverTimestamp, where, Timestamp } from "firebase/firestore";
+import { collection, doc, query, serverTimestamp, where, Timestamp } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore, storage } from "@/lib/firebase"; // storage आयात गरियो
-import { ref, deleteObject } from "firebase/storage"; // storage डिलिट गर्न आवश्यक
+import { ref, deleteObject } from "@/lib/pocketbaseData/pbStorage"; // storage डिलिट गर्न आवश्यक
 
 // Forms
 // Each form is its own chunk: loaded the first time that voucher tab opens, then kept in memory.

@@ -14,6 +14,7 @@ import {
   type ForceUploadInlineProgress,
 } from "@/components/company/ForceUploadLocalDataButton";
 import { UploadCompanyToCloudCard } from "@/components/company/UploadCompanyToCloudCard";
+import { LocalCompanyPocketBaseNotice } from "@/components/company/LocalCompanyPocketBaseNotice";
 import { useCompany } from "@/hooks/useCompany";
 import { useRouter } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardDescription } from "../ui/card";
@@ -135,6 +136,7 @@ export function CompanySettings({ readOnly = false }: { readOnly?: boolean }) {
           </div>
           <ForceUploadLocalDataButton onInlineProgress={setForceUploadProgress} />
         </div>
+        <LocalCompanyPocketBaseNotice />
         {readOnly ? (
           <p className="mt-2 text-sm text-amber-800 dark:text-amber-200 rounded-md border border-amber-200 bg-amber-50/90 dark:border-amber-900 dark:bg-amber-950/40 px-3 py-2">
             You can view this page but cannot edit company settings.

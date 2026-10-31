@@ -1,6 +1,7 @@
 
 "use client";
 
+import { addDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
 import { checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { NESTED_LEDGER_MASTER_EDIT_CONTENT_CN, NESTED_LEDGER_MASTER_EDIT_OVERLAY_CN } from "@/lib/nestedLedgerMasterEditPresentation";
 import * as React from "react";
@@ -73,16 +74,7 @@ import { saveVoucher } from "@/lib/voucherActionsClient";
 
 import { firestore } from "@/lib/firebase";
 import { checkStorageLimit, incrementCompanyStorage } from "@/lib/storageUsageClient";
-import {
-  collection,
-  query,
-  where,
-  addDoc,
-  serverTimestamp,
-  doc,
-  updateDoc,
-  Timestamp,
-} from "firebase/firestore";
+import { collection, query, where, serverTimestamp, doc, Timestamp } from "@/lib/pbCompat/firestore";
 import { getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 
 import type { Item, ItemGroup } from "@/components/items/types";

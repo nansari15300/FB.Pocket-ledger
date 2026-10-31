@@ -1,7 +1,8 @@
 "use client";
 
+import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { useEffect, useRef } from "react";
-import { collection, doc, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, query, where } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";

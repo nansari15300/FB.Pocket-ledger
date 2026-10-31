@@ -1,6 +1,7 @@
 "use client";
 
-import { doc, updateDoc } from "firebase/firestore";
+import { updateDoc } from "@/lib/writeGateway/pbWrites";
+import { doc } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { updateCompanyDocRoot } from "@/lib/companyDocsClient";
 import {

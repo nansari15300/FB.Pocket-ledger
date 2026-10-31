@@ -1,6 +1,6 @@
 "use client";
 
-import { Timestamp } from "firebase/firestore";
+import { Timestamp } from "@/lib/pbCompat/firestore";
 
 /** Firestore/plain timestamp → usable Date (cross-company clone forms). */
 export function toJsDateMaybe(v: unknown): Date | undefined {

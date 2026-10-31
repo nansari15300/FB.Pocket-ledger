@@ -1,9 +1,9 @@
 'use client';
 
 import React, { DependencyList, createContext, useContext, ReactNode, useMemo, useState, useEffect } from 'react';
-import { FirebaseApp } from 'firebase/app';
-import { Firestore } from 'firebase/firestore';
-import { Auth, User, onAuthStateChanged } from 'firebase/auth';
+import { FirebaseApp } from '@/lib/pbCompat/app';
+import { Firestore } from '@/lib/pbCompat/firestore';
+import { Auth, User, onAuthStateChanged } from '@/lib/pbCompat/auth';
 import { FirebaseErrorListener } from '@/components/FirebaseErrorListener'
 
 interface FirebaseProviderProps {

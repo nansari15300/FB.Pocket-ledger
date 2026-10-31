@@ -4,7 +4,7 @@
  * Company Profile — force upload: SQLite mirror + pending attachments deep scan → Firestore/Storage.
  */
 
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { COMPANY_LOCAL_MIRROR_SUBCOLLECTIONS } from "@/lib/firestoreToLocalCompanyPull";
 import {
@@ -33,6 +33,7 @@ import { resolveAuthoritativeFirestoreCompanyId } from "@/lib/resolveAuthoritati
 import { flushPendingBrowserDbSave } from "@/lib/localSqlite";
 import { yieldToMain } from "@/lib/yieldToMain";
 import { getLocalCompanyById } from "@/lib/localCompanyStore";
+import { isPocketBaseCompany } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import {
   buildStoragePathPrefix,
   companyUsesPocketLedgerStorage,
@@ -472,6 +473,32 @@ export async function forceUploadLocalCompanyToServer(
       ...empty,
       message: "This company is device-only (not configured for cloud sync).",
     };
+  }
+
+  // Pocket Ledger Server (PocketBase) company: incremental push to the server (pending outbox rows, files with
+  // `local:` refs, dirty root) - never Firestore, never a full re-read / re-write of every document.
+  {
+    const pbRegistryRow = await getLocalCompanyById(cid, { includeDeleted: true });
+    if (isPocketBaseCompany(cid, pbRegistryRow)) {
+      const { syncPocketBaseCompanyNow } = await import("@/lib/syncCompanyNow");
+      const r = await syncPocketBaseCompanyNow(cid, {
+        onProgress: (p) => report(p.phase, p.done, p.total, p.detail),
+      });
+      const failedStatus = r.status === "error" || r.status === "offline" || r.status === "signed_out";
+      return {
+        ...empty,
+        ok: !failedStatus && (r.status !== "partial" || r.pushed > 0),
+        message: failedStatus || r.status === "partial" ? r.message : undefined,
+        docsPushed: r.pushed,
+        outboxFlushed: r.pushed,
+        outboxFailed: r.failed,
+        localRefsFound: r.filesQueued + r.stuckFiles,
+        localRefsRequeued: r.filesQueued,
+        localRefsMissingBytes: r.stuckFiles,
+        localRefsStillStuck: r.stuckFiles,
+        errors: r.status === "partial" || r.status === "error" ? [r.message] : [],
+      };
+    }
   }
 
   const fsCompanyId = await resolveAuthoritativeFirestoreCompanyId(cid);

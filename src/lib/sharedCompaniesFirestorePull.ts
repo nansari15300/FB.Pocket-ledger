@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, getDocs, getDocsFromServer, query, where } from "firebase/firestore";
+import { collection, getDocs, getDocsFromServer, query, where } from "@/lib/pbCompat/firestore";
 import { auth, firestore, ensureEmbeddedFirestoreOnlineForCloudCompanyLoad } from "@/lib/firebase";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { ensureFreshIdToken } from "@/lib/ensureFreshIdToken";

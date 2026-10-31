@@ -6,7 +6,7 @@
  * Har change ke saath: yahan se pull = local DB me rows guarantee (decrypt + upsert).
  */
 
-import { collection, doc, getDoc, getDocs, query } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import type { Company } from "@/hooks/useCompany";
 import {

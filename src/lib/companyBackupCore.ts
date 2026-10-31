@@ -1,18 +1,9 @@
 "use client";
 
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { Capacitor } from "@capacitor/core";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  orderBy,
-  limit,
-  startAfter,
-  documentId,
-} from "firebase/firestore";
-import type { QueryDocumentSnapshot } from "firebase/firestore";
+import { collection, doc, query, orderBy, limit, startAfter, documentId } from "@/lib/pbCompat/firestore";
+import type { QueryDocumentSnapshot } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { encryptData, encryptBytes } from "@/lib/encryption";
 import { normalizeRestoreAllowedGmailList } from "@/lib/backupRestoreAccess";

@@ -1,5 +1,6 @@
 "use client";
 
+import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import * as React from "react";
 import { useState, useEffect, useMemo } from "react";
 import {
@@ -13,7 +14,7 @@ import { useVouchers } from "@/hooks/useVouchers";
 import { useAdvancesForSale, useAdvancesForPurchase } from "@/hooks/useAdvancesForVoucher";
 import { useCompany } from "@/hooks/useCompany";
 import { useDate } from "@/hooks/useDate";
-import { doc, updateDoc, Timestamp } from "firebase/firestore";
+import { doc, Timestamp } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { cn } from "@/lib/utils";

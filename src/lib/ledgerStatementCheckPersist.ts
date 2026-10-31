@@ -1,5 +1,5 @@
 import type { Company } from "@/hooks/useCompany";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { getLocalCompanyById } from "@/lib/localCompanyStore";

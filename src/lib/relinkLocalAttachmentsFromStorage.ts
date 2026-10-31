@@ -5,8 +5,9 @@
  * Storage se HTTPS resolve karke SQLite + Firestore patch.
  */
 
-import { ref, getDownloadURL } from "firebase/storage";
-import { doc, setDoc } from "firebase/firestore";
+import { setDoc } from "@/lib/writeGateway/pbWrites";
+import { ref, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore, storage } from "@/lib/firebase";
 import { COMPANY_LOCAL_MIRROR_SUBCOLLECTIONS } from "@/lib/firestoreToLocalCompanyPull";

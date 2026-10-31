@@ -4,16 +4,8 @@
  * Company permanent delete / restore — Firestore client (static export / APK / web sab).
  * Pehle `deleteCompanyActionStub` sirf error return karta tha ("app mode").
  */
-import {
-  collection,
-  deleteDoc,
-  deleteField,
-  doc,
-  limit,
-  query,
-  updateDoc,
-  writeBatch,
-} from "firebase/firestore";
+import { deleteDoc, updateDoc, writeBatch } from "@/lib/writeGateway/firestoreMutationsInternal";
+import { collection, deleteField, doc, limit, query } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { deleteCompanyFirebaseStorageFolder } from "@/lib/deleteCompanyStorageFolder";

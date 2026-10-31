@@ -5,7 +5,7 @@
  * after a recompress swap on another device). Re-read the owning doc (local SQLite first, then server)
  * and return the CURRENT https URL that replaced it — never keep showing a broken image when a newer URL exists.
  */
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { getCompanyDocFromBrowserDb } from "@/lib/localCompanyDocMirror";

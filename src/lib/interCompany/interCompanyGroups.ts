@@ -2,23 +2,8 @@
  * Inter Company — user ke owned companies ko groups me organize.
  * Firestore primary; permission-denied / offline par localStorage fallback.
  */
-import {
-  arrayRemove,
-  arrayUnion,
-  collection,
-  collectionGroup,
-  deleteDoc,
-  deleteField,
-  doc,
-  limit,
-  query,
-  runTransaction,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-  type Unsubscribe,
-} from "firebase/firestore";
+import { deleteDoc, runTransaction, setDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
+import { arrayRemove, arrayUnion, collection, collectionGroup, deleteField, doc, limit, query, serverTimestamp, where, type Unsubscribe } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { auth, firestore } from "@/lib/firebase";
 import { upsertInterCompanyPublicCompanyProfile } from "@/lib/interCompany/interCompanyPublicCompanyProfile";

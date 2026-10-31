@@ -1,8 +1,8 @@
 "use client";
 
-import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { doc, setDoc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -144,7 +144,6 @@ export function BillingRegionalSettings() {
   };
 
   const save = async () => {
-    if (adminServerWriteBlocked()) return;
     setSaving(true);
     try {
       await setDoc(

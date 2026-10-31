@@ -25,7 +25,7 @@ import { isLocalOnlyMode } from "@/lib/localMode";
 import type { Company } from "@/hooks/useCompany";
 import { useCompany } from "@/hooks/useCompany";
 import { useAuth } from "@/hooks/useAuth";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { getPlanFromPlans, useLivePlans } from "@/hooks/useLivePlans";

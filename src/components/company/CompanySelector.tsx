@@ -45,7 +45,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "../ui/input";
 import { toast } from "@/hooks/use-toast";
-import { doc } from "firebase/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { auth, firestore } from "@/lib/firebase";
 import { useEmbeddedLogout } from "@/contexts/EmbeddedLogoutContext";

@@ -6,8 +6,10 @@
  * Plain async helpers (no Genkit) so admin UI and API routes can import without bundling Node-only AI SDK code in the browser.
  */
 
+import { setDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { z } from 'zod';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc } from "@/lib/pbCompat/firestore";
 import { firestore } from '@/lib/firebase';
 
 const GatewayKeysSchema = z.object({

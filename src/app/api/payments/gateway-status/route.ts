@@ -5,7 +5,7 @@ import {
   resolveBillingGatewayAvailability,
   type GatewayKeys,
 } from "@/ai/flows/gateway-keys";
-import { getAdminDb } from "@/lib/firebaseAdmin";
+import { serverDb } from "@/lib/server/appDb";
 
 /** Admin read — keys merge + payment toggles (`app_settings/payment_gateways`). */
 async function getGatewayStateFromAdmin(): Promise<{
@@ -13,7 +13,7 @@ async function getGatewayStateFromAdmin(): Promise<{
   flags: ReturnType<typeof parseGatewayPaymentFlags>;
 }> {
   try {
-    const db = getAdminDb();
+    const db = serverDb();
     const snap = await db.doc("app_settings/payment_gateways").get();
     const raw = snap.exists ? (snap.data() as Record<string, unknown>) : {};
     const stored = raw as GatewayKeys;

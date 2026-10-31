@@ -1,7 +1,8 @@
 /**
  * Party / bank / staff / tax / expense — missing interCompanyAccountNo backfill.
  */
-import { doc, updateDoc } from "firebase/firestore";
+import { updateDoc } from "@/lib/writeGateway/pbWrites";
+import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import type { InterCompanyEntityKind } from "@/components/inter-company/InterCompanyEntitySide";
 import { firestore } from "@/lib/firebase";

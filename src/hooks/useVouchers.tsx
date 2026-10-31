@@ -6,7 +6,7 @@ import { registerMasterAliases } from "@/lib/masterAliasIndex";
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useRef, useCallback, startTransition } from "react";
 import { usePathname } from "next/navigation";
 // Full collection queries: web cloud bhi pura voucher list (no orderBy/limit window).
-import { collectionGroup, query, where, collection, doc } from "firebase/firestore";
+import { collectionGroup, query, where, collection, doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc, getDocs, getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useCompany } from "./useCompany";

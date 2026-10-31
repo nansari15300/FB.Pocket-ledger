@@ -1,6 +1,6 @@
 "use client";
 
-import { getDocs } from "firebase/firestore";
+import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { upsertCompanyDocInBrowserDb } from "@/lib/localCompanyDocMirror";
 import { firestoreVouchersQueryForRange } from "@/lib/ledgerModes/online/fyMonthQueries";
 import type { FyDateRangeMs } from "@/lib/fyPagination/types";

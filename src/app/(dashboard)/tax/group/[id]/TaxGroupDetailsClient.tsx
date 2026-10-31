@@ -1,5 +1,6 @@
 'use client';
 
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { useParams } from 'next/navigation';
 import { TaxGroupDetails } from '@/components/tax/TaxGroupDetails';
 import { useVouchers } from '@/hooks/useVouchers';
@@ -11,7 +12,7 @@ import type { Tax } from '@/components/tax/types';
 import { filterMembersByMasterGroupScope } from '@/lib/masterGroupMemberScope';
 import { TAX_ENTITY_GROUP_PRESET } from '@/lib/masterEntityGroupFormPresets';
 import { isMasterEntitySystemGroupId, resolveTaxListGroupBucketId } from '@/lib/masterEntitySystemGroups';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc } from "@/lib/pbCompat/firestore";
 import { firestore } from '@/lib/firebase';
 import { resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";
 

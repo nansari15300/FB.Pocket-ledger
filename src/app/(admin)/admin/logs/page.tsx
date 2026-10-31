@@ -7,7 +7,7 @@ import {
   orderBy,
   query,
   limit,
-} from 'firebase/firestore';
+} from '@/lib/pbCompat/firestore';
 import { getDocs } from '@/lib/pocketbaseData/pbReadSeam';
 import { useEffect, useState, useMemo } from 'react'
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'

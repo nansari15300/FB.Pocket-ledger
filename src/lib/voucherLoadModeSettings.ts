@@ -120,7 +120,7 @@ export async function ensureVoucherLoadSettingsHydrated(): Promise<VoucherLoadSe
   if (!voucherLoadHydratePromise) {
     voucherLoadHydratePromise = (async () => {
       try {
-        const { doc, getDoc: fsGetDoc } = await import("firebase/firestore");
+        const { doc, getDoc: fsGetDoc } = await import("@/lib/pbCompat/firestore");
         const { isPocketBaseAppSessionActive } = await import("@/lib/pocketbaseData/pbAppSession");
         let getDoc = fsGetDoc;
         if (isPocketBaseAppSessionActive()) {

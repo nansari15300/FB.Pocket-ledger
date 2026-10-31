@@ -1,6 +1,7 @@
 
 "use client";
 
+import { updateDoc, writeBatch, deleteDoc } from "@/lib/writeGateway/pbWrites";
 import * as React from "react";
 import {
   Popover,
@@ -10,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Bell, MailOpen, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { collection, query, where, doc, updateDoc, writeBatch, deleteDoc } from "firebase/firestore";
+import { collection, query, where, doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { useCompany } from "@/hooks/useCompany";

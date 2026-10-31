@@ -1,4 +1,5 @@
 "use client";
+import { addDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
 import { STAFF_ENTITY_LABEL, STAFF_ENTITY_TYPE_KEY, STAFF_ENTITY_SEARCH_PLACEHOLDER, STAFF_ENTITY_ADD_BUTTON, staffEntityDisplayLabel } from "@/lib/staffEntityDisplayName";
 
 import * as React from "react";
@@ -45,7 +46,7 @@ import { getDisplayType } from "@/components/vouchers/transactionTableShared";
 import { Combobox } from "@/components/ui/combobox";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { isPartyMasterDetailPath, PARTY_PAGE_OVERDUE_SELECTED_ID } from "@/lib/partyUrlContext";
-import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
+import { collection, doc } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { auth, firestore } from "@/lib/firebase";
 import { isLocalOnlyMode } from "@/lib/localMode";

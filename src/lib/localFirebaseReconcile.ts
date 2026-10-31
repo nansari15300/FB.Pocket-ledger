@@ -1,6 +1,6 @@
 "use client";
 
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import type { LocalCompanyDoc } from "@/lib/localCompanyStore";
 import type { ReconciliationShare, ReconciliationShareScope } from "@/lib/reconciliation/types";

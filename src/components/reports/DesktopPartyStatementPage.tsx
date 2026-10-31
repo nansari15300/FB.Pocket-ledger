@@ -1,6 +1,7 @@
 
 "use client";
 
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { voucherTypeDisplayText, voucherTypeSearchText } from "@/lib/voucherTypeDisplay";
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useFyScopedVouchers } from "@/hooks/useFyScopedVouchers";
@@ -66,7 +67,7 @@ import { Badge } from "@/components/ui/badge";
 import * as XLSX from 'xlsx';
 import { RunningBalanceFullChart } from "@/components/reports/RunningBalanceFullChart";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
-import { doc, getDoc } from 'firebase/firestore';
+import { doc } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { PartyDetails } from "@/components/party/PartyDetails";
@@ -166,9 +167,9 @@ export default function DesktopPartyStatementPage() {
     const { balanceMode, setBalanceMode } = useBalanceMode();
 
     const [selectedPartyRaw, setSelectedParty] = useState<Party | null>(null);
-    const selectedParty = useLiveMasterSelection(selectedPartyRaw, setSelectedParty, processedParties);
+    const selectedParty = useLiveMasterSelection<Party>(selectedPartyRaw, setSelectedParty, processedParties);
     const [selectedGroupRaw, setSelectedGroup] = useState<Group | null>(null);
-    const selectedGroup = useLiveMasterSelection(selectedGroupRaw, setSelectedGroup, processedGroups);
+    const selectedGroup = useLiveMasterSelection<Group>(selectedGroupRaw, setSelectedGroup, processedGroups);
     const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
     const [userNames, setUserNames] = useState<Record<string, string>>({});
     const fetchedUidsRef = useRef<Set<string>>(new Set());

@@ -1,6 +1,7 @@
 "use client";
 
 import { fetchPbAttachmentBlob, isPbAttachmentRef } from "@/lib/pocketbaseData/pbAttachments";
+import { isPocketBaseOnlyAppSession } from "@/lib/pbOnlySessionMarker";
 import { resolveCurrentAttachmentUrlAfterLoadError } from "@/lib/attachmentCurrentUrlFallback";
 import * as React from "react";
 import { useCallback, useEffect, useState, useRef } from "react";
@@ -12,7 +13,7 @@ import { openAttachmentInApp } from "@/lib/openAttachmentInApp";
 import { AttachmentHoverPortal, useTapInteractionMode } from "@/components/vouchers/AttachmentHoverPortal";
 import { MultiAttachmentPortalPreview } from "@/components/vouchers/attachmentHoverPreviewBody";
 import { storage } from "@/lib/firebase";
-import { ref, getBlob, getMetadata } from "firebase/storage";
+import { ref, getBlob, getMetadata } from "@/lib/pocketbaseData/pbStorage";
 import {
   getAttachmentFormatLabel,
   getAttachmentFormatLabelFromHints,
@@ -370,6 +371,8 @@ export async function prewarmPdfThumbnailsForGallery(
     try {
       let pdfFile: Blob;
       if (storagePath && !localAttachmentOnly) {
+        // Pocket Ledger Server login only: no Firebase Storage fallback.
+        if (isPocketBaseOnlyAppSession()) continue;
         const storageRef = ref(storage, storagePath);
         pdfFile = await getBlob(storageRef);
       } else if (u.startsWith(LOCAL_FILE_PREFIX)) {
@@ -1285,7 +1288,7 @@ export function FilePreview({
                   bypassVisiblePageCheck: stableLocalPreviewOnly,
                 }));
             }
-            if (!resolved) {
+            if (!resolved && !isPocketBaseOnlyAppSession()) {
               try {
                 const storageRef = ref(storage, firebaseStoragePath);
                 resolved = await Promise.race([
@@ -1299,7 +1302,7 @@ export function FilePreview({
               }
             }
             // Signed download URL ab bhi kaam kar sakta hai jab getBlob/rules fail — bina iske hover me sirf lal PDF icon
-            if (!resolved && pdfUrl.startsWith("http")) {
+            if (!resolved && pdfUrl.startsWith("http") && !isPocketBaseOnlyAppSession()) {
               try {
                 resolved = await fetchBlobWithTimeout(pdfUrl, PDF_REMOTE_FETCH_TIMEOUT_MS, signal);
               } catch {

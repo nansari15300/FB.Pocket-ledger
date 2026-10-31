@@ -425,7 +425,8 @@ html[data-pl-app-ui-zoom-shell="android-zoom"] .min-h-dvh {
   [data-pl-master-list-chrome] [data-pl-list-row][data-pl-ic-company-row] .pl-master-list-row-leading .pl-master-list-avatar-fallback {
     background-color: rgb(219 234 254) !important;
   }
-  /** List profile — square matching name-block height, rounded corners (not a circle) */
+  /** List profile — square matching name-block height, rounded corners (not a circle).
+      Photo must not set the box size: the hover trigger is taken out of flow so a full-pixel image cannot stretch the row. */
   [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading > .relative,
   [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading .pl-master-list-group-icon,
   [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading .pl-master-list-item-avatar {
@@ -442,19 +443,33 @@ html[data-pl-app-ui-zoom-shell="android-zoom"] .min-h-dvh {
   [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading > .relative {
     overflow: visible;
   }
+  [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading > .relative > span.inline-flex {
+    position: absolute;
+    inset: 0;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+  }
   [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading .pl-master-list-group-icon,
   [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading .pl-master-list-item-avatar {
     overflow: hidden;
   }
   [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading .pl-master-list-avatar,
-  [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading .pl-master-list-avatar-fallback,
-  [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading [class*="rounded-full"] {
+  [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading .pl-master-list-avatar-fallback {
     height: 100% !important;
     width: 100% !important;
-    max-height: none !important;
-    max-width: none !important;
+    max-height: 100% !important;
+    max-width: 100% !important;
     border-radius: 0.5rem !important;
     overflow: hidden;
+  }
+  [data-pl-master-list-chrome] [data-pl-list-row] .pl-master-list-row-leading .pl-master-list-avatar img {
+    height: 100% !important;
+    width: 100% !important;
+    max-height: 100% !important;
+    max-width: 100% !important;
+    object-fit: cover;
   }
   /** Master list group icon box — normal green / IC blue (avatar jaisa) */
   [data-pl-master-list-chrome] [data-pl-list-row]:not([data-pl-ic-company-row]) .pl-master-list-row-leading .pl-master-list-group-icon {

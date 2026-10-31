@@ -1,12 +1,13 @@
 'use client';
 
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { PartyDetails as DesktopPartyDetails } from '@/components/party/PartyDetails';
 import { useVouchers } from '@/hooks/useVouchers';
 import { Suspense, useState, useEffect, useCallback, useMemo } from 'react';
 import type { DateRange } from "@/components/ui/ad-calendar";
 import { LoadingSpinner } from '@/components/layout/LoadingSpinner';
-import { doc, getDoc, collection, query, getDocs, where } from 'firebase/firestore';
+import { doc, collection, query, where } from "@/lib/pbCompat/firestore";
 import { firestore } from '@/lib/firebase';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { isPocketBaseAppSessionActive, readPocketBaseAppProfile, pocketBaseSessionUid } from "@/lib/pocketbaseData/pbAppSession";

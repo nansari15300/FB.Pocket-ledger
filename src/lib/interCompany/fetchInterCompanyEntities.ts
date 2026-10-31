@@ -2,7 +2,7 @@
  * Ek company ke inter-company masters — Firestore (cloud) ya SQLite (pure local).
  * My-company / APK: cloud path empty ho to SQLite mirror fallback.
  */
-import { collection, doc, query, where } from "firebase/firestore";
+import { collection, doc, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import type { InterCompanyEntityDetail } from "@/lib/interCompany/interCompanyEntityTypes";

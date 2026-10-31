@@ -1,5 +1,6 @@
 'use client';
 
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { useParams, useRouter } from 'next/navigation';
 import { AccountGroupDetails as DesktopAccountGroupDetails } from '@/components/bank-cash/AccountGroupDetails';
 import { useVouchers } from '@/hooks/useVouchers';
@@ -10,7 +11,7 @@ import type { Account } from '@/components/bank-cash/types';
 import { filterMembersByMasterGroupScope } from '@/lib/masterGroupMemberScope';
 import { BANK_ENTITY_GROUP_PRESET } from '@/lib/masterEntityGroupFormPresets';
 import { isMasterEntitySystemGroupId, resolveBankListGroupBucketId } from '@/lib/masterEntitySystemGroups';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc } from "@/lib/pbCompat/firestore";
 import { firestore } from '@/lib/firebase';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";

@@ -1,12 +1,13 @@
 "use client";
 
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
 import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { collection, doc, query, serverTimestamp, setDoc, where } from "firebase/firestore";
+import { collection, doc, query, serverTimestamp, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { toast } from "sonner";
 import { ArrowDown, ArrowUp, CheckCircle, FileText, History, Link2, Loader2, PlusCircle, Printer, Trash2 } from "lucide-react";

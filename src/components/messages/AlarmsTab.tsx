@@ -1,23 +1,13 @@
 "use client";
 
+import { updateDoc, writeBatch, addDoc, deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { STAFF_ENTITY_LABEL } from "@/lib/staffEntityDisplayName";
 
 import * as React from "react";
 import { useCompany } from "@/hooks/useCompany";
 import { useDate } from "@/hooks/useDate";
 import { useAuth } from "@/hooks/useAuth";
-import {
-  collection,
-  query,
-  orderBy,
-  doc,
-  updateDoc,
-  writeBatch,
-  addDoc,
-  serverTimestamp,
-  deleteDoc,
-  Timestamp,
-} from "firebase/firestore";
+import { collection, query, orderBy, doc, serverTimestamp, Timestamp } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { cn } from "@/lib/utils";

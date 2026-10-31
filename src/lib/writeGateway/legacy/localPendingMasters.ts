@@ -1,6 +1,7 @@
 "use client";
 
-import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { addDoc, updateDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
+import { collection, doc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { openDB } from "@/lib/offlineDb";
 import { emitLocalMutationEvent, subscribeLocalMutationEvent } from "@/lib/localMutationEvents";

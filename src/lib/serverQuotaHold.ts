@@ -6,8 +6,15 @@
  * (rows stay queued locally). When it ends (or is cleared manually) SERVER_QUOTA_HOLD_END_EVENT
  * ("pl-online-trigger-quota-hold") fires and the outbox flush manager resumes.
  *
+ * Persistence rule (single source of truth, same for every session): a hold NEVER survives a refresh / app restart.
+ * In a Pocket Ledger Server login-only (PocketBase) session no hold is ever started and the cross-tab storage
+ * event is ignored: Firebase is not the data server there, so a Firebase quota signal must not pause sync or
+ * show the "Server paused due to quota" popup.
+ *
  * Manual clear: DevTools console `window.__plClearServerQuotaHold()`, or simply reload the page.
  */
+import { isPocketBaseOnlyAppSession } from "@/lib/pbOnlySessionMarker";
+
 export const SERVER_QUOTA_HOLD_MS = 30 * 60 * 1000;
 export const SERVER_QUOTA_HOLD_STORAGE_KEY = "pl_online_trigger_quota_hold_until";
 export const SERVER_QUOTA_HOLD_END_EVENT = "pl-online-trigger-quota-hold";
@@ -76,6 +83,7 @@ function ensureLoaded(): void {
   }
   window.addEventListener("storage", (e) => {
     if (e.key !== SERVER_QUOTA_HOLD_STORAGE_KEY && e.key !== null) return;
+    if (isPocketBaseOnlyAppSession()) return;
     const was = holdUntil > Date.now();
     holdUntil = readStored();
     const now = holdUntil > Date.now();
@@ -149,9 +157,28 @@ export function showQuotaPauseNotice(hhmm: string): void {
 /** Module state = per page load (reset on refresh / app restart). */
 let quotaPauseNoticeShownThisPageLoad = false;
 
+/**
+ * Recovery push (recovery/recoveryUpload.ts) runs with this on: a 429 / 402 seen while it runs (the Pocket Ledger
+ * Server rate limit, or a blocked Firebase file read) is handled by the push itself (back off + retry, or the file
+ * is listed as missing). It must NOT start the app-wide 30-min "Server paused due to quota" hold or its popup.
+ */
+let recoveryQuotaSuppress = 0;
+export function beginRecoveryQuotaSuppress(): () => void {
+  recoveryQuotaSuppress += 1;
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    recoveryQuotaSuppress = Math.max(0, recoveryQuotaSuppress - 1);
+  };
+}
+
 /** Start a fresh hold (no-op while one is active). Returns true when a new hold started. */
 export function startServerQuotaHold(): boolean {
   ensureLoaded();
+  if (recoveryQuotaSuppress > 0) return false;
+  // PocketBase-only session: Firebase quota is irrelevant (PB is the data server) - never hold / popup.
+  if (isPocketBaseOnlyAppSession()) return false;
   if (Date.now() < holdUntil) return false;
   holdUntil = Date.now() + SERVER_QUOTA_HOLD_MS;
   try {
