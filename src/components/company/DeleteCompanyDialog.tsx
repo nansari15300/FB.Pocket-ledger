@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +24,13 @@ import { deleteCompanyComplete } from "@/lib/actions/deleteCompanyAction";
 import { useAuth } from "@/hooks/useAuth";
 import { getLocalCompanyById, upsertLocalCompany } from "@/lib/localCompanyStore";
 import { isDeviceLocalCompany } from "@/lib/companyStorageKind";
-import { isPocketBaseRecycleCompany, permanentDeletePocketBaseCompany } from "@/lib/companyRecycleRoot";
+import {
+  getPocketBaseCompanyDeleteMode,
+  isDemoCompanyName,
+  isPocketBaseRecycleCompany,
+  permanentDeletePocketBaseCompany,
+  type PbDeleteMode,
+} from "@/lib/companyRecycleRoot";
 
 export function DeleteCompanyDialog({
   company,
@@ -47,7 +53,35 @@ export function DeleteCompanyDialog({
 
   const allowRecycleBin = company.planId ? DEFAULT_PLANS[company.planId as PlanId].entitlements.allowCompanyAdminRecycleBin : false;
 
-  const descriptionText = allowRecycleBin
+  // PocketBase company: the server's per-company Delete mode (Hard / Soft) decides what happens.
+  const isPbCompanyShown = isPocketBaseRecycleCompany(company.id, company);
+  const [pbMode, setPbMode] = useState<{ mode: PbDeleteMode; known: boolean } | null>(null);
+  useEffect(() => {
+    if (!isOpen || !isPbCompanyShown) {
+      setPbMode(null);
+      return;
+    }
+    let cancelled = false;
+    setPbMode(null);
+    void getPocketBaseCompanyDeleteMode(company.id, company.name).then((info) => {
+      if (!cancelled) setPbMode({ mode: info.mode, known: info.known });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isPbCompanyShown, company.id, company.name]);
+
+  const pbDescriptionText = !pbMode
+    ? `Checking this company's Delete mode...`
+    : pbMode.mode === "hard"
+      ? `Delete mode: HARD. This will PERMANENTLY DELETE the company "${company.name}" and ALL its data on the server right now (vouchers, parties, items, uploaded files). This action cannot be undone.`
+      : `Delete mode: SOFT. The company "${company.name}" will be hidden and its data stays on the server until the admin wipes it later. You will not see it in your Recycle Bin.${
+          isDemoCompanyName(company.name) ? " (Demo Company is always Soft and is never hard-deleted.)" : pbMode.known ? "" : " (Delete mode could not be read from the server, so Soft is used.)"
+        }`;
+
+  const descriptionText = isPbCompanyShown
+    ? pbDescriptionText
+    : allowRecycleBin
     ? `This action will PERMANENTLY DELETE the company "${company.name}" and all associated data, including vouchers, parties, items, and uploaded files. This action cannot be undone.`
     : `You will not be able to see this company in your Recycle Bin. This company may be auto-deleted within a year.`;
 
@@ -69,9 +103,11 @@ export function DeleteCompanyDialog({
         const pbRes = await permanentDeletePocketBaseCompany(company.id, {
           quickDelete: true,
           userId: user.uid,
+          companyName: company.name,
         });
         if (!pbRes.ok) throw new Error(("error" in pbRes ? pbRes.error : null) || "Permanent delete failed.");
-        if (localRow) {
+        const pbHard = "mode" in pbRes && pbRes.mode === "hard";
+        if (localRow && !pbHard) {
           await upsertLocalCompany({
             ...localRow,
             id: company.id,
@@ -81,8 +117,10 @@ export function DeleteCompanyDialog({
           } as Parameters<typeof upsertLocalCompany>[0]);
         }
         toast({
-          title: "Company Permanently Removed",
-          description: `"${company.name}" and all its records have been deleted.`,
+          title: pbHard ? "Company Permanently Deleted" : "Company Removed",
+          description: pbHard
+            ? `"${company.name}" and all its data were deleted from the server.`
+            : `"${company.name}" was hidden. The admin can wipe its data later.`,
         });
         clearCompanyId();
         onCompanyDeleted();
@@ -160,7 +198,7 @@ export function DeleteCompanyDialog({
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={handleDelete}
-            disabled={isLoading || confirmationText.trim().toLowerCase() !== company.name.trim().toLowerCase()}
+            disabled={isLoading || (isPbCompanyShown && !pbMode) || confirmationText.trim().toLowerCase() !== company.name.trim().toLowerCase()}
             className="bg-destructive hover:bg-destructive/90"
           >
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

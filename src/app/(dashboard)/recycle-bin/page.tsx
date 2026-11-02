@@ -33,6 +33,7 @@ import { useVouchers } from "@/hooks/useVouchers";
 import { deleteCompanyComplete } from "@/lib/actions/deleteCompanyAction";
 import {
     companyRecycleMustSkipFirestore,
+    getPocketBaseCompanyDeleteMode,
     isPocketBaseRecycleCompanyId,
     permanentDeletePocketBaseCompany,
     resolveCompanyRecycleRootForId,
@@ -843,6 +844,64 @@ function RecycleBinContent() {
         });
     }, [deletedItems, userNames, journalAccountNames, accountNames, localPermEpoch, user?.uid, user?.displayName, user?.email, customUser?.displayName, customUser?.email]);
     
+    // PocketBase companies: show the per-company Delete mode (Hard / Soft) in the confirm dialogs.
+    const [pbModeNote, setPbModeNote] = useState<string | null>(null);
+    const [pbEmptyNote, setPbEmptyNote] = useState<string | null>(null);
+    useEffect(() => {
+        const it = itemToConfirm && itemToConfirm.action === "delete" ? itemToConfirm.item : null;
+        if (!it || !(it.collectionPath === "companies" || it.isRootCollection === true)) {
+            setPbModeNote(null);
+            return;
+        }
+        let cancelled = false;
+        setPbModeNote(null);
+        void (async () => {
+            if (!(await isPocketBaseRecycleCompanyId(it.id))) return;
+            const info = await getPocketBaseCompanyDeleteMode(it.id, it.name);
+            if (cancelled) return;
+            setPbModeNote(
+                info.mode === "hard"
+                    ? "Delete mode: HARD - this company and ALL its data will be deleted from the server immediately."
+                    : "Delete mode: SOFT - the company is hidden; its data stays on the server until the admin wipes it later."
+            );
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [itemToConfirm]);
+    useEffect(() => {
+        if (!isEmptydialogOpen) {
+            setPbEmptyNote(null);
+            return;
+        }
+        const companies = enrichedDeletedItems.filter(
+            (i) => i.collectionPath === "companies" || i.isRootCollection === true
+        );
+        if (companies.length === 0) {
+            setPbEmptyNote(null);
+            return;
+        }
+        let cancelled = false;
+        setPbEmptyNote(null);
+        void (async () => {
+            let hard = 0;
+            let soft = 0;
+            for (const c of companies) {
+                if (!(await isPocketBaseRecycleCompanyId(c.id))) continue;
+                const info = await getPocketBaseCompanyDeleteMode(c.id, c.name);
+                if (info.mode === "hard") hard += 1;
+                else soft += 1;
+            }
+            if (cancelled || hard + soft === 0) return;
+            setPbEmptyNote(
+                `Online (PocketBase) companies: ${hard} with Delete mode HARD (deleted from the server immediately), ${soft} with Delete mode SOFT (hidden; the admin wipes the data later).`
+            );
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [isEmptydialogOpen, enrichedDeletedItems]);
+
     /** Deleted voucher Firestore / SQLite se load karke read-only edit dialog. */
     const handleViewVoucher = useCallback(
         async (item: DeletedItem) => {
@@ -1081,12 +1140,15 @@ function RecycleBinContent() {
                     const pbDel = await permanentDeletePocketBaseCompany(resolvedItem.id, {
                         quickDelete,
                         userId: user?.uid ?? null,
+                        companyName: resolvedItem.name,
                     });
                     if (!pbDel.ok) throw new Error(("error" in pbDel ? pbDel.error : null) || "Permanent delete failed.");
-                    await mirrorLocalCompanyAfterOnlineRecycleFinalize(resolvedItem.id, quickDelete, user?.uid);
+                    // Hard delete mode: the server already removed everything -> also purge the local row.
+                    const pbHard = "mode" in pbDel && pbDel.mode === "hard";
+                    await mirrorLocalCompanyAfterOnlineRecycleFinalize(resolvedItem.id, quickDelete || pbHard, user?.uid);
                     removeDeletedItemFromState(resolvedItem);
                     reloadLocalCompanyRegistry();
-                    if (quickDelete) {
+                    if (quickDelete || pbHard) {
                         toast({ title: "Success", description: `"${resolvedItem.name}" deleted permanently.` });
                     } else {
                         toast({ title: "Deleted permanently", description: `"${resolvedItem.name}" has been removed from your recycle bin.` });
@@ -1254,6 +1316,7 @@ function RecycleBinContent() {
                     quickDelete,
                     userId: user?.uid ?? null,
                 });
+                const pbHard = pbDel.ok && "mode" in pbDel && pbDel.mode === "hard";
                 if (!pbDel.ok) {
                     toast({
                         variant: "destructive",
@@ -1263,7 +1326,7 @@ function RecycleBinContent() {
                     setIsProcessing(false);
                     return;
                 }
-                await mirrorLocalCompanyAfterOnlineRecycleFinalize(cid, quickDelete, user?.uid);
+                await mirrorLocalCompanyAfterOnlineRecycleFinalize(cid, quickDelete || pbHard, user?.uid);
             }
 
             if (onlineCompanyIds.length > 0) {
@@ -1558,7 +1621,7 @@ function RecycleBinContent() {
                         <AlertDialogTitle className="text-base sm:text-lg">Are you absolutely sure?</AlertDialogTitle>
                         <AlertDialogDescription className="text-sm">
                            {itemToConfirm?.action === 'delete'
-                            ? "This action cannot be undone. This will permanently delete the item."
+                            ? "This action cannot be undone. This will permanently delete the item." + (pbModeNote ? " " + pbModeNote : "")
                             : "This will restore the item to its original location."
                            }
                         </AlertDialogDescription>
@@ -1588,7 +1651,7 @@ function RecycleBinContent() {
                     <AlertDialogHeader>
                         <AlertDialogTitle className="text-base sm:text-lg">Empty the Recycle Bin?</AlertDialogTitle>
                         <AlertDialogDescription className="text-sm">
-                            This action cannot be undone. This will permanently delete all {enrichedDeletedItems.length} items in the recycle bin.
+                            This action cannot be undone. This will permanently delete all {enrichedDeletedItems.length} items in the recycle bin.{pbEmptyNote ? " " + pbEmptyNote : ""}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter className="flex-col sm:flex-row gap-2">

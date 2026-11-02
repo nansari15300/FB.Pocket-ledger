@@ -14,6 +14,7 @@ import { deleteField, doc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import {
   getLocalCompanyById,
+  removeLocalCompanyById,
   upsertLocalCompany,
   type LocalCompanyDoc,
 } from "@/lib/localCompanyStore";
@@ -24,9 +25,14 @@ import {
   isServerGateCompany,
   type CompanyStorageRow,
 } from "@/lib/companyStorageKind";
-import { deleteCompanyComplete, restoreCompany } from "@/lib/deleteCompanyFirestoreClient";
+import { restoreCompany } from "@/lib/deleteCompanyFirestoreClient";
 import type { Company } from "@/hooks/useCompany";
-import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import {
+  isPocketBaseCompanyId,
+  markPocketBaseCompanyPruned,
+  unregisterPocketBaseCompanyId,
+} from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { pbRequest } from "@/lib/pocketbaseData/pbClient";
 
 export type CompanyRecycleStorageRoot = "local" | "pl_server" | "online";
 
@@ -112,25 +118,83 @@ export async function isPocketBaseRecycleCompanyId(companyId: string): Promise<b
   return isPocketBaseRecycleCompany(cid, row);
 }
 
+/** Per-company "Delete mode" (set by the server admin): hard = permanent at once, soft = hidden, admin wipes later. */
+export type PbDeleteMode = "soft" | "hard";
+
+/** 'Demo Company' is never hard-deleted (the server enforces the same rule). */
+export function isDemoCompanyName(name: unknown): boolean {
+  return String(name ?? "").trim().replace(/\s+/g, " ").toLowerCase() === "demo company";
+}
+
+/**
+ * Delete mode of a PocketBase company, read from the server (`POST /api/pl/company/delete-mode`).
+ * Soft when: Demo Company, the server has no such setting yet (older server), or the lookup fails --
+ * Soft is the safe direction (the company is only hidden, nothing is wiped).
+ */
+export async function getPocketBaseCompanyDeleteMode(
+  companyId: string,
+  companyName?: string | null
+): Promise<{ mode: PbDeleteMode; demo: boolean; known: boolean }> {
+  const cid = String(companyId || "").trim();
+  let name = companyName ?? null;
+  if (name == null && cid) {
+    try {
+      const row = await getLocalCompanyById(cid, { includeDeleted: true });
+      name = (row as { name?: string } | null)?.name ?? null;
+    } catch {
+      name = null;
+    }
+  }
+  if (isDemoCompanyName(name)) return { mode: "soft", demo: true, known: true };
+  if (!cid) return { mode: "soft", demo: false, known: false };
+  try {
+    const res = (await pbRequest("/api/pl/company/delete-mode", {
+      method: "POST",
+      body: { company: cid },
+      timeoutMs: 15_000,
+    })) as { mode?: string; demo?: boolean } | null;
+    if (res && res.demo === true) return { mode: "soft", demo: true, known: true };
+    return { mode: res && res.mode === "hard" ? "hard" : "soft", demo: false, known: true };
+  } catch {
+    return { mode: "soft", demo: false, known: false };
+  }
+}
+
 /**
  * Permanent delete of a PocketBase company (recycle bin / delete dialog) -- done on PB, never
- * "local only".
- * - Always: root flag `movedToAdminRecycleAt` (hidden from the owner's bin; Super Admin can still
- *   hard-wipe it on the server).
- * - quickDelete: first wipe the company's records (same routine online companies use; on PB it is a
- *   server soft-delete of every record), and make sure the root is flagged `isDeleted`.
- * The SQLite row is left to the caller (purge or mirror flag).
+ * "local only". It follows the company's Delete mode (set by the server admin):
+ * - Hard: the owner's request `POST /api/pl/company/hard-delete` removes every record, file and the
+ *   company itself on the server at once. 'Demo Company' is never hard-deleted. The device's local
+ *   copy is removed afterwards.
+ * - Soft (default): root flag `movedToAdminRecycleAt` (hidden from the owner's bin; the Super Admin can
+ *   still hard-wipe it on the server); with quickDelete the root is also flagged `isDeleted`.
+ *   No Firebase / Firestore cleanup runs for PocketBase companies any more.
+ * In Soft mode the SQLite row is left to the caller (purge or mirror flag).
  */
 export async function permanentDeletePocketBaseCompany(
   companyId: string,
-  opts: { quickDelete: boolean; userId?: string | null }
-): Promise<{ ok: true } | { ok: false; error: string }> {
+  opts: { quickDelete: boolean; userId?: string | null; companyName?: string | null }
+): Promise<{ ok: true; mode: PbDeleteMode } | { ok: false; error: string }> {
   const cid = String(companyId || "").trim();
   if (!cid) return { ok: false, error: "Invalid company id" };
   try {
+    const info = await getPocketBaseCompanyDeleteMode(cid, opts.companyName);
+    if (info.mode === "hard" && !info.demo) {
+      await pbRequest("/api/pl/company/hard-delete", {
+        method: "POST",
+        body: { company: cid },
+        timeoutMs: 180_000,
+      });
+      try {
+        markPocketBaseCompanyPruned(cid);
+        unregisterPocketBaseCompanyId(cid);
+        await removeLocalCompanyById(cid);
+      } catch {
+        /* local copy clean-up is best effort */
+      }
+      return { ok: true, mode: "hard" };
+    }
     if (opts.quickDelete) {
-      const wiped = await deleteCompanyComplete(cid, String(opts.userId || ""));
-      if (!wiped.success) return { ok: false, error: wiped.error || "Permanent delete failed" };
       await writePocketBaseCompanyRootPatch(cid, {
         isDeleted: true,
         deletedAt: serverTimestamp(),
@@ -139,7 +203,7 @@ export async function permanentDeletePocketBaseCompany(
     } else {
       await writePocketBaseCompanyRootPatch(cid, { movedToAdminRecycleAt: serverTimestamp() });
     }
-    return { ok: true };
+    return { ok: true, mode: "soft" };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Permanent delete failed" };
   }

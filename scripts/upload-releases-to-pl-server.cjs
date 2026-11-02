@@ -12,7 +12,7 @@ const root = path.join(__dirname, "..");
 const localReleases = path.join(root, "releases");
 const pbPublic = process.env.PL_SERVER_PB_PUBLIC
   ? String(process.env.PL_SERVER_PB_PUBLIC)
-  : path.join("C:", "Balgram", "PocketLedger-Server", "sub-server", "pb_public");
+  : path.join("C:", "Project Next.js Balgram", "PocketLedger-Server", "sub-server", "pb_public");
 const destRoot = path.join(pbPublic, "releases");
 const origin = String(process.env.PL_RELEASES_ORIGIN || "https://np.pocket-ledger.com")
   .trim()
