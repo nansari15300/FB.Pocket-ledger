@@ -68,3 +68,12 @@ Pocket Ledger के Transaction (trxn) टेबल का ढाँचा म�
 2. user की हाँ मिलने पर ledger rows highlight के बदलाव करना।
 3. user के login करने के बाद Plan A की आँख से जाँच करना और जहाँ overlap बचा हो उसे ठीक करना।
 4. हर बदलाव के बाद यह फ़ाइल अपडेट करना।
+## Update 2026-11-02 (rejected items + row-border 1px request)
+**Rejected, user ne manually kiya (2026-11-02)** - in items par ab bot kaam nahi karega:
+- Plan items 1, 2, 3, 5 (Theme Master pending list: header filter icons / date-range pill text, 3-dot 4px, selected/hover 'C' bar + orange outline gap, dashboard Bank/Cash Summary + Daybook card rows)
+- Item 4: cards ke beech orange line / blue 'C' side bar
+- FY divider duration/transition prop (`transactionTableShared.tsx` ~1706) + unused `isRowAnimationEnabled`/`rowAnimationDuration` cleanup
+- Ledger rows highlight (`highlightRowIds` / `pl-row-change-highlight`)
+
+## Progress log (Asia/Kathmandu, laptop clock)
+- 2026-11-02 15:32 : Account/Party details trxn table ki rows ke beech wali moti line ko 1px karne ka kaam - **BLOCKED, koi code edit nahi hua**. Source: line border nahi hai, Theme Master ka card gap hai - `src\app\globals.css` line 14713 (section 11): har main-row td par `border-top: 8px solid transparent !important` (section 9 line 14654 me 5px tha, 14713 override karta hai), td `background-clip: padding-box` (line 14649) se gap me table ka background `hsl(var(--pl-row-gap))` (line 14412) dikhta hai; Medium theme me --pl-row-gap 0 0% 22% (line 14277) = dark. Ye sab Theme Master block (line 14016 - 15722 `/* === end Theme Master === */`) ke andar hai, isliye edit nahi kiya. tsc nahi chalaya (koi .ts/.tsx/.css change nahi). Sirf is handoff file ka backup: `C:\Project xxx\backup-trxn-rowborder-20261102-1532\_handoff\Trxn Table Master.md`.

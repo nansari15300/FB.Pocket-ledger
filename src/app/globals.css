@@ -15720,3 +15720,36 @@ body.theme-pro .app-chrome-top-ribbon:not(#pl-theme-master-none):not(#pl-theme-m
 }
 
 /* === end Theme Master === */
+
+/* === Theme Master: list hover above scrollbar, app-wide (Nov 2 2026) ===
+   Cause: every in-app scroll list uses the shared Radix ScrollArea (`components/ui/scroll-area.tsx`). Its scrollbar is an
+   absolutely positioned overlay (Radix inline `position:absolute`, z-index:auto) sitting over the viewport's right/bottom
+   edge, and neither the root (`relative overflow-hidden`) nor the viewport is a stacking context. Hover-lift rows/cards
+   (sections 6 / 43: `position:relative; z-index:1; transform`; pending-badge rows `z-index:2`; `.pl-card-3d` transform)
+   therefore paint over the scrollbar. Fix (global, one place): isolate the root + viewport so row z-indexes stay inside the
+   viewport, and lift the shared scrollbar (identified by its `.pl-uniform-scroll-thumb`) above it. Hover lift unchanged;
+   nothing can escape the list because root and viewport already clip. */
+:has(> [data-radix-scroll-area-viewport]) {
+  isolation: isolate;
+}
+[data-radix-scroll-area-viewport] {
+  isolation: isolate;
+}
+[data-orientation]:has(> .pl-uniform-scroll-thumb) {
+  z-index: 5;
+}
+/* === end Theme Master: list hover above scrollbar === */
+/* === Theme Master: Pro list-panel handle duplicate line removed (Nov 2 2026) === */
+/* Pro --border is #000; ResizeWidthHandle (ResizablePaneWidth.tsx) draws a w-px bg-border line on top of the list panel border-r
+   (ResponsiveMasterDetail.tsx), doubling the right black line. Hide it at rest; keep hover (whole handle) + drag (:active) highlight. */
+body.theme-pro [data-pl-master-list-chrome] > [role="separator"]:not(:hover):not(:active) > div {
+  background-color: transparent !important;
+}
+/* === end Theme Master: Pro handle line === */
+/* === Theme Master: Pro app-sidebar handle duplicate line removed (Nov 2 2026) === */
+/* Left edge: AppSidebar (sidebar.tsx) ResizeWidthHandle w-px bg-border line sits beside the main wrapper border-l app-main-border
+   ((dashboard)/layout.tsx), doubling the black line. Hide it at rest; keep hover (whole handle) + drag (:active) highlight. */
+body.theme-pro [data-pl-main-sidebar] > [role="separator"]:not(:hover):not(:active) > div {
+  background-color: transparent !important;
+}
+/* === end Theme Master: Pro sidebar handle line === */

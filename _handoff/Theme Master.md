@@ -184,3 +184,23 @@ CSS selector shorthand (Theme Master में):
 ## REJECTED (2 Nov 2026, 2:05 PM Asia/Kathmandu)
 User ne kaha: 'kaam jo ruka hua hai uske sab ko reject karwa do maine sab manually kardiye hai'. Rejected, user ne khud kiya. Saare baaki/queued kaam rad: header ki bottom line wala sawal, aur handover hue items (Trxn Table Master: header length, orange ring, blue C bar, Daybook/Bank summary cards; Poject intity Master: account list ke bache neele hisse). Code me koi naya badlav nahi kiya gaya. User ke manual badlav overwrite NA karein; aage koi bhi edit karne se pehle file ki current state dobara padhein.
 
+
+## 2026-11-02 15:39 (Asia/Kathmandu, UTC+5:45) - List hover card above scrollbar fix (app-wide)
+- Task: hovered/lifted row cards painted over the list scrollbar. Root cause: shared Radix ScrollArea (`src/components/ui/scroll-area.tsx`) renders its scrollbar as an absolute overlay with z-index:auto; root/viewport were not stacking contexts, so hover-lift rows (`position:relative; z-index:1; transform`, pending-badge rows z-index:2) painted above it.
+- Change: `src/app/globals.css` new section appended after `/* === end Theme Master === */` (lines 15724-15741): `:has(> [data-radix-scroll-area-viewport])` + `[data-radix-scroll-area-viewport]` get `isolation: isolate`; `[data-orientation]:has(> .pl-uniform-scroll-thumb)` gets `z-index: 5`. All themes incl. Pro; hover lift unchanged. No TS/TSX changed.
+- Backup: `C:\Project xxx\backup-theme-20261102-1532\` (src\app\globals.css, _handoff\Theme Master.md).
+- Checks: postcss parse OK; `npx tsc --noEmit -p .` exit 0; lines 1-15722 (incl. Trxn Table Master region) byte-identical to backup; CRLF, no BOM.
+- Txn row gap 8px->1px task: cancelled by user, nothing changed. Pro theme v-line 1px: read-only investigation only, nothing changed.
+- Status: not visually verified.
+
+## 2026-11-02 15:49 Asia/Kathmandu - Pro list-panel right line: removed resize-handle duplicate hairline
+- Task: user said Pro account-list side v-lines look thick black. Both are already 1px, black via Pro token --border: 0 0% 0% (globals.css 1098). Left = (dashboard)/layout.tsx:976 main wrapper border-l app-main-border; right = ResponsiveMasterDetail.tsx:322 panel border-r plus ResizeWidthHandle (ResizablePaneWidth.tsx) w-px bg-border line doubling it. User chose option (c): keep lines black, only hide the duplicate handle line.
+- Change: src/app/globals.css appended lines 15742-15748: body.theme-pro [data-pl-master-list-chrome] > [role="separator"]:not(:hover):not(:active) > div { background-color: transparent !important; } (hover on whole handle + drag :active still highlight). Lines 1-15741 byte-identical.
+- Backup: C:\Project xxx\backup-theme-20261102-1548\ (src/app/globals.css, _handoff/Theme Master.md)
+- Checks: postcss OK, tsc exit 0, CRLF/no BOM, Trxn Table region unchanged. Status: done, NOT visually verified.
+
+## 2026-11-02 15:52 Asia/Kathmandu - Pro left edge: removed app-sidebar resize-handle duplicate hairline
+- Task: user: left v-line (sidebar | list) still double after right fix. Cause: AppSidebar (sidebar.tsx:223) ResizeWidthHandle w-px bg-border (black in Pro) line beside main wrapper border-l app-main-border ((dashboard)/layout.tsx:976). Screenshot pixels: left 2px (grey+black), right now 1px.
+- Change: src/app/globals.css appended lines 15749-15755: body.theme-pro [data-pl-main-sidebar] > [role="separator"]:not(:hover):not(:active) > div { background-color: transparent !important; }. Lines 1-15748 byte-identical.
+- Backup: C:\Project xxx\backup-theme-20261102-1551\ (src/app/globals.css, _handoff/Theme Master.md)
+- Checks: postcss OK, tsc exit 0, CRLF/no BOM, Trxn Table region unchanged. Status: done, NOT visually verified.
