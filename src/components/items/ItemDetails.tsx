@@ -80,6 +80,9 @@ import {
 } from "@/lib/modalUrlSync";
 import { useMobileLedgerModalUrlGuard } from "@/hooks/useMobileLedgerModalUrlGuard";
 import type { Item } from "./types";
+import { ResolvedEntityAvatar } from "@/components/entity/ResolvedEntityAvatar";
+import { EntityFileAttachmentHover } from "@/components/entity/EntityFileAttachmentHover";
+import { trimEntityFileUrlForPreview } from "@/lib/trimEntityFileUrlForPreview";
 import { useDate } from "@/hooks/useDate";
 import BsDatePicker from "@/components/ui/BsDatePicker";
 import {
@@ -87,7 +90,8 @@ import {
   LEDGER_HEADER_OUTER_ROW_CN,
   LEDGER_HEADER_IDENTITY_CN,
   LEDGER_HEADER_AVATAR_CN,
-  LEDGER_HEADER_AVATAR_ICON_TILE_CN,
+  LEDGER_HEADER_AVATAR_TRIGGER_CN,
+LEDGER_HEADER_AVATAR_IMAGE_CN,
   LEDGER_HEADER_AVATAR_PEN_CN,
   LEDGER_HEADER_NAME_CARD_CN,
   LEDGER_HEADER_BALANCE_CARD_CN,
@@ -1131,9 +1135,20 @@ export default function ItemDetails({
         <div className={LEDGER_HEADER_OUTER_ROW_CN}>
           <div className={LEDGER_HEADER_IDENTITY_CN}>
             <div className={LEDGER_HEADER_AVATAR_CN}>
-              <div className={LEDGER_HEADER_AVATAR_ICON_TILE_CN}>
-                <Package className="h-6 w-6 text-muted-foreground" />
-              </div>
+              {/* Item photo = fileUrls[0] (live via currentItem), same square chrome as Party */}
+              <EntityFileAttachmentHover
+                fileUrl={trimEntityFileUrlForPreview(currentItem.fileUrls?.[0])}
+                triggerClassName={LEDGER_HEADER_AVATAR_TRIGGER_CN}
+              >
+                <ResolvedEntityAvatar
+                  className={LEDGER_HEADER_AVATAR_IMAGE_CN}
+                  companyId={(currentItem as { companyId?: string }).companyId}
+                  src={trimEntityFileUrlForPreview(currentItem.fileUrls?.[0]) ?? undefined}
+                  alt={currentItem.name}
+                  fallbackClassName="border border-blue-300 bg-blue-100/80"
+                  fallbackSlot={<Package className="h-6 w-6 text-muted-foreground" />}
+                />
+              </EntityFileAttachmentHover>
               {currentItem.id !== 'all' && (
                 <EditItemDialog
                   item={currentItem}

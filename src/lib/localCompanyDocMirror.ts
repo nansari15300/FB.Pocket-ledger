@@ -13,6 +13,7 @@
  */
 
 import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { adoptServerAttachmentRefsOverLocal } from "@/lib/mirrorAttachmentRefAdopt";
 import { doc, getDoc, Timestamp } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
 import { clearBrowserDbCache, getBrowserDbForCompanyId } from "@/lib/localSqlite";
@@ -1353,7 +1354,31 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
           });
           continue;
         }
-        const existing = await getCompanyDocFromBrowserDb(companyId, collectionName, id, { sqliteOnly: true });
+        let existing = await getCompanyDocFromBrowserDb(companyId, collectionName, id, { sqliteOnly: true });
+        // Voucher push writes `local:` first, then `pbatt:` with the same updatedAtMs.
+        // That second copy must not be dropped by the timestamp tie (other device kept the voucher, lost the file).
+        const voucherServerFileOnTie =
+          existing && collectionName === "vouchers"
+            ? adoptServerAttachmentRefsOverLocal(existing as Record<string, unknown>, payload) != null
+            : false;
+        if (existing && collectionName !== "vouchers") {
+          // Local local: pending ref vs server pbatt: for the same slot: server ref wins even on a timestamp tie
+          // (push writes local: first, then rewrites to pbatt: with the same updatedAtMs).
+          const adopted = adoptServerAttachmentRefsOverLocal(existing as Record<string, unknown>, payload);
+          if (adopted) {
+            try {
+              await upsertCompanyDocInBrowserDb(companyId, collectionName, id, adopted, {
+                force: true,
+                notify: true,
+                skipPlanMutationGate: true,
+                skipCloudSyncEnqueue: true,
+              });
+              existing = adopted as typeof existing;
+            } catch {
+              /* next pull retries */
+            }
+          }
+        }
         if (existing) {
           const existingMs = mirrorDocEditTimeMs(existing);
           const incomingMs = mirrorDocEditTimeMs(payload);
@@ -1435,7 +1460,8 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
             existingMs === incomingMs &&
             !incomingWinsTimestampTie &&
             (tiePrefersLocal || livePullPaused) &&
-            !voucherApprovalDiffers
+            !voucherApprovalDiffers &&
+            !voucherServerFileOnTie
           ) {
             skipped += 1;
             mirrorMergeSkipLog({

@@ -74,7 +74,11 @@ async function fetchWorkerProbe(href: string): Promise<boolean> {
     const t = window.setTimeout(() => ac.abort(), 12_000);
     try {
       const res = await fetch(href, { method: "GET", cache: "force-cache", signal: ac.signal });
-      return res.ok;
+      if (!res.ok) return false;
+      // Module workers reject application/octet-stream. A 200 with the wrong type is not a usable worker.
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
+      if (!ct) return true;
+      return ct.includes("javascript") || ct.includes("ecmascript");
     } finally {
       window.clearTimeout(t);
     }

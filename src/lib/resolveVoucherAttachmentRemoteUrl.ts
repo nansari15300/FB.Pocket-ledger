@@ -11,6 +11,8 @@ import { getLocalCompanyById } from "@/lib/localCompanyStore";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import { isDriveFileRef } from "@/lib/legacyDriveFileRef";
 import { shouldReadLedgerFromSqliteOnly } from "@/lib/companyStorageKind";
+import { isPbAttachmentRef } from "@/lib/pocketbaseData/pbAttachments";
+import { getValidPocketBaseAuth } from "@/lib/pocketbaseData/pbClient";
 
 /** HTTPS / Drive / blob — `local:` staging ke opposite; edit dialog merge me remote prefer karo. */
 export function isRemoteAttachmentUrl(u: string): boolean {
@@ -124,6 +126,56 @@ async function readVoucherFileUrlsForStaleLocalResolve(
   return { fileUrls: [], source: "none" };
 }
 
+/** Current server voucher `fileUrls` (the `pbatt:` rewrite the other device skipped). */
+async function readPocketBaseVoucherFileUrls(companyId: string, voucherId: string): Promise<string[]> {
+  if (!getValidPocketBaseAuth()) return [];
+  try {
+    const [{ ensurePocketBaseCompany, pbRecordToAppDoc }, { pbFirst, pbQuote }] = await Promise.all([
+      import("@/lib/pocketbaseData/pbSync"),
+      import("@/lib/pocketbaseData/pbClient"),
+    ]);
+    const companyRec = await ensurePocketBaseCompany(companyId, { createIfMissing: false });
+    const rec = await pbFirst<Record<string, unknown>>(
+      "pl_vouchers",
+      `company = ${pbQuote(companyRec)} && app_id = ${pbQuote(voucherId)}`
+    );
+    if (!rec) return [];
+    return normalizeFileUrlsField(pbRecordToAppDoc(rec).fileUrls);
+  } catch {
+    return [];
+  }
+}
+
+/** Keep the server file link locally without bumping edit time (so a later real edit still wins). */
+async function rememberServerAttachmentRefs(
+  companyId: string,
+  voucherId: string,
+  serverUrls: string[]
+): Promise<void> {
+  try {
+    const existing = (await getCompanyDocFromBrowserDb(companyId, "vouchers", voucherId)) as Record<
+      string,
+      unknown
+    > | null;
+    if (!existing) return;
+    const { adoptServerAttachmentRefsOverLocal } = await import("@/lib/mirrorAttachmentRefAdopt");
+    const adopted = adoptServerAttachmentRefsOverLocal(existing, { ...existing, fileUrls: serverUrls });
+    if (!adopted) return;
+    const { upsertCompanyDocInBrowserDb, notifyBrowserDbCollectionUpdated } = await import(
+      "@/lib/localCompanyDocMirror"
+    );
+    await upsertCompanyDocInBrowserDb(companyId, "vouchers", voucherId, adopted, {
+      force: true,
+      notify: false,
+      skipPlanMutationGate: true,
+      skipCloudSyncEnqueue: true,
+    });
+    notifyBrowserDbCollectionUpdated(companyId, "vouchers", { immediate: true });
+  } catch {
+    /* preview can still use the resolved url */
+  }
+}
+
 /**
  * IndexedDB pending blob cleared / APK cache wipe — voucher row may still hold `local:` in UI
  * while Firestore (or SQLite mirror) already has the uploaded download URL.
@@ -195,6 +247,23 @@ export async function tryResolveRemoteUrlForStaleLocalAttachment(
       fallbackPath = "remote_url_embeds_local_id";
       resolved = u;
       break;
+    }
+  }
+  // Other device kept `local:` because the file rewrite used the same updatedAtMs.
+  // Server row already has `pbatt:` in that same slot — take it even when the file name has no local id.
+  if (!resolved && localId && getValidPocketBaseAuth()) {
+    const serverUrls = await readPocketBaseVoucherFileUrls(cid, vid);
+    const slotIndex = idx >= 0 ? idx : fileUrls.findIndex((u) => u === staleUrl);
+    const slot = slotIndex >= 0 ? String(serverUrls[slotIndex] || "").trim() : "";
+    if (
+      slot &&
+      slot !== staleUrl &&
+      serverUrls.length === Math.max(fileUrls.length, client.length) &&
+      (isPbAttachmentRef(slot) || isRemoteAttachmentUrl(slot))
+    ) {
+      fallbackPath = "pocketbase_same_slot";
+      resolved = slot;
+      await rememberServerAttachmentRefs(cid, vid, serverUrls);
     }
   }
   // Same local: still present on the row (not yet upgraded) — nothing to resolve.

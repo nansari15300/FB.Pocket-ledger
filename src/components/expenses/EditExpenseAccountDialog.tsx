@@ -1,6 +1,7 @@
 
 "use client";
 
+import { DialogPlainOpener } from "@/components/ui/dialog-plain-opener";
 import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -681,7 +682,7 @@ export function EditExpenseAccountDialog({ account, onAccountUpdated, onAccountD
   return (
     <>
       <Dialog open={isOpen} onOpenChange={setIsOpen} modal={false}>
-        {children && <DialogTrigger asChild>{children}</DialogTrigger>}
+        {children ? <DialogPlainOpener onOpen={() => setIsOpen(true)}>{children}</DialogPlainOpener> : null}
         {isOpen && <div className={masterEditBackdropClassName(presentationMode)} />}
         <DialogContent 
             overlayClassName={

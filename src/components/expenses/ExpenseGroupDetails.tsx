@@ -189,7 +189,7 @@ export function ExpenseGroupDetails({
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
-  const { visibleColumns, handleColumnVisibilityChange } = useTransactionVisibleColumns();
+  const { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuNoTdsFilter } = useTransactionVisibleColumns();
   const { showNotes, setShowNotes, includeNotesInTable, notesPreferenceLockedOnMobile } = useShowNotes();
   const { balanceMode } = useBalanceMode();
   const { can } = usePermissions();
@@ -1124,7 +1124,7 @@ export function ExpenseGroupDetails({
               <LedgerFooterColumnsMenu>
                 <DropdownMenuContent align="start" className="w-52 p-2">
                   {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[])
-                    .filter((key) => key !== "status" || balanceMode === "bill_wise")
+                    .filter(ledgerColumnMenuNoTdsFilter).filter((key) => key !== "status" || balanceMode === "bill_wise")
                     .map((key) => {
                     const isStatusInStatement = key === "status" && balanceMode === "statement";
                     const isStatusInBillWise = key === "status" && balanceMode === "bill_wise";

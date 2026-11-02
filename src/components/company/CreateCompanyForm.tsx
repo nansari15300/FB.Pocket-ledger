@@ -769,10 +769,10 @@ export function CreateCompanyForm({
         description = errMsg;
       } else if (errMsg === "local_company_storage") {
         description =
-          "This company uses device storage and Google Drive sync — not Firebase Storage. Enable cloud sync in company settings, or save without a logo.";
+          "This company uses device storage and Google Drive sync — not PocketBase. Enable cloud sync in company settings, or save without a logo.";
       } else if (code === "storage/unauthorized" || code === "storage/unauthenticated") {
         description =
-          "Logo upload failed: cloud storage permission denied. Sign in again, or deploy the latest Firebase storage rules.";
+          "Logo upload failed: cloud storage permission denied. Sign in again, then retry the logo upload.";
       }
       toast({
         variant: "destructive",
@@ -957,7 +957,7 @@ export function CreateCompanyForm({
           <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
             <Label className="text-sm font-medium text-foreground">Company type</Label>
             <p className="text-xs text-muted-foreground">
-              Offline companies stay on this device (SQLite). Online companies sync to Firestore and count toward your
+              Offline companies stay on this device (SQLite). Online companies sync to PocketBase and count toward your
               plan&apos;s online company slots ({usedOnlineSlots}/{maxOnlineSlots || "—"} used). Local slots:{" "}
               {usedLocalSlots}/{maxLocalSlots || "—"}.
             </p>
@@ -979,7 +979,7 @@ export function CreateCompanyForm({
                 <label className="flex cursor-pointer items-start gap-2 text-left text-sm">
                   <RadioGroupItem value="online" id="create-storage-online" className="mt-0.5" />
                   <span>
-                    <span className="font-medium text-foreground">Online (Firestore)</span> — cloud company; other
+                    <span className="font-medium text-foreground">Online (PocketBase)</span> — cloud company; other
                     devices can sync when signed in with access.
                   </span>
                 </label>

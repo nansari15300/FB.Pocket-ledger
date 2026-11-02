@@ -5,6 +5,7 @@ export const COMPANY_SHARE_ROLE_OPTIONS = [
   { value: "accountant", label: "Accountant" },
   { value: "editor", label: "Editor" },
   { value: "manager", label: "Manager" },
+  { value: "admin", label: "Admin" },
 ] as const;
 
 /** Manage Sharing → Role Permissions editor (owner included). */
@@ -25,7 +26,6 @@ export function normalizeLocalCompanyAppRole(raw: unknown): LocalCompanyAppRole 
     .toLowerCase()
     .replace(/_/g, "-")
     .replace(/\s+/g, "-");
-  if (r === "admin") return "manager";
   if (VALID.has(r)) return r as LocalCompanyAppRole;
   return "viewer";
 }

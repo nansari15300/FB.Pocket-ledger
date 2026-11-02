@@ -44,8 +44,20 @@ import { PlanDetails } from "@/components/admin/plans/PlanDetails";
 import { BillingRegionalSettings } from "@/components/admin/plans/BillingRegionalSettings";
 import { getBillingApiUrl } from "@/lib/billingApiOrigin";
 
-/** Hosted + dev: same origin as billing/admin APIs (`/app/api/...` on pocket-ledger.com). */
-const ADMIN_PLANS_API = getBillingApiUrl("/api/admin/app-settings/plans");
+/**
+ * Same origin as this page (np server: `/app/api/...`), data on PocketBase. Resolved lazily (at call time)
+ * so it never bakes a pocket-ledger.com URL; never cross-origin.
+ */
+const adminPlansApiUrl = () => getBillingApiUrl("/api/admin/app-settings/plans");
+
+/** Tell the PocketBase read seam that a global doc changed (drops stale admin read caches). */
+function notifyPlansDocWritten() {
+    try {
+        if (typeof window !== "undefined") window.dispatchEvent(new Event("pl-udoc-written"));
+    } catch {
+        /* ignore */
+    }
+}
 
 export default function PlansPage() {
     useAdminAccess(['SuperAdmin']);
@@ -158,7 +170,8 @@ export default function PlansPage() {
         setSeedBusy(true);
         try {
             const token = await getBillingApiIdToken(user);
-            const res = await fetch(ADMIN_PLANS_API, {
+            const res = await fetch(adminPlansApiUrl(), {
+                signal: AbortSignal.timeout(25000),
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ seedDefaults: true }),
@@ -215,8 +228,9 @@ export default function PlansPage() {
             return false;
         }
 
+        // Fallback write straight to the PocketBase document store (udoc), same document the API writes.
         const writeClientOnly = async () => {
-            // Sirf is tier ka field — poora doc spread nahi (kam undefined / size issues).
+            // Sirf is tier ka field - poora doc spread nahi (kam undefined / size issues).
             const { demo: _d, ...planWithoutDemo } = updatedPlan as Plan & { demo?: unknown };
             await setDoc(
                 doc(db, "app_settings", "plans"),
@@ -225,11 +239,22 @@ export default function PlansPage() {
             );
         };
 
+        /** Saved: keep the optimistic row (it has the new free flag etc.) and refresh caches. Never fails the save. */
+        const markSaved = () => {
+            serverHydratedRef.current = true;
+            notifyPlansDocWritten();
+            setPlans((prev) => {
+                writeCachedPlansList(prev);
+                return prev;
+            });
+        };
+
         try {
             const token = await getBillingApiIdToken(user);
             const { demo: _d, ...planWithoutDemo } = updatedPlan as Plan & { demo?: unknown };
             const planPayload = sanitizePlanForFirestoreWrite(planWithoutDemo as Plan);
-            const res = await fetch(ADMIN_PLANS_API, {
+            const res = await fetch(adminPlansApiUrl(), {
+                signal: AbortSignal.timeout(25000),
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                 body: JSON.stringify({
@@ -239,18 +264,8 @@ export default function PlansPage() {
             });
             const j = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
 
-            const refreshPlansFromServer = async () => {
-                const snap = await getDocFromServer(doc(db, "app_settings", "plans"));
-                if (!snap.exists()) return;
-                const data = snap.data() as Record<string, unknown>;
-                const merged = mergeAppSettingsPlansDoc(data);
-                setPlans(merged);
-                writeCachedPlansList(merged);
-                serverHydratedRef.current = true;
-            };
-
             if (res.ok) {
-                await refreshPlansFromServer();
+                markSaved();
                 return true;
             }
 
@@ -261,23 +276,17 @@ export default function PlansPage() {
 
             try {
                 await writeClientOnly();
-                await refreshPlansFromServer();
+                markSaved();
                 return true;
             } catch (clientErr: unknown) {
                 const msg = clientErr instanceof Error ? clientErr.message : String(clientErr);
-                toast({ variant: "destructive", title: "Save failed", description: msg });
+                toast({ variant: "destructive", title: "Save failed", description: j?.error ?? msg });
                 return false;
             }
         } catch (error: unknown) {
             try {
                 await writeClientOnly();
-                const snap = await getDocFromServer(doc(db, "app_settings", "plans"));
-                if (snap.exists()) {
-                    const merged = mergeAppSettingsPlansDoc(snap.data() as Record<string, unknown>);
-                    setPlans(merged);
-                    writeCachedPlansList(merged);
-                    serverHydratedRef.current = true;
-                }
+                markSaved();
                 return true;
             } catch (clientErr: unknown) {
                 const msg = clientErr instanceof Error ? clientErr.message : String(clientErr);
@@ -286,7 +295,6 @@ export default function PlansPage() {
             }
         }
     };
-
     const handleSaveOnlineDemo = async (
         offer: OnlineDemoOffer,
         options?: { existingDemoAction?: "retain" | "reset" | "replace" }
@@ -297,7 +305,8 @@ export default function PlansPage() {
         }
         try {
             const token = await getBillingApiIdToken(user);
-            const res = await fetch(ADMIN_PLANS_API, {
+            const res = await fetch(adminPlansApiUrl(), {
+                signal: AbortSignal.timeout(25000),
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                 body: JSON.stringify({
@@ -351,7 +360,8 @@ export default function PlansPage() {
         };
         try {
             const token = await getBillingApiIdToken(user);
-            const res = await fetch(ADMIN_PLANS_API, {
+            const res = await fetch(adminPlansApiUrl(), {
+                signal: AbortSignal.timeout(25000),
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ deviceUserAddOns: sanitized }),
@@ -415,7 +425,8 @@ export default function PlansPage() {
 
         try {
             const token = await getBillingApiIdToken(user);
-            const res = await fetch(ADMIN_PLANS_API, {
+            const res = await fetch(adminPlansApiUrl(), {
+                signal: AbortSignal.timeout(25000),
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                 body: JSON.stringify({

@@ -1,14 +1,13 @@
 import "server-only";
 
 import admin from "firebase-admin";
-import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
 import { PB_BEARER_PREFIX, verifyPocketBaseBearer } from "@/lib/localCloudSync/server/pbBearerAuth";
 import { pbBillingDb, pbBillingReady } from "@/lib/server/pbBilling/pbBillingDb";
 
 /**
  * Who is calling a plan / billing route, and which store holds their companies:
  * - `Bearer plpb.<token>` (Pocket Ledger Server login) -> server billing store (PocketBase)
- * - Firebase ID token (older accounts / companies) -> Firestore, unchanged
+ * - Anything else (Firebase ID tokens) is NOT accepted any more: Firebase is removed, PocketBase only.
  */
 export type BillingStore = "firebase" | "server";
 
@@ -36,7 +35,7 @@ export function isServerBillingBearer(token: string): boolean {
 }
 
 const SERVER_NOT_LINKED =
-  "Server billing is not linked: set PL_HOSTING_KEY in the app (Hosting settings > App link key).";
+  "Server billing is not linked: set PL_HOSTING_KEY in the app (Hosting settings > App link key). (TEMP no-key fallback is off.)";
 
 export async function resolveBillingCallerFromToken(token: string): Promise<BillingCallerResult> {
   if (!token) return { ok: false, status: 401, error: "Missing Authorization Bearer token" };
@@ -53,29 +52,22 @@ export async function resolveBillingCallerFromToken(token: string): Promise<Bill
     } as unknown as admin.auth.DecodedIdToken;
     return { ok: true, decoded, db: pbBillingDb(), store: "server" };
   }
-  if (!isFirebaseAdminConfigured()) {
-    return { ok: false, status: 503, error: "Firebase Admin is not configured on this server." };
-  }
-  const db = getAdminDb();
-  try {
-    const decoded = await admin.auth().verifyIdToken(token);
-    return { ok: true, decoded, db, store: "firebase" };
-  } catch {
-    return { ok: false, status: 401, error: "Invalid auth token" };
-  }
+  return { ok: false, status: 401, error: "Sign in with your Pocket Ledger Server account (Firebase login is no longer supported)." };
 }
 
 export async function resolveBillingCaller(req: Request): Promise<BillingCallerResult> {
   return resolveBillingCallerFromToken(bearerFromRequest(req));
 }
 
-/** Store for a checkout / webhook from its metadata (`plStore: "server"`), default Firebase. */
+/** Store for a checkout / webhook from its metadata: always the server (PocketBase) - Firebase is removed. */
 export function billingStoreFromMeta(meta: Record<string, unknown> | null | undefined): BillingStore {
-  return String(meta?.[BILLING_STORE_META_KEY] ?? "").trim() === "server" ? "server" : "firebase";
+  void meta;
+  return "server";
 }
 
 export function billingDbForStore(store: BillingStore): admin.firestore.Firestore {
-  return store === "server" ? pbBillingDb() : getAdminDb();
+  void store;
+  return pbBillingDb();
 }
 
 /**

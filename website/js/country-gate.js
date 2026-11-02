@@ -27,6 +27,22 @@
     return isLocalHost() || h === "";
   }
 
+  /** Any *.pocket-ledger.com host that is NOT the canonical marketing apex (dev., np., in., ...) serves its own /app. */
+  function isSelfAppHost() {
+    var h = hostName();
+    if (isLocalHost()) return true;
+    if (h === "pocket-ledger.com" || h === "www.pocket-ledger.com") return false;
+    return /\.pocket-ledger\.com$/.test(h);
+  }
+
+  /** Non-country subdomain (dev.pocket-ledger.com ...): app + PB must stay on this origin (PB via /pb proxy). */
+  function isDevHost() {
+    var h = hostName();
+    if (isLocalHost() || !/\.pocket-ledger\.com$/.test(h) || h === "www.pocket-ledger.com") return false;
+    var sub = h.split(".")[0];
+    return !(/^[a-z]{2}$/.test(sub) || sub === "nepal");
+  }
+
   function countryFromHost() {
     var h = hostName();
     var parts = h.split(".");
@@ -103,13 +119,14 @@
   function countryAppUrl(rec) {
     rec = rec || detect();
     if (!rec) return "/app";
-    if (isLocalHost()) return "/app";
+    if (isSelfAppHost()) return "/app"; // dev / np / localhost: stay same-origin (apex pocket-ledger.com unchanged)
     return "https://" + rec.host + "/app";
   }
 
   /** EXE/APK live on that country's Pocket Ledger Server, not Firebase. */
   function countryReleasesUrl(rec) {
     rec = rec || detect();
+    if (isDevHost()) return location.origin + "/releases/latest.json";
     if (rec && rec.live && rec.host) {
       return "https://" + rec.host + "/releases/latest.json";
     }
@@ -396,6 +413,8 @@
     flagUrl: flagUrl,
     countryHomeUrl: countryHomeUrl,
     countryAppUrl: countryAppUrl,
+    isSelfAppHost: isSelfAppHost,
+    isDevHost: isDevHost,
     countryReleasesUrl: countryReleasesUrl,
     remember: remember,
     renderPicker: renderPicker,

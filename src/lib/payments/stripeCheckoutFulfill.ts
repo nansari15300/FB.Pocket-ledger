@@ -6,7 +6,7 @@ import Stripe from "stripe";
 import * as admin from "firebase-admin";
 import { normalizePlanIdForClient, type PlanId } from "@/config/plans";
 import { mergeGatewayKeysWithEnv, type GatewayKeys } from "@/ai/flows/gateway-keys";
-import { getAdminDb } from "@/lib/firebaseAdmin";
+import { serverDb } from "@/lib/server/appDb";
 import { applyPlanChangeOneTimeToFirestore } from "@/lib/payments/planChangeApply";
 import {
   applyAddonPurchaseToFirestore,
@@ -55,7 +55,7 @@ export function getStripeForPayments(): Stripe {
 export async function getStripeForPaymentsMerged(): Promise<Stripe> {
   let stored: GatewayKeys = {};
   try {
-    const db = getAdminDb();
+    const db = serverDb();
     const snap = await db.doc("app_settings/payment_gateways").get();
     if (snap.exists) stored = (snap.data() as GatewayKeys) || {};
   } catch {

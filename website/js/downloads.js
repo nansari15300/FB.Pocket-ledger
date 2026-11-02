@@ -9,7 +9,7 @@
 
   function isLocalHost() {
     var h = location.hostname;
-    return h === "localhost" || h === "127.0.0.1" || h === "::1";
+    return h === "localhost" || h === "127.0.0.1" || h === "::1" || window.PL_DEV_HOST === true;
   }
 
   function siteBase() {

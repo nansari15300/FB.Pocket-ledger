@@ -159,8 +159,8 @@ function roleKey(raw: unknown): UserRole | null {
     .trim()
     .replace(/_/g, "-")
     .replace(/\s+/g, "-");
-  if (n === "admin" || n === "administrator") return "manager";
-  if (["viewer", "data-entry", "accountant", "editor", "manager", "owner"].includes(n)) {
+  if (n === "administrator") return "manager";
+  if (["viewer", "data-entry", "accountant", "editor", "manager", "admin", "owner"].includes(n)) {
     return n as UserRole;
   }
   return null;

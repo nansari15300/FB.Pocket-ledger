@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import usePermissions from "@/hooks/usePermissions";
 import type { VisibleColumns, TransactionColumnKey } from "./TransactionsTable";
 
 export const COLUMN_VISIBILITY_KEY = "transactionVisibleColumns";
@@ -70,7 +71,19 @@ export function useTransactionVisibleColumns() {
     });
   }, []);
 
-  return { visibleColumns, handleColumnVisibilityChange };
+  // Columns menu must list only columns the table really renders: File needs the plan/role file permission
+  // (TransactionsTable showFileColumn); Taxable / TDS Amount only exist on Tax / TDS-mode ledgers.
+  const { canAddFileImagePdf } = usePermissions();
+  const ledgerColumnMenuFilter = useCallback(
+    (key: TransactionColumnKey) => key !== "file" || canAddFileImagePdf === true,
+    [canAddFileImagePdf]
+  );
+  const ledgerColumnMenuNoTdsFilter = useCallback(
+    (key: TransactionColumnKey) => key !== "tdsTaxable" && key !== "tdsAmount" && ledgerColumnMenuFilter(key),
+    [ledgerColumnMenuFilter]
+  );
+
+  return { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuFilter, ledgerColumnMenuNoTdsFilter };
 }
 
 /** Show notes in transaction tables: localStorage; PC par default tick (sirf explicit "false" par hide). Mobile par hamesha notes dikhao — checkbox lock. */

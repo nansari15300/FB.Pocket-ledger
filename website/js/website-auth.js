@@ -175,6 +175,7 @@
   function countryPbOrigin() {
     try {
       var rec = window.PLCountry && typeof window.PLCountry.get === "function" ? window.PLCountry.get() : null;
+      if (window.PL_DEV_HOST === true) return window.location.origin + "/pb";
       if (rec && rec.live && rec.host) return "https://" + rec.host;
     } catch (_) { /* ignore */ }
     return "https://np.pocket-ledger.com";

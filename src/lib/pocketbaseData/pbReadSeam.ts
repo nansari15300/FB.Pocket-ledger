@@ -739,14 +739,89 @@ function adminList(parent: string, mode: GlobalMode = "admin", q: ParsedQuery | 
   return p;
 }
 
+/**
+ * Many listeners re-read their own `users/...`, `conversations/...` ... doc at (nearly) the same moment
+ * (poll tick, realtime "udoc written" event). One request per doc made the server queue hundreds of
+ * `/api/pl/udoc/get` calls at once and the app's 15s request timeout fired ("request timed out").
+ * The server already accepts up to 200 paths per call, so docs asked for within a few ms share one request.
+ */
+const USER_GET_BATCH_MS = 30;
+const USER_GET_BATCH_MAX = 100;
+type UserGetWaiter = { resolve: (d: AnyRec | null) => void; reject: (e: unknown) => void };
+let userGetQueue = new Map<string, UserGetWaiter[]>();
+let userGetTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushUserGets(): void {
+  userGetTimer = null;
+  const batch = userGetQueue;
+  userGetQueue = new Map();
+  const paths = Array.from(batch.keys());
+  for (let i = 0; i < paths.length; i += USER_GET_BATCH_MAX) {
+    const chunk = paths.slice(i, i + USER_GET_BATCH_MAX);
+    const rejectAll = (e: unknown) => {
+      for (const p of chunk) for (const w of batch.get(p) || []) w.reject(e);
+    };
+    adminPbRequest("/api/pl/udoc/get", { method: "POST", body: { paths: chunk }, timeoutMs: 30_000 })
+      .then(async (r) => {
+        const docs = (Array.isArray((r as { docs?: unknown[] } | null)?.docs) ? (r as { docs: unknown[] }).docs : []) as {
+          exists?: unknown;
+          data?: unknown;
+          denied?: unknown;
+        }[];
+        for (let j = 0; j < chunk.length; j++) {
+          const ws = batch.get(chunk[j]) || [];
+          const d = docs[j];
+          if (d && d.denied === true) {
+            const err = Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" });
+            for (const w of ws) w.reject(err);
+            continue;
+          }
+          try {
+            const out = d && d.exists === true ? await decodeAdmin(d.data) : null;
+            for (const w of ws) w.resolve(out);
+          } catch (e) {
+            for (const w of ws) w.reject(e);
+          }
+        }
+      })
+      .catch(rejectAll);
+  }
+}
+
+function userDocBatched(path: string): Promise<AnyRec | null> {
+  return new Promise<AnyRec | null>((resolve, reject) => {
+    const ws = userGetQueue.get(path);
+    if (ws) ws.push({ resolve, reject });
+    else userGetQueue.set(path, [{ resolve, reject }]);
+    if (!userGetTimer) userGetTimer = setTimeout(flushUserGets, USER_GET_BATCH_MS);
+  });
+}
+
+/** Drop the short read caches; calls within 400ms of the last drop share it (many listeners fire together). */
+let lastAdminCacheClear = 0;
+function clearAdminCaches(): void {
+  const n = Date.now();
+  if (n - lastAdminCacheClear < 400) return;
+  lastAdminCacheClear = n;
+  adminListCache.clear();
+  adminDocCache.clear();
+}
+
 function adminDoc(path: string, mode: GlobalMode = "admin"): Promise<AnyRec | null> {
   const cacheKey = mode === "user" ? `u|${path}` : path;
   const hit = adminDocCache.get(cacheKey);
   if (hit && Date.now() - hit.at < ADMIN_CACHE_MS) return hit.p;
+  if (mode === "user") {
+    const pu = userDocBatched(path);
+    adminDocCache.set(cacheKey, { at: Date.now(), p: pu });
+    pu.catch(() => adminDocCache.delete(cacheKey));
+    return pu;
+  }
   const p = (async () => {
-    const r = (await adminPbRequest(mode === "user" ? "/api/pl/udoc/get" : "/api/pl/admin/get", {
+    const r = (await adminPbRequest("/api/pl/admin/get", {
       method: "POST",
       body: { paths: [path] },
+      timeoutMs: 30_000,
     })) as {
       docs?: { exists?: unknown; data?: unknown; denied?: unknown }[];
     };
@@ -795,6 +870,27 @@ async function adminGetQuerySnapshot(
 
 const ADMIN_POLL_MS = 30_000;
 const USER_POLL_MS = 10_000;
+
+const userPollers = new Set<() => void>();
+let userPollTicker: ReturnType<typeof setInterval> | null = null;
+function startUserPollTicker(): void {
+  if (userPollTicker) return;
+  userPollTicker = setInterval(() => {
+    for (const fn of Array.from(userPollers)) {
+      try {
+        fn();
+      } catch {
+        /* ignore */
+      }
+    }
+  }, USER_POLL_MS);
+}
+function stopUserPollTickerIfIdle(): void {
+  if (userPollers.size === 0 && userPollTicker) {
+    clearInterval(userPollTicker);
+    userPollTicker = null;
+  }
+}
 
 /** Admin `onSnapshot`: server read now, on server change events, and every 30s (only changes emit). */
 function onAdminSnapshot(args: unknown[], t: AdminTarget): () => void {
@@ -846,30 +942,45 @@ function onAdminSnapshot(args: unknown[], t: AdminTarget): () => void {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
-      adminListCache.clear();
-      adminDocCache.clear();
+      clearAdminCaches();
       void emit();
     }, 1_500);
   };
+  // General (user-mode) docs live in the server's udoc store: local company-mirror bumps / company-root pulls
+  // never change them (writes and server pushes fire "pl-udoc-written"), so only admin-mode listeners follow those.
+  const followCompanyEvents = t.mode !== "user";
   let bumpEvent = "";
-  void import("@/lib/localCompanyDocMirror").then((m) => {
-    if (closed) return;
-    bumpEvent = m.BROWSER_DB_COLLECTION_BUMP;
-    window.addEventListener(bumpEvent, schedule);
-  });
-  window.addEventListener("pl-pb-company-root-updated", schedule);
-  const poll = setInterval(() => {
-    adminListCache.clear();
-    adminDocCache.clear();
+  if (followCompanyEvents) {
+    void import("@/lib/localCompanyDocMirror").then((m) => {
+      if (closed) return;
+      bumpEvent = m.BROWSER_DB_COLLECTION_BUMP;
+      window.addEventListener(bumpEvent, schedule);
+    });
+    window.addEventListener("pl-pb-company-root-updated", schedule);
+  }
+  const pollTick = () => {
+    clearAdminCaches();
     void emit();
-  }, t.mode === "user" ? USER_POLL_MS : ADMIN_POLL_MS);
+  };
+  let poll: ReturnType<typeof setInterval> | null = null;
+  if (t.mode === "user") {
+    // one shared ticker for all user-mode listeners so their reads land in the same batched request
+    userPollers.add(pollTick);
+    startUserPollTicker();
+  } else {
+    poll = setInterval(pollTick, ADMIN_POLL_MS);
+  }
   window.addEventListener("pl-udoc-written", schedule);
   void emit();
   return () => {
     closed = true;
-    clearInterval(poll);
+    if (poll) clearInterval(poll);
+    if (t.mode === "user") {
+      userPollers.delete(pollTick);
+      stopUserPollTickerIfIdle();
+    }
     if (timer) clearTimeout(timer);
-    window.removeEventListener("pl-pb-company-root-updated", schedule);
+    if (followCompanyEvents) window.removeEventListener("pl-pb-company-root-updated", schedule);
     window.removeEventListener("pl-udoc-written", schedule);
     if (bumpEvent) window.removeEventListener(bumpEvent, schedule);
   };

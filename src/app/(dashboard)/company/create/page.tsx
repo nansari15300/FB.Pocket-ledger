@@ -32,13 +32,12 @@ function CreateCompanyPageContent() {
   const { availability: createCompanyAvailability, loading: createAvailabilityLoading } =
     useCreateCompanyAvailability();
   /** `loading`: registry hydrate — iske pehle khali list mat maanho; `companyId` orphan ho sakta hai (list 0 par bhi) → /company bounce loop. */
-  const { setCompanyId, allCompanies, loading: companyContextLoading } = useCompany();
+  const { setCompanyId, loading: companyContextLoading } = useCompany();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [checkingCompanies, setCheckingCompanies] = useState(true);
-  /** Jab koi company pehle se hai tab dialog band kar sakte hain (select page par wapas). */
-  const [userHasCompanies, setUserHasCompanies] = useState(false);
+  /** Save success pe close redirect skip — dashboard par navigate ho chuka hota hai. */
   const skipCloseRedirectRef = useRef(false);
   /** Pehli hydrate ke baad `companyContextLoading` dubara flip par create dialog mat kholo. */
   const initialHydrateDoneRef = useRef(false);
@@ -48,13 +47,6 @@ function CreateCompanyPageContent() {
   /** Create-company precheck: hidden-tab/deleted companies ko active company-count me include mat karo. */
   const isVisibleCompanyRow = (row: { isDeleted?: unknown; movedToAdminRecycleAt?: unknown }) =>
     row.isDeleted !== true && row.movedToAdminRecycleAt == null;
-
-  // Sirf list length / dismissable — `allCompanies` par mat jodo warna create ke turant baad effect dubara chal kar dialog phir `open` kar deta tha.
-  useEffect(() => {
-    if (!isLocalOnlyMode() || authLoading || companyContextLoading) return;
-    const selectable = (allCompanies || []).filter((c) => isVisibleCompanyRow(c));
-    setUserHasCompanies(selectable.length > 0);
-  }, [allCompanies, authLoading, companyContextLoading]);
 
   // Hydrate: /company/create par pehli baar loading ke baad create dialog kholo — `allCompanies` yahan dependency me nahi (re-open bug).
   useEffect(() => {
@@ -85,12 +77,11 @@ function CreateCompanyPageContent() {
 
     if (!initialHydrateDoneRef.current) setCheckingCompanies(true);
     let settled = false;
-    const setSettled = (hasCompanies: boolean) => {
+    const setSettled = () => {
       if (settled || createCompletedRef.current) return;
       settled = true;
       setCheckingCompanies(false);
       initialHydrateDoneRef.current = true;
-      setUserHasCompanies(hasCompanies);
       if (createCompanyAvailability.canCreateAny) {
         setIsDialogOpen(true);
       }
@@ -107,7 +98,7 @@ function CreateCompanyPageContent() {
     const sharedVariantsReady = new Set<string>();
     const maybeDone = () => {
       if (!ownedDone || !sharedDone) return;
-      setSettled(ownedCount > 0 || sharedCount > 0);
+      setSettled();
     };
     const mergeSharedCount = () => {
       if (sharedVariantsReady.size < sharedQuerySpecs.length) return;
@@ -132,7 +123,7 @@ function CreateCompanyPageContent() {
       ownedDone = true;
       maybeDone();
     }, () => {
-      setSettled(false);
+      setSettled();
     });
 
     const unsubShared = sharedQuerySpecs.map((spec) =>
@@ -145,12 +136,12 @@ function CreateCompanyPageContent() {
           mergeSharedCount();
         },
         () => {
-          setSettled(false);
+          setSettled();
         }
       )
     );
 
-    const timeoutId = setTimeout(() => setSettled(false), 10000);
+    const timeoutId = setTimeout(() => setSettled(), 10000);
 
     const cleanupListeners = () => {
       unsubOwned();
@@ -191,9 +182,7 @@ function CreateCompanyPageContent() {
       skipCloseRedirectRef.current = false;
       return;
     }
-    if (userHasCompanies) {
-      router.replace("/company");
-    }
+    router.replace("/company");
   };
 
   // Show loading while checking companies
@@ -225,7 +214,7 @@ function CreateCompanyPageContent() {
         onOpenChange={handleDialogOpenChange}
         onCompanyCreated={handleCompanyCreated}
         redirectTo={null}
-        isDismissable={userHasCompanies}
+        isDismissable
       />
     </div>
   );

@@ -85,6 +85,8 @@ import {
   LEDGER_HEADER_IDENTITY_CN,
   LEDGER_HEADER_AVATAR_CN,
   LEDGER_HEADER_AVATAR_PEN_CN,
+LEDGER_HEADER_AVATAR_TRIGGER_CN,
+LEDGER_HEADER_AVATAR_IMAGE_CN,
   LEDGER_HEADER_NAME_CARD_CN,
   LEDGER_HEADER_BALANCE_CARD_CN,
   LEDGER_HEADER_BALANCE_STACK_CN,
@@ -405,7 +407,7 @@ export function StaffDetails({
   }, [isAllVouchersView]);
   const [isNoteOpen, setIsNoteOpen] = useState(false);
   const [showNarration, setShowNarration] = useState(true);
-  const { visibleColumns, handleColumnVisibilityChange } = useTransactionVisibleColumns();
+  const { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuFilter } = useTransactionVisibleColumns();
   const { setShowNotes, includeNotesInTable, notesPreferenceLockedOnMobile } = useShowNotes();
   // Report mobile: list vs running-balance chart (Party report parity).
   const [mobileReportView, setMobileReportView] = useState<"list" | "chart">("list");
@@ -1951,10 +1953,10 @@ export function StaffDetails({
             <div className={LEDGER_HEADER_AVATAR_CN}>
               <EntityFileAttachmentHover
                 fileUrl={staffHeaderAttachmentUrl}
-                triggerClassName="inline-flex rounded-full"
+                triggerClassName={LEDGER_HEADER_AVATAR_TRIGGER_CN}
               >
                 <ResolvedEntityAvatar
-                  className="h-12 w-12 text-lg flex-shrink-0"
+                  className={LEDGER_HEADER_AVATAR_IMAGE_CN}
                   src={staffHeaderAttachmentUrl ?? undefined}
                   alt={staff.name}
                   fallbackSlot={<StaffAccountFallbackIcon staff={staff} variant="detail" className="h-6 w-6" />}
@@ -2324,7 +2326,7 @@ export function StaffDetails({
                       (key) => !["tdsTaxable", "tdsAmount"].includes(key)
                     )
                 )
-                  .filter((key) => key !== "status" || effectiveBalanceMode === "bill_wise")
+                  .filter(ledgerColumnMenuFilter).filter((key) => key !== "status" || effectiveBalanceMode === "bill_wise")
                   .map((key) => {
                   const isStatusInStatement = key === "status" && effectiveBalanceMode === "statement";
                   const isStatusInBillWise = key === "status" && effectiveBalanceMode === "bill_wise";

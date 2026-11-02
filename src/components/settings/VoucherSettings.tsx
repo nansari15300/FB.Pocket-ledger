@@ -153,7 +153,7 @@ const rateEditableSettingsSchema = z.object({
 
 const voucherPrefixSelectionSchema = voucherEditableSettingsSchema.partial();
 
-const ROLES_WITH_VOUCHER_CREATE = ["data-entry", "accountant", "editor", "manager", "owner"] as const;
+const ROLES_WITH_VOUCHER_CREATE = ["data-entry", "accountant", "editor", "manager", "admin", "owner"] as const;
 
 /** Mukh spend-wise opposite voucher OFF hone par sab roles ke require-link bite false hon (Firestore + UI mismatch se bachaa). */
 function requirePaymentLinkAllRolesOff(): Record<string, { payment_out: boolean; contra: boolean; direct_expense: boolean }> {
@@ -168,6 +168,7 @@ const ROLE_LABELS: Record<string, string> = {
   accountant: "Accountant",
   editor: "Editor",
   manager: "Manager",
+  admin: "Admin",
   owner: "Owner",
 };
 

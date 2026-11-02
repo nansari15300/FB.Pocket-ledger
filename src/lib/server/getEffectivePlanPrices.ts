@@ -1,4 +1,4 @@
-import { getAdminDb } from "@/lib/firebaseAdmin";
+import { serverDb } from "@/lib/server/appDb";
 import { DEFAULT_PLANS, type PlanId } from "@/config/plans";
 import {
   getEffectivePlanPrices as getNepalEffectivePlanPrices,
@@ -19,7 +19,7 @@ export async function getEffectivePlanIsFree(planId: PlanId): Promise<boolean> {
   const def = DEFAULT_PLANS[planId];
   if (def.isFree === true) return true;
   try {
-    const db = getAdminDb();
+    const db = serverDb();
     const snap = await db.doc("app_settings/plans").get();
     if (!snap.exists) return false;
     const row = (snap.data() as Record<string, { isFree?: boolean }>)[planId];

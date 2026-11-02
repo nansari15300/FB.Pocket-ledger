@@ -192,9 +192,21 @@ export async function fetchPbAttachmentBlob(ref: string): Promise<Blob | null> {
         cachePut(ref, onDisk);
         return onDisk;
       }
+      // Shared member / fresh sign-in: the auth token may not be restored yet when a preview opens.
+      for (let i = 0; i < 12 && !getValidPocketBaseAuth(); i++) {
+        await new Promise((r) => setTimeout(r, 250));
+      }
       if (!getValidPocketBaseAuth()) return null;
       // 2) server, then keep a copy on this device so the next open (and offline) needs no network
-      const blob = await fetchPbAttachmentBytesFromServer(p);
+      let blob: Blob | null = null;
+      try {
+        blob = await fetchPbAttachmentBytesFromServer(p);
+      } catch (e) {
+        const status = Number((e as { status?: unknown })?.status);
+        if (status === 404 || status === 403) throw e;
+        await new Promise((r) => setTimeout(r, 700));
+        blob = await fetchPbAttachmentBytesFromServer(p);
+      }
       if (blob && blob.size > 0) {
         cachePut(ref, blob);
         void saveToDevice(ref, blob);

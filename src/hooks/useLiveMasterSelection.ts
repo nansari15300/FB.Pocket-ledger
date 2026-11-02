@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import {
-  masterEntityProfileUiFields,
+  mergeLiveMasterSelection,
   resolveMasterListSelection,
 } from "@/lib/masterEntityLiveUpdate";
 
@@ -21,10 +21,12 @@ export function useLiveMasterSelection<T extends { id: string }>(
   useEffect(() => {
     if (!selected?.id || !live) return;
     if (selected === live) return;
-    const prev = masterEntityProfileUiFields(selected as unknown as Record<string, unknown>);
-    const next = masterEntityProfileUiFields(live as unknown as Record<string, unknown>);
-    if (prev === next) return;
-    setSelected({ ...selected, ...live });
+    const merged = mergeLiveMasterSelection(
+      selected as unknown as Record<string, unknown>,
+      live as unknown as Record<string, unknown>
+    );
+    if (!merged) return;
+    setSelected(merged as unknown as T);
   }, [selected, live, setSelected]);
 
   return live;

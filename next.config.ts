@@ -45,7 +45,7 @@ const baseConfig: NextConfig = {
   // Dev me React 18 Strict Mode effect 2× run karta hai — kuch navigation side-effects zyada dikhte hain.
   reactStrictMode: false,
   // Dev only: phone / port-forwarded access to the :3000 gateway (LAN + public IP).
-  ...(isDevBuild ? { allowedDevOrigins: ["192.168.1.64", "110.34.23.84"] } : {}),
+  ...(isDevBuild ? { allowedDevOrigins: ["192.168.1.64", "110.34.23.84", "dev.pocket-ledger.com"] } : {}),
   ...(webAppBasePath ? { basePath: webAppBasePath } : {}),
   env: {
     NEXT_PUBLIC_WEB_APP_BASE_PATH: webAppBasePath || "",

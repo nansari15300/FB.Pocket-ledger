@@ -623,7 +623,7 @@ export default function DashboardPage() {
     const [cashFlowOpen, setCashFlowOpen] = useState(false);
 
     const [showRecentNarration, setShowRecentNarration] = useState(false);
-  const { visibleColumns, handleColumnVisibilityChange } = useTransactionVisibleColumns();
+  const { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuNoTdsFilter } = useTransactionVisibleColumns();
   const { setShowNotes, includeNotesInTable, notesPreferenceLockedOnMobile } = useShowNotes();
   
   const [recentRowsPerPage, setRecentRowsPerPage] = useRowsPerPage(10, "app-recent-rows-per-page");
@@ -2309,7 +2309,7 @@ export default function DashboardPage() {
                 />
                 <LedgerFooterColumnsMenu>
                   <DropdownMenuContent align="start" className="w-52 p-2">
-                    {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[])
+                    {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[]).filter(ledgerColumnMenuNoTdsFilter)
                       .filter((key) => key !== 'runningBalance' && key !== 'status')
                       .map((key) => (
                         <DropdownMenuItem

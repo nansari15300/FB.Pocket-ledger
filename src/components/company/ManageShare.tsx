@@ -1335,7 +1335,7 @@ const handleDateLimitChange = (action: 'entry' | 'edit' | 'delete', value: numbe
       const currentSharedWith = currentData.sharedWith || [];
 
       const normalizedRole = newRole.toLowerCase() as UserRole;
-      if (!["viewer", "data-entry", "accountant", "editor", "manager"].includes(normalizedRole)) {
+      if (!["viewer", "data-entry", "accountant", "editor", "manager", "admin"].includes(normalizedRole)) {
         toast({
           variant: "destructive",
           title: "Invalid Role",

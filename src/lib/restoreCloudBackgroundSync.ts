@@ -5,7 +5,8 @@
  */
 
 import { setDoc, writeBatch } from "@/lib/writeGateway/pbWrites";
-import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp } from "@/lib/pbCompat/firestore";
+import { collection, doc, limit, query, serverTimestamp } from "@/lib/pbCompat/firestore";
+import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { COLLECTIONS_TO_BACKUP } from "@/lib/companyBackupCore";
 import { getLocalCompanyById, upsertLocalCompany } from "@/lib/localCompanyStore";

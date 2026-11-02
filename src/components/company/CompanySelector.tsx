@@ -136,6 +136,7 @@ import {
   isPackedMyCompanyOnly,
   isPackedServerManageCompany,
   isPlServerPackedApp,
+  isServerManageOnlyScope,
 } from "@/lib/plServerPackedApp";
 import { ensureServerManageCompany } from "@/lib/ensureServerManageCompany";
 import { getValidPocketBaseAuth } from "@/lib/pocketbaseData/pbClient";
@@ -570,9 +571,10 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
   } = useCompany();
 
   const packedMyCompany = isPackedMyCompanyOnly();
+  const serverManageOnlyScope = isServerManageOnlyScope();
   const [packedCompanySetup, setPackedCompanySetup] = useState(false);
   useEffect(() => {
-    if (!packedMyCompany) return;
+    if (!serverManageOnlyScope) return;
     if (!user?.uid) return;
     let cancelled = false;
     (async () => {
@@ -598,7 +600,7 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
     return () => {
       cancelled = true;
     };
-  }, [packedMyCompany, user?.uid, user?.email, reloadLocalCompanyRegistry]);
+  }, [serverManageOnlyScope, user?.uid, user?.email, reloadLocalCompanyRegistry]);
 
   useEffect(() => {
     if (!packedMyCompany) return;

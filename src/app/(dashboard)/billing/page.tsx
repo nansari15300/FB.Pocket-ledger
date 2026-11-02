@@ -61,7 +61,8 @@ import {
   billingTermOptionLabel,
 } from "@/components/billing/BillingRenewTermExplainDialog";
 import { isAdminPanelCompanyLocalId } from "@/lib/adminPanelCompany/ledgerMode";
-import { readAccountPlanLocalCache } from "@/lib/accountPlanLocalCache";
+import { readAccountPlanLocalCache, writeAccountPlanLocalCache } from "@/lib/accountPlanLocalCache";
+import { getLocalCompanyById, upsertLocalCompany, type LocalCompanyDoc } from "@/lib/localCompanyStore";
 import { AdBillingPointsCard } from "@/components/ads/AdBillingPointsCard";
 import { CountrySearchCombobox } from "@/components/shared/CountrySearchCombobox";
 import type { BillingRegionId } from "@/lib/billingRegions";
@@ -774,7 +775,7 @@ function BillingPageInner() {
             : addonQuery === "device-local"
               ? ("device-local" as const)
               : ("device-online" as const);
-  const { companyId, company, loading: companyLoading, refreshAuthoritativePlan, allCompanies } = useCompany();
+  const { companyId, company, loading: companyLoading, refreshAuthoritativePlan, allCompanies, reloadLocalCompanyRegistry, triggerSync } = useCompany();
   const hasSelectedCompany = Boolean(String(companyId || "").trim());
   /** User country picker — plan amounts is currency me convert dikhenge. */
   const [priceCountry, setPriceCountry] = useState("");
@@ -969,7 +970,7 @@ function BillingPageInner() {
   /** Admin DB se list prices (Firebase Admin) — client persistence cache se zyada trustworthy. */
   const fetchServerPlanCatalog = useCallback(async () => {
     try {
-      const res = await fetch(getBillingApiUrl("/api/payments/plan-catalog"), { cache: "no-store" });
+      const res = await fetch(getBillingApiUrl("/api/payments/plan-catalog"), { cache: "no-store", headers: await getServerLoginBillingAuthHeader().catch(() => ({})) }); // TEMP-NOKEY: token header
       if (!res.ok) return;
       const data = (await res.json()) as { plans?: Plan[] };
       if (Array.isArray(data.plans) && data.plans.length > 0) {
@@ -1022,7 +1023,7 @@ function BillingPageInner() {
   // Gateway radios: server pe keys na hon to disabled — user pehle hi dekh le.
   const fetchGatewayAvailability = useCallback(async () => {
     try {
-      const res = await fetch(getBillingApiUrl("/api/payments/gateway-status"), { cache: "no-store" });
+      const res = await fetch(getBillingApiUrl("/api/payments/gateway-status"), { cache: "no-store", headers: await getServerLoginBillingAuthHeader().catch(() => ({})) }); // TEMP-NOKEY: token header
       if (!res.ok) return;
       const data = (await res.json()) as Record<string, unknown>;
       const stripe = data.stripe === true;
@@ -1537,7 +1538,28 @@ function BillingPageInner() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Downgrade failed");
-      await refreshAuthoritativePlan();
+      if (data.localOnly === true) {
+        // Local-only company (not on PocketBase yet): account plan was saved on the server; apply it to this device's
+        // account cache + local company row so online slots / user limit follow the new plan right away.
+        const upMs = typeof data.planUpgradedAtMs === "number" ? data.planUpgradedAtMs : Date.now();
+        writeAccountPlanLocalCache(user.uid, { planId: targetPlanId, planExpiryMs: null });
+        const localId = String(companyId || "").trim();
+        const row = localId ? await getLocalCompanyById(localId) : null;
+        if (row) {
+          const merged: Record<string, unknown> = {
+            ...(row as unknown as Record<string, unknown>),
+            planId: targetPlanId,
+            planUpgradedAtMs: upMs,
+          };
+          delete merged.planExpiryMs;
+          delete merged.planExpiry;
+          await upsertLocalCompany(merged as unknown as LocalCompanyDoc);
+        }
+        reloadLocalCompanyRegistry();
+        triggerSync();
+      } else {
+        await refreshAuthoritativePlan();
+      }
       toast({ title: "Plan updated", description: "Your subscription tier was updated." });
     } catch (e: unknown) {
       toast({

@@ -566,7 +566,7 @@ function SettingsPageContent() {
         </div>
     );
 
-    /** Nav list scrolls; Check for update stays pinned at bottom (EXE + APK). */
+    /** Nav list scrolls; update row (EXE/APK) or version (web) stays pinned at the bottom. */
     const renderSettingsNavColumn = (onPick?: () => void) =>
         settingsNavStall ? (
             <div className={cn("flex flex-col items-center justify-center gap-2 py-12 text-center text-sm text-muted-foreground", SETTINGS_NAV_INSET_X)}>

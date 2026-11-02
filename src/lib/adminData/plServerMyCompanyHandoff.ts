@@ -3,7 +3,7 @@
  * Stores only the return URL so the app can show Back to server.
  */
 
-import { isPlServerPackedApp } from "@/lib/plServerPackedApp";
+import { isPlServerPackedApp, markServerManageCompanyMode } from "@/lib/plServerPackedApp";
 import { getValidPocketBaseAuth } from "@/lib/pocketbaseData/pbClient";
 import {
   isPocketBaseAppSessionMarked,
@@ -79,6 +79,7 @@ export function clearPlServerMyCompanyHandoff(): void {
     ss()?.removeItem(RETURN_KEY);
     ls()?.removeItem(RETURN_KEY);
     ss()?.removeItem("pl_server_my_company_auth_v1");
+    markServerManageCompanyMode(false);
   } catch {
     /* ignore */
   }
@@ -104,6 +105,8 @@ export function capturePlServerMyCompanyHandoff(): void {
     }
   }
   if (!fromServer) return;
+  // Normal app opened via server panel -> My Company: show only the server-manage company in this tab.
+  markServerManageCompanyMode(true);
   try {
     const u = new URL(window.location.href);
     u.searchParams.delete("from");

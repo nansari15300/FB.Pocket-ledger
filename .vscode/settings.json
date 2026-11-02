@@ -1,0 +1,9 @@
+{
+  "files.watcherExclude": {
+    "**/PocketLedger-Server/**/pb_data/**": true,
+    "**/PocketLedger-Server/**/node_modules/**": true
+  },
+  "search.exclude": {
+    "**/PocketLedger-Server/**/pb_data/**": true
+  }
+}

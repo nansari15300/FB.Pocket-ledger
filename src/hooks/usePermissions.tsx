@@ -60,7 +60,7 @@ export function roleCanPermission(
   return rolePermissions[index] || false;
 }
 
-export type UserRole = "viewer" | "data-entry" | "accountant" | "editor" | "manager" | "owner";
+export type UserRole = "viewer" | "data-entry" | "accountant" | "editor" | "manager" | "admin" | "owner";
 
 export type DateLimits = {
     [key in UserRole]?: {
@@ -104,6 +104,8 @@ export const initialPermissionConfig: PermissionConfig = {
     accountant:   [true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true, false, true, true, true, false, false, false, false, false, false, true, false, true, true, false, false, false, false, true, true, true, true, true, true, false, true, true, true, true, true, true, true, true, true, true, true, true],
     editor:       [true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true, false, true, true, true, false, false, false, false, false, false, true, false, true, true, false, false, false, false, true, true, true, true, true, true, false, true, true, true, true, true, true, true, true, true, true, true, true],
     manager:      [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true],
+    // admin: full access (every permission) - only owner-only actions (delete company / transfer ownership) stay `role === "owner"`.
+    admin: Array(flattenedPermissions.length).fill(true),
     owner: Array(flattenedPermissions.length).fill(true)
   },
   dateLimits: {
@@ -112,6 +114,7 @@ export const initialPermissionConfig: PermissionConfig = {
     accountant: { entryDays: 0, editDays: 7, deleteDays: 0 },
     editor: { entryDays: 3, editDays: 5, deleteDays: 5 },
     manager: { entryDays: 7, editDays: 7, deleteDays: 7 },
+    admin: { entryDays: 9999, editDays: 9999, deleteDays: 9999 },
     owner: { entryDays: 9999, editDays: 9999, deleteDays: 9999 },
   },
   fileAttachmentLimits: {
@@ -120,6 +123,7 @@ export const initialPermissionConfig: PermissionConfig = {
     accountant: { maxFileCount: 5, allowImage: true, allowPDF: true, allowDelete: true },
     editor: { maxFileCount: 5, allowImage: true, allowPDF: true, allowDelete: true },
     manager: { maxFileCount: 5, allowImage: true, allowPDF: true, allowDelete: true },
+    admin: { maxFileCount: 5, allowImage: true, allowPDF: true, allowDelete: true },
     owner: { maxFileCount: 5, allowImage: true, allowPDF: true, allowDelete: true },
   },
   allowAttachments: true,
@@ -131,9 +135,9 @@ function permissionRoleKey(raw: unknown): UserRole | null {
         .trim()
         .replace(/_/g, "-")
         .replace(/\s+/g, "-");
-    if (n === "admin" || n === "administrator" || n === "admin-role") return "manager";
+    if (n === "administrator" || n === "admin-role") return "manager";
     if (n === "super-admin" || n === "superadmin") return "owner";
-    if (["viewer", "data-entry", "accountant", "editor", "manager", "owner"].includes(n)) {
+    if (["viewer", "data-entry", "accountant", "editor", "manager", "admin", "owner"].includes(n)) {
         return n as UserRole;
     }
     return null;
@@ -462,7 +466,7 @@ const usePermissions = () => {
                       .trim()
                       .replace(/_/g, "-")
                       .replace(/\s+/g, "-");
-                    if (["viewer", "data-entry", "accountant", "editor", "manager", "owner"].includes(normalizedRole)) {
+                    if (["viewer", "data-entry", "accountant", "editor", "manager", "admin", "owner"].includes(normalizedRole)) {
                         role = normalizedRole as UserRole;
                     }
                 } else if (isLocalStorageCompany(company) && normalizedEmail) {

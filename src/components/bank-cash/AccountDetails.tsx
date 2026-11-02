@@ -321,7 +321,7 @@ export function AccountDetails({
   const [isNoteOpen, setIsNoteOpen] = useState(false);
   const [noteEntityId, setNoteEntityId] = useState<string | null>(null);
   const [showNarration, setShowNarration] = useState(true);
-  const { visibleColumns, handleColumnVisibilityChange } = useTransactionVisibleColumns();
+  const { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuNoTdsFilter } = useTransactionVisibleColumns();
   const { spendWiseBlinkMode, setSpendWiseBlinkMode, toggleSpendWiseBlinkMode } = useSpendWiseBlinkMode();
   const { setShowNotes, includeNotesInTable, notesPreferenceLockedOnMobile } = useShowNotes();
   const [blinkInfoOpen, setBlinkInfoOpen] = useState(false);
@@ -2337,7 +2337,7 @@ export function AccountDetails({
               />
               <LedgerFooterColumnsMenu ledgerPresentationMode={ledgerPresentationMode}>
                 <DropdownMenuContent align="start" className="w-52 p-2">
-                  {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[])
+                  {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[]).filter(ledgerColumnMenuNoTdsFilter)
                     .filter((key) => key !== "status")
                     .map((key) => (
                       <DropdownMenuItem

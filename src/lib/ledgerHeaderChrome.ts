@@ -153,7 +153,7 @@ export const LEDGER_HEADER_IDENTITY_CN =
 /** Profile avatar wrap — pen badge overlay */
 export const LEDGER_HEADER_AVATAR_CN = "pl-ledger-header-avatar";
 /** Ledger + mobile merged header profile tile — square, same height as name card (3.75rem) */
-export const LEDGER_HEADER_AVATAR_BOX_CN = "h-[3.75rem] w-[3.75rem] shrink-0";
+export const LEDGER_HEADER_AVATAR_BOX_CN = "aspect-square h-[3.75rem] w-[3.75rem] shrink-0";
 export const LEDGER_HEADER_AVATAR_TRIGGER_CN = cn("inline-flex", LEDGER_HEADER_AVATAR_BOX_CN);
 export const LEDGER_HEADER_AVATAR_IMAGE_CN = cn(
   LEDGER_HEADER_AVATAR_BOX_CN,

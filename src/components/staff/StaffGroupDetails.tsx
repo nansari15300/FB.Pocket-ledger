@@ -242,7 +242,7 @@ export function StaffGroupDetails({
   const [isNoteOpen, setIsNoteOpen] = useState(false);
   const [noteEntityId, setNoteEntityId] = useState<string | null>(null);
   const [showNarration, setShowNarration] = useState(true);
-  const { visibleColumns, handleColumnVisibilityChange } = useTransactionVisibleColumns();
+  const { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuNoTdsFilter } = useTransactionVisibleColumns();
   const { setShowNotes, includeNotesInTable, notesPreferenceLockedOnMobile } = useShowNotes();
   const [selectedVoucher, setSelectedVoucher] = useState<any>(null);
   const [isVoucherDialogOpen, setIsVoucherDialogOpen] = useState(false);
@@ -1225,7 +1225,7 @@ export function StaffGroupDetails({
               <LedgerFooterColumnsMenu>
                 <DropdownMenuContent align="start" className="w-52 p-2">
                   {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[])
-                    .filter((key) => key !== "status" || balanceMode === "bill_wise")
+                    .filter(ledgerColumnMenuNoTdsFilter).filter((key) => key !== "status" || balanceMode === "bill_wise")
                     .map((key) => {
                     const isStatusInStatement = key === "status" && balanceMode === "statement";
                     const isStatusInBillWise = key === "status" && balanceMode === "bill_wise";

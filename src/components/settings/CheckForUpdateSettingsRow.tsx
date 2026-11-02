@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { DESKTOP_APP_VERSION } from "@/config/releaseVersion";
 import {
   checkForReleaseUpdate,
   dispatchReleaseUpdateFound,
@@ -66,7 +67,22 @@ export function CheckForUpdateSettingsRow({ rowClassName }: Props) {
     }
   }, [checking, toast]);
 
-  if (!isElectronDesktopApp() && !isCapacitorNativeApp()) return null;
+  if (!isElectronDesktopApp() && !isCapacitorNativeApp()) {
+    const webVersion = String(DESKTOP_APP_VERSION || "").trim();
+    if (!webVersion) return null;
+    return (
+      <div
+        className={cn(
+          "min-w-0 max-w-full w-full overflow-hidden py-2 px-3 border border-black rounded-md",
+          "flex items-center gap-3 text-left text-sm",
+          rowClassName
+        )}
+      >
+        <span className="min-w-0 flex-1 truncate">Version</span>
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">v{webVersion}</span>
+      </div>
+    );
+  }
 
   const versionLabel = installed.version ? `v${installed.version}` : "";
 

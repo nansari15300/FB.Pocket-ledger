@@ -15,7 +15,6 @@ export function CreateCompanyDialog({
     children, 
     isOpen, 
     onOpenChange,
-    isDismissable = true,
     redirectTo
 }: { 
     onCompanyCreated: (companyId: string) => void, 
@@ -43,19 +42,12 @@ export function CreateCompanyDialog({
     }
   };
 
-  const dialogProps = isDismissable ? {} : {
-      onEscapeKeyDown: (e: Event) => e.preventDefault(),
-  }
-
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {children && <DialogTrigger asChild>{children}</DialogTrigger>}
       <DialogContent 
         // Mobile + desktop: ~90% viewport height taaki create form fields scroll ho sakein
         className="w-[98%] h-[90vh] max-h-[90vh] md:w-[80vw] md:max-w-[80vw] md:h-[90vh] md:max-h-[90vh] flex flex-col rounded-xl"
-        {...dialogProps}
-        hideCloseButton={!isDismissable}
-        onPointerDownOutside={isDismissable ? undefined : (e) => e.preventDefault()}
       >
         <DialogHeader>
           <DialogTitle>Create a New Company</DialogTitle>

@@ -33,6 +33,8 @@ import { useVouchers } from "@/hooks/useVouchers";
 import { deleteCompanyComplete } from "@/lib/actions/deleteCompanyAction";
 import {
     companyRecycleMustSkipFirestore,
+    isPocketBaseRecycleCompanyId,
+    permanentDeletePocketBaseCompany,
     resolveCompanyRecycleRootForId,
     restoreCompanyFromRecycleBin,
 } from "@/lib/companyRecycleRoot";
@@ -1074,6 +1076,23 @@ function RecycleBinContent() {
         setIsProcessing(true);
         try {
             if (isCompany) {
+                // PocketBase company: delete on PB (never the local-only purge, even if its row says storageOption "local").
+                if (await isPocketBaseRecycleCompanyId(resolvedItem.id)) {
+                    const pbDel = await permanentDeletePocketBaseCompany(resolvedItem.id, {
+                        quickDelete,
+                        userId: user?.uid ?? null,
+                    });
+                    if (!pbDel.ok) throw new Error(("error" in pbDel ? pbDel.error : null) || "Permanent delete failed.");
+                    await mirrorLocalCompanyAfterOnlineRecycleFinalize(resolvedItem.id, quickDelete, user?.uid);
+                    removeDeletedItemFromState(resolvedItem);
+                    reloadLocalCompanyRegistry();
+                    if (quickDelete) {
+                        toast({ title: "Success", description: `"${resolvedItem.name}" deleted permanently.` });
+                    } else {
+                        toast({ title: "Deleted permanently", description: `"${resolvedItem.name}" has been removed from your recycle bin.` });
+                    }
+                    return;
+                }
                 const { root } = await resolveCompanyRecycleRootForId(resolvedItem.id, {
                     companyStorageSource: resolvedItem.companyStorageSource,
                 });
@@ -1203,7 +1222,12 @@ function RecycleBinContent() {
             // Static EXE `isLocalOnlyMode()` mat treat as "all companies are local" — Online rows bina Firestore finalize UI se hat jaati thin.
             const localOnlyCompanyIds: string[] = [];
             const onlineCompanyIds: string[] = [];
+            const pocketBaseCompanyIds: string[] = [];
             for (const cid of companyIds) {
+                if (await isPocketBaseRecycleCompanyId(cid)) {
+                    pocketBaseCompanyIds.push(cid);
+                    continue;
+                }
                 const hint = resolvedBinItems.find(
                     (i) => i.id === cid && (i.collectionPath === "companies" || i.isRootCollection === true)
                 );
@@ -1222,6 +1246,24 @@ function RecycleBinContent() {
 
             for (const cid of localOnlyCompanyIds) {
                 await permanentDeleteLocalCompanyWithDriveCleanup(cid, { firebaseUid: user?.uid ?? null });
+            }
+
+            // PocketBase companies: delete on PB, then mirror/purge the SQLite row.
+            for (const cid of pocketBaseCompanyIds) {
+                const pbDel = await permanentDeletePocketBaseCompany(cid, {
+                    quickDelete,
+                    userId: user?.uid ?? null,
+                });
+                if (!pbDel.ok) {
+                    toast({
+                        variant: "destructive",
+                        title: "Error",
+                        description: ("error" in pbDel ? pbDel.error : null) || "Failed to delete company.",
+                    });
+                    setIsProcessing(false);
+                    return;
+                }
+                await mirrorLocalCompanyAfterOnlineRecycleFinalize(cid, quickDelete, user?.uid);
             }
 
             if (onlineCompanyIds.length > 0) {

@@ -1,0 +1,1181 @@
+﻿diff --git a/src/hooks/useVouchers.tsx b/src/hooks/useVouchers.tsx
+index 7bdaf48..b361f94 100644
+--- a/src/hooks/useVouchers.tsx
++++ b/src/hooks/useVouchers.tsx
+@@ -19,7 +19,6 @@ import type { Item, ItemGroup } from "@/components/items/types";
+ import { setMastersPrintSnapshot } from "@/lib/printMastersSnapshot";
+ import { isLocalOnlyMode } from "@/lib/localMode";
+ import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
+-import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
+ import { isStaticApkLedgerTransportMode } from "@/lib/staticApkLedgerArchitecture";
+ import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
+ import {
+@@ -61,7 +60,7 @@ import {
+ } from "@/lib/companyStorageKind";
+ import { isPlServerSharedCompanyRow } from "@/lib/plServerAccessContext";
+ import { embeddedClientPrefersQuietBackgroundSync, embeddedSqliteBumpDebounceMs, sqliteBumpCollectionNeededOnLedgerRoute } from "@/lib/embeddedWarmBootstrapFlags";
+-import { livePullDevLog } from "@/lib/plServerLivePullDevLog";
++import { livePullDevLog, plServerVoucherFlowLog } from "@/lib/plServerLivePullDevLog";
+ import { RESTORE_CLOUD_VOUCHERS_REFRESH_EVENT } from "@/lib/restoreCloudBackgroundSync";
+ import { resolveInterCompanyLegsForVoucher } from "@/lib/interCompany/interCompanyPostingLegs";
+ import {
+@@ -77,6 +76,15 @@ import {
+   displayNameFromUserFirestoreDoc,
+ } from "@/lib/batchFetchUserDisplayNames";
+ import { buildPartyLedgerAggregateMap } from "@/lib/partyListLedgerBalance";
++import {
++  FIREBASE_LEDGER_SYNC_MODE_CHANGED_EVENT,
++  FIREBASE_LEDGER_SYNC_MODE_STORAGE_KEY,
++  isFirebaseLedgerLocalDeltaMode,
++} from "@/lib/firebaseLedgerSyncMode";
++import {
++  FIREBASE_LEDGER_DATA_SYNC_CHANGED_EVENT,
++  FIREBASE_LEDGER_DATA_SYNC_STORAGE_KEY,
++} from "@/lib/firebaseLedgerDataSyncDisabled";
+ 
+ /** Offline company: vouchers me `userId` aksar owner ka Firebase uid ya `local` — sirf `user.uid` match se shared user ko 0 rows. */
+ function localCompanyRoleAllowsViewAll(role: string | undefined): boolean {
+@@ -568,6 +576,27 @@ export const VoucherProvider = ({
+       cancelled = true;
+     };
+   }, [companyId, company?.storageOption, company?.syncPolicy, company?.syncedFromCloud, company?.ownerId, user?.uid]);
++
++  useEffect(() => {
++    const refreshHint = () => {
++      if (!companyId) {
++        setSqliteLedgerRouteHint({ usesSqlite: false, ownerMatchesUser: false });
++        return;
++      }
++      if (companyRowUsesSqliteLedgerWrites(company)) {
++        setSqliteLedgerRouteHint({
++          usesSqlite: true,
++          ownerMatchesUser: String(company?.ownerId || "") === String(user?.uid || ""),
++        });
++      }
++    };
++    window.addEventListener(FIREBASE_LEDGER_DATA_SYNC_CHANGED_EVENT, refreshHint);
++    window.addEventListener(FIREBASE_LEDGER_SYNC_MODE_CHANGED_EVENT, refreshHint);
++    return () => {
++      window.removeEventListener(FIREBASE_LEDGER_DATA_SYNC_CHANGED_EVENT, refreshHint);
++      window.removeEventListener(FIREBASE_LEDGER_SYNC_MODE_CHANGED_EVENT, refreshHint);
++    };
++  }, [companyId, company, user?.uid]);
+   const usesSqliteLedgerForSelectedCompany =
+     isLocalCompanySelected || sqliteLedgerRouteHint.usesSqlite;
+   /** Offline unlock same-tab: isCompanyReady / prefetch dubara (localStorage pehle listener ke baad update hota hai). */
+@@ -577,6 +606,37 @@ export const VoucherProvider = ({
+     window.addEventListener(LOCAL_AUTH_CHANGED_EVENT, bump);
+     return () => window.removeEventListener(LOCAL_AUTH_CHANGED_EVENT, bump);
+   }, []);
++  const [ledgerSyncModeEpoch, setLedgerSyncModeEpoch] = useState(0);
++  const ledgerSyncDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
++  useEffect(() => {
++    const bumpNow = () => setLedgerSyncModeEpoch((n) => n + 1);
++    const bumpDebounced = () => {
++      if (ledgerSyncDebounceRef.current) clearTimeout(ledgerSyncDebounceRef.current);
++      ledgerSyncDebounceRef.current = setTimeout(() => {
++        ledgerSyncDebounceRef.current = null;
++        bumpNow();
++      }, 220);
++    };
++    const onStorage = (e: StorageEvent) => {
++      const key = e.key;
++      if (
++        key === FIREBASE_LEDGER_DATA_SYNC_STORAGE_KEY ||
++        key === FIREBASE_LEDGER_SYNC_MODE_STORAGE_KEY
++      ) {
++        bumpDebounced();
++      }
++    };
++    window.addEventListener(FIREBASE_LEDGER_SYNC_MODE_CHANGED_EVENT, bumpNow);
++    window.addEventListener(FIREBASE_LEDGER_DATA_SYNC_CHANGED_EVENT, bumpDebounced);
++    window.addEventListener("storage", onStorage);
++    return () => {
++      if (ledgerSyncDebounceRef.current) clearTimeout(ledgerSyncDebounceRef.current);
++      ledgerSyncDebounceRef.current = null;
++      window.removeEventListener(FIREBASE_LEDGER_SYNC_MODE_CHANGED_EVENT, bumpNow);
++      window.removeEventListener(FIREBASE_LEDGER_DATA_SYNC_CHANGED_EVENT, bumpDebounced);
++      window.removeEventListener("storage", onStorage);
++    };
++  }, []);
+ 
+   const [vouchers, setVouchers] = useState<any[]>([]);
+   const [loading, setLoading] = useState(true);
+@@ -753,8 +813,15 @@ export const VoucherProvider = ({
+   const mirrorSnapshotTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+   /** EXE: background sync ke dauran har SQLite write par list merge batch — scroll/jump kam. */
+   const sqliteBumpMergeTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
++  /** Hybrid bootstrap: delayed attachListeners + one-shot initialFetches — sync toggle pe clear. */
++  const firestoreAttachTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
++  const hybridPendingUnsubsRef = useRef<Array<() => void>>([]);
++  const ledgerEffectGenRef = useRef(0);
++  const lastLedgerSyncEpochRef = useRef(0);
+   /** Same company par listener rebind — poora page spinner mat dikhao (EXE/APK party/bank shake). */
+   const hasWarmLedgerDataRef = useRef(false);
++  /** Pathname change pe SQLite dubara mat padho — pehle se loaded collections. */
++  const sqliteWarmCollectionsRef = useRef<Set<string>>(new Set());
+   const lastCompanyIdRef = useRef<string | null>(null);
+   /** Async SQLite/Firestore callbacks purani company ke liye late na aayein. */
+   const companyDataLoadEpochRef = useRef(0);
+@@ -778,6 +845,7 @@ export const VoucherProvider = ({
+     setJournalAccountNames({});
+     setUserNames({});
+     hasWarmLedgerDataRef.current = false;
++    sqliteWarmCollectionsRef.current = new Set();
+     setLoading(true);
+     previousData.current = {
+       vouchers: [],
+@@ -883,6 +951,29 @@ export const VoucherProvider = ({
+ 
+   // --- Data Fetching Logic ---
+   useEffect(() => {
++    const effectGen = ++ledgerEffectGenRef.current;
++    if (lastLedgerSyncEpochRef.current !== ledgerSyncModeEpoch) {
++      lastLedgerSyncEpochRef.current = ledgerSyncModeEpoch;
++      companyDataLoadEpochRef.current += 1;
++      hasWarmLedgerDataRef.current = false;
++      sqliteWarmCollectionsRef.current = new Set();
++    }
++
++    const clearHybridBootstrapPending = () => {
++      if (firestoreAttachTimerRef.current) {
++        clearTimeout(firestoreAttachTimerRef.current);
++        firestoreAttachTimerRef.current = null;
++      }
++      for (const unsub of hybridPendingUnsubsRef.current) {
++        try {
++          unsub();
++        } catch {
++          /* ignore */
++        }
++      }
++      hybridPendingUnsubsRef.current = [];
++    };
++
+     const keepWarmUi = hasWarmLedgerDataRef.current && lastCompanyIdRef.current === companyId;
+ 
+     if (authLoading) {
+@@ -911,7 +1002,10 @@ export const VoucherProvider = ({
+ 
+     // सिंक पेन्डिङ भए वा कम्पनी अपूर्ण भए listener नलगाउने (permission denied रोक्न)।
+     // Local/offline company: sharedWithEmails Firebase share hai — SQLite wale users ke liye valid local session kaafi.
+-    const shouldUseLocalCompanyData = usesSqliteLedgerForSelectedCompany;
++    const localDeltaSyncMode = isFirebaseLedgerLocalDeltaMode();
++    const shouldUseLocalCompanyData =
++      usesSqliteLedgerForSelectedCompany ||
++      (localDeltaSyncMode && isCloudBackedCompany(company as CloudBackedCompanyShape));
+     const emailNorm = (e: string) => String(e || "").toLowerCase().trim();
+     const userEmailNorm = user?.email ? emailNorm(user.email) : "";
+     // EXE/local restore me `sharedWithEmails` kabhi array ke bajay object/string aa sakta hai; `.some` crash avoid.
+@@ -993,7 +1087,23 @@ export const VoucherProvider = ({
+     if (!keepWarmUi) setLoading(true);
+       // Tier-1: masters only — `vouchers` SQLite read (JSON parse) hazaar+ rows par EXE me 30–90s lagata; spinner tab tak band na ho.
+       // Vouchers secondary chunk me: parties list pehle paint, totals snapshot/listeners ke baad refresh.
++      // Same company + warm: sirf nayi route collections load — vouchers/parties dubara JSON parse mat karo (2–4s nav lag).
++      const collectionsNeeded = keepWarmUi
++        ? collectionsToPrefetch.filter((c) => !sqliteWarmCollectionsRef.current.has(c.path))
++        : collectionsToPrefetch;
++      if (collectionsNeeded.length === 0) {
++        if (!cancelled && loadEpoch === companyDataLoadEpochRef.current) {
++          hasWarmLedgerDataRef.current = true;
++          setLoading(false);
++        }
++        return () => {
++          cancelled = true;
++        };
++      }
+       const CRITICAL_SQLITE_PATHS = new Set(["parties", "groups", "bank_accounts", "expense_accounts"]);
++      const markWarm = (path: string) => {
++        sqliteWarmCollectionsRef.current.add(path);
++      };
+       const loadSqliteChunk = (items: typeof collectionsToPrefetch) =>
+         Promise.all(
+           items.map(({ path, setter, orderByField }) =>
+@@ -1018,18 +1128,20 @@ export const VoucherProvider = ({
+                     listCompanyDocsFromBrowserDb(companyId, path, { forBackupMerge: true })
+                       .then((cached) => {
+                         applySqliteRows(setter, cached, orderByField);
++                        if (!cancelled && loadEpoch === companyDataLoadEpochRef.current) markWarm(path);
+                       })
+                       .catch(() => {})
+                   )
+               : listCompanyDocsFromBrowserDb(companyId, path, { forBackupMerge: true })
+                   .then((cached) => {
+                     applySqliteRows(setter, cached, orderByField);
++                    if (!cancelled && loadEpoch === companyDataLoadEpochRef.current) markWarm(path);
+                   })
+                   .catch(() => {}))
+           )
+         );
+-      const critical = collectionsToPrefetch.filter((c) => CRITICAL_SQLITE_PATHS.has(c.path));
+-      const secondary = collectionsToPrefetch.filter((c) => !CRITICAL_SQLITE_PATHS.has(c.path));
++      const critical = collectionsNeeded.filter((c) => CRITICAL_SQLITE_PATHS.has(c.path));
++      const secondary = collectionsNeeded.filter((c) => !CRITICAL_SQLITE_PATHS.has(c.path));
+       void loadSqliteChunk(critical).finally(() => {
+         if (!cancelled && loadEpoch === companyDataLoadEpochRef.current) {
+           hasWarmLedgerDataRef.current = true;
+@@ -1047,6 +1159,16 @@ export const VoucherProvider = ({
+     if (!keepWarmUi) setLoading(true);
+       // EXE/static: `vouchers` mirror = sabse bada table — ise critical me mat rakho warna Promise.all yahi pe minute leta hai.
+       // Pehle parties/groups/staff/taxes/banks + expense_accounts; vouchers + items baaki secondary chunk (loading tab tak band).
++      // Same company warm nav: pehle se loaded collections skip (sidebar 2–4s lag fix).
++      const collectionsNeeded = keepWarmUi
++        ? collectionsToPrefetch.filter((c) => !sqliteWarmCollectionsRef.current.has(c.path))
++        : collectionsToPrefetch;
++      if (collectionsNeeded.length === 0) {
++        if (!cancelled && loadEpoch === companyDataLoadEpochRef.current) {
++          hasWarmLedgerDataRef.current = true;
++          setLoading(false);
++        }
++      } else {
+       const CRITICAL_SQLITE_PATHS = new Set([
+         "parties",
+         "groups",
+@@ -1055,6 +1177,9 @@ export const VoucherProvider = ({
+         "taxes",
+         "expense_accounts",
+       ]);
++      const markWarm = (path: string) => {
++        sqliteWarmCollectionsRef.current.add(path);
++      };
+       const loadSqliteChunk = (items: typeof collectionsToPrefetch) =>
+         Promise.all(
+           items.map(({ path, setter, orderByField }) =>
+@@ -1079,18 +1204,20 @@ export const VoucherProvider = ({
+                     listCompanyDocsFromBrowserDb(companyId, path, { forBackupMerge: true })
+                       .then((cached) => {
+                         applySqliteRows(setter, cached, orderByField);
++                        if (!cancelled && loadEpoch === companyDataLoadEpochRef.current) markWarm(path);
+                       })
+                       .catch(() => {})
+                   )
+               : listCompanyDocsFromBrowserDb(companyId, path, { forBackupMerge: true })
+                   .then((cached) => {
+                     applySqliteRows(setter, cached, orderByField);
++                    if (!cancelled && loadEpoch === companyDataLoadEpochRef.current) markWarm(path);
+                   })
+                   .catch(() => {}))
+           )
+         );
+-      const critical = collectionsToPrefetch.filter((c) => CRITICAL_SQLITE_PATHS.has(c.path));
+-      const secondary = collectionsToPrefetch.filter((c) => !CRITICAL_SQLITE_PATHS.has(c.path));
++      const critical = collectionsNeeded.filter((c) => CRITICAL_SQLITE_PATHS.has(c.path));
++      const secondary = collectionsNeeded.filter((c) => !CRITICAL_SQLITE_PATHS.has(c.path));
+       void loadSqliteChunk(critical).finally(() => {
+         // Stale-first: show local SQLite immediately; Firestore listeners refresh in background.
+         if (!cancelled && loadEpoch === companyDataLoadEpochRef.current) {
+@@ -1099,6 +1226,7 @@ export const VoucherProvider = ({
+         }
+       });
+       void loadSqliteChunk(secondary);
++      }
+     }
+ 
+     if (shouldReadLedgerFromSqliteOnly(companyRef.current as Parameters<typeof shouldReadLedgerFromSqliteOnly>[0])) {
+@@ -1114,16 +1242,16 @@ export const VoucherProvider = ({
+ 
+     /** Static/APK/local-first: offline jaisa SQLite pehle; online par bhi getDocFromServer gate mat lagao. */
+     const embeddedLocalFirstBoot =
+-      isStaticAppBuild() ||
+-      (typeof window !== "undefined" && isCapacitorNativeApp()) ||
++      isStaticApkLedgerTransportMode() ||
+       isLocalOnlyMode();
+ 
+     /** `firestoreRemotePullAttempt`: root server verify ke baad hi Firestore→SQLite ek baar pull; offline native par false */
+     const bindHybridFirestoreToCompany = (opts: { firestoreRemotePullAttempt: boolean }) => {
+-      if (cancelled) return;
++      if (cancelled || ledgerEffectGenRef.current !== effectGen) return;
+       // Cloud firebase company ko bhi mirror chahiye: purane guard me sirf `storageOption===local`/static — offline par SQLite khali → sirf wo screens jahan pehle online snapshot mila usable tha (PWA/APK overlap).
+       const shouldSqliteHydratePullFromFirestore =
+         opts.firestoreRemotePullAttempt &&
++        !localDeltaSyncMode &&
+         (shouldUseLocalCompanyData || isCloudBackedCompany(companyRef.current as CloudBackedCompanyShape));
+ 
+       // Initial full-collection `getDocs` parallel (chunked): sequential wait se user offline hue to adhuri mirror (# critical paths only pehle nahi poora bootstrap).
+@@ -1160,8 +1288,16 @@ export const VoucherProvider = ({
+       }
+       if (!shouldUseLocalCompanyData && !embeddedLocalFirstBoot && vouchers.length === 0) setLoading(true);
+ 
++      if (localDeltaSyncMode && isCloudBackedCompany(companyRef.current as CloudBackedCompanyShape)) {
++        if (!cancelled) {
++          hasWarmLedgerDataRef.current = true;
++          setLoading(false);
++        }
++        return;
++      }
++
+       const attachListeners = () => {
+-        if (cancelled) return;
++        if (cancelled || ledgerEffectGenRef.current !== effectGen) return;
+       const allCollectionsToFetch: MasterCollectionConfig[] = [
+       { path: 'vouchers', setter: setVouchers, isGroup: false, orderByField: 'date' },
+       { path: 'parties', setter: setParties },
+@@ -1234,6 +1370,8 @@ export const VoucherProvider = ({
+             if (staticSqliteFirst) {
+               await mirrorCollectionDocsToBrowserDbSilent(companyId, path, dataForUi, {
+                 cloudBackedOfflineCache: persistSqliteFromSnap && !shouldUseLocalCompanyData,
++                mergePreferNewer: preferLocal,
++                mergePreferNewerTieBreak: "local",
+               });
+               if (cancelled) return;
+               const commitSqliteRowsToUi = async () => {
+@@ -1264,6 +1402,8 @@ export const VoucherProvider = ({
+                 mirrorSnapshotTimersRef.current[debounceKey] = setTimeout(() => {
+                   void mirrorCollectionDocsToBrowserDbSilent(companyId, path, dataForUi, {
+                     cloudBackedOfflineCache: persistSqliteFromSnap && !shouldUseLocalCompanyData,
++                    mergePreferNewer: preferLocal,
++                    mergePreferNewerTieBreak: "local",
+                   });
+                 }, 500);
+               }
+@@ -1352,6 +1492,7 @@ export const VoucherProvider = ({
+             }
+             resolve(true);
+           });
++          hybridPendingUnsubsRef.current.push(unsub);
+         })
+       );
+       if (embeddedLocalFirstBoot) {
+@@ -1371,7 +1512,12 @@ export const VoucherProvider = ({
+       };
+       const firestoreListenDelayMs =
+         shouldUseLocalCompanyData || embeddedLocalFirstBoot ? 0 : 600;
+-      setTimeout(attachListeners, firestoreListenDelayMs);
++      if (firestoreAttachTimerRef.current) clearTimeout(firestoreAttachTimerRef.current);
++      firestoreAttachTimerRef.current = setTimeout(() => {
++        firestoreAttachTimerRef.current = null;
++        if (cancelled || ledgerEffectGenRef.current !== effectGen) return;
++        attachListeners();
++      }, firestoreListenDelayMs);
+     };
+ 
+     // Airplane / cold wifi off: `firebase` storage company ko bhi pehle mirror hydrate —
+@@ -1387,7 +1533,7 @@ export const VoucherProvider = ({
+     } else {
+       getDocFromServer(companyRootDocRef)
+         .then((snap) => {
+-          if (cancelled) return;
++          if (cancelled || ledgerEffectGenRef.current !== effectGen) return;
+           if (!snap.exists()) {
+             console.log("Company doc not in Firestore yet... skipping listeners.");
+             setLoading(false);
+@@ -1424,7 +1570,7 @@ export const VoucherProvider = ({
+           });
+         })
+         .catch((err: unknown) => {
+-          if (cancelled) return;
++          if (cancelled || ledgerEffectGenRef.current !== effectGen) return;
+           const ec = typeof err === "object" && err !== null ? (err as { code?: string }).code : "";
+           const msg =
+             typeof err === "object" && err !== null ? String((err as Error).message || "") : "";
+@@ -1452,12 +1598,13 @@ export const VoucherProvider = ({
+ 
+     return () => {
+       cancelled = true;
++      clearHybridBootstrapPending();
+       for (const t of Object.values(mirrorSnapshotTimersRef.current)) clearTimeout(t);
+       mirrorSnapshotTimersRef.current = {};
+       unsubRef.current.forEach(u => u());
+       unsubRef.current = [];
+     };
+-  }, [companyId, voucherListenerCompanyKey, user?.uid, user?.email, authLoading, localAuthEpoch, pathname, voucherFormMasterScope, sqliteLedgerRouteHint.usesSqlite, sqliteLedgerRouteHint.ownerMatchesUser, company?.storageOption, company?.syncPolicy, company?.syncedFromCloud, company?.ownerId]);
++  }, [companyId, voucherListenerCompanyKey, user?.uid, user?.email, authLoading, localAuthEpoch, ledgerSyncModeEpoch, pathname, voucherFormMasterScope, sqliteLedgerRouteHint.usesSqlite, sqliteLedgerRouteHint.ownerMatchesUser, company?.storageOption, company?.syncPolicy, company?.syncedFromCloud, company?.ownerId]);
+ 
+   // Single-doc / write-path upsert ke baad merge (notify) — collections ke hisaab se state update.
+   useEffect(() => {
+@@ -1469,61 +1616,89 @@ export const VoucherProvider = ({
+         sqliteLedgerRouteHint.usesSqlite ||
+         isCloudBackedCompany(co) ||
+         isServerGateCompanyContext);
+-      if (shouldSkipHeavyVoucherBootstrap(pathname)) return;
+     if (!shouldListenSqliteBump) return;
+ 
+-    const mergeCollectionFromSqliteBump = (coll: string) => {
++    const mergeCollectionFromSqliteBump = (coll: string, options?: { authoritative?: boolean }) => {
+       livePullDevLog("react_refresh", { companyId, collection: coll, pathname });
+       listCompanyDocsFromBrowserDb(companyId, coll, { forBackupMerge: true })
+         .then((cached) => {
+-          if (!cached.length) return;
++          const authoritative = options?.authoritative === true;
++          if (!cached.length && !authoritative) return;
+           const aliveCached = (cached as any[]).filter(isAliveDoc);
++          const applyList = (setter: StateSetter<any>, rows: any[], orderByField?: string) => {
++            if (authoritative) {
++              commitEntityListSetter(setter, sqliteCachedRowsForSetter(rows, orderByField));
++              return;
++            }
++            setter((prev) => mergeEntityListsByIdOrKeepPrev(prev.filter(isAliveDoc), rows, orderByField));
++          };
+           switch (coll) {
+             case "vouchers":
+-              setVouchers((prev) => mergeEntityListsByIdOrKeepPrev(prev.filter(isAliveDoc), aliveCached, "date"));
++              const voucherRowsForUi = aliveCached.map(normalizeVoucherRowAttachmentsForUi);
++              if (authoritative) {
++                const nextRows = sqliteCachedRowsForSetter(voucherRowsForUi, "date");
++                plServerVoucherFlowLog("react_refresh_apply", {
++                  companyId,
++                  pathname,
++                  authoritative,
++                  sqliteAliveCount: voucherRowsForUi.length,
++                  nextCount: nextRows.length,
++                });
++                commitEntityListSetter(setVouchers as StateSetter<any>, nextRows);
++              } else {
++                setVouchers((prev) => {
++                  const prevAlive = prev.filter(isAliveDoc);
++                  const nextRows = mergeEntityListsByIdOrKeepPrev(prevAlive, voucherRowsForUi, "date");
++                  plServerVoucherFlowLog("react_refresh_apply", {
++                    companyId,
++                    pathname,
++                    authoritative,
++                    sqliteAliveCount: voucherRowsForUi.length,
++                    prevCount: prevAlive.length,
++                    nextCount: nextRows.length,
++                  });
++                  return nextRows;
++                });
++              }
+               break;
+             case "parties":
+-              setParties((prev) => mergeEntityListsByIdOrKeepPrev(prev.filter(isAliveDoc), aliveCached));
++              applyList(setParties as StateSetter<any>, aliveCached);
+               break;
+             case "staff":
+-              setStaff((prev) => mergeEntityListsByIdOrKeepPrev(prev.filter(isAliveDoc), aliveCached));
++              applyList(setStaff as StateSetter<any>, aliveCached);
+               break;
+             case "bank_accounts":
+-              setAccounts((prev) =>
+-                mergeEntityListsByIdOrKeepPrev(
+-                  prev.filter(isAliveDoc),
+-                  aliveCached.map((row) => normalizeBankAccountRow(row as Record<string, unknown>))
+-                )
++              applyList(
++                setAccounts as StateSetter<any>,
++                aliveCached.map((row) => normalizeBankAccountRow(row as Record<string, unknown>))
+               );
+               break;
+             case "taxes":
+-              setTaxes((prev) => mergeEntityListsByIdOrKeepPrev(prev.filter(isAliveDoc), aliveCached));
++              applyList(setTaxes as StateSetter<any>, aliveCached);
+               break;
+             case "expense_accounts":
+-              setUnprocessedExpenseAccounts((prev) =>
+-                mergeEntityListsByIdOrKeepPrev(prev.filter(isAliveDoc), aliveCached)
+-              );
++              applyList(setUnprocessedExpenseAccounts as StateSetter<any>, aliveCached);
+               break;
+             case "items":
+-              setItems((prev) => mergeEntityListsByIdOrKeepPrev(prev.filter(isAliveDoc), aliveCached));
++              applyList(setItems as StateSetter<any>, aliveCached);
+               break;
+             case "item_groups":
+-              setItemGroups((prev) => mergeEntityListsByIdOrKeepPrev(prev.filter(isAliveDoc), aliveCached));
++              applyList(setItemGroups as StateSetter<any>, aliveCached);
+               break;
+             case "groups":
+-              setGroups((prev) => mergeEntityListsByIdOrKeepPrev(prev.filter(isAliveDoc), aliveCached));
++              applyList(setGroups as StateSetter<any>, aliveCached);
+               break;
+             case "account_groups":
+-              setAccountGroups((prev) => mergeEntityListsByIdOrKeepPrev(prev.filter(isAliveDoc), aliveCached));
++              applyList(setAccountGroups as StateSetter<any>, aliveCached);
+               break;
+             case "staff_groups":
+-              setStaffGroups((prev) => mergeEntityListsByIdOrKeepPrev(prev.filter(isAliveDoc), aliveCached));
++              applyList(setStaffGroups as StateSetter<any>, aliveCached);
+               break;
+             case "tax_groups":
+-              setTaxGroups((prev) => mergeEntityListsByIdOrKeepPrev(prev.filter(isAliveDoc), aliveCached));
++              applyList(setTaxGroups as StateSetter<any>, aliveCached);
+               break;
+             case "expense_groups":
+-              setExpenseGroups((prev) => mergeEntityListsByIdOrKeepPrev(prev.filter(isAliveDoc), aliveCached));
++              applyList(setExpenseGroups as StateSetter<any>, aliveCached);
+               break;
+             default:
+               break;
+@@ -1536,8 +1711,21 @@ export const VoucherProvider = ({
+       const d = (ev as CustomEvent<BrowserDbCollectionBumpDetail>).detail;
+       if (!d || d.companyId !== companyId || !d.collection) return;
+       const coll = d.collection;
++      if (coll === "vouchers") {
++        plServerVoucherFlowLog("ui_bump_received", {
++          companyId,
++          pathname,
++          immediate: d.immediate === true,
++          isServerGateCompanyContext,
++        });
++      }
+       if (isServerGateCompanyContext || d.immediate === true) {
+-        mergeCollectionFromSqliteBump(coll);
++        mergeCollectionFromSqliteBump(coll, {
++          authoritative:
++            isServerGateCompanyContext ||
++            d.immediate === true ||
++            usesSqliteLedgerForSelectedCompany,
++        });
+         return;
+       }
+       // Active page ke bahar collection bump ignore — unnecessary background merge avoid.
+@@ -1561,17 +1749,17 @@ export const VoucherProvider = ({
+       }
+       mergeCollectionFromSqliteBump(coll);
+     };
+-    const mergeActiveCollectionsFromServerMirror = () => {
++    const mergeActiveCollectionsFromServerMirror = (options?: { authoritative?: boolean }) => {
+       const paths = activeMasterCollectionPathsForRoute(pathname, voucherFormMasterScope);
+-      for (const coll of paths) mergeCollectionFromSqliteBump(coll);
++      for (const coll of paths) mergeCollectionFromSqliteBump(coll, options);
+     };
+ 
+     const onServerMirror = (ev: Event) => {
+       const d = (ev as CustomEvent<PlServerClientMirrorEventDetail>).detail;
+       if (!d?.companyIds?.includes(companyId)) return;
+       const refreshPlServerLive = () => {
+-        mergeCollectionFromSqliteBump("vouchers");
+-        mergeActiveCollectionsFromServerMirror();
++        mergeCollectionFromSqliteBump("vouchers", { authoritative: true });
++        mergeActiveCollectionsFromServerMirror({ authoritative: true });
+       };
+       if (isServerGateCompanyContext) {
+         refreshPlServerLive();
+@@ -2449,4 +2637,3 @@ export function routeHasVoucherFormMastersLoaded(pathname: string): boolean {
+ export function routeHasVoucherBankAccountsLoaded(pathname: string): boolean {
+   return activeMasterCollectionPathsForRoute(pathname, false).has("bank_accounts");
+ }
+-
+diff --git a/src/lib/firestoreToLocalCompanyPull.ts b/src/lib/firestoreToLocalCompanyPull.ts
+index 267334e..fe7e10a 100644
+--- a/src/lib/firestoreToLocalCompanyPull.ts
++++ b/src/lib/firestoreToLocalCompanyPull.ts
+@@ -6,13 +6,14 @@
+  * Har change ke saath: yahan se pull = local DB me rows guarantee (decrypt + upsert).
+  */
+ 
+-import { collection, getDocs, query } from "firebase/firestore";
++import { collection, doc, getDoc, getDocs, query } from "firebase/firestore";
+ import { firestore } from "@/lib/firebase";
+ import type { Company } from "@/hooks/useCompany";
+ import {
+   deleteCompanyDocFromBrowserDb,
+   listCompanyDocsFromBrowserDb,
+   mirrorCollectionDocsToBrowserDbSilent,
++  upsertCompanyDocInBrowserDb,
+ } from "@/lib/localCompanyDocMirror";
+ import {
+   isLocalMirrorMarkedServerBacked,
+@@ -20,6 +21,7 @@ import {
+ } from "@/lib/localMirrorServerMeta";
+ import { decryptFirestoreCompanyDocIfNeeded, type ServerBackupCryptoContext } from "@/lib/serverBackupEncryption";
+ import { isLocalOnlyMode } from "@/lib/localMode";
++import { isFirebaseLedgerDataSyncDisabled } from "@/lib/firebaseLedgerDataSyncDisabled";
+ 
+ /** Merge options: `storageOption: local` par same doc id pe Firestore purana na jeete (restore / backup). */
+ export type MergeRemoteLocalDocsOptions = {
+@@ -214,6 +216,8 @@ export async function pullCompanySubcollectionFromFirestoreToLocalDb(
+   if (merged.length > 0) {
+     await mirrorCollectionDocsToBrowserDbSilent(localCompanyId, collectionPath, merged, {
+       cloudBackedOfflineCache: !isLocalOnlyMode(),
++      mergePreferNewer: preferLocal,
++      mergePreferNewerTieBreak: "local",
+     });
+   }
+   return merged;
+@@ -221,6 +225,60 @@ export async function pullCompanySubcollectionFromFirestoreToLocalDb(
+ 
+ /** Saari listed subcollections ek baar — manual “download / refresh local cache” ya health check ke liye. */
+ /** Full warm sync: parallel pulls — optional progress har subcollection complete par (overlay % ke liye). */
++/** Delta mode: fetch exactly one changed Firestore doc and apply it to SQLite. */
++export async function pullCompanyDocFromFirestoreToLocalDb(
++  fsCompanyId: string,
++  localCompanyId: string,
++  collectionPath: string,
++  docId: string,
++  company: Company | null,
++  options?: { op?: string }
++): Promise<"upserted" | "deleted" | "missing" | "skipped"> {
++  if (isFirebaseLedgerDataSyncDisabled()) return "skipped";
++  const fsId = String(fsCompanyId || "").trim();
++  const localId = String(localCompanyId || "").trim();
++  const path = String(collectionPath || "").trim();
++  const id = String(docId || "").trim();
++  if (!fsId || !localId || !path || !id) return "skipped";
++  const preferLocal = String(company?.storageOption || "").toLowerCase() === "local";
++
++  if (String(options?.op || "").toLowerCase() === "delete") {
++    if (preferLocal) return "skipped";
++    await deleteCompanyDocFromBrowserDb(localId, path, id, { force: true, notify: true });
++    return "deleted";
++  }
++
++  const cryptoCtx: ServerBackupCryptoContext | null = company
++    ? { encryptServerBackupSalt: company.encryptServerBackupSalt }
++    : null;
++  const snap = await getDoc(doc(firestore, `companies/${fsId}/${path}`, id));
++  if (!snap.exists()) {
++    if (preferLocal) return "skipped";
++    await deleteCompanyDocFromBrowserDb(localId, path, id, { force: true, notify: true });
++    return "missing";
++  }
++  const raw = { ...snap.data(), id: snap.id } as Record<string, unknown> & { id: string };
++  const decrypted = await decryptFirestoreCompanyDocIfNeeded(raw, cryptoCtx, localId);
++  if (!decrypted) return "skipped";
++  if ((decrypted as { isDeleted?: unknown }).isDeleted === true) {
++    if (preferLocal) return "skipped";
++    await deleteCompanyDocFromBrowserDb(localId, path, id, { force: true, notify: true });
++    return "deleted";
++  }
++  const mirrored = await mirrorCollectionDocsToBrowserDbSilent(
++    localId,
++    path,
++    [stampLocalMirrorBackedByFirestore(decrypted as Record<string, unknown>)],
++    {
++      force: true,
++      mergePreferNewer: preferLocal,
++      mergePreferNewerTieBreak: "local",
++    }
++  );
++  if (mirrored.upserted <= 0) return "skipped";
++  return "upserted";
++}
++
+ export async function pullAllCompanySubcollectionsFromFirestoreToLocalDb(
+   fsCompanyId: string,
+   localCompanyId: string,
+@@ -229,6 +287,7 @@ export async function pullAllCompanySubcollectionsFromFirestoreToLocalDb(
+     onSubcollectionDone?: (info: { path: string; completed: number; total: number }) => void;
+   }
+ ): Promise<{ path: string; count: number }[]> {
++  if (isFirebaseLedgerDataSyncDisabled()) return [];
+   const paths = [...COMPANY_LOCAL_MIRROR_SUBCOLLECTIONS];
+   const total = paths.length;
+   let completed = 0;
+diff --git a/src/lib/localCloudSync/persistRegistryUserSettings.ts b/src/lib/localCloudSync/persistRegistryUserSettings.ts
+index 967f0c8..61b7e06 100644
+--- a/src/lib/localCloudSync/persistRegistryUserSettings.ts
++++ b/src/lib/localCloudSync/persistRegistryUserSettings.ts
+@@ -23,6 +23,16 @@ export const LOCAL_CLOUD_SYNC_USER_SETTINGS_KEYS = [
+   "localFirebaseReconcileEnabled",
+ ] as const;
+ 
++/** PL Server host plan — shell upsert omit kare to drop mat karo (offline survive). */
++const PL_SERVER_PLAN_PERSIST_KEYS = [
++  "planId",
++  "planExpiryMs",
++  "offlineLicenseValidUntilMs",
++  "planUpgradedAtMs",
++  "plServerPlanSyncedAtMs",
++  "planSyncFirestoreCompanyId",
++] as const;
++
+ function hasExplicitCloudSyncInterval(raw: unknown): raw is CloudSyncIntervalSec {
+   const n = Number(raw);
+   return CLOUD_SYNC_INTERVAL_SEC_OPTIONS.includes(n as CloudSyncIntervalSec);
+@@ -63,5 +73,19 @@ export function mergePersistedLocalCloudSyncUserSettings(
+     }
+   }
+ 
++  for (const key of PL_SERVER_PLAN_PERSIST_KEYS) {
++    if (out[key] === undefined && existing[key] !== undefined && existing[key] !== null) {
++      out[key] = existing[key];
++    }
++  }
++
++  if (
++    (!Array.isArray(out.localCompanyUsers) || out.localCompanyUsers.length === 0) &&
++    Array.isArray(existing.localCompanyUsers) &&
++    existing.localCompanyUsers.length > 0
++  ) {
++    out.localCompanyUsers = existing.localCompanyUsers;
++  }
++
+   return out;
+ }
+diff --git a/src/lib/localCompanyDocMirror.ts b/src/lib/localCompanyDocMirror.ts
+index 739e189..710d9d4 100644
+--- a/src/lib/localCompanyDocMirror.ts
++++ b/src/lib/localCompanyDocMirror.ts
+@@ -26,9 +26,10 @@ import { assertCompanyAllowsLedgerMutations } from "@/lib/security/offlinePlanWr
+ import {
+   isPlServerLivePullPaused,
+   isPlServerMirrorDocPushPending,
++  markPlServerLocalWrite,
+   maybeQueuePlServerMirrorAfterDocWrite,
+ } from "@/lib/plServerClientMirrorPush";
+-import { mirrorMergeSkipLog, serverTimestampTraceLog } from "@/lib/plServerLivePullDevLog";
++import { mirrorMergeApplyLog, mirrorMergeSkipLog, serverTimestampTraceLog } from "@/lib/plServerLivePullDevLog";
+ import { plPhase1bVerifyHook } from "@/lib/phase1bVerifyCapture";
+ 
+ /** Notify UI/listeners that local `company_docs` changed (static / APK / Electron). */
+@@ -785,6 +786,9 @@ async function commitCompanyDocOnRenderer(
+   const shouldNotify = options?.notify !== false;
+   const mutation = await performCompanyDocUpsert(companyId, collectionName, docId, data, { shouldNotify });
+   if (!mutation.written) {
++    if (mutation.persisted && shouldNotify && !sideEffectOpts?.skipNotify) {
++      notifyBrowserDbCollectionUpdated(companyId, collectionName, { immediate: true });
++    }
+     return { written: false, persisted: mutation.persisted, stampedData: mutation.stampedData };
+   }
+ 
+@@ -826,6 +830,7 @@ async function commitCompanyDocOnRenderer(
+   });
+ 
+   if (shouldNotify) {
++    markPlServerLocalWrite(companyId);
+     if (!sideEffectOpts?.skipNotify) {
+       notifyBrowserDbCollectionUpdated(companyId, collectionName, { immediate: true });
+       void maybeQueuePlServerMirrorAfterDocWrite(companyId, collectionName, docId, stampedData);
+@@ -857,13 +862,86 @@ function scheduleCompanyDocAuthoritativeDispatchAfterLocalCommit(
+   options?: UpsertCompanyBrowserOptions
+ ): void {
+   if (options?.notify === false) return;
+-  void import("@/lib/plServerAuthoritativeWriteRouting")
+-    .then(({ orchestrateCompanyDocBrowserWrite }) =>
+-      orchestrateCompanyDocBrowserWrite(companyId, collectionName, docId, data, options)
+-    )
+-    .catch((e) => {
+-      console.warn("[localCompanyDocMirror] background authoritative dispatch failed", collectionName, docId, e);
+-    });
++  void awaitCompanyDocAuthoritativeDispatchAfterLocalCommit(
++    companyId,
++    collectionName,
++    docId,
++    data,
++    options
++  ).catch(async (e) => {
++    console.warn("[localCompanyDocMirror] background authoritative dispatch failed", collectionName, docId, e);
++    try {
++      const {
++        classifyAuthoritativeWriteFailure,
++        enqueuePendingAuthoritativeCompanyDocWrite,
++        isAuthoritativeLanClientWriteEligible,
++        isAuthoritativeWriteFailureRetryable,
++      } = await import("@/lib/plServerAuthoritativePendingQueue");
++      const errorClass = classifyAuthoritativeWriteFailure(e);
++      if (!isAuthoritativeWriteFailureRetryable(errorClass)) return;
++      if (!(await isAuthoritativeLanClientWriteEligible(companyId, options))) return;
++      await enqueuePendingAuthoritativeCompanyDocWrite(companyId, collectionName, docId, data, options);
++      const { schedulePlServerAuthoritativeReplayDrain } = await import("@/lib/plServerAuthoritativeReplay");
++      schedulePlServerAuthoritativeReplayDrain("background_authoritative_dispatch_failed");
++    } catch (queueError) {
++      console.warn(
++        "[localCompanyDocMirror] pending authoritative enqueue after dispatch failure failed",
++        collectionName,
++        docId,
++        queueError
++      );
++    }
++  });
++}
++
++/** Master attachment-only save: bytes flush ke baad row dobara push karo, warna file-only edit stale reh sakta hai. */
++function scheduleEntityAttachmentAuthoritativeRedispatchAfterLocalCommit(
++  companyId: string,
++  collectionName: string,
++  docId: string,
++  data: Record<string, unknown>,
++  options?: UpsertCompanyBrowserOptions
++): void {
++  if (options?.notify === false || collectionName === "vouchers") return;
++  void (async () => {
++    const { recordContainsLocalPendingEntityFileRef, syncEntityAttachmentsAfterSaveAndWait } = await import(
++      "@/lib/entityProfileLocalFiles"
++    );
++    if (!recordContainsLocalPendingEntityFileRef(data)) return;
++    const { shouldEnqueuePlServerAttachmentUpload } = await import("@/lib/plServerAttachmentUploadQueue");
++    if (!(await shouldEnqueuePlServerAttachmentUpload(companyId))) return;
++    await syncEntityAttachmentsAfterSaveAndWait(companyId);
++    await awaitCompanyDocAuthoritativeDispatchAfterLocalCommit(
++      companyId,
++      collectionName,
++      docId,
++      data,
++      options
++    );
++  })().catch((e) => {
++    console.warn(
++      "[localCompanyDocMirror] background entity attachment redispatch failed",
++      collectionName,
++      docId,
++      e
++    );
++  });
++}
++
++/** Staff live sync: local commit ke baad Host push/background retry route. Callers may await in tests, UI saves schedule it. */
++export async function awaitCompanyDocAuthoritativeDispatchAfterLocalCommit(
++  companyId: string,
++  collectionName: string,
++  docId: string,
++  data: Record<string, unknown>,
++  options?: UpsertCompanyBrowserOptions
++): Promise<void> {
++  if (options?.notify === false) return;
++  const { orchestrateCompanyDocBrowserWrite } = await import("@/lib/plServerAuthoritativeWriteRouting");
++  await orchestrateCompanyDocBrowserWrite(companyId, collectionName, docId, data, options, {
++    // Soft ack: HTTP fail pe pending queue / retry; attachment preflight pehle complete hona chahiye
++    requireAuthoritativeAck: false,
++  });
+ }
+ 
+ /** Hidden bridge renderer: canonical SQLite commit without UI notify (main broadcasts bump). */
+@@ -925,7 +1003,7 @@ export async function upsertCompanyDocInBrowserDb(
+     }
+ 
+     if (thinStaff) {
+-      // Staff/client lane: local SQLite first, then Host/server replay in background.
++      // Staff/client lane: local SQLite first; Host push/retry runs in background so Save never waits on LAN.
+       const out = await commitCompanyDocOnRenderer(companyId, collectionName, docId, data, options);
+       if (out.persisted) {
+         try {
+@@ -951,6 +1029,13 @@ export async function upsertCompanyDocInBrowserDb(
+           out.stampedData,
+           options
+         );
++        scheduleEntityAttachmentAuthoritativeRedispatchAfterLocalCommit(
++          companyId,
++          collectionName,
++          docId,
++          out.stampedData,
++          options
++        );
+         return true;
+       }
+       if (shouldNotify) throw new Error("sqlite_commit_failed");
+@@ -966,6 +1051,17 @@ export async function upsertCompanyDocInBrowserDb(
+         out.stampedData,
+         options
+       );
++      scheduleEntityAttachmentAuthoritativeRedispatchAfterLocalCommit(
++        companyId,
++        collectionName,
++        docId,
++        out.stampedData,
++        options
++      );
++      if (shouldNotify) {
++        const { maybePublishHostMirrorAfterBridgeWrite } = await import("@/lib/plServerHostMirrorPublish");
++        void maybePublishHostMirrorAfterBridgeWrite(companyId, collectionName, docId, out.stampedData);
++      }
+       return true;
+     }
+     if (shouldNotify) throw new Error("sqlite_commit_failed");
+@@ -983,45 +1079,73 @@ export async function upsertCompanyDocInBrowserDb(
+  * Per-doc notify is off (performance / avoid event floods).
+  * `cloudBackedOfflineCache`: PWA/web Firebase companies may use SQLite as a shadow cache when the default mirror guard is off.
+  */
+-/** P2P pull: local row agar server snapshot se nayi ho to overwrite mat karo. */
+-function mirrorDocEditTimeMs(row: Record<string, unknown>): number {
+-  for (const key of ["lastEditedAt", "updatedAt", "createdAt"] as const) {
+-    const raw = row[key];
+-    if (raw == null) continue;
+-    const v = deserializeLocalDbValue(raw);
+-    if (v instanceof Timestamp) {
+-      const ms = v.toMillis();
+-      if (Number.isFinite(ms)) return ms;
+-    }
+-    if (v instanceof Date) {
+-      const ms = v.getTime();
+-      if (Number.isFinite(ms)) return ms;
+-    }
+-    if (typeof v === "number" && Number.isFinite(v)) return v;
+-    if (typeof v === "string") {
+-      const ms = Date.parse(v);
+-      if (Number.isFinite(ms)) return ms;
+-    }
+-    if (typeof raw === "object" && raw !== null) {
+-      const o = raw as { seconds?: number; nanoseconds?: number };
+-      if (typeof o.seconds === "number") {
+-        const ns = typeof o.nanoseconds === "number" ? o.nanoseconds : 0;
+-        return o.seconds * 1000 + Math.floor(ns / 1e6);
+-      }
++function mirrorTimestampValueMs(raw: unknown): number {
++  if (raw == null) return 0;
++  const v = deserializeLocalDbValue(raw);
++  if (v instanceof Timestamp) {
++    const ms = v.toMillis();
++    return Number.isFinite(ms) ? ms : 0;
++  }
++  if (v instanceof Date) {
++    const ms = v.getTime();
++    return Number.isFinite(ms) ? ms : 0;
++  }
++  if (typeof v === "number" && Number.isFinite(v)) return v;
++  if (typeof v === "string") {
++    const ms = Date.parse(v);
++    return Number.isFinite(ms) ? ms : 0;
++  }
++  if (typeof raw === "object" && raw !== null) {
++    const o = raw as { seconds?: number; nanoseconds?: number; _seconds?: number; _nanoseconds?: number };
++    const seconds = typeof o.seconds === "number" ? o.seconds : o._seconds;
++    if (typeof seconds === "number") {
++      const ns =
++        typeof o.nanoseconds === "number"
++          ? o.nanoseconds
++          : typeof o._nanoseconds === "number"
++            ? o._nanoseconds
++            : 0;
++      return seconds * 1000 + Math.floor(ns / 1e6);
+     }
+   }
+-  const pl = row[PL_CLIENT_OFFLINE_FIRST_PERSIST_MS];
+-  if (typeof pl === "number" && Number.isFinite(pl)) return pl;
+   return 0;
+ }
+ 
++/** P2P pull/push: newest timestamp wins. Delete tombstone (`deletedAt`) participates in the same clock. */
++function mirrorDocEditTimeMs(row: Record<string, unknown>): number {
++  let max = 0;
++  for (const key of ["lastEditedAt", "updatedAt", "deletedAt", "movedToAdminRecycleAt", "createdAt"] as const) {
++    max = Math.max(max, mirrorTimestampValueMs(row[key]));
++  }
++  const pl = row[PL_CLIENT_OFFLINE_FIRST_PERSIST_MS];
++  if (typeof pl === "number" && Number.isFinite(pl)) max = Math.max(max, pl);
++  return max;
++}
++
+ function mirrorDocDeletedFlag(row: Record<string, unknown>): boolean {
+   return row.isDeleted === true || row.deleted === true || row.movedToAdminRecycleAt != null;
+ }
+ 
++function localOriginPersistMs(row: Record<string, unknown>): number {
++  const raw = row[PL_CLIENT_OFFLINE_FIRST_PERSIST_MS];
++  return typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
++}
++
++const AUTHORITATIVE_PRUNE_LOCAL_GRACE_MS = 5 * 60 * 1000;
++
++function shouldProtectLocalRowFromAuthoritativePrune(row: Record<string, unknown>): boolean {
++  const localPersistMs = localOriginPersistMs(row);
++  if (localPersistMs <= 0) return false;
++  const editMs = Math.max(localPersistMs, mirrorDocEditTimeMs(row));
++  if (editMs <= 0) return false;
++  return Date.now() - editMs < AUTHORITATIVE_PRUNE_LOCAL_GRACE_MS;
++}
++
+ export function mirrorDocTimestampFields(row: Record<string, unknown>): {
+   lastEditedAt: unknown;
+   updatedAt: unknown;
++  deletedAt: unknown;
++  movedToAdminRecycleAt: unknown;
+   createdAt: unknown;
+   offlineFirstPersistMs: unknown;
+   editTimeMs: number;
+@@ -1029,6 +1153,8 @@ export function mirrorDocTimestampFields(row: Record<string, unknown>): {
+   return {
+     lastEditedAt: row.lastEditedAt,
+     updatedAt: row.updatedAt,
++    deletedAt: row.deletedAt,
++    movedToAdminRecycleAt: row.movedToAdminRecycleAt,
+     createdAt: row.createdAt,
+     offlineFirstPersistMs: row[PL_CLIENT_OFFLINE_FIRST_PERSIST_MS],
+     editTimeMs: mirrorDocEditTimeMs(row),
+@@ -1055,7 +1181,12 @@ function traceServerDocTimestampLifecycle(
+   });
+ }
+ 
+-export type MirrorCollectionSilentResult = { upserted: number; skipped: number };
++export type MirrorCollectionSilentResult = {
++  upserted: number;
++  skipped: number;
++  pruned: number;
++  skipReasons?: Record<string, number>;
++};
+ 
+ export async function mirrorCollectionDocsToBrowserDbSilent(
+   companyId: string,
+@@ -1067,11 +1198,12 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
+     mergePreferNewer?: boolean;
+     /** P2P full pull: server snapshot authoritative — extras delete + empty [] allowed. */
+     authoritativeSnapshot?: boolean;
++    pruneMissingOnAuthoritativeSnapshot?: boolean;
+     /** Push receive on server: tie par incoming (client) win. Pull par default local win. */
+     mergePreferNewerTieBreak?: "local" | "incoming";
+   }
+ ): Promise<MirrorCollectionSilentResult> {
+-  const empty: MirrorCollectionSilentResult = { upserted: 0, skipped: 0 };
++  const empty: MirrorCollectionSilentResult = { upserted: 0, skipped: 0, pruned: 0 };
+   if (typeof window === "undefined" || !companyId || !collectionName || !Array.isArray(docs)) return empty;
+   const authoritative = options?.authoritativeSnapshot === true;
+   if (docs.length === 0 && !authoritative) return empty;
+@@ -1084,11 +1216,16 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
+   const tiePrefersLocal = options?.mergePreferNewerTieBreak !== "incoming";
+   let upserted = 0;
+   let skipped = 0;
++  const skipReasons: Record<string, number> = {};
++  const noteSkip = (reason: string): void => {
++    skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
++  };
+   for (const row of docs) {
+     const rec = row as { id?: string };
+     const id = rec?.id as string | undefined;
+     if (!id) {
+       skipped += 1;
++      noteSkip("missing_id");
+       mirrorMergeSkipLog({
+         companyId,
+         collection: collectionName,
+@@ -1103,6 +1240,7 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
+       try {
+         if (isPlServerMirrorDocPushPending(companyId, collectionName, id)) {
+           skipped += 1;
++          noteSkip("push_pending");
+           mirrorMergeSkipLog({
+             companyId,
+             collection: collectionName,
+@@ -1113,7 +1251,7 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
+           });
+           continue;
+         }
+-        const existing = await getCompanyDocFromBrowserDb(companyId, collectionName, id);
++        const existing = await getCompanyDocFromBrowserDb(companyId, collectionName, id, { includeDeleted: true });
+         if (existing) {
+           const existingMs = mirrorDocEditTimeMs(existing);
+           const incomingMs = mirrorDocEditTimeMs(payload);
+@@ -1121,6 +1259,7 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
+           const remoteTs = mirrorDocTimestampFields(payload);
+           if (existingMs > incomingMs) {
+             skipped += 1;
++            noteSkip("local_newer");
+             mirrorMergeSkipLog({
+               companyId,
+               collection: collectionName,
+@@ -1128,6 +1267,8 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
+               reason: "local_newer",
+               localUpdatedAt: localTs.lastEditedAt ?? localTs.updatedAt ?? localTs.createdAt,
+               remoteUpdatedAt: remoteTs.lastEditedAt ?? remoteTs.updatedAt ?? remoteTs.createdAt,
++              localDeletedAt: localTs.deletedAt,
++              remoteDeletedAt: remoteTs.deletedAt,
+               localEditTimeMs: existingMs,
+               remoteEditTimeMs: incomingMs,
+               localDeleted: mirrorDocDeletedFlag(existing),
+@@ -1137,25 +1278,32 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
+             });
+             continue;
+           }
+-          if (existingMs === incomingMs && (tiePrefersLocal || isPlServerLivePullPaused(companyId))) {
++          const livePullPaused = isPlServerLivePullPaused(companyId);
++          const pauseCanHoldLocal = livePullPaused;
++          if (existingMs === incomingMs && (tiePrefersLocal || pauseCanHoldLocal)) {
+             skipped += 1;
++            const reason = pauseCanHoldLocal
++              ? "timestamp_equal_live_pull_paused"
++              : tiePrefersLocal
++                ? "timestamp_equal_local_tiebreak"
++                : "timestamp_equal";
++            noteSkip(reason);
+             mirrorMergeSkipLog({
+               companyId,
+               collection: collectionName,
+               id,
+-              reason: isPlServerLivePullPaused(companyId)
+-                ? "timestamp_equal_live_pull_paused"
+-                : tiePrefersLocal
+-                  ? "timestamp_equal_local_tiebreak"
+-                  : "timestamp_equal",
++              reason,
+               localUpdatedAt: localTs.lastEditedAt ?? localTs.updatedAt ?? localTs.createdAt,
+               remoteUpdatedAt: remoteTs.lastEditedAt ?? remoteTs.updatedAt ?? remoteTs.createdAt,
++              localDeletedAt: localTs.deletedAt,
++              remoteDeletedAt: remoteTs.deletedAt,
+               localEditTimeMs: existingMs,
+               remoteEditTimeMs: incomingMs,
+               localDeleted: mirrorDocDeletedFlag(existing),
+               remoteDeleted: mirrorDocDeletedFlag(payload),
+               tiePrefersLocal,
+-              livePullPaused: isPlServerLivePullPaused(companyId),
++              livePullPaused,
++              authoritative,
+               localOfflineFirstPersistMs: localTs.offlineFirstPersistMs,
+               remoteOfflineFirstPersistMs: remoteTs.offlineFirstPersistMs,
+             });
+@@ -1178,13 +1326,31 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
+       force: forceUpsert,
+       skipPlanMutationGate: collectionName === "vouchers",
+     });
+-    if (written) upserted += 1;
+-    else skipped += 1;
+-  }
+-  if (authoritative) {
+-    await reconcileAuthoritativeCollectionSnapshot(companyId, collectionName, incomingIds);
++    if (written) {
++      upserted += 1;
++      if (options?.mergePreferNewer) {
++        const ts = mirrorDocTimestampFields(payload);
++        mirrorMergeApplyLog({
++          companyId,
++          collection: collectionName,
++          id,
++          winner: "incoming",
++          incomingUpdatedAt: ts.lastEditedAt ?? ts.updatedAt ?? ts.deletedAt ?? ts.createdAt,
++          incomingDeletedAt: ts.deletedAt,
++          incomingEditTimeMs: ts.editTimeMs,
++          incomingDeleted: mirrorDocDeletedFlag(payload),
++        });
++      }
++    } else {
++      skipped += 1;
++      noteSkip("write_not_persisted");
++    }
+   }
+-  return { upserted, skipped };
++  const pruned =
++    authoritative && options?.pruneMissingOnAuthoritativeSnapshot === true
++      ? await reconcileAuthoritativeCollectionSnapshot(companyId, collectionName, incomingIds)
++      : 0;
++  return { upserted, skipped, pruned, skipReasons };
+ }
+ 
+ /** P2P authoritative pull: server par na ho wale local rows hatao (pending push chhod ke). */
+@@ -1192,22 +1358,45 @@ async function reconcileAuthoritativeCollectionSnapshot(
+   companyId: string,
+   collectionName: string,
+   incomingIds: Set<string>
+-): Promise<void> {
++): Promise<number> {
+   try {
++    if (isPlServerLivePullPaused(companyId)) {
++      mirrorMergeSkipLog({
++        companyId,
++        collection: collectionName,
++        id: null,
++        reason: "authoritative_prune_paused_after_local_write",
++        incomingCount: incomingIds.size,
++      });
++      return 0;
++    }
+     const existing = await listCompanyDocsFromBrowserDb(companyId, collectionName, { forBackupMerge: true });
+-    let changed = false;
++    let deleted = 0;
+     for (const row of existing) {
+       const id = String((row as { id?: string }).id || "").trim();
+       if (!id || incomingIds.has(id)) continue;
++      if (mirrorDocDeletedFlag(row as Record<string, unknown>)) continue;
+       if (isPlServerMirrorDocPushPending(companyId, collectionName, id)) continue;
++      if (shouldProtectLocalRowFromAuthoritativePrune(row as Record<string, unknown>)) {
++        mirrorMergeSkipLog({
++          companyId,
++          collection: collectionName,
++          id,
++          reason: "authoritative_prune_recent_local_write",
++          ...mirrorDocTimestampFields(row as Record<string, unknown>),
++        });
++        continue;
++      }
+       await deleteCompanyDocFromBrowserDb(companyId, collectionName, id, { force: true, notify: false });
+-      changed = true;
++      deleted += 1;
+     }
+-    if (changed || incomingIds.size === 0) {
+-      notifyBrowserDbCollectionUpdated(companyId, collectionName);
++    if (deleted > 0 || incomingIds.size === 0) {
++      notifyBrowserDbCollectionUpdated(companyId, collectionName, { immediate: true });
+     }
++    return deleted;
+   } catch (e) {
+     console.warn("[localCompanyDocMirror] reconcileAuthoritativeCollectionSnapshot failed", collectionName, e);
++    return 0;
+   }
+ }
+ 

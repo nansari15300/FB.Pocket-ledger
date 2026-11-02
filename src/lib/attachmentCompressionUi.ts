@@ -318,8 +318,23 @@ export function compressImageKbBandFromEntitlements(
   const onlineMaxKb = readEntitlementKb(e.maxCompressImageKb);
   const onlineMinKb = readEntitlementKb(e.minCompressImageKb);
 
-  let maxKb = useLocalLimit ? (localMaxKb > 0 ? localMaxKb : onlineMaxKb) : onlineMaxKb;
-  let minKb = useLocalLimit ? (localMinKb > 0 ? localMinKb : onlineMinKb) : onlineMinKb;
+  // Local company -> Local keys; Online (Firebase / PocketBase) company -> Online keys.
+  // If a side has neither Max nor Min set (empty / 0), the whole side falls back to the other side's
+  // pair (Online -> Local values, as requested; Local -> Online for legacy plans), then platform default.
+  // Pair-wise (not per field) so a lone Online Max never mixes with a Local Min.
+  const localHasValue = localMaxKb > 0 || localMinKb > 0;
+  const onlineHasValue = onlineMaxKb > 0 || onlineMinKb > 0;
+  let maxKb: number;
+  let minKb: number;
+  if (useLocalLimit) {
+    const useOwn = localHasValue || !onlineHasValue;
+    maxKb = useOwn ? localMaxKb : onlineMaxKb;
+    minKb = useOwn ? localMinKb : onlineMinKb;
+  } else {
+    const useOwn = onlineHasValue || !localHasValue;
+    maxKb = useOwn ? onlineMaxKb : localMaxKb;
+    minKb = useOwn ? onlineMinKb : localMinKb;
+  }
   if (maxKb <= 0) maxKb = defaultMax;
   if (minKb <= 0) {
     // Legacy: sirf To set tha — From ≈ 90% of To; defaults par platform floor.
@@ -341,9 +356,12 @@ export function compressImageMaxKbFromEntitlements(
 
 export function attachmentImageKbBandForCompany(
   company?: CompanyStorageRow | null,
-  entitlements?: Partial<Entitlements> | null
+  entitlements?: Partial<Entitlements> | null,
+  opts?: { forceOnlineBand?: boolean }
 ): CompressImageKbBand {
-  const useLocal = companyUsesRelaxedImageAttachmentCap(company);
+  // Pocket Ledger Server (PocketBase) companies are online companies: use the Online plan keys
+  // (maxCompressImageKb / minCompressImageKb), not the device-local ones.
+  const useLocal = opts?.forceOnlineBand === true ? false : companyUsesRelaxedImageAttachmentCap(company);
   if (entitlements) {
     return compressImageKbBandFromEntitlements(entitlements, useLocal);
   }
@@ -409,7 +427,7 @@ const attachmentImageKbBandCache = new Map<
   string,
   { band: CompressImageKbBand; atMs: number }
 >();
-const ATTACHMENT_IMAGE_KB_BAND_CACHE_MS = 5 * 60 * 1000;
+const ATTACHMENT_IMAGE_KB_BAND_CACHE_MS = 60 * 1000;
 
 /** Resolve From–To KB band from company id. Unknown → online 50–100 KB. */
 export async function resolveAttachmentImageKbBand(
@@ -425,7 +443,14 @@ export async function resolveAttachmentImageKbBand(
     const { getLocalCompanyById } = await import("@/lib/localCompanyStore");
     const row = (await getLocalCompanyById(cid, { includeDeleted: true })) as CompanyStorageRow | null;
     const entitlements = await resolvePlanEntitlementsForCompany(cid, row);
-    const band = attachmentImageKbBandForCompany(row, entitlements ?? {});
+    let forceOnlineBand = false;
+    try {
+      const { isPocketBaseCompany } = await import("@/lib/pocketbaseData/pbCompanyRegistry");
+      forceOnlineBand = isPocketBaseCompany(cid, row as never);
+    } catch {
+      forceOnlineBand = false;
+    }
+    const band = attachmentImageKbBandForCompany(row, entitlements ?? {}, { forceOnlineBand });
     attachmentImageKbBandCache.set(cid, { band, atMs: Date.now() });
     return band;
   } catch {

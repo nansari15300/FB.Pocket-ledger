@@ -100,7 +100,7 @@ import {
   goBackToPlServer,
   plServerBackToServerHref,
 } from "@/lib/adminData/plServerMyCompanyHandoff";
-import { isPackedMyCompanyOnly } from "@/lib/plServerPackedApp";
+import { isServerManageOnlyScope } from "@/lib/plServerPackedApp";
 
 
 type MenuItem = {
@@ -512,7 +512,7 @@ export function AppSidebar() {
   const displayName = user?.displayName || user?.email?.split('@')[0] || "User";
   const [showBackToServer, setShowBackToServer] = useState(false);
   useEffect(() => {
-    setShowBackToServer(isPackedMyCompanyOnly() && !!plServerBackToServerHref());
+    setShowBackToServer(isServerManageOnlyScope() && !!plServerBackToServerHref());
   }, []);
 
   const handleLogout = () => {

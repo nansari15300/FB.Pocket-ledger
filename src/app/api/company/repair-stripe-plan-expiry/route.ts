@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
 import Stripe from "stripe";
-import { getAdminDb } from "@/lib/firebaseAdmin";
+import { serverDb } from "@/lib/server/appDb";
 import { isCompanyOwner } from "@/lib/server/companyOwner";
 import { mergeGatewayKeysWithEnv, type GatewayKeys } from "@/ai/flows/gateway-keys";
 import { syncCompanyPlanExpiryFromStripe } from "@/lib/payments/syncCompanyPlanExpiryFromStripe";
@@ -11,7 +11,7 @@ type Body = { companyId?: string };
 
 async function getGatewayKeysFromAdmin(): Promise<{ stored: GatewayKeys; adminReadOk: boolean }> {
   try {
-    const db = getAdminDb();
+    const db = serverDb();
     const snap = await db.doc("app_settings/payment_gateways").get();
     return { stored: (snap.exists ? (snap.data() as GatewayKeys) : {}) as GatewayKeys, adminReadOk: true };
   } catch {

@@ -49,3 +49,26 @@ export function resolveMasterListSelection<T extends { id: string }>(
   if (!selected) return null;
   return processed?.find((x) => x.id === selected.id) ?? selected;
 }
+
+const LIVE_SELECTION_ATTACHMENT_KEYS = ["fileUrl", "avatarUrl", "documentFileUrls", "fileUrls"] as const;
+
+/**
+ * Merge live list row into `selected` and ALWAYS converge: attachment keys are taken from the live row
+ * (even when absent there = removed), and if the merge would not change the profile fingerprint of
+ * `selected` this returns null (caller must skip setState). Prevents the
+ * "selected !== live fingerprint forever -> setSelected -> effect -> setSelected" infinite loop
+ * (Maximum update depth exceeded) when the live row omits keys that `selected` still carries.
+ */
+export function mergeLiveMasterSelection<T extends Record<string, unknown>>(
+  selected: T,
+  live: T
+): T | null {
+  const merged: Record<string, unknown> = { ...selected, ...live };
+  for (const k of LIVE_SELECTION_ATTACHMENT_KEYS) merged[k] = (live as Record<string, unknown>)[k];
+  if (
+    masterEntityProfileUiFields(merged) === masterEntityProfileUiFields(selected as Record<string, unknown>)
+  ) {
+    return null;
+  }
+  return merged as T;
+}

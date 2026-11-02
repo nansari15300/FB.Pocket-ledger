@@ -1,7 +1,8 @@
 "use client";
 
 import { deleteDoc } from "@/lib/writeGateway/pbWrites";
-import { doc, getDoc } from "@/lib/pbCompat/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { isDeviceLocalCompany } from "@/lib/companyStorageKind";
 

@@ -246,7 +246,13 @@ export function useAttachmentThumbDisplayUrl(
               resolveFallback.clientFileUrls
             );
             if (remoteUrl && !isLocalFileRef(remoteUrl)) {
-              if (looksLikeFirebaseStorageDownloadUrl(remoteUrl)) {
+              const { isPbAttachmentRef, fetchPbAttachmentBlob } = await import(
+                "@/lib/pocketbaseData/pbAttachments"
+              );
+              if (isPbAttachmentRef(remoteUrl)) {
+                blob = await fetchPbAttachmentBlob(remoteUrl);
+              }
+              if (!blob?.size && looksLikeFirebaseStorageDownloadUrl(remoteUrl)) {
                 blob = await tryGetBlobFromFirebaseStorageDownloadUrl(remoteUrl, undefined, {
                   companyId,
                 });

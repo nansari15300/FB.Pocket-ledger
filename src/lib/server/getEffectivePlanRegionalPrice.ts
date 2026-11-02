@@ -1,4 +1,4 @@
-import { getAdminDb } from "@/lib/firebaseAdmin";
+import { serverDb } from "@/lib/server/appDb";
 import { DEFAULT_PLANS, type Plan, type PlanId } from "@/config/plans";
 import { mergeAppSettingsPlansDoc } from "@/lib/mergeAppSettingsPlans";
 import type { BillingRegionId } from "@/lib/billingRegions";
@@ -14,7 +14,7 @@ import { regionalCheckoutCharge } from "@/lib/billingRegionalPricing";
 
 export async function getBillingPricingSettings(): Promise<BillingPricingSettings> {
   try {
-    const db = getAdminDb();
+    const db = serverDb();
     const snap = await db.doc("app_settings/billing_pricing").get();
     if (!snap.exists) return DEFAULT_BILLING_PRICING_SETTINGS;
     const d = snap.data() as Record<string, unknown>;
@@ -31,7 +31,7 @@ export async function getBillingPricingSettings(): Promise<BillingPricingSetting
 export async function getMergedPlan(planId: PlanId): Promise<Plan> {
   const def = DEFAULT_PLANS[planId];
   try {
-    const db = getAdminDb();
+    const db = serverDb();
     const snap = await db.doc("app_settings/plans").get();
     const merged = mergeAppSettingsPlansDoc(snap.exists ? (snap.data() as Record<string, unknown>) : undefined);
     return merged.find((p) => p.id === planId) ?? def;

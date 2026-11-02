@@ -861,7 +861,7 @@ export function DashboardPageContentImpl() {
     const [showRecentNarration, setShowRecentNarration] = useState(true);
     /** Desktop Daybook tab: slot under the Welcome row for the Daybook pagination footer (portal target). */
     const [daybookFooterSlot, setDaybookFooterSlot] = useState<HTMLElement | null>(null);
-  const { visibleColumns, handleColumnVisibilityChange } = useTransactionVisibleColumns();
+  const { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuNoTdsFilter } = useTransactionVisibleColumns();
   const { setShowNotes, includeNotesInTable, notesPreferenceLockedOnMobile } = useShowNotes();
   
   const [recentRowsPerPage, setRecentRowsPerPage] = useRowsPerPage(10, "app-recent-rows-per-page");
@@ -2267,7 +2267,7 @@ export function DashboardPageContentImpl() {
             />
             <LedgerFooterColumnsMenu>
               <DropdownMenuContent align="start" className="w-52 p-2">
-                {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[])
+                {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[]).filter(ledgerColumnMenuNoTdsFilter)
                   .filter((key) => key !== 'runningBalance' && key !== 'status')
                   .map((key) => (
                     <DropdownMenuItem

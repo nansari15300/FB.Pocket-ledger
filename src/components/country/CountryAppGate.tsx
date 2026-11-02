@@ -7,6 +7,7 @@ import {
   detectCountryFromHost,
   isCountryServerPanelHost,
   readStoredAppCountry,
+  selfHostDefaultCountry,
   writeStoredAppCountry,
 } from "@/lib/countryAppHosts";
 import { isPackedMyCompanyOnly } from "@/lib/plServerPackedApp";
@@ -22,6 +23,12 @@ function shouldPrompt(): boolean {
   const fromHost = detectCountryFromHost();
   if (fromHost) {
     writeStoredAppCountry(fromHost.cc);
+    return false;
+  }
+  // dev.pocket-ledger.com / localhost / other non-apex hosts: this origin is the app (np default) - no chooser.
+  const selfDefault = selfHostDefaultCountry();
+  if (selfDefault) {
+    if (!readStoredAppCountry()) writeStoredAppCountry(selfDefault.cc);
     return false;
   }
   return !readStoredAppCountry();

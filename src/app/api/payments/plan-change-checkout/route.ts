@@ -10,7 +10,7 @@ import {
   parseGatewayPaymentFlags,
   type GatewayKeys,
 } from "@/ai/flows/gateway-keys";
-import { getAdminDb } from "@/lib/firebaseAdmin";
+import { serverDb } from "@/lib/server/appDb";
 import { DEFAULT_PLANS, type PlanId, normalizePlanIdForClient } from "@/config/plans";
 import {
   buildMergedFrozenStateAfterPaidUpgrade,
@@ -47,7 +47,7 @@ type AdminKeysResult = {
 
 async function getGatewayKeysFromAdmin(): Promise<AdminKeysResult> {
   try {
-    const db = getAdminDb();
+    const db = serverDb();
     const snap = await db.doc("app_settings/payment_gateways").get();
     return {
       stored: (snap.exists ? (snap.data() as GatewayKeys) : {}) as GatewayKeys,

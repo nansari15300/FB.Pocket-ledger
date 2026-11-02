@@ -188,7 +188,7 @@ export function summarizePermissionDateLimits(
     return { role, ...(dl[role] as object) };
   }
   const out: Record<string, unknown> = {};
-  for (const r of ["viewer", "manager", "editor", "accountant", "data-entry", "owner"]) {
+  for (const r of ["viewer", "manager", "admin", "editor", "accountant", "data-entry", "owner"]) {
     if (dl[r]) out[r] = dl[r];
   }
   return out;

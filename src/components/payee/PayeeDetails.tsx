@@ -245,7 +245,7 @@ export function PayeeDetails({
   const [isDesktopCalendarOpen, setIsDesktopCalendarOpen] = useState(false);
   const [tempDateRange, setTempDateRange] = useState<DateRange | undefined>(dateRange);
   
-  const { visibleColumns, handleColumnVisibilityChange } = useTransactionVisibleColumns();
+  const { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuNoTdsFilter } = useTransactionVisibleColumns();
 
   useEffect(() => {
     const savedState = sessionStorage.getItem("showNarration");
@@ -595,7 +595,7 @@ export function PayeeDetails({
             <LedgerFooterColumnsMenu>
                 <DropdownMenuContent align="start" className="w-52 p-2">
                 {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[])
-                  .filter((key) => key !== "status" || balanceMode === "bill_wise")
+                  .filter(ledgerColumnMenuNoTdsFilter).filter((key) => key !== "status" || balanceMode === "bill_wise")
                   .map((key) => {
                   return (
                     <DropdownMenuItem

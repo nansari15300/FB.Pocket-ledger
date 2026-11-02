@@ -47,7 +47,7 @@ import { CreatePartyDialog } from "@/components/party/CreatePartyDialog";
 import { CreateGroupDialog } from "@/components/party/CreateGroupDialog";
 import { PermissionButton } from "@/components/permission";
 import { useVouchers } from "@/hooks/useVouchers";
-import { masterEntityProfileUiFields, resolveMasterListSelection } from "@/lib/masterEntityLiveUpdate";
+import { mergeLiveMasterSelection, resolveMasterListSelection } from "@/lib/masterEntityLiveUpdate";
 import usePermissions from "@/hooks/usePermissions";
 import type { Party, Group } from "@/components/party/types";
 import { useResponsiveListLayout } from "@/hooks/useResponsiveListLayout";
@@ -688,10 +688,12 @@ function PartyPageContent() {
         ? processedGroups.find((row) => row.id === selected.id)
         : processedParties.find((row) => row.id === selected.id);
     if (!live) return;
-    const prev = masterEntityProfileUiFields(selected as unknown as Record<string, unknown>);
-    const next = masterEntityProfileUiFields(live as unknown as Record<string, unknown>);
-    if (prev === next) return;
-    setSelected({ ...selected, ...live });
+    const merged = mergeLiveMasterSelection(
+      selected as unknown as Record<string, unknown>,
+      live as unknown as Record<string, unknown>
+    );
+    if (!merged) return;
+    setSelected(merged as unknown as typeof selected);
   }, [selected, activeView, processedParties, processedGroups, setSelected]);
 
   const mobileDetailHeaderAvatar = useMemo(() => {

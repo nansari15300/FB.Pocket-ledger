@@ -185,7 +185,12 @@ export function PlanDetails({ plan, onSave }: PlanDetailsProps) {
             toast({
                 variant: "destructive",
                 title: "Invalid compress range",
-                description: "Max KB must be greater than Min KB.",
+                description: `${[
+                    compressKbRangeValidation.localMinFloor != null ? "Local company" : null,
+                    compressKbRangeValidation.onlineMinFloor != null ? "Online company" : null,
+                ]
+                    .filter(Boolean)
+                    .join(" and ")}: Min KB cannot be greater than Max KB.`
             });
             return;
         }
@@ -363,7 +368,7 @@ export function PlanDetails({ plan, onSave }: PlanDetailsProps) {
         onlineMin: "minCompressImageKb",
         localMin: "minCompressImageKbLocal",
         label: "File Compress size range (KB)",
-        tip: "From–To: compressed image stays in this KB band. 0 = platform default (Online 50–100, Local 50–150). Example: From 30 To 35 → output ~30–35 KB. Editable even when Allow online is OFF.",
+        tip: "From–To: compressed image stays in this KB band. 0 = platform default (Online 50–100, Local 50–150). Example: From 30 To 35 → output ~30–35 KB. Online = cloud and Pocket Ledger Server (PocketBase) companies; Offline/Local = device-local, Drive and local-gate companies. Output never goes below From unless the source image is already smaller. Editable even when Allow online is OFF.",
         uiVariant: "compressKb",
       },
       {

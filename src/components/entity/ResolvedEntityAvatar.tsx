@@ -27,6 +27,7 @@ import {
 } from "@/lib/attachmentHoverBlobCache";
 import { normalizeAttachmentUrlForDevicePreview } from "@/lib/attachmentHoldClipboard";
 import { subscribeAttachmentLoadStore } from "@/lib/attachmentLoadReady";
+import { fetchPbAttachmentBlob, isPbAttachmentRef } from "@/lib/pocketbaseData/pbAttachments";
 
 type Props = {
   src?: string | null;
@@ -108,6 +109,11 @@ export function ResolvedEntityAvatar({
   const [remoteImgSrc, setRemoteImgSrc] = React.useState<string | undefined>(undefined);
   const remoteBlobRevokeRef = React.useRef<string | null>(null);
   const [retryKey, setRetryKey] = React.useState(0);
+  /** pbatt: list rows mount before the PocketBase session / file token is ready -> bounded re-tries (no request storm). */
+  const [pbRetryTick, setPbRetryTick] = React.useState(0);
+  React.useEffect(() => {
+    setPbRetryTick(0);
+  }, [src]);
 
   const revokeOwnedObjectUrl = React.useCallback(() => {
     if (ownedObjectUrlRef.current) {
@@ -131,6 +137,30 @@ export function ResolvedEntityAvatar({
       }
     },
     []
+  );
+
+  /**
+   * List row + detail header mount for the same ref at the same time and each builds its own blob URL.
+   * `rememberHoverBlobUrl` then revokes the first one -> that avatar's <img> silently never loads (stays on the default icon
+   * until refresh). Adopt the already-published URL instead of replacing it (sync check, so no race window).
+   */
+  const adoptOrPublishSharedAvatarUrl = React.useCallback(
+    (rawKey: string, normalizedKey: string, objectUrl: string): string => {
+      const existing = peekHoverCachedBlobUrl(normalizedKey) ?? peekHoverCachedBlobUrl(rawKey);
+      if (existing && existing !== objectUrl) {
+        try {
+          URL.revokeObjectURL(objectUrl);
+        } catch {
+          /* ignore */
+        }
+        if (ownedObjectUrlRef.current === objectUrl) ownedObjectUrlRef.current = null;
+        if (remoteBlobRevokeRef.current === objectUrl) remoteBlobRevokeRef.current = null;
+        return existing;
+      }
+      publishSharedAvatarUrl(rawKey, normalizedKey, objectUrl);
+      return objectUrl;
+    },
+    [publishSharedAvatarUrl]
   );
 
   React.useEffect(() => {
@@ -208,8 +238,7 @@ export function ResolvedEntityAvatar({
         setLocalBlobUrl(null);
         return;
       }
-      publishSharedAvatarUrl(trimmed, normalized, objectUrl);
-      setLocalBlobUrl(objectUrl);
+      setLocalBlobUrl(adoptOrPublishSharedAvatarUrl(trimmed, normalized, objectUrl));
     })();
 
     return () => {
@@ -217,7 +246,7 @@ export function ResolvedEntityAvatar({
       // Shared cache URL mat revoke — dusri list/detail row abhi use kar rahi ho sakti hai.
       revokeOwnedObjectUrl();
     };
-  }, [src, attachmentCompanyId, revokeOwnedObjectUrl, publishSharedAvatarUrl, retryKey]);
+  }, [src, attachmentCompanyId, revokeOwnedObjectUrl, publishSharedAvatarUrl, adoptOrPublishSharedAvatarUrl, retryKey]);
 
   /** Idle prewarm / file column warm ke baad LRU se turant avatar paint. */
   React.useEffect(() => {
@@ -269,6 +298,7 @@ export function ResolvedEntityAvatar({
     setRemoteImgSrc(undefined);
     const trimmed = src.trim();
     const normalized = normalizeAttachmentUrlForDevicePreview(trimmed);
+    let pbRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
     void (async () => {
       const warmed = peekHoverCachedBlobUrl(normalized) ?? peekHoverCachedBlobUrl(trimmed);
@@ -282,9 +312,14 @@ export function ResolvedEntityAvatar({
       }
 
       try {
-        const blob = await getRemoteAttachmentBlobPreferOfflineCache(trimmed, undefined, {
-          companyId: attachmentCompanyId,
-        });
+        // PocketBase company: `pbatt:<recordId>/<file>` (protected pl_attachments file) needs the signed-in file token.
+        const pbBlob = isPbAttachmentRef(trimmed) ? await fetchPbAttachmentBlob(trimmed) : null;
+        const blob =
+          pbBlob && pbBlob.size > 0
+            ? pbBlob
+            : await getRemoteAttachmentBlobPreferOfflineCache(trimmed, undefined, {
+              companyId: attachmentCompanyId,
+            });
         if (cancelled) return;
         if (blob && blob.size > 0) {
           const kind = await sniffBlobKindForPreview(blob);
@@ -296,11 +331,13 @@ export function ResolvedEntityAvatar({
               return;
             }
             if (ou) {
-              publishSharedAvatarUrl(trimmed, normalized, ou);
-              setRemoteImgSrc(ou);
+              setRemoteImgSrc(adoptOrPublishSharedAvatarUrl(trimmed, normalized, ou));
             }
             return;
           }
+        }
+        if (!cancelled && isPbAttachmentRef(trimmed) && pbRetryTick < 4) {
+          pbRetryTimer = setTimeout(() => setPbRetryTick((n) => n + 1), 1500 * (pbRetryTick + 1));
         }
         if (
           !cancelled &&
@@ -317,10 +354,11 @@ export function ResolvedEntityAvatar({
 
     return () => {
       cancelled = true;
+      if (pbRetryTimer) clearTimeout(pbRetryTimer);
       // Shared cache URL mat revoke.
       revokeRemoteOwned();
     };
-  }, [src, attachmentCompanyId, publishSharedAvatarUrl, retryKey]);
+  }, [src, attachmentCompanyId, adoptOrPublishSharedAvatarUrl, retryKey, pbRetryTick]);
 
   const imageSrc = !src?.trim()
     ? undefined
@@ -342,7 +380,17 @@ export function ResolvedEntityAvatar({
   return (
     <Avatar className={cn("rounded-none overflow-hidden", className)}>
       {imageSrc ? (
-        <AvatarImage key={`${imageSrc}:${retryKey}`} src={imageSrc} alt={alt} onError={handleImageError} className="rounded-none" />
+        <AvatarImage
+          key={`${imageSrc}:${retryKey}`}
+          src={imageSrc}
+          alt={alt}
+          onError={handleImageError}
+          /* Radix only mounts the <img> after its own preload succeeds, so `onError` alone never fires for a dead blob: URL. */
+          onLoadingStatusChange={(status) => {
+            if (status === "error") handleImageError();
+          }}
+          className="rounded-none"
+        />
       ) : (
         <AvatarImage src={undefined} alt={alt} className="rounded-none" />
       )}

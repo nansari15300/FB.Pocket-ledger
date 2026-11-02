@@ -1,6 +1,7 @@
 
 "use client";
 
+import { DialogPlainOpener } from "@/components/ui/dialog-plain-opener";
 import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { NESTED_LEDGER_MASTER_EDIT_CONTENT_CN, NESTED_LEDGER_MASTER_EDIT_OVERLAY_CN } from "@/lib/nestedLedgerMasterEditPresentation";
 import { Loader2 } from "lucide-react";
@@ -315,7 +316,7 @@ export function EditItemGroupDialog({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        {children ? <DialogTrigger asChild>{children}</DialogTrigger> : null}
+        {children ? <DialogPlainOpener onOpen={() => setIsOpen(true)}>{children}</DialogPlainOpener> : null}
         <DialogContent overlayClassName={externallyControlled ? NESTED_LEDGER_MASTER_EDIT_OVERLAY_CN : undefined} className={[cnStaticMobileFullscreenDialog(isMobile, "flex flex-col sm:max-w-md"), externallyControlled ? NESTED_LEDGER_MASTER_EDIT_CONTENT_CN : ""].join(" ")}>
           <DialogHeader>
             <DialogTitle>Edit Item Group</DialogTitle>

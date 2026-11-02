@@ -11,7 +11,7 @@ import {
   type BillingGatewayId,
   type GatewayKeys,
 } from "@/ai/flows/gateway-keys";
-import { getAdminDb } from "@/lib/firebaseAdmin";
+import { serverDb } from "@/lib/server/appDb";
 import { DEFAULT_PLANS, type PlanId } from "@/config/plans";
 import { getEffectiveRegionalCheckout } from "@/lib/server/getEffectivePlanPrices";
 import type { BillingRegionId } from "@/lib/billingRegions";
@@ -36,7 +36,7 @@ type AdminKeysResult = {
 /** Server has no user auth — read Bank Settings doc with Admin SDK, then merge STRIPE_* / KHALTI_* from env. */
 async function getGatewayKeysFromAdmin(): Promise<AdminKeysResult> {
   try {
-    const db = getAdminDb();
+    const db = serverDb();
     const snap = await db.doc("app_settings/payment_gateways").get();
     return {
       stored: (snap.exists ? (snap.data() as GatewayKeys) : {}) as GatewayKeys,
@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const db = serverCaller ? serverCaller.db : getAdminDb();
+    const db = serverCaller ? serverCaller.db : serverDb();
     const amountNpr = chargeMinor / 100;
     const adminResult = await getGatewayKeysFromAdmin();
     const keys = mergeGatewayKeysWithEnv(adminResult.stored);

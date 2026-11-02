@@ -37,20 +37,66 @@ export function isPackedMyCompanyOnly(): boolean {
 export const SERVER_MANAGE_COMPANY_NAME = "server manage company";
 export const SERVER_MANAGE_COMPANY_ID = "server-manage-company";
 
+/** Fixed company-code written by ensureServerManageCompany (only this company ever has it). */
+export const SERVER_MANAGE_COMPANY_CODE = "SRVMNGCO";
+
+/**
+ * Server-manage company marker: fixed id, then fixed inter-company code, then (legacy) name.
+ */
 export function isPackedServerManageCompany(
-  c: { id?: unknown; name?: unknown } | null | undefined
+  c: { id?: unknown; name?: unknown; interCompanyCompanyCode?: unknown } | null | undefined
 ): boolean {
   if (!c) return false;
   if (String(c.id || "").trim() === SERVER_MANAGE_COMPANY_ID) return true;
+  if (String(c.interCompanyCompanyCode || "").trim().toUpperCase() === SERVER_MANAGE_COMPANY_CODE) return true;
   return String(c.name || "").trim().toLowerCase() === SERVER_MANAGE_COMPANY_NAME;
 }
 
-export function filterPackedMyCompanyRows<T extends { id?: unknown; name?: unknown }>(rows: T[]): T[] {
+const SERVER_MANAGE_MODE_KEY = "pl_server_my_company_mode_v1";
+
+/**
+ * Normal app (EXE / web / dev :3000) opened from Server panel -> My Company
+ * (?from=pl-server). Tab-scoped (sessionStorage) so it never leaks into a normal session.
+ */
+export function isServerManageCompanyModeActive(): boolean {
+  try {
+    return typeof window !== "undefined" && window.sessionStorage.getItem(SERVER_MANAGE_MODE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function markServerManageCompanyMode(on: boolean): void {
+  try {
+    if (typeof window === "undefined") return;
+    if (on) window.sessionStorage.setItem(SERVER_MANAGE_MODE_KEY, "1");
+    else window.sessionStorage.removeItem(SERVER_MANAGE_MODE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** True when only the server-manage company may be shown (server area). */
+export function isServerManageOnlyScope(): boolean {
+  if (isPlServerPackedApp()) return isPackedMyCompanyOnly();
+  return isServerManageCompanyModeActive();
+}
+
+export function filterPackedMyCompanyRows<T extends { id?: unknown; name?: unknown; interCompanyCompanyCode?: unknown }>(
+  rows: T[]
+): T[] {
   if (isCountryPublicPackedApp()) {
     return rows.filter((row) => !isPackedServerManageCompany(row));
   }
-  if (!isPlServerPackedApp()) return rows;
-  return rows.filter((row) => isPackedServerManageCompany(row));
+  if (isPlServerPackedApp()) {
+    return rows.filter((row) => isPackedServerManageCompany(row));
+  }
+  // Normal app: server-manage company is hidden everywhere, except inside the My Company handoff
+  // from the server panel, where ONLY that company is listed.
+  if (isServerManageCompanyModeActive()) {
+    return rows.filter((row) => isPackedServerManageCompany(row));
+  }
+  return rows.filter((row) => !isPackedServerManageCompany(row));
 }
 
 /** Packed My Company talks to this PocketBase (panel + API), never :3000 / 127.0.0.1 default. */

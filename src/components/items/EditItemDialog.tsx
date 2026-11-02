@@ -1,6 +1,7 @@
 
 "use client";
 
+import { DialogPlainOpener } from "@/components/ui/dialog-plain-opener";
 import { addDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
 import { checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import { NESTED_LEDGER_MASTER_EDIT_CONTENT_CN, NESTED_LEDGER_MASTER_EDIT_OVERLAY_CN } from "@/lib/nestedLedgerMasterEditPresentation";
@@ -1067,7 +1068,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
   return (
     <>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        {children && <DialogTrigger asChild>{children}</DialogTrigger>}
+        {children ? <DialogPlainOpener onOpen={() => setIsOpen(true)}>{children}</DialogPlainOpener> : null}
         {/* Mobile: 85vh height, 98vw width. PC: 90% screen height & width (90vh / 90vw) so dialog uses most of viewport. */}
         <DialogContent
             hideCloseButton={dialogResizable}

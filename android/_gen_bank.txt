@@ -1,0 +1,78 @@
+﻿            <LinearLayout
+                android:id="@+id/wedge_sum_b0_root"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:visibility="gone">
+                <TextView android:id="@+id/wedge_sum_b0_name" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.1" android:ellipsize="end" android:maxLines="1" android:textColor="#64748B" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b0_open" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b0_in" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textColor="#16A34A" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b0_out" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textColor="#DC2626" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b0_bal" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textSize="7sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/wedge_sum_b1_root"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:visibility="gone">
+                <TextView android:id="@+id/wedge_sum_b1_name" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.1" android:ellipsize="end" android:maxLines="1" android:textColor="#64748B" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b1_open" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b1_in" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textColor="#16A34A" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b1_out" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textColor="#DC2626" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b1_bal" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textSize="7sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/wedge_sum_b2_root"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:visibility="gone">
+                <TextView android:id="@+id/wedge_sum_b2_name" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.1" android:ellipsize="end" android:maxLines="1" android:textColor="#64748B" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b2_open" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b2_in" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textColor="#16A34A" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b2_out" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textColor="#DC2626" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b2_bal" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textSize="7sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/wedge_sum_b3_root"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:visibility="gone">
+                <TextView android:id="@+id/wedge_sum_b3_name" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.1" android:ellipsize="end" android:maxLines="1" android:textColor="#64748B" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b3_open" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b3_in" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textColor="#16A34A" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b3_out" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textColor="#DC2626" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b3_bal" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textSize="7sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/wedge_sum_b4_root"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:visibility="gone">
+                <TextView android:id="@+id/wedge_sum_b4_name" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.1" android:ellipsize="end" android:maxLines="1" android:textColor="#64748B" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b4_open" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b4_in" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textColor="#16A34A" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b4_out" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textColor="#DC2626" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b4_bal" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textSize="7sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/wedge_sum_b5_root"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:visibility="gone">
+                <TextView android:id="@+id/wedge_sum_b5_name" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.1" android:ellipsize="end" android:maxLines="1" android:textColor="#64748B" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b5_open" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b5_in" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textColor="#16A34A" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b5_out" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textColor="#DC2626" android:textSize="7sp" />
+                <TextView android:id="@+id/wedge_sum_b5_bal" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="end" android:textSize="7sp" />
+            </LinearLayout>

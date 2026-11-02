@@ -1,6 +1,7 @@
 
 "use client";
 
+import { DialogPlainOpener } from "@/components/ui/dialog-plain-opener";
 import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import * as React from "react";
@@ -338,6 +339,9 @@ export function EditPartyDialog({ party, onPartyUpdated, onPartyDeleted, childre
     }
   }, [isOpen, party.id]);
 
+  /** Stable primitive for effect deps (array identity changes on every parent render / live patch). */
+  const partyDocUrlsKey = (party.documentFileUrls || []).join("\u0001");
+
   // FY voucher scope re-render par poora `party` object badalta hai — sirf open / id par reset (mid-edit wipe na ho).
   useEffect(() => {
     if (!isOpen) return;
@@ -347,7 +351,7 @@ export function EditPartyDialog({ party, onPartyUpdated, onPartyDeleted, childre
     form.reset({
       accountType: (resolvePartyGroupBranchIdForGroup(
         normalizePartyEditGroupId(party.groupId),
-        processedGroups
+        processedGroupsRef.current
       ) ?? PARTY_SYSTEM_CREDITORS_ID) as typeof PARTY_SYSTEM_DEBTORS_ID | typeof PARTY_SYSTEM_CREDITORS_ID,
       name: party.name,
       aliasName: (((party as unknown) as { aliasName?: string }).aliasName) || "",
@@ -379,8 +383,7 @@ export function EditPartyDialog({ party, onPartyUpdated, onPartyDeleted, childre
     (party as any).openingBalanceDate,
     party.openingBalanceNarration,
     party.fileUrl,
-    party.documentFileUrls,
-    processedGroups,
+    partyDocUrlsKey,
     form,
   ]);
 
@@ -794,7 +797,7 @@ export function EditPartyDialog({ party, onPartyUpdated, onPartyDeleted, childre
   return (
     <>
       <Dialog open={isOpen} onOpenChange={setIsOpen} modal={false}>
-        {children && <DialogTrigger asChild>{children}</DialogTrigger>}
+        {children ? <DialogPlainOpener onOpen={() => setIsOpen(true)}>{children}</DialogPlainOpener> : null}
         {isOpen && <div className={masterEditBackdropClassName(presentationMode)} />}
         <DialogContent
             overlayClassName={

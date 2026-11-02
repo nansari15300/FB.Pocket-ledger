@@ -438,7 +438,7 @@ export function PartyDetails({
     useState<OpeningBalanceLedgerAccountRow | null>(null);
   const [openingBalanceEditOpen, setOpeningBalanceEditOpen] = useState(false);
   const [showNarration, setShowNarration] = useState(true);
-  const { visibleColumns, handleColumnVisibilityChange } = useTransactionVisibleColumns();
+  const { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuFilter } = useTransactionVisibleColumns();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
     if (typeof window === "undefined") return { ...DEFAULT_STATUS_FILTER };
     try {
@@ -2758,7 +2758,7 @@ export function PartyDetails({
                         (key) => !["tdsTaxable", "tdsAmount"].includes(key)
                       )
                   )
-                    .filter((key) => key !== "status" || balanceMode === "bill_wise")
+                    .filter(ledgerColumnMenuFilter).filter((key) => key !== "status" || balanceMode === "bill_wise")
                     .map((key) => {
                     const isStatusInStatement = key === "status" && balanceMode === "statement";
                     const isStatusInBillWise = key === "status" && balanceMode === "bill_wise";

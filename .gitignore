@@ -65,3 +65,22 @@ next-env.d.ts
 
 # Local junction to C:\Balgram\PocketLedger-Server (not part of this repo)
 /PocketLedger-Server/
+
+# Two-PC sync: generated output, native build artifacts, secrets (added 2026-11-02)
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+*.apk
+*.aab
+*.exe
+google-services.json
+pl-*-token*.json
+*access-tokens*.json
+*.key
+dist/
+dist-build/
+build/
+.gradle/
+src-tauri/target/
+src-tauri/gen/
+_backups/

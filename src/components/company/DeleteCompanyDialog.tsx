@@ -24,6 +24,7 @@ import { deleteCompanyComplete } from "@/lib/actions/deleteCompanyAction";
 import { useAuth } from "@/hooks/useAuth";
 import { getLocalCompanyById, upsertLocalCompany } from "@/lib/localCompanyStore";
 import { isDeviceLocalCompany } from "@/lib/companyStorageKind";
+import { isPocketBaseRecycleCompany, permanentDeletePocketBaseCompany } from "@/lib/companyRecycleRoot";
 
 export function DeleteCompanyDialog({
   company,
@@ -60,6 +61,34 @@ export function DeleteCompanyDialog({
 
     try {
       const localRow = await getLocalCompanyById(company.id, { includeDeleted: true });
+      // PocketBase company (same markers as the company selector): never "local" -- delete it on PB.
+      const isPbCompany =
+        isPocketBaseRecycleCompany(company.id, company) ||
+        isPocketBaseRecycleCompany(company.id, localRow as Parameters<typeof isPocketBaseRecycleCompany>[1]);
+      if (isPbCompany) {
+        const pbRes = await permanentDeletePocketBaseCompany(company.id, {
+          quickDelete: true,
+          userId: user.uid,
+        });
+        if (!pbRes.ok) throw new Error(("error" in pbRes ? pbRes.error : null) || "Permanent delete failed.");
+        if (localRow) {
+          await upsertLocalCompany({
+            ...localRow,
+            id: company.id,
+            isDeleted: true,
+            deletedAt: Date.now(),
+            movedToAdminRecycleAt: Date.now(),
+          } as Parameters<typeof upsertLocalCompany>[0]);
+        }
+        toast({
+          title: "Company Permanently Removed",
+          description: `"${company.name}" and all its records have been deleted.`,
+        });
+        clearCompanyId();
+        onCompanyDeleted();
+        onOpenChange(false);
+        return;
+      }
       const isLocalCompany =
         isDeviceLocalCompany(company) ||
         isDeviceLocalCompany(localRow as Parameters<typeof isDeviceLocalCompany>[0]);

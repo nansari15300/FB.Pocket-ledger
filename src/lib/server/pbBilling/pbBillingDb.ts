@@ -2,7 +2,6 @@ import "server-only";
 
 import { randomBytes } from "crypto";
 import admin from "firebase-admin";
-import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
 import { pocketBaseServerUrlForApi } from "@/lib/localCloudSync/server/pbBearerAuth";
 
 /**
@@ -17,9 +16,9 @@ import { pocketBaseServerUrlForApi } from "@/lib/localCloudSync/server/pbBearerA
  * Timestamp / Date are sent in the same JSON form as the app sync; reads give Timestamps back.
  *
  * Supported on the server: companies/{id} (+ payments, subscription_history), users/{uid}
- * (+ billing_payments), app_settings/*, pending_* checkout docs. app_settings reads fall back to
- * Firebase while a setting is not saved on the server. Other roots (the admin panel accounting
- * mirror) go to Firebase when it is configured, else they fail.
+ * (+ billing_payments), app_settings/*, pending_* checkout docs. Everything is stored on the server only
+ * (no Firebase fallback): a setting that is not saved yet reads as "missing" (callers use defaults).
+ * Other roots (the old Firebase admin panel accounting mirror) are not supported and fail.
  *
  * Auth: header X-PL-Hosting-Key = PL_HOSTING_KEY (the app link key from Hosting settings).
  */
@@ -34,7 +33,6 @@ const SERVER_ROOTS = new Set([
   "pending_addon_purchases",
   "ad_wallets",
 ]);
-const FALLBACK_READ_ROOTS = new Set(["app_settings"]);
 const TX_ATTEMPTS = 5;
 const MAX_BATCH = 500;
 
@@ -60,20 +58,53 @@ export function pbBillingKey(): string {
   return String(process.env[PB_BILLING_KEY_ENV] ?? "").trim();
 }
 
-/** True when the app can reach the server billing endpoints (link key set). */
+/**
+ * TEMP-NOKEY: while PL_HOSTING_KEY is not set, talk to the server billing endpoints with the signed-in user's
+ * own token (forwarded from the incoming request) instead of the key. The server accepts it only while it has no
+ * link key either, with narrow rights (see pb_hooks/lib/billing_api.js, block TEMP-NOKEY).
+ * REMOVE: set PL_HOSTING_KEY (the fallback then switches itself off), or set this to false / delete the TEMP blocks.
+ */
+export const TEMP_NOKEY_FALLBACK = true;
+
+/** True when the app can reach the server billing endpoints (link key set, or the TEMP fallback is on). */
 export function pbBillingReady(): boolean {
-  return pbBillingKey().length >= 24;
+  return pbBillingKey().length >= 24 || TEMP_NOKEY_FALLBACK;
 }
+
+// TEMP-NOKEY BEGIN
+let lastTempWarnAt = 0;
+async function tempNoKeyAuthorization(): Promise<string> {
+  const now = Date.now();
+  if (now - lastTempWarnAt > 60_000) {
+    lastTempWarnAt = now;
+    console.warn("[pl-billing] TEMP no-key fallback: PL_HOSTING_KEY is not set - using the signed-in user's server token. Set PL_HOSTING_KEY and remove this fallback.");
+  }
+  try {
+    const { headers } = await import("next/headers");
+    const raw = String((await headers()).get("authorization") || "").trim();
+    const bearer = raw.startsWith("Bearer ") ? raw.slice(7).trim() : raw;
+    return bearer.startsWith("plpb.") ? bearer.slice(5) : "";
+  } catch {
+    return ""; // not inside a request (webhook / job): anonymous, public settings only
+  }
+}
+// TEMP-NOKEY END
 
 function defaultTransport(): PbBillingTransport {
   return async (endpoint, body) => {
     const key = pbBillingKey();
-    if (key.length < 24) {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (key.length >= 24) {
+      headers["X-PL-Hosting-Key"] = key;
+    } else if (TEMP_NOKEY_FALLBACK) {
+      const token = await tempNoKeyAuthorization(); // TEMP-NOKEY
+      if (token) headers.Authorization = token;
+    } else {
       throw new PbBillingError(14, "Server billing is not linked: set PL_HOSTING_KEY (Hosting settings > App link key).");
     }
     const res = await fetch(`${pocketBaseServerUrlForApi()}/api/pl/billing/${endpoint}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-PL-Hosting-Key": key },
+      headers,
       body: JSON.stringify(body),
       cache: "no-store",
       signal: AbortSignal.timeout(15000),
@@ -371,13 +402,8 @@ type AnyRef = PbDocRef | admin.firestore.DocumentReference;
 
 class PbBatch {
   private pb: Write[] = [];
-  private fb: admin.firestore.WriteBatch | null = null;
   private committed = false;
   constructor(private readonly db: PbBillingFirestore) {}
-  private fbBatch(): admin.firestore.WriteBatch {
-    if (!this.fb) this.fb = getAdminDb().batch();
-    return this.fb;
-  }
   private add(ref: AnyRef, op: WriteOp, data?: Record<string, unknown>) {
     if (this.committed) throw new PbBillingError(9, "Batch already committed");
     if (ref instanceof PbDocRef) {
@@ -385,11 +411,7 @@ class PbBatch {
       if (this.pb.length > MAX_BATCH) throw new PbBillingError(3, "Batch too large");
       return;
     }
-    const b = this.fbBatch();
-    if (op === "delete") b.delete(ref);
-    else if (op === "update") b.update(ref, data as admin.firestore.UpdateData<admin.firestore.DocumentData>);
-    else if (op === "create") b.create(ref, data as admin.firestore.DocumentData);
-    else b.set(ref, data as admin.firestore.DocumentData, { merge: op === "merge" });
+    throw new PbBillingError(9, "Only Pocket Ledger Server documents can be written (Firebase is removed)");
   }
   set(ref: AnyRef, data: Record<string, unknown>, opts?: { merge?: boolean }) {
     this.add(ref, opts?.merge ? "merge" : "set", data);
@@ -410,7 +432,6 @@ class PbBatch {
   async commit(): Promise<unknown[]> {
     this.committed = true;
     if (this.pb.length) await this.db._commit(this.pb, []);
-    if (this.fb) await this.fb.commit();
     return [];
   }
 }
@@ -466,22 +487,19 @@ export class PbBillingFirestore {
     this.transport = transport ?? defaultTransport();
   }
 
-  /** Root not kept on the server -> Firebase (admin panel accounting mirror), when configured. */
-  private firebaseFor(root: string): admin.firestore.Firestore {
-    if (!isFirebaseAdminConfigured()) {
-      throw new PbBillingError(9, `"${root}" is not stored on the Pocket Ledger Server and Firebase is not configured`);
-    }
-    return getAdminDb();
+  /** Root not kept on the server: unsupported (Firebase is removed). */
+  private firebaseFor(root: string): never {
+    throw new PbBillingError(9, `"${root}" is not stored on the Pocket Ledger Server (Firebase is removed)`);
   }
 
   collection(path: string): any {
     const root = checkPath(path, false)[0];
-    if (!SERVER_ROOTS.has(root)) return this.firebaseFor(root).collection(path);
+    if (!SERVER_ROOTS.has(root)) return this.firebaseFor(root);
     return new PbCollectionRef(this, path);
   }
   doc(path: string): any {
     const root = checkPath(path, true)[0];
-    if (!SERVER_ROOTS.has(root)) return this.firebaseFor(root).doc(path);
+    if (!SERVER_ROOTS.has(root)) return this.firebaseFor(root);
     return new PbDocRef(this, path);
   }
   batch(): any {
@@ -530,20 +548,6 @@ export class PbBillingFirestore {
       if (w && w.exists) {
         out.push({ snap: new PbDocSnap(ref, (w.data || {}) as Record<string, unknown>), version: w.version ?? null });
         continue;
-      }
-      // global settings not saved on the server yet -> Firebase copy (read only)
-      const root = ref.path.split("/")[0];
-      if (FALLBACK_READ_ROOTS.has(root) && isFirebaseAdminConfigured()) {
-        try {
-          const fs = await getAdminDb().doc(ref.path).get();
-          if (fs.exists) {
-            const enc = encodeValue(fs.data() || {}, "", null) as Record<string, unknown>;
-            out.push({ snap: new PbDocSnap(ref, enc), version: null });
-            continue;
-          }
-        } catch {
-          /* Firebase read failed: treat as missing */
-        }
       }
       out.push({ snap: new PbDocSnap(ref, undefined), version: null });
     }

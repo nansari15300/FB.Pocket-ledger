@@ -53,6 +53,20 @@ export async function POST(req: NextRequest) {
     const companyRef = db.collection("companies").doc(companyId);
     const companySnap = await companyRef.get();
     if (!companySnap.exists) {
+      // Local-only company (not on the server yet): a no-payment (admin "free") plan is applied at ACCOUNT level
+      // (users/{uid}.accountCanonical*), and the client applies it to its local company row. Paid switches still need the company.
+      if (await getEffectivePlanIsFree(targetPlanId)) {
+        const tierSwitchMs = Date.now();
+        const planId = normalizePlanIdForClient(targetPlanId);
+        await persistAccountCanonicalPlanDoc(db, String(decoded.uid ?? "").trim(), {
+          planId,
+          planExpiryMs: null,
+          planUpgradedAtMs: tierSwitchMs,
+          stripeCustomerId: null,
+          stripeSubscriptionId: null,
+        });
+        return NextResponse.json({ ok: true, localOnly: true, planId, planUpgradedAtMs: tierSwitchMs });
+      }
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
 

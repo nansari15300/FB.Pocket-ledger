@@ -48,7 +48,7 @@ import { COMPANY_SHARE_ROLE_OPTIONS } from "@/lib/localCompanyAppRoles";
 import { pushAllLocalCompanyDocsToFirestore } from "@/lib/migrateLocalCompanySubcollectionsToFirestore";
 
 
-const inviteRoles = ["viewer", "data-entry", "accountant", "editor", "manager"] as const;
+const inviteRoles = ["viewer", "data-entry", "accountant", "editor", "manager", "admin"] as const;
 const allShareRoles = [...inviteRoles, "owner"] as const;
 
 const formSchema = z.object({

@@ -411,8 +411,20 @@ export function isLocalDevAppHost(hostname = currentAppHostname()): boolean {
   return h === "localhost" || h === "127.0.0.1" || h === "[::1]" || /^\d{1,3}(\.\d{1,3}){3}$/.test(h);
 }
 
+/**
+ * This origin IS the app for its country: localhost / LAN dev, or any `*.pocket-ledger.com` host that is not the
+ * apex / www (dev.pocket-ledger.com, np., in., ...). Apex pocket-ledger.com is unchanged (country chooser).
+ */
+export function isSelfAppHost(hostname = currentAppHostname()): boolean {
+  const h = String(hostname || "").toLowerCase();
+  if (!h) return false;
+  if (isLocalDevAppHost(h)) return true;
+  if (h === COUNTRY_APP_APEX || h === `www.${COUNTRY_APP_APEX}`) return false;
+  return h.endsWith(`.${COUNTRY_APP_APEX}`);
+}
+
 export function countryAppUrl(rec: CountryAppRecord): string {
-  if (typeof window !== "undefined" && isLocalDevAppHost()) {
+  if (typeof window !== "undefined" && isSelfAppHost() && !isCountryServerPanelHost()) {
     try {
       const origin = String(window.location.origin || "").replace(/\/+$/, "");
       if (origin && origin !== "null") return `${origin}/app`;
@@ -499,8 +511,14 @@ export function writeStoredAppCountry(cc: string): CountryAppRecord | null {
   return rec;
 }
 
+/** Self host (dev / localhost / non-apex *.pocket-ledger.com) without its own country label: default = live country (np). */
+export function selfHostDefaultCountry(): CountryAppRecord | null {
+  if (!isSelfAppHost() || isCountryServerPanelHost()) return null;
+  return getCountryAppRecord(LIVE_COUNTRY_CODES[0] || "np");
+}
+
 export function resolveAppCountry(): CountryAppRecord | null {
-  return detectCountryFromHost() || readStoredAppCountry();
+  return detectCountryFromHost() || readStoredAppCountry() || selfHostDefaultCountry();
 }
 
 export type ApplyAppCountryResult =

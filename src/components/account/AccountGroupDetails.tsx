@@ -85,7 +85,7 @@ export function AccountGroupDetails({
   const [isNoteOpen, setIsNoteOpen] = useState(false);
   const [noteEntityId, setNoteEntityId] = useState<string | null>(null);
   const [showNarration, setShowNarration] = useState(true);
-  const { visibleColumns, handleColumnVisibilityChange } = useTransactionVisibleColumns();
+  const { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuNoTdsFilter } = useTransactionVisibleColumns();
 
   useEffect(() => {
     const savedState = sessionStorage.getItem("showNarration");
@@ -380,7 +380,7 @@ export function AccountGroupDetails({
                <div className="flex min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto scrollbar-slim-dim text-sm text-muted-foreground">
                  <LedgerFooterColumnsMenu>
                 <DropdownMenuContent align="start" className="w-52 p-2">
-                     {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[]).map((key) => (
+                     {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[]).filter(ledgerColumnMenuNoTdsFilter).map((key) => (
                        <DropdownMenuItem
                          key={key}
                          onSelect={(e) => e.preventDefault()}

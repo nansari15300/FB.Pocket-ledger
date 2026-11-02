@@ -90,6 +90,7 @@ import { generateEncryptServerBackupSaltBase64, setBackupEncryptionSessionFromLo
 import { useLivePlans, getPlanFromPlans } from "@/hooks/useLivePlans";
 import { resolveEffectiveAccountPlanId } from "@/lib/accountPlanForOwner";
 import { getLocalCompanyById, upsertLocalCompany } from "@/lib/localCompanyStore";
+import { isPocketBaseRecycleCompany, softDeleteCompanyToRecycleBin } from "@/lib/companyRecycleRoot";
 import { generateLocalFileId, LOCAL_FILE_PREFIX, putPendingFile } from "@/lib/localPendingFiles";
 import { flushBrowserDbToIndexedDB } from "@/lib/localSqlite";
 import {
@@ -751,7 +752,7 @@ export function EditCompanyForm({
               variant: "destructive",
               title: "Saved on this device only",
               description:
-                "Cloud copy could not be updated. Check internet and try again so Firebase shows the new name.",
+                "Cloud copy could not be updated. Check internet and try again so PocketBase shows the new name.",
             });
           }
         }
@@ -847,13 +848,13 @@ export function EditCompanyForm({
           : error instanceof Error && error.message === "password_required_new_invite"
             ? "Set a password for a new invite."
             : errMsg === "local_company_storage"
-              ? "This company uses device storage and Google Drive sync — not Firebase Storage. Enable cloud sync in company settings, or save without changing the logo."
+              ? "This company uses device storage and Google Drive sync — not PocketBase. Enable cloud sync in company settings, or save without changing the logo."
               : code === "storage/unauthorized" || code === "storage/unauthenticated"
-                ? "Logo upload failed: cloud storage permission denied. Sign in again, or deploy the latest Firebase storage rules."
+                ? "Logo upload failed: cloud storage permission denied. Sign in again, then retry the logo upload."
                 : isCompanyNotFoundError(error)
                   ? COMPANY_NOT_SYNCED_MESSAGE
                   : code === "permission-denied"
-                    ? "Firestore permission denied — deploy firestore.rules, or ask the company owner to save."
+                    ? "PocketBase permission denied — ask the company owner to save."
                     : "Failed to update company details. Please try again.";
       toast({
         variant: "destructive",
@@ -988,6 +989,20 @@ export function EditCompanyForm({
     try {
       const deviceLocalCo = isOfflineCompanyStorage(company);
       const existingLocal = await getLocalCompanyById(companyId, { includeDeleted: true });
+      // PocketBase company: "offline" by flags but its books live on PB -- move to bin on PB, not local-only.
+      if (
+        isPocketBaseRecycleCompany(companyId, company) ||
+        isPocketBaseRecycleCompany(companyId, existingLocal as Parameters<typeof isPocketBaseRecycleCompany>[1])
+      ) {
+        const pbMoved = await softDeleteCompanyToRecycleBin(companyId, { companyStorageSource: "online" });
+        if (!pbMoved.ok) {
+          throw new Error(("error" in pbMoved ? pbMoved.error : null) || "Failed to move company to bin.");
+        }
+        toast({ title: "Company Moved to Bin", description: `"${company?.name}" has been moved.` });
+        reloadLocalCompanyRegistry();
+        clearCompanyId();
+        return;
+      }
       if (!deviceLocalCo) {
         await updateCompanyRootFirestore(companyId, {
           isDeleted: true,
@@ -1394,7 +1409,7 @@ export function EditCompanyForm({
                     <div>
                       <FormLabel>Encrypt company (server backup)</FormLabel>
                       <FormDescription>
-                        When enabled, data synced to Firestore is encrypted (same folder paths). Unlock uses the
+                        When enabled, data synced to PocketBase is encrypted (same folder paths). Unlock uses the
                         username and password you use to open this company — no separate passphrase. Log in again after
                         enabling if sync does not run.
                       </FormDescription>

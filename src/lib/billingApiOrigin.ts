@@ -17,8 +17,11 @@ import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
 import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
 import { appApiUrl, joinPocketLedgerOriginAndPath } from "@/lib/webAppBasePath";
 
-/** Static export par env miss ho to plan/checkout POST yahi production origin par jaayein. */
-export const POCKET_LEDGER_HOSTED_API_ORIGIN = "https://pocket-ledger.com";
+/**
+ * Static / APK / EXE bundles only (they have no server of their own): API goes to the np server.
+ * A normal web browser never uses this - it calls its OWN origin (see `useSameOriginBillingApi`).
+ */
+export const POCKET_LEDGER_HOSTED_API_ORIGIN = "https://np.pocket-ledger.com";
 
 function normalizeBillingOrigin(origin: string): string {
   return String(origin || "").trim().replace(/\/+$/, "");
@@ -65,11 +68,46 @@ function shouldUseHostedBillingApiInWebDev(): boolean {
   return !isCapacitorNativeApp() && !isElectronDesktopApp() && !isStaticAppBuild();
 }
 
+/**
+ * Normal web browser (not APK / EXE / static bundle): the page and the API are served by the same
+ * np server (Next under `/app`, data on PocketBase). Always call the page's own origin - never an
+ * absolute pocket-ledger.com URL (that is cross-origin => CORS blocked) and never a baked env origin.
+ */
+function useSameOriginBillingApi(): boolean {
+  if (typeof window === "undefined") return false;
+  return !shouldForceHostedBillingApiOrigin();
+}
+
+function sameOriginApiPath(apiPath: string): string {
+  let p = String(apiPath || "").startsWith("/") ? String(apiPath) : `/${String(apiPath || "")}`;
+  if (p === "/app" || p.startsWith("/app/")) p = p.slice("/app".length) || "/";
+  return appApiUrl(p);
+}
+
+/** Old hosted API hosts (apex / www / loopback) that must be rewritten to the page's own origin. */
+function isLegacyHostedApiHost(hostname: string): boolean {
+  const h = String(hostname || "").toLowerCase();
+  return (
+    h === "pocket-ledger.com" ||
+    h === "www.pocket-ledger.com" ||
+    h === "pocketledger.com" ||
+    h === "www.pocketledger.com" ||
+    h === "localhost" ||
+    h === "127.0.0.1" ||
+    h === "[::1]"
+  );
+}
+
 /** Billing API base — dev web default pocket-ledger.com (Drive OAuth secrets wahan); override env se local. */
 export function getBillingApiBaseOrigin(): string {
   // Capacitor APK / Electron EXE / static bundle — `.env.local` localhost bake ho to bhi pocket-ledger.com par jao.
   if (shouldForceHostedBillingApiOrigin()) {
     return normalizeBillingOrigin(POCKET_LEDGER_HOSTED_API_ORIGIN);
+  }
+
+  // Web browser: same origin as the page (np server) - ignore any baked NEXT_PUBLIC_BILLING_API_ORIGIN.
+  if (useSameOriginBillingApi()) {
+    return "";
   }
 
   if (shouldUseHostedBillingApiInWebDev()) {
@@ -117,6 +155,20 @@ export function getBillingApiBaseOrigin(): string {
 /** Relative `/api/...` ko hamesha absolute HTTPS URL banao — native HTTP stack ke liye zaroori. */
 export function resolveHostedApiAbsoluteUrl(apiPathOrUrl: string): string {
   const raw = String(apiPathOrUrl || "").trim();
+  if (useSameOriginBillingApi()) {
+    if (/^https?:\/\//i.test(raw)) {
+      try {
+        const u = new URL(raw);
+        if (u.origin === window.location.origin) return `${u.pathname}${u.search}${u.hash}`;
+        if (isLegacyHostedApiHost(u.hostname)) return `${sameOriginApiPath(u.pathname)}${u.search}${u.hash}`;
+      } catch {
+        return raw;
+      }
+      return raw;
+    }
+    return sameOriginApiPath(raw);
+  }
+
   if (/^https?:\/\//i.test(raw)) {
     if (
       typeof window !== "undefined" &&

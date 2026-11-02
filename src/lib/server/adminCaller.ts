@@ -1,21 +1,19 @@
 import "server-only";
 
 import admin from "firebase-admin";
-import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
 import {
   PB_BEARER_PREFIX,
   pocketBaseServerUrlForApi,
   verifyPocketBaseBearer,
 } from "@/lib/localCloudSync/server/pbBearerAuth";
 import { bearerFromRequest } from "@/lib/server/billingCaller";
-import { isSuperAdminServer } from "@/lib/server/isSuperAdminServer";
 import { pbBillingDb, pbBillingReady } from "@/lib/server/pbBilling/pbBillingDb";
 
 /**
  * Caller of a SuperAdmin API route.
  * - `Bearer plpb.<token>` (Pocket Ledger Server login): must be the server's main admin
  *   (`GET /api/pl/admin/check`); documents are read / written on the server (PocketBase).
- * - Firebase ID token: legacy fallback, kept only while old Firebase admin accounts still exist.
+ * - Firebase ID tokens are no longer accepted (Firebase is removed; PocketBase only).
  */
 export type AdminCallerResult =
   | { ok: true; uid: string; email: string | undefined; db: admin.firestore.Firestore; store: "server" | "firebase"; status?: undefined; error?: undefined }
@@ -57,18 +55,5 @@ export async function resolveSuperAdminCaller(req: Request): Promise<AdminCaller
     return { ok: true, uid: v.uid, email: v.email ?? undefined, db: pbBillingDb(), store: "server" };
   }
 
-  if (!isFirebaseAdminConfigured()) {
-    return { ok: false, status: 503, error: "Firebase Admin is not configured on this server." };
-  }
-  const db = getAdminDb();
-  let decoded: admin.auth.DecodedIdToken;
-  try {
-    decoded = await admin.auth().verifyIdToken(token);
-  } catch {
-    return { ok: false, status: 401, error: "Invalid auth token" };
-  }
-  if (!(await isSuperAdminServer(decoded.uid, decoded.email ?? undefined))) {
-    return { ok: false, status: 403, error: "SuperAdmin only" };
-  }
-  return { ok: true, uid: decoded.uid, email: decoded.email ?? undefined, db, store: "firebase" };
+  return { ok: false, status: 401, error: "Sign in with your Pocket Ledger Server admin account (Firebase login is no longer supported)." };
 }

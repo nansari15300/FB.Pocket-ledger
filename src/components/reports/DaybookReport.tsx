@@ -121,7 +121,7 @@ export function DaybookReport({
     const [daybookVoucherTypes, setDaybookVoucherTypes] = useState<string[]>(['all']);
     const [showDaybookNarration, setShowDaybookNarration] = useState(true);
     // Dashboard Daybook footer (same controls/components as Recent): columns, notes, rows per page, page, sort.
-    const { visibleColumns, handleColumnVisibilityChange } = useTransactionVisibleColumns();
+    const { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuNoTdsFilter } = useTransactionVisibleColumns();
     const { setShowNotes, includeNotesInTable, notesPreferenceLockedOnMobile } = useShowNotes();
     const [footerRowsPerPage, setFooterRowsPerPage] = useRowsPerPage(50);
     const [daybookCurrentPage, setDaybookCurrentPage] = useState(1);
@@ -1165,7 +1165,7 @@ export function DaybookReport({
                           />
                           <LedgerFooterColumnsMenu>
                             <DropdownMenuContent align="start" className="w-52 p-2">
-                              {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[])
+                              {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[]).filter(ledgerColumnMenuNoTdsFilter)
                                 .filter((key) => key !== "runningBalance" && key !== "status")
                                 .map((key) => (
                                   <DropdownMenuItem

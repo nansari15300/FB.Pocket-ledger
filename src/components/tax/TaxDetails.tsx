@@ -386,7 +386,7 @@ export function TaxDetails({
   const [isNoteOpen, setIsNoteOpen] = useState(false);
   const [showNarration, setShowNarration] = useState(true);
 
-  const { visibleColumns, handleColumnVisibilityChange } = useTransactionVisibleColumns();
+  const { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuFilter } = useTransactionVisibleColumns();
   const { setShowNotes, includeNotesInTable, notesPreferenceLockedOnMobile } = useShowNotes();
   const [selectedVoucher, setSelectedVoucher] = useState<any>(null);
   const [isVoucherDialogOpen, setIsVoucherDialogOpen] = useState(false);
@@ -1881,7 +1881,7 @@ export function TaxDetails({
               <LedgerFooterColumnsMenu ledgerPresentationMode={ledgerPresentationMode}>
                 <DropdownMenuContent align="start" className="w-52 p-2">
                   {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[])
-                    .filter((key) => key !== "status" || balanceMode === "bill_wise")
+                    .filter(ledgerColumnMenuFilter).filter((key) => key !== "status" || balanceMode === "bill_wise")
                     .map((key) => {
                     const isStatusInStatement = key === "status" && balanceMode === "statement";
                     const isStatusInBillWise = key === "status" && balanceMode === "bill_wise";

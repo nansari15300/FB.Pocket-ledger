@@ -43,7 +43,7 @@ import { isCompanyNotFoundError, COMPANY_NOT_SYNCED_MESSAGE } from "@/lib/compan
 import type { Company } from "@/hooks/useCompany";
 import { sendRecycleBinMovedAlert } from "@/lib/transactionAlerts";
 import {
-  isDeviceLocalCompany,
+  partitionCompaniesForSelector,
   buildDuplicateNameCountMap,
   companySelectOptionLabel,
   mergeOwnedCompaniesForUser,
@@ -87,15 +87,31 @@ export function DangerZone() {
     [ownedCompanies, selectedCompanyToDeleteId]
   );
 
-  const { localCompaniesToDelete, onlineCompaniesToDelete } = useMemo(() => {
-    const local: Company[] = [];
-    const online: Company[] = [];
-    for (const c of ownedCompanies) {
-      if (isDeviceLocalCompany(c)) local.push(c);
-      else online.push(c);
+  // Same source of truth as the company selector (partitionCompaniesForSelector):
+  // Local / PL Server / PocketBase / Firebase (legacy) -- no separate "is local" guess here.
+  const { localCompaniesToDelete, serverCompaniesToDelete, pocketbaseCompaniesToDelete, onlineCompaniesToDelete } =
+    useMemo(() => {
+      const buckets = partitionCompaniesForSelector(ownedCompanies);
+      return {
+        localCompaniesToDelete: buckets.localOwnedCompanies,
+        serverCompaniesToDelete: buckets.serverSharedCompanies,
+        pocketbaseCompaniesToDelete: buckets.pocketbaseTabCompanies,
+        onlineCompaniesToDelete: buckets.cloudOwnedCompanies,
+      };
+    }, [ownedCompanies]);
+
+  // Company whose books are on the server: hint "online" (PB root); everything else in the Local group is local.
+  const storageHintForCompany = (c: Company | undefined | null): "local" | "online" | undefined => {
+    if (!c) return undefined;
+    if (localCompaniesToDelete.some((x) => x.id === c.id)) return "local";
+    if (
+      pocketbaseCompaniesToDelete.some((x) => x.id === c.id) ||
+      onlineCompaniesToDelete.some((x) => x.id === c.id)
+    ) {
+      return "online";
     }
-    return { localCompaniesToDelete: local, onlineCompaniesToDelete: online };
-  }, [ownedCompanies]);
+    return undefined;
+  };
 
   const duplicateNameCountMap = useMemo(() => buildDuplicateNameCountMap(ownedCompanies), [ownedCompanies]);
 
@@ -113,32 +129,24 @@ export function DangerZone() {
     const targetName = companyToDelete?.name ?? company?.name;
     setIsLoading(true);
     try {
-      const storageHint = targetCompany && isDeviceLocalCompany(targetCompany) ? "local" : undefined;
       const moved = await softDeleteCompanyToRecycleBin(targetId, {
-        companyStorageSource: storageHint,
+        companyStorageSource: storageHintForCompany(targetCompany),
       });
       if (!moved.ok) {
         throw new Error(("error" in moved ? moved.error : null) || "Failed to move company to bin.");
       }
-      if (moved.releasedToOnline) {
-        toast({
-          title: "Moved to Online tab",
-          description: `"${targetName}" was a Firebase company stuck in Local — it is now on the Online tab.`,
-        });
-      } else {
-        toast({
-          title: "Company Moved to Bin",
-          description: `"${targetName}" has been moved to the recycle bin.`,
-        });
-        void sendRecycleBinMovedAlert(targetId, targetCompany ?? null, {
-          entityKind: "company",
-          entityId: targetId,
-          entityName: String(targetName || "Company"),
-          performedByUserId: user?.uid,
-          performedByEmail: user?.email ?? undefined,
-          performedByName: user?.displayName ?? customUser?.displayName ?? undefined,
-        });
-      }
+      toast({
+        title: "Company Moved to Bin",
+        description: `"${targetName}" has been moved to the recycle bin.`,
+      });
+      void sendRecycleBinMovedAlert(targetId, targetCompany ?? null, {
+        entityKind: "company",
+        entityId: targetId,
+        entityName: String(targetName || "Company"),
+        performedByUserId: user?.uid,
+        performedByEmail: user?.email ?? undefined,
+        performedByName: user?.displayName ?? customUser?.displayName ?? undefined,
+      });
       if (companyId === targetId) clearCompanyId();
       setSelectedCompanyToDeleteId("");
       reloadLocalCompanyRegistry();
@@ -148,7 +156,11 @@ export function DangerZone() {
       toast({
         variant: "destructive",
         title: "Error",
-        description: isCompanyNotFoundError(error) ? COMPANY_NOT_SYNCED_MESSAGE : "Failed to move company to bin.",
+        description: isCompanyNotFoundError(error)
+          ? COMPANY_NOT_SYNCED_MESSAGE
+          : error instanceof Error && error.message
+            ? `Failed to move company to bin: ${error.message}`
+            : "Failed to move company to bin.",
       });
     } finally {
       setIsLoading(false);
@@ -156,6 +168,34 @@ export function DangerZone() {
       setDeleteConfirmationText("");
     }
   };
+
+  const BADGE_CLASS = {
+    emerald:
+      "rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0 text-[10px] font-medium text-emerald-700 dark:text-emerald-400",
+    amber:
+      "rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0 text-[10px] font-medium text-amber-700 dark:text-amber-400",
+    sky: "rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0 text-[10px] font-medium text-sky-800 dark:text-sky-300",
+  } as const;
+
+  const renderGroup = (
+    label: string,
+    list: Company[],
+    badge: string,
+    tone: keyof typeof BADGE_CLASS
+  ) =>
+    list.length > 0 ? (
+      <SelectGroup>
+        <SelectLabel className="text-xs font-semibold text-muted-foreground">{label}</SelectLabel>
+        {list.map((c) => (
+          <SelectItem key={c.id} value={c.id}>
+            <span className="flex items-center gap-2">
+              <span className={BADGE_CLASS[tone]}>{badge}</span>
+              <span className="truncate">{companySelectOptionLabel(c, duplicateNameCountMap)}</span>
+            </span>
+          </SelectItem>
+        ))}
+      </SelectGroup>
+    ) : null;
 
   return (
     <div className="space-y-8">
@@ -179,36 +219,10 @@ export function DangerZone() {
                 <SelectValue placeholder="Choose company to delete..." />
               </SelectTrigger>
               <SelectContent>
-                {localCompaniesToDelete.length > 0 && (
-                  <SelectGroup>
-                    <SelectLabel className="text-xs font-semibold text-muted-foreground">Local</SelectLabel>
-                    {localCompaniesToDelete.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        <span className="flex items-center gap-2">
-                          <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-                            Local
-                          </span>
-                          <span className="truncate">{companySelectOptionLabel(c, duplicateNameCountMap)}</span>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                )}
-                {onlineCompaniesToDelete.length > 0 && (
-                  <SelectGroup>
-                    <SelectLabel className="text-xs font-semibold text-muted-foreground">Online (cloud)</SelectLabel>
-                    {onlineCompaniesToDelete.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        <span className="flex items-center gap-2">
-                          <span className="rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0 text-[10px] font-medium text-sky-800 dark:text-sky-300">
-                            Online
-                          </span>
-                          <span className="truncate">{companySelectOptionLabel(c, duplicateNameCountMap)}</span>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                )}
+                {renderGroup("Local", localCompaniesToDelete, "Local", "emerald")}
+                {renderGroup("PL Server", serverCompaniesToDelete, "PL Server", "amber")}
+                {renderGroup("PocketBase (online)", pocketbaseCompaniesToDelete, "PocketBase", "sky")}
+                {renderGroup("Firebase (legacy)", onlineCompaniesToDelete, "Firebase", "sky")}
               </SelectContent>
             </Select>
           </div>

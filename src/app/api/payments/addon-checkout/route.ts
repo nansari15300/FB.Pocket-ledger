@@ -10,7 +10,7 @@ import {
   parseGatewayPaymentFlags,
   type GatewayKeys,
 } from "@/ai/flows/gateway-keys";
-import { getAdminDb } from "@/lib/firebaseAdmin";
+import { serverDb } from "@/lib/server/appDb";
 import { optionalServerBillingCaller } from "@/lib/server/billingCaller";
 import { getPublicAppHrefForPaymentRedirects } from "@/lib/checkoutPublicOrigin";
 import {
@@ -42,7 +42,7 @@ type Body = {
 
 async function getGatewayKeysFromAdmin(): Promise<GatewayKeys> {
   try {
-    const db = getAdminDb();
+    const db = serverDb();
     const snap = await db.doc("app_settings/payment_gateways").get();
     return (snap.exists ? (snap.data() as GatewayKeys) : {}) as GatewayKeys;
   } catch {
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
     if (serverCaller && serverCaller.decoded.uid !== userId) {
       return NextResponse.json({ error: "userId does not match the signed-in account" }, { status: 403 });
     }
-    const db = serverCaller ? serverCaller.db : getAdminDb();
+    const db = serverCaller ? serverCaller.db : serverDb();
     const sub = await resolveOwnerActivePaidSubscription(db, userId, companyId || null);
     if (sub.ok === false) {
       return NextResponse.json({ error: sub.error }, { status: sub.status });

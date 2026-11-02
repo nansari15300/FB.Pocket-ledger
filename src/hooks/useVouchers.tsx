@@ -147,7 +147,7 @@ function localCompanyRoleAllowsViewAll(role: string | undefined): boolean {
     .trim()
     .replace(/_/g, "-")
     .replace(/\s+/g, "-");
-  return ["manager", "editor", "accountant", "owner"].includes(r);
+  return ["manager", "admin", "editor", "accountant", "owner"].includes(r);
 }
 
 // --- Report-only party IDs: show only in reports, never in voucher/entity dropdowns or lists ---

@@ -188,7 +188,7 @@ export function AccountDetails({
   const [currentPage, setCurrentPage] = useState(1);
   const [isNoteOpen, setIsNoteOpen] = useState(false);
   const [showNarration, setShowNarration] = useState(true);
-  const { visibleColumns, handleColumnVisibilityChange } = useTransactionVisibleColumns();
+  const { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuNoTdsFilter } = useTransactionVisibleColumns();
   const { setShowNotes, includeNotesInTable, notesPreferenceLockedOnMobile } = useShowNotes();
   const [sortBy, setSortBy] = useState<TransactionSortBy>("date");
   const [sortOrder, setSortOrder] = useState<TransactionSortOrder>(DEFAULT_TRANSACTION_SORT_ORDER);
@@ -1190,7 +1190,7 @@ export function AccountDetails({
               />
               <LedgerFooterColumnsMenu>
                 <DropdownMenuContent align="start" className="w-52 p-2">
-                  {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[]).map((key) => (
+                  {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[]).filter(ledgerColumnMenuNoTdsFilter).map((key) => (
                     <DropdownMenuItem
                       key={key}
                       onSelect={(e) => e.preventDefault()}

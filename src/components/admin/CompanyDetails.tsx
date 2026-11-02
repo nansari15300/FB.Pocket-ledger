@@ -116,6 +116,10 @@ const ALL_ENTITLEMENT_KEYS = Array.from(
 
 const featureLabels: Record<string, string> = {
     allowCompanyAdminRecycleBin: "Allow Restore Company",
+    maxCompressImageKb: "Image compress - max KB (Online / server company)",
+    minCompressImageKb: "Image compress - min KB (Online / server company)",
+    maxCompressImageKbLocal: "Image compress - max KB (Local / offline company)",
+    minCompressImageKbLocal: "Image compress - min KB (Local / offline company)",
 };
 
 const featureDescriptions: Record<string, { en: string; ne: string }> = {

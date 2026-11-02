@@ -1,5 +1,6 @@
 "use client";
 
+import { DialogPlainOpener } from "@/components/ui/dialog-plain-opener";
 import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
 import * as React from "react";
@@ -754,7 +755,7 @@ export function EditStaffDialog({
   return (
     <>
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen} modal={false}>
-        {children && <DialogTrigger asChild>{children}</DialogTrigger>}
+        {children ? <DialogPlainOpener onOpen={() => setDialogOpen(true)}>{children}</DialogPlainOpener> : null}
         {dialogOpen && <div className={masterEditBackdropClassName(presentationMode)} />}
         <DialogContent
             overlayClassName={

@@ -100,6 +100,12 @@ import {
 import { mergePlServerSharedCompaniesIntoRegistry, getPlServerContextGateId, shouldMergePlServerSharedIntoRegistry, PL_SERVER_ACCESS_CONTEXT_EVENT, isListedPlServerSharedCompany } from "@/lib/plServerAccessContext";
 import { isServerGateCompany } from "@/lib/companyStorageKind";
 import {
+  filterPackedMyCompanyRows,
+  isPackedServerManageCompany,
+  isPlServerPackedApp,
+  isServerManageOnlyScope,
+} from "@/lib/plServerPackedApp";
+import {
   isCompanyAllowedOnActiveServerGate,
   shouldRetainServerGateCompanySelection,
 } from "@/lib/plServerRemoteCompanyLogin";
@@ -3835,22 +3841,45 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
    * still selected from an older session is deselected and the picker opens.
    */
   const serverOnlyLoginScope = isServerOnlyLoginSession() || isPocketBaseSessionUser(user);
+  // Normal app (non-packed): hide the server-manage company from every list; inside the server panel
+  // My Company handoff show ONLY that company. Packed builds are scoped by their own consumers.
+  const scopeServerManageRows = <T extends { id?: unknown; name?: unknown; interCompanyCompanyCode?: unknown }>(
+    rows: T[]
+  ): T[] => (isPlServerPackedApp() ? rows : filterPackedMyCompanyRows(rows));
   const allCompaniesForUiScoped = useMemo(
     () =>
-      serverOnlyLoginScope
-        ? allCompaniesForUi.filter((c) => !isFirebaseCloudRowHiddenInServerSession(c))
-        : allCompaniesForUi,
+      scopeServerManageRows(
+        serverOnlyLoginScope
+          ? allCompaniesForUi.filter((c) => !isFirebaseCloudRowHiddenInServerSession(c))
+          : allCompaniesForUi
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [serverOnlyLoginScope, allCompaniesForUi]
   );
   const allCompaniesRegistryScoped = useMemo(
     () =>
-      serverOnlyLoginScope
-        ? allCompaniesRegistry.filter((c) => !isFirebaseCloudRowHiddenInServerSession(c))
-        : allCompaniesRegistry,
+      scopeServerManageRows(
+        serverOnlyLoginScope
+          ? allCompaniesRegistry.filter((c) => !isFirebaseCloudRowHiddenInServerSession(c))
+          : allCompaniesRegistry
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [serverOnlyLoginScope, allCompaniesRegistry]
   );
+  // Selected company not allowed in this scope (normal app: server-manage company; server handoff: any other).
+  const serverManageScopeBlocked = (() => {
+    if (isPlServerPackedApp()) return false;
+    if (isServerManageOnlyScope()) {
+      return !!companyWithLocalFiscal && !isPackedServerManageCompany(companyWithLocalFiscal);
+    }
+    return (
+      isPackedServerManageCompany(companyWithLocalFiscal) ||
+      (!!companyId && isPackedServerManageCompany({ id: companyId }))
+    );
+  })();
   const firebaseCompanyBlockedForSession =
-    serverOnlyLoginScope && !!companyWithLocalFiscal && isFirebaseCloudRowHiddenInServerSession(companyWithLocalFiscal);
+    serverManageScopeBlocked ||
+    (serverOnlyLoginScope && !!companyWithLocalFiscal && isFirebaseCloudRowHiddenInServerSession(companyWithLocalFiscal));
   const firebaseCompanyDeselectCountRef = useRef(0);
   useEffect(() => {
     if (!firebaseCompanyBlockedForSession) return;

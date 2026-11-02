@@ -190,7 +190,7 @@ export type FirestoreSharedUser = {
   uid?: string | null;
 };
 
-const VALID_SHARED_ROLES = ["viewer", "data-entry", "accountant", "editor", "manager", "owner"] as const;
+const VALID_SHARED_ROLES = ["viewer", "data-entry", "accountant", "editor", "manager", "admin", "owner"] as const;
 
 /**
  * Cloud `sharedWith` ko device SQLite `localCompanyUsers` me merge — offline login + "Existing Company Users" list.
