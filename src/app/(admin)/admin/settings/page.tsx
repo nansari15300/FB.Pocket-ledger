@@ -277,7 +277,7 @@ function GlobalSettingsPage() {
                     title="Voucher load help"
                   />
                 </PopoverTrigger>
-                <PopoverContent align="start" className="z-[80] w-[min(92vw,22rem)] space-y-2 p-3 text-left">
+                <PopoverContent align="start" className="z-[80] w-[min(92vw,22rem)] space-y-2 p-3 text-left" data-pl-intro="">
                   <p className="text-sm font-semibold">{VOUCHER_LOAD_HELP.title}</p>
                   <div className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
                     {VOUCHER_LOAD_HELP.body}
@@ -341,7 +341,7 @@ function GlobalSettingsPage() {
                     title="Company sync help"
                   />
                 </PopoverTrigger>
-                <PopoverContent align="start" className="z-[80] w-[min(92vw,22rem)] space-y-2 p-3 text-left">
+                <PopoverContent align="start" className="z-[80] w-[min(92vw,22rem)] space-y-2 p-3 text-left" data-pl-intro="">
                   <p className="text-sm font-semibold">{SYNC_MODE_HELP.title}</p>
                   <div className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
                     {SYNC_MODE_HELP.body}
@@ -405,7 +405,7 @@ function GlobalSettingsPage() {
                     title="Online data server help"
                   />
                 </PopoverTrigger>
-                <PopoverContent align="start" className="z-[80] w-[min(92vw,22rem)] space-y-2 p-3 text-left">
+                <PopoverContent align="start" className="z-[80] w-[min(92vw,22rem)] space-y-2 p-3 text-left" data-pl-intro="">
                   <p className="text-sm font-semibold">{ONLINE_DATA_SERVER_HELP.title}</p>
                   <div className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
                     {ONLINE_DATA_SERVER_HELP.body}

@@ -1,0 +1,65 @@
+/*
+ * Pocket Ledger — global animation gate.
+ * AnimationSettingsProvider sets <html data-pl-animations="on|off"> from
+ * Settings → Animation → Row Animation (off while settings are loading).
+ *
+ * OFF: all CSS animations + transitions finish instantly (0.01ms so that
+ * animationend / transitionend still fire — Radix Presence, vaul, etc. rely on them).
+ * Covers tailwindcss-animate animate-in/out (dialog, sheet, popover, select, tooltip,
+ * dropdown, toast, accordion), animate-pulse, spend-wise blinks, statement-checked blink,
+ * hover/colour transitions (incl. theme card hover — trivially covered by the * rule).
+ * Exception: .animate-spin (loading spinners) keeps spinning so busy states stay visible.
+ *
+ * Do not move this into globals.css (Theme / Trxn Table owned).
+ */
+html[data-pl-animations="off"] *,
+html[data-pl-animations="off"] *::before,
+html[data-pl-animations="off"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-pl-animations="off"] .animate-spin {
+  animation-duration: 1s !important;
+  animation-iteration-count: infinite !important;
+}
+
+/* ---- Row change highlight (~1s background fade) — useRowChangeHighlight ---- */
+@keyframes pl-row-change-highlight-fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.pl-row-change-highlight {
+  position: relative;
+}
+
+.pl-row-change-highlight::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  background-color: hsl(var(--primary) / 0.2);
+  opacity: 0;
+  animation: pl-row-change-highlight-fade 1s ease-out;
+}
+
+/* Master list rows (motion.li > rounded MasterListRow card). */
+li.pl-row-change-highlight::after {
+  border-radius: var(--radius, 0.5rem);
+}
+
+html[data-pl-animations="off"] .pl-row-change-highlight::after {
+  display: none;
+  animation: none !important;
+}

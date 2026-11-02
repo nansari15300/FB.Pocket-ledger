@@ -48,7 +48,7 @@ export function IsClearingAccountField<T extends FieldValues>({
                 <TooltipTrigger asChild>
                   <AppFreshInfoButton size="xs" aria-label="About is clearing account" />
                 </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-sm text-xs leading-relaxed">
+                <TooltipContent side="top" className="max-w-sm text-xs leading-relaxed" data-pl-intro="">
                   {IS_CLEARING_ACCOUNT_INFO}
                 </TooltipContent>
               </Tooltip>

@@ -43,26 +43,39 @@ function DashboardPageContentLoader() {
     setSlowHint(false);
     setContent(null);
     let cancelled = false;
-    const slowTimer = window.setTimeout(() => {
-      if (!cancelled) setSlowHint(true);
-    }, 12_000);
+    const timers: number[] = [];
+    timers.push(
+      window.setTimeout(() => {
+        if (!cancelled) setSlowHint(true);
+      }, 8_000)
+    );
 
-    import('@/components/dashboard/DashboardPageClient')
-      .then((mod) => {
-        if (cancelled) return;
-        setContent(() => mod.DashboardPageContent);
-        setPhase('ready');
-      })
-      .catch(() => {
-        if (!cancelled) setPhase('error');
-      })
-      .finally(() => {
-        window.clearTimeout(slowTimer);
-      });
+    const maxAttempts = 12;
+    const attemptLoad = (n: number) => {
+      import('@/components/dashboard/DashboardPageClient')
+        .then((mod) => {
+          if (cancelled) return;
+          setContent(() => mod.DashboardPageContent);
+          setPhase('ready');
+        })
+        .catch(() => {
+          if (cancelled) return;
+          if (n < maxAttempts) {
+            timers.push(
+              window.setTimeout(() => {
+                if (!cancelled) attemptLoad(n + 1);
+              }, Math.min(4000, 800 * n))
+            );
+            return;
+          }
+          setPhase('error');
+        });
+    };
+    attemptLoad(1);
 
     return () => {
       cancelled = true;
-      window.clearTimeout(slowTimer);
+      for (const id of timers) window.clearTimeout(id);
     };
   }, []);
 

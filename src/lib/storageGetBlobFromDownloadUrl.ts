@@ -50,6 +50,14 @@ export async function tryFetchFirebaseStorageDownloadUrlBlob(
 }
 
 async function fetchFirebaseBlobFallback(url: string, signal?: AbortSignal): Promise<Blob | null> {
+  try {
+    const { blockFirebaseStorageHitOnPlServer } = await import("@/lib/plServerFirebaseHitTrace");
+    if (blockFirebaseStorageHitOnPlServer("fetchFirebaseBlobFallback", url)) {
+      return null;
+    }
+  } catch {
+    /* optional guard */
+  }
   // Electron packaged localhost: same-origin proxy — renderer par direct Firebase URL CORS fail hota hai.
   const viaProxy = await tryFetchViaElectronProxy(url, signal);
   if (viaProxy && viaProxy.size > 0) return viaProxy;

@@ -427,6 +427,8 @@ const MonthYearFilter = ({
 
 const BankCashSummary = () => {
     const { processedAccounts, vouchers } = useVouchers();
+    /** Settings → Row Animation (on/off + duration), same contract as master lists. */
+    const bankCashRowMotion = useMasterListRowMotion();
     const { dateSystem, formatCurrency } = useDate();
     const [bankCashDateRange, setBankCashDateRange] = React.useState<DateRange | undefined>(undefined);
 
@@ -533,7 +535,7 @@ useEffect(() => {
                     <TableBody>
                         <AnimatePresence>
                             {bankCashSummary.bankAccounts.map(acc => (
-                                <motion.tr key={acc.id} layout="position" initial={false} exit={{ transition: { duration: 0 } }} className="border-b">
+                                <motion.tr key={acc.id} {...bankCashRowMotion.rowMotionProps} className="border-b">
                                     <TableCell>{acc.accountName}</TableCell>
                                     <TableCell>{acc.accountType}</TableCell>
                                     <TableCell className="text-right text-green-600">{acc.inflow > 0 ? formatCurrency(acc.inflow, { noSuffix: true, duration: 2 }) : '-'}</TableCell>
@@ -555,7 +557,7 @@ useEffect(() => {
                         </TableRow>
                           <AnimatePresence>
                             {bankCashSummary.cashAccounts.map(acc => (
-                               <motion.tr key={acc.id} layout="position" initial={false} exit={{ transition: { duration: 0 } }} className="border-b">
+                               <motion.tr key={acc.id} {...bankCashRowMotion.rowMotionProps} className="border-b">
                                     <TableCell>{acc.accountName}</TableCell>
                                     <TableCell>{acc.accountType}</TableCell>
                                     <TableCell className="text-right text-green-600">{acc.inflow > 0 ? formatCurrency(acc.inflow, { noSuffix: true, duration: 2 }) : '-'}</TableCell>

@@ -114,7 +114,15 @@ async function uploadStagedRelease(date) {
   if (!fs.existsSync(localDir)) throw new Error(`Missing staged folder: ${localDir}`);
 
   const files = fs.readdirSync(localDir);
-  const windowsVersion = require(path.join(root, "electron", "package.json")).version || "1.0.0";
+  const windowsVersion =
+    process.env.WINDOWS_RELEASE_VERSION ||
+    (() => {
+      try {
+        return JSON.parse(fs.readFileSync(path.join(root, "src-tauri", "tauri.conf.json"), "utf8")).version;
+      } catch {
+        return "1.0.0";
+      }
+    })();
   const androidVersion =
     process.env.ANDROID_RELEASE_VERSION ||
     (() => {
@@ -237,6 +245,10 @@ async function main() {
   const skipStatic = process.argv.includes("--skip-static");
   const skipUpload = process.argv.includes("--skip-upload");
   const noBump = process.argv.includes("--no-bump");
+  const useTauri =
+    process.argv.includes("--tauri") ||
+    process.env.RELEASE_TAURI === "1" ||
+    !fs.existsSync(path.join(root, "electron", "package.json"));
 
   if (!noBump) {
     run("node", ["scripts/bump-release-version.cjs"]);
@@ -244,7 +256,21 @@ async function main() {
     console.log("[release-publish] Skipping version bump (--no-bump).");
   }
 
-  if (skipStatic) {
+  if (useTauri) {
+    console.log("[release-publish] Windows EXE = Tauri NSIS (Electron EXE skip).");
+    process.env.RELEASE_TAURI = "1";
+    if (skipStatic) {
+      if (!fs.existsSync(path.join(root, "out", "index.html"))) {
+        throw new Error("out/ missing — run without --skip-static or build static first.");
+      }
+      run("npm", ["run", "sidecar:build"]);
+      run("cargo", ["tauri", "build", "--config", "tauri.release.conf.json"], {
+        cwd: path.join(root, "src-tauri"),
+      });
+    } else {
+      run("npm", ["run", "tauri:build"]);
+    }
+  } else if (skipStatic) {
     if (!fs.existsSync(path.join(root, "out", "index.html"))) {
       throw new Error("out/ missing — run without --skip-static or build static first.");
     }

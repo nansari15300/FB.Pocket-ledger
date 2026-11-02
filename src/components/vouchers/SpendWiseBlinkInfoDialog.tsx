@@ -16,6 +16,8 @@ import {
   NESTED_VOUCHER_LINK_DIALOG_CONTENT_CN,
   NESTED_VOUCHER_LINK_DIALOG_OVERLAY_CN,
 } from "@/lib/dialogShellChrome";
+import { usePlI18nOptional } from "@/contexts/PlI18nContext";
+import { introTabLang } from "@/lib/i18n/introLangTab";
 
 const BLINK_INFO = {
   en: {
@@ -52,16 +54,17 @@ export function SpendWiseBlinkInfoDialog({
   onOpenChange?: (open: boolean) => void;
   className?: string;
 }) {
+  const i18n = usePlI18nOptional();
   const isControlled = open !== undefined && onOpenChange !== undefined;
   const [internalOpen, setInternalOpen] = React.useState(false);
-  const [tab, setTab] = React.useState<"en" | "hi" | "ne">("en");
+  const [tab, setTab] = React.useState<"en" | "hi" | "ne">(() => introTabLang(i18n?.intro));
 
   const isOpen = isControlled ? open : internalOpen;
   const setIsOpen = isControlled ? (onOpenChange ?? (() => {})) : setInternalOpen;
 
   React.useEffect(() => {
-    if (isOpen) setTab("en");
-  }, [isOpen]);
+    if (isOpen) setTab(introTabLang(i18n?.intro));
+  }, [isOpen, i18n?.intro]);
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -73,6 +76,7 @@ export function SpendWiseBlinkInfoDialog({
             size="icon"
             className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
             aria-label="Blink feature information"
+            data-pl-intro=""
           >
             <Info className="h-4 w-4" />
           </Button>

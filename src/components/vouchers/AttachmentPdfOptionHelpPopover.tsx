@@ -38,6 +38,7 @@ export function AttachmentPdfOptionHelpPopover({
         align="start"
         collisionPadding={12}
         className="z-[10050] max-w-[min(22rem,calc(100vw-2rem))] p-3 text-xs leading-relaxed text-foreground"
+        data-pl-intro=""
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <p className="mb-1.5 text-sm font-semibold">{label}</p>

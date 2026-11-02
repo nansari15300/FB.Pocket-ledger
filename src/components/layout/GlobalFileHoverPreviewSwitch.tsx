@@ -19,6 +19,8 @@ import {
   type SwitchKnobMotion,
 } from "@/lib/switchMotion";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { usePlI18nOptional } from "@/contexts/PlI18nContext";
+import { pickIntroCopy } from "@/lib/i18n/introCopy";
 
 const MODES: FilePreviewMode[] = ["off", "hover", "click"];
 
@@ -31,21 +33,50 @@ const MODE_LABEL: Record<FilePreviewMode, string> = {
 /** Header track — compact ke baad +30% (~104/116px); teen zone + i icon ke liye */
 const TRACK_WIDTH_CLASS = "w-[6.5rem] min-w-[6.5rem] shrink-0 sm:w-[10.25rem] sm:min-w-[7.25rem]";
 
-const MODE_DETAIL: Record<
-  FilePreviewMode,
-  { title: string; body: string }
-> = {
+const MODE_TITLE: Record<FilePreviewMode, string> = {
+  off: "Off",
+  hover: "Hover preview",
+  click: "Click preview",
+};
+
+const MODE_BODY: Record<FilePreviewMode, { en: string; hi: string; ne: string }> = {
   off: {
-    title: "Off",
-    body: "Attachment preview band. Profile plan menu sirf avatar click se khulega — hover par auto open nahi.",
+    en: "File preview is off. The profile plan menu opens only when you click the avatar — not on hover.",
+    hi: "फ़ाइल पूर्वावलोकन बंद है। प्रोफ़ाइल योजना मेनू केवल अवतार पर क्लिक करने से खुलेगा — होवर पर नहीं।",
+    ne: "फाइल पूर्वावलोकन बन्द छ। प्रोफाइल योजना मेनु अवतारमा क्लिक गर्दा मात्र खुल्छ — होभरमा होइन।",
   },
   hover: {
-    title: "Hover preview",
-    body: "Attachment thumbnail par hover se preview khulega. Profile avatar par hover se plan menu bhi khulega.",
+    en: "Hovering an attachment thumbnail opens the preview. Hovering the profile avatar also opens the plan menu.",
+    hi: "संलग्नक थंबनेल पर होवर करने से पूर्वावलोकन खुलेगा। प्रोफ़ाइल अवतार पर होवर से योजना मेनू भी खुलेगा।",
+    ne: "संलग्नक थम्बनेलमा होभर गर्दा पूर्वावलोकन खुल्छ। प्रोफाइल अवतारमा होभर गर्दा योजना मेनु पनि खुल्छ।",
   },
   click: {
-    title: "Click preview",
-    body: "Attachment click/tap se preview. Profile plan menu sirf avatar click se — hover par nahi.",
+    en: "Click or tap an attachment to open the preview. The profile plan menu opens only on avatar click, not on hover.",
+    hi: "संलग्नक पर क्लिक/टैप से पूर्वावलोकन खुलेगा। प्रोफ़ाइल योजना मेनू केवल अवतार क्लिक से — होवर पर नहीं।",
+    ne: "संलग्नकमा क्लिक वा ट्याप गर्दा पूर्वावलोकन खुल्छ। प्रोफाइल योजना मेनु अवतारमा क्लिक गर्दा मात्र खुल्छ, होभरमा होइन।",
+  },
+};
+
+const MENU_INTRO = {
+  heading: {
+    en: "Preview & profile menu",
+    hi: "पूर्वावलोकन और प्रोफ़ाइल मेनू",
+    ne: "पूर्वावलोकन र प्रोफाइल मेनु",
+  },
+  current: {
+    en: "Current:",
+    hi: "अभी:",
+    ne: "हाल:",
+  },
+  footer: {
+    en: "Tap a zone on the switch: left Off, middle Hover preview, right Click preview.",
+    hi: "स्विच के बाएँ Off, बीच Hover preview, दाएँ Click preview।",
+    ne: "स्विचको बायाँ Off, बीच Hover preview, दायाँ Click preview।",
+  },
+  active: {
+    en: "(active)",
+    hi: "(सक्रिय)",
+    ne: "(सक्रिय)",
   },
 };
 
@@ -65,6 +96,8 @@ function infoIconOnRight(mode: FilePreviewMode): boolean {
  * Header: 3-step file preview switch — chhota track, andar i icon (opposite side), popup me detail.
  */
 export function GlobalFileHoverPreviewSwitch({ className }: { className?: string }) {
+  const i18n = usePlI18nOptional();
+  const intro = i18n?.intro || "en";
   const { mode, setMode } = useFileHoverPreview();
   const [knobMotion, setKnobMotion] = React.useState<SwitchKnobMotion | null>(null);
   const [infoOpen, setInfoOpen] = React.useState(false);
@@ -196,12 +229,14 @@ export function GlobalFileHoverPreviewSwitch({ className }: { className?: string
             side="bottom"
             sideOffset={8}
             className="z-[200] w-[min(20rem,calc(100vw-1.5rem))] p-0"
+            data-pl-intro=""
             onOpenAutoFocus={(e) => e.preventDefault()}
           >
             <div className="border-b px-3 py-2">
-              <p className="text-sm font-semibold leading-tight">Preview & profile menu</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Current: <span className="font-medium text-foreground">{MODE_LABEL[mode]}</span>
+              <p className="text-sm font-semibold leading-tight">{pickIntroCopy(intro, MENU_INTRO.heading)}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground" data-pl-intro="">
+                {pickIntroCopy(intro, MENU_INTRO.current)}{" "}
+                <span className="font-medium text-foreground">{MODE_LABEL[mode]}</span>
               </p>
             </div>
             <ul className="space-y-0 divide-y text-sm">
@@ -219,19 +254,21 @@ export function GlobalFileHoverPreviewSwitch({ className }: { className?: string
                       mode === m ? "text-green-800 dark:text-green-300" : "text-foreground"
                     )}
                   >
-                    {MODE_DETAIL[m].title}
+                    {MODE_TITLE[m]}
                     {mode === m ? (
-                      <span className="ml-1.5 text-[10px] font-normal text-green-700">(active)</span>
+                      <span className="ml-1.5 text-[10px] font-normal text-green-700">
+                        {pickIntroCopy(intro, MENU_INTRO.active)}
+                      </span>
                     ) : null}
                   </p>
-                  <p className="mt-1 text-xs leading-snug text-muted-foreground">
-                    {MODE_DETAIL[m].body}
+                  <p className="mt-1 text-xs leading-snug text-muted-foreground" data-pl-intro="">
+                    {pickIntroCopy(intro, MODE_BODY[m])}
                   </p>
                 </li>
               ))}
             </ul>
-            <p className="border-t px-3 py-2 text-[11px] leading-snug text-muted-foreground">
-              Tap a zone on the switch: left Off, middle Hover preview, right Click preview.
+            <p className="border-t px-3 py-2 text-[11px] leading-snug text-muted-foreground" data-pl-intro="">
+              {pickIntroCopy(intro, MENU_INTRO.footer)}
             </p>
           </PopoverContent>
           </Popover>

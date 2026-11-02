@@ -61,7 +61,7 @@ export function CountryAppPicker({
     <div className="w-full space-y-4">
       <div className="space-y-1">
         <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
-        <p className="text-sm text-muted-foreground">{description}</p>
+        <p className="text-sm text-muted-foreground" data-pl-intro="">{description}</p>
       </div>
       <div className="flex items-center gap-3">
         {selected ? (

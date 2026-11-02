@@ -9,6 +9,7 @@ import { trimEntityFileUrlForPreview } from "@/lib/trimEntityFileUrlForPreview";
 import { DollarSign, Lock } from "lucide-react";
 import { useDate } from "@/hooks/useDate";
 import { masterListOrderKey, useMasterListDisplayRows, useMasterListRowMotion } from "@/hooks/useMasterListRowMotion";
+import { useRowChangeHighlight } from "@/hooks/useRowChangeHighlight";
 import { MasterListNameTooltip } from "@/components/entity/MasterListNameTooltip";
 import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
 import { MasterAccountFreezeListBadge } from "@/components/masterAccountFreeze/MasterAccountFreezeListBadge";
@@ -101,6 +102,8 @@ export function ExpenseAccountList({
     listOrderKey,
     { enabled: isRowAnimationEnabled, holdMs: layoutHoldMs }
   );
+  /** Add/edit (naya ya data change) row par ~1s highlight; sort/filter/first load par nahi. */
+  const rowChangeHighlight = useRowChangeHighlight(displayListRows, { getId: (row) => row.id });
 
   if (displayListRows.length === 0) {
     return (
@@ -205,7 +208,7 @@ export function ExpenseAccountList({
                       </div>
                 );
                 return (
-                  <motion.li key={account.id} layoutDependency={displayOrderKey} {...rowMotionProps}>
+                  <motion.li key={account.id} layoutDependency={displayOrderKey} {...rowMotionProps} className={rowChangeHighlight.highlightClassName(account.id)}>
                     {href ? (
                       // Master list navigation: per-row auto-prefetch off rakho to avoid repeat background bursts on revisit.
                       <Link

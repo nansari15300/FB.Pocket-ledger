@@ -12,6 +12,7 @@ import {
 } from "@/lib/countryAppHosts";
 import { isPackedMyCompanyOnly } from "@/lib/plServerPackedApp";
 import { useToast } from "@/hooks/use-toast";
+import { AuthLangChrome } from "@/components/layout/LanguageGlobeButton";
 
 function shouldPrompt(): boolean {
   if (typeof window === "undefined") return false;
@@ -57,6 +58,7 @@ export function CountryAppGate({ children }: { children: React.ReactNode }) {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
+      <AuthLangChrome />
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
           <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border-2 border-border bg-muted/40 shadow-sm">

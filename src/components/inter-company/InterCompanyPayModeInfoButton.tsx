@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { usePlI18nOptional } from "@/contexts/PlI18nContext";
+import { introTabLang } from "@/lib/i18n/introLangTab";
 
 const INTRO = {
   en: {
@@ -77,7 +79,9 @@ type Props = {
 
 /** Hover: short tip. Click: bada Dialog — English / हिन्दी / नेपाली full intro. */
 export function InterCompanyPayModeInfoButton({ className, compact = false }: Props) {
+  const i18n = usePlI18nOptional();
   const [open, setOpen] = useState(false);
+  const [lang, setLang] = useState<Lang>(() => introTabLang(i18n?.intro));
 
   const stopLabelSelect = (e: MouseEvent) => {
     e.stopPropagation();
@@ -97,9 +101,11 @@ export function InterCompanyPayModeInfoButton({ className, compact = false }: Pr
                 className
               )}
               aria-label="Pay mode information"
+              data-pl-intro=""
               onClick={(e) => {
                 stopLabelSelect(e);
                 e.preventDefault();
+                setLang(introTabLang(i18n?.intro));
                 setOpen(true);
               }}
               onMouseDown={stopLabelSelect}
@@ -111,7 +117,7 @@ export function InterCompanyPayModeInfoButton({ className, compact = false }: Pr
               />
             </button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="max-w-[240px] text-xs">
+          <TooltipContent side="bottom" className="max-w-[240px] text-xs" data-pl-intro="">
             Click for full pay-mode intro (English / Hindi / Nepali).
           </TooltipContent>
         </Tooltip>
@@ -133,7 +139,7 @@ export function InterCompanyPayModeInfoButton({ className, compact = false }: Pr
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs defaultValue="en" className="flex min-h-0 flex-1 flex-col">
+          <Tabs value={lang} onValueChange={(v) => setLang(v as Lang)} className="flex min-h-0 flex-1 flex-col">
             <div className="border-b px-4 pt-3">
               <TabsList className="grid h-10 w-full grid-cols-3">
                 <TabsTrigger value="en" className="text-xs sm:text-sm">
@@ -149,10 +155,10 @@ export function InterCompanyPayModeInfoButton({ className, compact = false }: Pr
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-              {(Object.keys(INTRO) as Lang[]).map((lang) => {
-                const copy = INTRO[lang];
+              {(Object.keys(INTRO) as Lang[]).map((tabLang) => {
+                const copy = INTRO[tabLang];
                 return (
-                  <TabsContent key={lang} value={lang} className="m-0 mt-0 space-y-4 focus-visible:outline-none">
+                  <TabsContent key={tabLang} value={tabLang} className="m-0 mt-0 space-y-4 focus-visible:outline-none">
                     <div>
                       <p className="text-sm font-semibold leading-snug sm:text-base">{copy.title}</p>
                       <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{copy.subtitle}</p>

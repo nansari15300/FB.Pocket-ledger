@@ -46,6 +46,7 @@ import {
 import { isDriveFileRef } from "@/lib/legacyDriveFileRef";
 import { isFirebaseLedgerDataSyncDisabled } from "@/lib/firebaseLedgerDataSyncDisabled";
 import { isFirebaseLedgerCompanyAttachmentSyncEnabled } from "@/lib/firebaseLedgerCompanySyncPrefs";
+import { isPocketBaseOnlyAppSession } from "@/lib/pbOnlySessionMarker";
 
 /** Forensic: build par `NEXT_PUBLIC_ATTACHMENT_FORENSIC_DEBUG=1` — cache HIT/MISS / stable-key proof (temporary trace only). */
 function offlineAttachmentForensicEnabled(): boolean {
@@ -162,6 +163,23 @@ function isEligibleAttachmentHttpsUrl(raw: string): boolean {
   // Common non-attachment / huge HTML pages skip
   if (/(youtube\.com|youtu\.be|vimeo\.com|facebook\.com|twitter\.com|maps\.google)/i.test(lower)) return false;
   return true;
+}
+
+/** Leftover Firebase Storage HTTPS / object-path — Pocket Ledger Server login inhe network pe nahi bhejta. */
+function isFirebaseStorageNetworkRef(url: string): boolean {
+  const u = String(url || "").trim();
+  if (!u) return false;
+  if (looksLikeFirebaseStorageDownloadUrl(u)) return true;
+  const objectPathForSdk = normalizeFirebaseStorageObjectPathForSdk(u);
+  return (
+    /^voucher-files\//i.test(objectPathForSdk) ||
+    /^companies\//i.test(objectPathForSdk) ||
+    /^entity-files\//i.test(objectPathForSdk)
+  );
+}
+
+function skipFirebaseNetworkOnPbSession(url: string): boolean {
+  return isPocketBaseOnlyAppSession() && isFirebaseStorageNetworkRef(url);
 }
 
 /** Raw Firebase object-path (`voucher-files/...`) ko SDK se blob me resolve karo for static/offline cache warm. */
@@ -314,6 +332,16 @@ async function blobFromHybridFetch(
       retryable: false,
       source: "exception",
       error: recentFailure.error,
+    };
+  }
+
+  if (skipFirebaseNetworkOnPbSession(url)) {
+    return {
+      blob: null,
+      status: null,
+      retryable: false,
+      source: "exception",
+      error: "skipped_pb_session_firebase",
     };
   }
 
@@ -1161,7 +1189,10 @@ export async function prefetchHttpsAttachmentUrls(
     ...new Set(
       [...urls]
         .map((u) => offlineCacheKeyForAttachmentRef(String(u || "")) || String(u || "").trim())
-        .filter((value) => value && isOfflineCacheableAttachmentRef(value))
+        .filter(
+          (value) =>
+            value && isOfflineCacheableAttachmentRef(value) && !skipFirebaseNetworkOnPbSession(value)
+        )
     ),
   ];
   if (offlineAttachmentForensicEnabled()) {
@@ -1182,6 +1213,7 @@ export async function prefetchHttpsAttachmentUrls(
   for (const raw of options?.prioritizeUrls ?? []) {
     const value = offlineCacheKeyForAttachmentRef(String(raw || "")) || String(raw || "").trim();
     if (!value || !isOfflineCacheableAttachmentRef(value)) continue;
+    if (skipFirebaseNetworkOnPbSession(value)) continue;
     if (seenOrdered.has(value)) continue;
     seenOrdered.add(value);
     ordered.push(value);

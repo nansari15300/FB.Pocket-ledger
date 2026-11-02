@@ -1642,6 +1642,17 @@ export const TransactionRow = React.memo(
       }
       setPairHovered(false);
     }, []);
+    const txnLayoutKey = `${String((transaction as { id?: unknown })?.id ?? "")}:${txnStripeIndex ?? ""}:${animateLayout ? 1 : 0}`;
+    const [txnLayoutLayerHot, setTxnLayoutLayerHot] = React.useState(true);
+    const [txnLayoutAnimating, setTxnLayoutAnimating] = React.useState(false);
+    React.useEffect(() => {
+      setTxnLayoutLayerHot(true);
+    }, [txnLayoutKey]);
+    const startTxnLayoutAnim = React.useCallback(() => setTxnLayoutAnimating(true), []);
+    const finishTxnLayoutLayer = React.useCallback(() => {
+      setTxnLayoutAnimating(false);
+      setTxnLayoutLayerHot(false);
+    }, []);
 
     // Merge fiscal mode: FY ke beech full-width divider — amounts / row actions nahi.
     if (transaction.type === FISCAL_YEAR_PARTITION_ROW_TYPE) {
@@ -1705,6 +1716,7 @@ export const TransactionRow = React.memo(
           ) : null}
           <MotionTr
             layout={animateLayout ? "position" : false}
+            layoutDependency={txnLayoutKey}
             initial={false}
             data-row="fiscal-partition-label"
             className="cursor-default bg-background hover:!bg-background"
@@ -1773,6 +1785,17 @@ export const TransactionRow = React.memo(
     const isRowAnimationEnabled = animationSettings?.rows?.enabled === true;
     const rawRowDuration = isRowAnimationEnabled ? animationSettings.rows.duration : 0;
     const rowAnimationDuration = rawRowDuration;
+    const txnLayoutOn = Boolean(animateLayout && isRowAnimationEnabled);
+    const txnLayoutTransition = txnLayoutOn
+      ? { duration: rowAnimationDuration, ease: "easeInOut" as const, layout: { duration: rowAnimationDuration, ease: "easeInOut" as const } }
+      : { duration: 0 };
+    const txnLayoutStyle = txnLayoutOn && txnLayoutLayerHot
+      ? ({
+          isolation: "isolate",
+          willChange: "transform",
+          ...(txnLayoutAnimating ? { zIndex: 4 } : {}),
+        } as const)
+      : undefined;
     const isNumberAnimationEnabled = animationSettings?.numbers?.enabled === true;
     const numberAnimationDuration = isNumberAnimationEnabled ? (animationSettings?.numbers?.duration ?? 2.5) : 0;
 
@@ -2677,7 +2700,7 @@ export const TransactionRow = React.memo(
                   className="flex items-center gap-2"
                 >
                   <CheckSquare className="h-3.5 w-3.5" />
-                  {isStatementChecked ? "Unmark as checked" : "Mark as checked"}
+                  {isStatementChecked ? "Unmark as reconciled" : "Mark as reconciled"}
                 </DropdownMenuItem>
               ) : null}
               {showSpendWiseGroupMenuActions ? (
@@ -2857,9 +2880,7 @@ export const TransactionRow = React.memo(
       !effSpendBottom && "[&>td]:pb-[3px]"
     );
 
-    const rowExitTransition = isRowAnimationEnabled && animateLayout
-      ? { transition: { duration: rowAnimationDuration, ease: "easeInOut" as const } }
-      : { transition: { duration: 0 } };
+    const rowExitTransition = { transition: { duration: 0 } };
     const txnStripeMod =
       typeof txnStripeIndex === "number" ? txnStripeIndex % 2 : null;
     const txnStripeAttr = txnStripeMod !== null ? String(txnStripeMod) : undefined;
@@ -2885,15 +2906,15 @@ export const TransactionRow = React.memo(
 
     const MainRow = (
       <motion.tr
-        layout={animateLayout ? "position" : false}
+        layout={txnLayoutOn ? "position" : false}
+        layoutDependency={txnLayoutKey}
         initial={false}
         exit={rowExitTransition}
-        transition={
-          isRowAnimationEnabled && animateLayout
-            ? { duration: rowAnimationDuration, ease: "easeInOut" }
-            : { duration: 0 }
-        }
-        style={isRowAnimationEnabled && animateLayout ? { isolation: "isolate", willChange: "transform" } : undefined}
+        transition={txnLayoutTransition}
+        style={txnLayoutStyle}
+        onLayoutAnimationStart={startTxnLayoutAnim}
+        onLayoutAnimationComplete={finishTxnLayoutLayer}
+        data-pl-txn-layout-animating={txnLayoutAnimating ? "" : undefined}
         onClick={() => onRowSelect?.(transaction)}
         onDoubleClick={handleRowDoubleClick}
         data-txn-stripe={txnStripeAttr}
@@ -2974,15 +2995,15 @@ export const TransactionRow = React.memo(
     const overdueSubText = "";
     const NarrationRow = showNarrationRow ? (
       <motion.tr
-        layout={animateLayout ? "position" : false}
+        layout={txnLayoutOn ? "position" : false}
+        layoutDependency={txnLayoutKey}
         initial={false}
         exit={rowExitTransition}
-        transition={
-          isRowAnimationEnabled && animateLayout
-            ? { duration: rowAnimationDuration, ease: "easeInOut" }
-            : { duration: 0 }
-        }
-        style={isRowAnimationEnabled && animateLayout ? { isolation: "isolate", willChange: "transform" } : undefined}
+        transition={txnLayoutTransition}
+        style={txnLayoutStyle}
+        onLayoutAnimationStart={startTxnLayoutAnim}
+        onLayoutAnimationComplete={finishTxnLayoutLayer}
+        data-pl-txn-layout-animating={txnLayoutAnimating ? "" : undefined}
         role="button"
         tabIndex={-1}
         ref={narrRowRef}

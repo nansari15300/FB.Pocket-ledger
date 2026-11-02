@@ -42,7 +42,7 @@ function PlanRuleInfo({ tip }: { tip: string }) {
             <PopoverTrigger asChild>
                 <AppFreshInfoButton size="xs" aria-label="Rule" />
             </PopoverTrigger>
-            <PopoverContent side="top" align="start" className="max-w-xs text-left text-xs leading-snug">
+            <PopoverContent side="top" align="start" className="max-w-xs text-left text-xs leading-snug" data-pl-intro="">
                 {tip}
             </PopoverContent>
         </Popover>

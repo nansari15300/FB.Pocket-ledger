@@ -14,6 +14,8 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AppFreshInfoButton } from "@/components/ui/AppFreshInfoButton";
+import { usePlI18nOptional } from "@/contexts/PlI18nContext";
+import { introTabLang } from "@/lib/i18n/introLangTab";
 import { chromeProPillTextMutedCn } from "@/lib/chromePillButton";
 import {
   BALANCE_SHEET_DIFF_TRACE_LANGS,
@@ -284,8 +286,9 @@ function BalanceSheetDiffTraceLangTabs({
   contentClassName?: string;
   renderContent: (lang: (typeof BALANCE_SHEET_DIFF_TRACE_LANGS)[number]["value"]) => React.ReactNode;
 }) {
+  const i18n = usePlI18nOptional();
   return (
-    <Tabs defaultValue="en" className={cn("w-full", className)}>
+    <Tabs defaultValue={introTabLang(i18n?.intro)} className={cn("w-full", className)}>
       <TabsList className={cn("grid h-8 w-full grid-cols-3 sm:h-9", tabsListClassName)}>
         {BALANCE_SHEET_DIFF_TRACE_LANGS.map(({ value, label }) => (
           <TabsTrigger key={value} value={value} className="text-[11px] sm:text-xs">

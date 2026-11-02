@@ -15,6 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { useCompany } from "@/hooks/useCompany";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import { useToast } from "@/hooks/use-toast";
+import { chromeProPillCn } from "@/lib/chromePillButton";
 import { cn } from "@/lib/utils";
 import { canSyncCompanyToServer } from "@/lib/localVoucherOutbox";
 import { BROWSER_DB_COLLECTION_BUMP, type BrowserDbCollectionBumpDetail } from "@/lib/localCompanyDocMirror";
@@ -198,12 +199,19 @@ export function HeaderSyncButton({ className }: { className?: string }) {
 
   return (
     <>
-      <div className={cn("flex shrink-0 items-center gap-0.5", className)} data-theme-header="sync-button">
+      <div
+        className={cn(
+          chromeProPillCn,
+          "inline-flex h-8 shrink-0 items-center overflow-hidden rounded-full p-0",
+          className,
+        )}
+        data-theme-header="sync-button"
+      >
         <Button
           type="button"
           variant="ghost"
           size="icon"
-          className="relative h-8 w-8 shrink-0"
+          className="relative h-8 w-8 shrink-0 rounded-none border-0 bg-transparent shadow-none hover:bg-blue-200/70"
           disabled={!isOnline || running || deepBusy}
           onClick={() => void runSync()}
           title={title}
@@ -212,18 +220,19 @@ export function HeaderSyncButton({ className }: { className?: string }) {
           <RefreshCw className={cn("h-4 w-4", (running || deepBusy) && "animate-spin")} aria-hidden />
           {pending > 0 ? (
             <span
-              className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-none text-white"
+              className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-none text-white"
               aria-hidden
             >
               {badge}
             </span>
           ) : null}
         </Button>
+        <span className="h-4 w-px shrink-0 bg-[rgb(147_197_253)]" aria-hidden />
         <Button
           type="button"
           variant="ghost"
           size="icon"
-          className="h-6 w-6 shrink-0 text-muted-foreground"
+          className="h-8 w-8 shrink-0 rounded-none border-0 bg-transparent text-blue-900 shadow-none hover:bg-blue-200/70"
           onClick={() => setInfoOpen(true)}
           title="About Sync"
           aria-label="About Sync"
@@ -233,7 +242,7 @@ export function HeaderSyncButton({ className }: { className?: string }) {
       </div>
 
       <Dialog open={infoOpen} onOpenChange={setInfoOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg" data-pl-intro="">
           <DialogHeader>
             <DialogTitle>Sync: what it does</DialogTitle>
             <DialogDescription>

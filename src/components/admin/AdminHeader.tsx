@@ -28,6 +28,7 @@ import { useCompany } from "@/hooks/useCompany";
 import { DateFormatSettingsDialog } from "@/components/settings/DateFormatSettingsDialog";
 import { useRouter } from "next/navigation";
 import { SidebarTrigger } from "../ui/sidebar";
+import { LanguageGlobeButton } from "@/components/layout/LanguageGlobeButton";
 import dynamic from "next/dynamic";
 
 /** Voucher forms are heavy — do not block first /admin compile/render. */
@@ -169,6 +170,7 @@ export function AdminHeader() {
               <ArrowLeft className="mr-2 h-4 w-4" /> Payment
             </Button>
           )}
+          <LanguageGlobeButton />
           <ScreenControls />
       </div>
     </header>

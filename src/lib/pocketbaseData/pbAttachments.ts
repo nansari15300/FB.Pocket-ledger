@@ -300,6 +300,58 @@ export async function uploadPendingFileToPocketBase(input: {
   return ref;
 }
 
+/**
+ * Header migrate: leftover Firebase Storage bytes → `pl_attachments`, returns `pbatt:`.
+ * Idempotent on `app_id` (stable hash of the old URL / object path).
+ */
+export async function uploadBlobAsPocketBaseAttachment(input: {
+  pbCompanyId: string;
+  blob: Blob;
+  fileName: string;
+  sourceUrl: string;
+  ownerColl: string;
+  ownerAppId: string;
+  deviceId: string;
+  appId: string;
+  signal?: AbortSignal;
+}): Promise<string | null> {
+  if (input.signal?.aborted) return null;
+  if (!input.blob || input.blob.size <= 0) return null;
+  const appId = String(input.appId || "").trim().slice(0, 200);
+  if (!appId) return null;
+  const existing = await pbFirst<Record<string, unknown>>(
+    "pl_attachments",
+    `company = ${pbQuote(input.pbCompanyId)} && app_id = ${pbQuote(appId)}`
+  ).catch(() => null);
+  if (existing) {
+    const ref = refFromRecord(existing);
+    if (ref) cachePut(ref, input.blob);
+    return ref;
+  }
+  const fileName = String(input.fileName || "file").trim() || "file";
+  const contentType = String(input.blob.type || "application/octet-stream");
+  const fd = new FormData();
+  fd.append("company", input.pbCompanyId);
+  fd.append("app_id", appId);
+  fd.append("category", categoryForCollection(input.ownerColl));
+  fd.append("owner_coll", input.ownerColl);
+  fd.append("owner_app_id", input.ownerAppId);
+  fd.append("file_name", fileName.slice(0, 300));
+  fd.append("mime", contentType.slice(0, 100));
+  fd.append("size", String(input.blob.size));
+  fd.append("source_url", String(input.sourceUrl || "").slice(0, 2000));
+  fd.append("updatedAtMs", String(Date.now()));
+  fd.append("deviceId", String(input.deviceId || "").slice(0, 100));
+  const typed = input.blob.type ? input.blob : new Blob([input.blob], { type: contentType });
+  fd.append("file", typed, fileName);
+  const rec = (await pbFormRequest("/api/collections/pl_attachments/records", fd, "POST", {
+    signal: input.signal,
+  })) as Record<string, unknown>;
+  const ref = refFromRecord(rec);
+  if (ref) cachePut(ref, typed);
+  return ref;
+}
+
 function shouldRecurse(v: unknown): boolean {
   if (v === null || typeof v !== "object") return false;
   if (Array.isArray(v)) return true;

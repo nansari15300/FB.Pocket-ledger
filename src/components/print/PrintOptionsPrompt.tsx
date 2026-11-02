@@ -179,6 +179,7 @@ export function promptPrintOptions({
                     </PopoverTrigger>
                     <PopoverContent
                       align="start"
+                      data-pl-intro=""
                       className={cn(
                         NESTED_LEDGER_MASTER_EDIT_POPOVER_CN,
                         "w-[min(360px,calc(100vw-2rem))] text-xs leading-relaxed"

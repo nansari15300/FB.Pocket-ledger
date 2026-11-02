@@ -14,9 +14,23 @@ const { canonicalAndroidReleaseApkName } = require("./pickStagedReleaseApk.cjs")
 
 const projectRoot = path.join(__dirname, "..");
 const releasesRoot = path.join(projectRoot, "releases");
+function readTauriVersion() {
+  try {
+    const conf = JSON.parse(fs.readFileSync(path.join(projectRoot, "src-tauri", "tauri.conf.json"), "utf8"));
+    return String(conf.version || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+const useTauri =
+  process.env.RELEASE_TAURI === "1" ||
+  process.argv.includes("--tauri") ||
+  !fs.existsSync(path.join(projectRoot, "electron", "package.json"));
 const windowsVersion =
   process.env.WINDOWS_RELEASE_VERSION ||
-  String(require(path.join(projectRoot, "electron", "package.json")).version || "1.0.0");
+  readTauriVersion() ||
+  "1.0.0";
   const androidVersion =
     process.env.ANDROID_RELEASE_VERSION ||
     (() => {
@@ -90,11 +104,13 @@ const date = process.env.RELEASE_DATE || todayStamp();
 const destDir = path.join(releasesRoot, date);
 fs.mkdirSync(destDir, { recursive: true });
 
-const exe = newestMatch(
-  [path.join(projectRoot, "electron", "dist"), path.join(projectRoot, "electron", "dist-build")],
-  (f) =>
-    f.name.toLowerCase().endsWith(".exe") &&
-    !/uninstaller|blockmap/i.test(f.name)
+const electronExeDirs = [path.join(projectRoot, "electron", "dist"), path.join(projectRoot, "electron", "dist-build")];
+const tauriExeDirs = [
+  path.join(projectRoot, "src-tauri", "target", "release", "bundle", "nsis"),
+  path.join(projectRoot, "src-tauri", "target", "release", "bundle", "msi"),
+];
+const exe = newestMatch(useTauri ? tauriExeDirs : electronExeDirs, (f) =>
+  f.name.toLowerCase().endsWith(".exe") && !/uninstaller|blockmap/i.test(f.name)
 );
 
 const aab = newestMatch(
@@ -131,7 +147,11 @@ if (exe) {
   };
   console.log("[stage-releases] EXE  →", path.join(destDir, exe.name));
 } else {
-  console.warn("[stage-releases] No Windows EXE found (build electron first).");
+  console.warn(
+    useTauri
+      ? "[stage-releases] No Tauri NSIS EXE found (run npm run tauri:build)."
+      : "[stage-releases] No Windows EXE found (build electron first)."
+  );
 }
 
 function stageAndroidArtifact(destDir, file) {

@@ -14,6 +14,9 @@ import { PrintLogoPreloader } from "@/components/PrintLogoPreloader";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { usePresence } from "@/hooks/usePresence";
 import { ThemeProvider } from "@/hooks/useTheme";
+import { PlI18nProvider } from "@/contexts/PlI18nContext";
+import { LanguageDialog } from "@/components/layout/LanguageDialog";
+import { PlGlobalTranslate } from "@/components/layout/PlGlobalTranslate";
 import { CapacitorAndroidBackButton } from "@/components/CapacitorAndroidBackButton";
 import { AppUiZoomBootstrap } from "@/components/layout/AppUiZoomBootstrap";
 import { VoucherOutboxFlushManager } from "@/components/VoucherOutboxFlushManager";
@@ -130,6 +133,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     }, []);
     return (
       <ThemeProvider>
+        <PlI18nProvider>
         <AuthProvider>
             <ClientHealthGlobalBootstrap />
             <OnlineTriggerLogBootstrap />
@@ -207,6 +211,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
                                       <CountryAppGate>{children}</CountryAppGate>
                                     </MobileDetailSummaryCollapseProvider>
                                 </TooltipProvider>
+                                <LanguageDialog />
+                                <PlGlobalTranslate />
                                 </FyVoucherScopeBootstrap>
                             </VoucherProvider>
                         </DialogBackHandlerProvider>
@@ -223,6 +229,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             </EmbeddedAppDeferredShell>
             </EmbeddedDeviceLockSessionProvider>
         </AuthProvider>
+        </PlI18nProvider>
       </ThemeProvider>
     )
 }

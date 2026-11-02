@@ -11,6 +11,7 @@ import { readMasterAccountFrozen } from "@/lib/masterAccountFreeze/types";
 import { TooltipProvider } from "../ui/tooltip";
 import { useDate } from "@/hooks/useDate";
 import { masterListOrderKey, useMasterListDisplayRows, useMasterListRowMotion } from "@/hooks/useMasterListRowMotion";
+import { useRowChangeHighlight } from "@/hooks/useRowChangeHighlight";
 import { MasterListRow } from "@/components/ui/master-list-row";
 import React, { useMemo, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -241,6 +242,8 @@ export const PartyList = React.memo(({
     listOrderKey,
     { enabled: isRowAnimationEnabled, holdMs: layoutHoldMs }
   );
+  /** Add/edit (naya ya data change) row par ~1s highlight; sort/filter/first load par nahi. */
+  const rowChangeHighlight = useRowChangeHighlight(displayListRows, { getId: (row) => row.id });
 
   // यदि कुनै पार्टी भेटिएन भने
   if (displayListRows.length === 0) {
@@ -521,7 +524,7 @@ export const PartyList = React.memo(({
                 };
 
                 return (
-                  <motion.li key={party.id} layoutDependency={displayOrderKey} {...rowMotionProps}>
+                  <motion.li key={party.id} layoutDependency={displayOrderKey} {...rowMotionProps} className={rowChangeHighlight.highlightClassName(party.id)}>
                     {isIcPeerCompanyGroup && isExpanded ? (
                       <div data-pl-ic-company-group="">
                         {renderRowShell(

@@ -26,6 +26,7 @@ import { PlanAuthoritativeSyncBanner } from "@/components/company/PlanAuthoritat
 import { PlServerAuthoritativePendingBanner } from "@/components/PlServerAuthoritativePendingBanner";
 import { PlServerReadSyncHealthBanner } from "@/components/PlServerReadSyncHealthBanner";
 import { FileHoverPreviewProvider } from "@/contexts/FileHoverPreviewContext";
+import { AnimationSettingsProvider } from "@/components/providers/AnimationSettingsProvider";
 import { ReportPartyViewProvider } from "@/contexts/ReportPartyViewContext";
 import { ReportListProvider } from "@/contexts/ReportListContext";
 import { SettingsListProvider } from "@/contexts/SettingsListContext";
@@ -1035,6 +1036,8 @@ export default function DashboardLayout({
       <MobileViewProvider>
         <SidebarProvider>
           <DashboardProvider>
+            {/* Global Row Animation setting: MotionConfig + <html data-pl-animations> CSS gate */}
+            <AnimationSettingsProvider>
             {/* Global preview switch: Off / Hover / Click — attachments + profile plan menu */}
             <FileHoverPreviewProvider>
               {/* Overlay LayoutContent ke bahar: `/company` jaisi bare routes par bhi trace dikhai de */}
@@ -1045,6 +1048,7 @@ export default function DashboardLayout({
               <PlNavDebugOnDeviceOverlay />
               <LayoutContent>{children}</LayoutContent>
             </FileHoverPreviewProvider>
+            </AnimationSettingsProvider>
           </DashboardProvider>
         </SidebarProvider>
       </MobileViewProvider>

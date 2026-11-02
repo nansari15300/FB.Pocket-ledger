@@ -10,7 +10,9 @@
  *   Delta — `pl_change_log/*` only; then the existing change-log pull.
  *
  * EventSource cannot send Authorization, so the primary stream is `fetch` with the token.
- * EventSource (`?authorization=`) is the fallback. An 8s poll remains as a safety net.
+ * EventSource (`?authorization=`) is the fallback.
+ * Server `pl_ping` (once a minute) keeps the Cloudflare tunnel open — do not drop/reconnect
+ * on a timer; that used to force a company catch-up every 80s.
  */
 
 import { getValidPocketBaseAuth, pbRequest } from "@/lib/pocketbaseData/pbClient";
@@ -29,6 +31,7 @@ import {
   listPocketBaseCompanyIds,
 } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { SELECTED_COMPANY_CHANGED_EVENT } from "@/lib/selectedCompanyStorage";
+import { setPocketBaseRealtimeLive } from "@/lib/pocketbaseData/pbRealtimeState";
 
 export type PocketBaseRealtimeMode = "live" | "delta";
 
@@ -55,13 +58,9 @@ const PULL_DEBOUNCE_MS = 400;
 const RECONNECT_MIN_MS = 2_000;
 const RECONNECT_MAX_MS = 15_000;
 const CONNECT_WAIT_MS = 8_000;
-/**
- * Proactive SSE reconnect. PocketBase sends no heartbeat, and the Cloudflare tunnel cuts an idle stream
- * after ~100 s (cloudflared log: "stream canceled by remote" about every 2 min), so reconnect before that.
- * Every reconnect runs a forced catch-up pull (see PB_CONNECT) so no event is lost in the gap.
- */
-const SSE_KEEPALIVE_MS = 80_000;
 const CATCHUP_MIN_MS = 8_000;
+/** Tab focus / visibility: at most one catch-up pull per minute while SSE is already live. */
+const FOCUS_CATCHUP_MIN_MS = 60_000;
 
 type RealtimePayload = {
   action?: string;
@@ -210,7 +209,6 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
   let abort: AbortController | null = null;
   let useFetch = typeof fetch === "function" && typeof ReadableStream !== "undefined";
   let lastCatchupAt = 0;
-  let keepAliveTimer: number | null = null;
   const pendingPull = new Set<string>();
   const liveQueue: Array<{ collection: string; action?: string; record: Record<string, unknown> }> = [];
   const myDevice = pbDeviceId();
@@ -219,6 +217,7 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
 
   const setConnected = (v: boolean) => {
     feedConnected = v;
+    setPocketBaseRealtimeLive(v);
   };
 
   const clearConnectWatch = () => {
@@ -352,9 +351,13 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
           subFailStreak = 0;
           clearConnectWatch();
           setConnected(true);
-          // Every (re)connect: forced catch-up from the change-log cursor, so events missed while the
-          // stream was down (tunnel idle cut / proactive reconnect) are never lost.
+          // Real reconnect only (stream was down). Catch-up missed change-log rows; nudge udoc listeners once.
           queueAll({ force: true });
+          try {
+            window.dispatchEvent(new Event("pl-udoc-written"));
+          } catch {
+            /* ignore */
+          }
         })
         .catch((e) => {
           console.warn("[pbRealtime] subscribe failed", e instanceof Error ? e.message : e);
@@ -485,18 +488,24 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
 
   const onVisible = () => {
     if (closed || document.visibilityState !== "visible") return;
-    queueAll({ force: true });
-    if (!feedConnected && retryTimer != null) {
-      window.clearTimeout(retryTimer);
-      retryTimer = null;
+    if (!feedConnected) {
+      queueAll({ force: true });
+      if (retryTimer != null) {
+        window.clearTimeout(retryTimer);
+        retryTimer = null;
+      }
       retryMs = RECONNECT_MIN_MS;
       dropStream();
       connect();
+      return;
     }
+    if (Date.now() - lastCatchupAt < FOCUS_CATCHUP_MIN_MS) return;
+    queueAll({ force: true });
   };
 
   const onFocus = () => {
     if (closed || document.visibilityState !== "visible") return;
+    if (feedConnected && Date.now() - lastCatchupAt < FOCUS_CATCHUP_MIN_MS) return;
     queueAll({ force: true });
   };
 
@@ -529,12 +538,6 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
   window.addEventListener("focus", onFocus);
   document.addEventListener("visibilitychange", onVisible);
   window.addEventListener(SELECTED_COMPANY_CHANGED_EVENT, onSelectedCompany);
-  keepAliveTimer = window.setInterval(() => {
-    if (closed || pushPauseDepth > 0) return;
-    dropStream();
-    retryMs = RECONNECT_MIN_MS;
-    connect();
-  }, SSE_KEEPALIVE_MS);
   pauseDropStream = () => {
     if (retryTimer != null) {
       window.clearTimeout(retryTimer);
@@ -565,7 +568,6 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
     window.removeEventListener(SELECTED_COMPANY_CHANGED_EVENT, onSelectedCompany);
     if (retryTimer != null) window.clearTimeout(retryTimer);
     if (pullTimer != null) window.clearTimeout(pullTimer);
-    if (keepAliveTimer != null) window.clearInterval(keepAliveTimer);
     dropStream();
     pendingPull.clear();
     liveQueue.length = 0;

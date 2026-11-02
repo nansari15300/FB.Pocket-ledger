@@ -40,7 +40,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { chromePillActive, chromeProPillCn } from "@/lib/chromePillButton";
 import {
   LEDGER_CLOSING_BALANCE_ACTIONS_CN,
   LEDGER_CLOSING_BALANCE_CARD_ROW_CN,
@@ -53,6 +52,7 @@ import {
   readLedgerTxnTableTone,
   writeLedgerTxnTableTone,
 } from "@/lib/ledgerTxnTableTone";
+import { LedgerTxnTableTonePills } from "@/components/vouchers/LedgerTxnTableTonePills";
 import { txnSelectedMainRowCn, txnSelectedNarrationRowCn, txnTableIconBtnCn } from "@/lib/listSelectionChrome";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { AdjustBalanceLedgerPillButton } from "@/components/vouchers/AdjustBalancePillLabel";
@@ -657,8 +657,8 @@ export const LoanTransactions = forwardRef(function LoanTransactions(
                       >
                         <CheckSquare className="h-3.5 w-3.5" />
                         {ledgerStatementChecked.isChecked({ id: row.id })
-                          ? "Unmark as checked"
-                          : "Mark as checked"}
+                          ? "Unmark as reconciled"
+                          : "Mark as reconciled"}
                       </DropdownMenuItem>
                     ) : null}
             {can("approve_transactions") && unapproved ? (
@@ -1100,36 +1100,7 @@ export const LoanTransactions = forwardRef(function LoanTransactions(
                 data-pl-closing-balance-card=""
                 className={cn(LEDGER_CLOSING_BALANCE_CARD_ROW_CN, "flex-nowrap items-center")}
               >
-                <div
-                  className="flex shrink-0 flex-nowrap items-center gap-1"
-                  onClick={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => e.stopPropagation()}
-                >
-                  {(
-                    [
-                      { id: "default", label: "Default" },
-                      { id: "green", label: "Green" },
-                      { id: "blue", label: "Blue" },
-                    ] as const
-                  ).map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      className={cn(
-                        chromeProPillCn,
-                        "h-7 rounded-full px-2.5 text-[11px] font-semibold",
-                        txnTableTone === opt.id && chromePillActive
-                      )}
-                      aria-pressed={txnTableTone === opt.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        applyTxnTableTone(opt.id);
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
+                <LedgerTxnTableTonePills value={txnTableTone} onChange={applyTxnTableTone} />
                 <div className={cn(LEDGER_CLOSING_BALANCE_TOTAL_CN, "ml-auto shrink-0 flex-nowrap")}>
                   {loanClosingBalanceActions ? (
                     <div

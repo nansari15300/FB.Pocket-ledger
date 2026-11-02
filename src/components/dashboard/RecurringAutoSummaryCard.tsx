@@ -105,6 +105,7 @@ function RecurringSyncWaitInfoTip({ scheduleCount }: { scheduleCount: number }) 
         align="start"
         collisionPadding={12}
         className="z-[10050] max-w-[min(22rem,calc(100vw-2rem))] p-3 text-xs leading-relaxed text-muted-foreground"
+        data-pl-intro=""
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         {message}

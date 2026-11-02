@@ -65,6 +65,7 @@ export const AppFreshInfoButton = React.forwardRef<HTMLButtonElement, AppFreshIn
         ref={ref}
         type={type}
         data-pl-fresh-info=""
+        data-pl-intro=""
         className={appFreshInfoBtnCn(size, className)}
         {...props}
       >

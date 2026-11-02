@@ -3,8 +3,10 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import {
-  PRO_PRIMARY_CLASS,
-  PRO_THEME_CLASS,
+  DEFAULT_PRIMARY_CLASS,
+  DEFAULT_THEME_CLASS,
+  REMOVED_PRIMARY_CLASSES,
+  REMOVED_THEME_CLASSES,
   resolveStoredThemePreference,
   THEME_DEFAULT_REV,
   THEME_DEFAULT_REV_KEY,
@@ -34,9 +36,9 @@ const THEME_CLASS_NAMES: Theme[] = [...APP_THEME_CLASS_NAMES, "theme-vagawa"];
 const PRIMARY_CLASS_NAMES: PrimaryColor[] = [...APP_PRIMARY_CLASS_NAMES, "primary-vagawa"];
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
-  // SSR + first paint: Pro — localStorage read se pehle Light mat likho.
-  const [theme, setThemeState] = useState<Theme>(PRO_THEME_CLASS);
-  const [primaryColor, setPrimaryColorState] = useState<PrimaryColor>(PRO_PRIMARY_CLASS);
+  // SSR + first paint: Server Gray default (layout.tsx body class + boot script ke saath same).
+  const [theme, setThemeState] = useState<Theme>(DEFAULT_THEME_CLASS);
+  const [primaryColor, setPrimaryColorState] = useState<PrimaryColor>(DEFAULT_PRIMARY_CLASS);
   const [themeHydrated, setThemeHydrated] = useState(false);
 
   useEffect(() => {
@@ -57,7 +59,13 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     if (!themeHydrated) return;
     // Startup flicker fix: static dashboard load par body reset (blank frame) ki jagah targeted class replace karo.
-    document.body.classList.remove(...THEME_CLASS_NAMES, ...PRIMARY_CLASS_NAMES, "dark");
+    document.body.classList.remove(
+      ...THEME_CLASS_NAMES,
+      ...PRIMARY_CLASS_NAMES,
+      ...REMOVED_THEME_CLASSES,
+      ...REMOVED_PRIMARY_CLASSES,
+      "dark",
+    );
     // Root layout jaisa typography + theme; base classes stable rakhkar sirf active theme apply karo.
     document.body.classList.add("font-body", "antialiased", theme, primaryColor);
     if (isDarkAppTheme(theme)) document.body.classList.add("dark");

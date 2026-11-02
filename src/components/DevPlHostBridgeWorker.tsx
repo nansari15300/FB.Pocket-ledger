@@ -34,8 +34,10 @@ export function DevPlHostBridgeWorker() {
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let localServerApiMissing = false;
 
     const loadServerConfig = async (): Promise<LocalAppServerConfig | null> => {
+      if (localServerApiMissing) return null;
       const now = Date.now();
       const cached = configCacheRef.current;
       if (cached && now - cached.at < CONFIG_CACHE_MS) return cached.cfg;
@@ -45,6 +47,11 @@ export function DevPlHostBridgeWorker() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "getConfig" }),
         });
+        if (res.status === 404) {
+          localServerApiMissing = true;
+          configCacheRef.current = { at: now, cfg: null };
+          return null;
+        }
         if (!res.ok) {
           configCacheRef.current = { at: now, cfg: null };
           return null;
@@ -119,7 +126,7 @@ export function DevPlHostBridgeWorker() {
 
     const tick = () => {
       void poll().then((active) => {
-        if (cancelled) return;
+        if (cancelled || localServerApiMissing) return;
         const delay = active ? POLL_MS_ACTIVE : POLL_MS_IDLE;
         timer = setTimeout(tick, delay);
       });

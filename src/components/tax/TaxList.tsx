@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Receipt } from "lucide-react";
 import { useDate } from "@/hooks/useDate";
 import { masterListOrderKey, useMasterListDisplayRows, useMasterListRowMotion } from "@/hooks/useMasterListRowMotion";
+import { useRowChangeHighlight } from "@/hooks/useRowChangeHighlight";
 import { MasterListNameTooltip } from "@/components/entity/MasterListNameTooltip";
 import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
 import { MasterAccountFreezeListBadge } from "@/components/masterAccountFreeze/MasterAccountFreezeListBadge";
@@ -88,6 +89,8 @@ export function TaxList({
     listOrderKey,
     { enabled: isRowAnimationEnabled, holdMs: layoutHoldMs }
   );
+  /** Add/edit (naya ya data change) row par ~1s highlight; sort/filter/first load par nahi. */
+  const rowChangeHighlight = useRowChangeHighlight(displayListRows, { getId: (row) => row.id });
 
   if (displayListRows.length === 0) {
     return (
@@ -176,7 +179,7 @@ export function TaxList({
                         </div>
                 );
                 return (
-                  <motion.li key={tax.id} layoutDependency={displayOrderKey} {...rowMotionProps}>
+                  <motion.li key={tax.id} layoutDependency={displayOrderKey} {...rowMotionProps} className={rowChangeHighlight.highlightClassName(tax.id)}>
                     {href ? (
                       // Master list navigation: per-row auto-prefetch off rakho to avoid repeat background bursts on revisit.
                       // preventDefault: Link soft-nav + handleSelect replaceState dono mat chalao (double mount hang).

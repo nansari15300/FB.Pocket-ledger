@@ -13,6 +13,7 @@ import { isStaticAppBuild } from '@/lib/isStaticAppBuild';
 import { isCapacitorNativeApp } from '@/lib/isCapacitorNative';
 import { isElectronEnvironment } from '@/hooks/use-mobile';
 import { isEmbeddedLoginAccountSwitchShell } from '@/lib/embeddedLoginAccountSwitchShell';
+import { AuthLangChrome } from '@/components/layout/LanguageGlobeButton';
 
 export default function LoginPage() {
   const { user, loading } = useAuth();
@@ -53,6 +54,7 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
+      <AuthLangChrome />
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
           {/* Login brand: sidebar/Electron jaisa sirf app icon (`object-contain`) — alag text logo web vs static confuse na kare. */}
@@ -67,7 +69,7 @@ export default function LoginPage() {
             />
           </div>
           <h1 className="sr-only">Pocket Ledger</h1>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground" data-pl-intro="">
             Sign in to access your account.
           </p>
           <div className="mt-2">
@@ -83,7 +85,7 @@ export default function LoginPage() {
             />
           </>
         )}
-        <div className="text-center text-sm text-muted-foreground">
+        <div className="text-center text-sm text-muted-foreground" data-pl-intro="">
           <p>© {new Date().getFullYear()} Pocket Ledger. All rights reserved.</p>
         </div>
       </div>

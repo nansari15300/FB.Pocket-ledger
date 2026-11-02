@@ -67,6 +67,7 @@ next-env.d.ts
 /PocketLedger-Server/
 
 # Two-PC sync: generated output, native build artifacts, secrets (added 2026-11-02)
+# DESKTOP-M4HAJE9 sync additions
 android/app/src/main/assets/public/
 android/app/src/main/assets/capacitor.config.json
 android/app/src/main/assets/capacitor.plugins.json

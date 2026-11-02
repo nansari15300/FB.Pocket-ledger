@@ -50,6 +50,7 @@ export function InterCompanySectionTitle({
               side="bottom"
               align="start"
               className="max-w-xs p-2.5 text-left text-xs leading-snug"
+              data-pl-intro=""
               onOpenAutoFocus={(event) => event.preventDefault()}
             >
               {hint}

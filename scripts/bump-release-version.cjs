@@ -43,9 +43,22 @@ function updateReleaseVersionTs(next) {
 
 function updateElectronPackage(next) {
   const file = "electron/package.json";
+  if (!fs.existsSync(path.join(root, file))) {
+    console.log("[bump-release-version] skip electron/package.json (folder removed)");
+    return;
+  }
   const pkg = JSON.parse(read(file));
   pkg.version = next;
   write(file, `${JSON.stringify(pkg, null, 2)}\n`);
+}
+
+function updateTauriVersion(next) {
+  const cargo = "src-tauri/Cargo.toml";
+  write(cargo, read(cargo).replace(/^version = "[^"]+"/m, `version = "${next}"`));
+  const conf = "src-tauri/tauri.conf.json";
+  const json = JSON.parse(read(conf));
+  json.version = next;
+  write(conf, `${JSON.stringify(json, null, 2)}\n`);
 }
 
 function updateAndroidGradle(next) {
@@ -70,9 +83,11 @@ const next = forced || bumpPatch(prev);
 updateReleaseVersionTs(next);
 updateElectronPackage(next);
 updateAndroidGradle(next);
+updateTauriVersion(next);
 
 console.log(`[bump-release-version] ${prev} -> ${next}`);
 console.log("[bump-release-version] Updated:");
 console.log("  - src/config/releaseVersion.ts");
-console.log("  - electron/package.json");
 console.log("  - android/app/build.gradle");
+console.log("  - src-tauri/Cargo.toml");
+console.log("  - src-tauri/tauri.conf.json");

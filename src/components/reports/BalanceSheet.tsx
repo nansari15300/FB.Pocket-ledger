@@ -100,6 +100,8 @@ import { runBalanceSheetCheckEngine, type BalanceSheetCheckEngineInput } from "@
 import { OPENING_BALANCE_SYSTEM_LEDGER_ID } from "@/lib/reports/openingBalanceLedgerAccounts";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { AppFreshInfoButton } from "@/components/ui/AppFreshInfoButton";
+import { usePlI18nOptional } from "@/contexts/PlI18nContext";
+import { introTabLang } from "@/lib/i18n/introLangTab";
 import { resolveInterCompanyLegsForVoucher } from "@/lib/interCompany/interCompanyPostingLegs";
 import { getRpLedgerDebitCredit, type RpLedgerContext } from "@/lib/receivablesPayablesLedgerAmounts";
 import { toast as sonnerToast } from "sonner";
@@ -749,8 +751,9 @@ function BalanceSheetDiffTraceLangTabs({
   contentClassName?: string;
   renderContent: (lang: (typeof BALANCE_SHEET_DIFF_TRACE_LANGS)[number]["value"]) => React.ReactNode;
 }) {
+  const i18n = usePlI18nOptional();
   return (
-    <Tabs defaultValue="en" className={cn("w-full", className)}>
+    <Tabs defaultValue={introTabLang(i18n?.intro)} className={cn("w-full", className)}>
       <TabsList className={cn("grid h-8 w-full grid-cols-3 sm:h-9", tabsListClassName)}>
         {BALANCE_SHEET_DIFF_TRACE_LANGS.map(({ value, label }) => (
           <TabsTrigger key={value} value={value} className="text-[11px] sm:text-xs">

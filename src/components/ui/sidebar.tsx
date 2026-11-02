@@ -150,9 +150,8 @@ export const SidebarTrigger = React.forwardRef<
 SidebarTrigger.displayName = "SidebarTrigger"
 
 const sidebarVariants = cva(
-  // Chrome cards AppSidebar ke andar; yahan sirf dashboard jaisa tight gutter
-  /* gap/padding dashboard stats grid jaisa: gap-0.5 px-0.5 */
-  "flex min-h-0 flex-col gap-0.5 bg-sidebar p-0.5 text-sidebar-foreground transition-all duration-300 ease-in-out",
+  // Section cards (brand, nav, Account, profile): 8px on every side, same as list/ledger row cards
+  "flex min-h-0 flex-col gap-[8px] bg-sidebar p-[8px] text-sidebar-foreground transition-all duration-300 ease-in-out",
   {
     variants: {
       isOpen: {
@@ -199,7 +198,7 @@ export const Sidebar = React.forwardRef<
             {/* `relative z-10` + `pointer-events-auto` — Sheet chrome ke neeche nav links ka tap pakka rahe */}
             <div
               ref={ref}
-              className="relative z-10 flex h-full min-h-0 flex-col gap-0.5 overflow-y-auto bg-sidebar p-0.5 text-sidebar-foreground pointer-events-auto touch-manipulation"
+              className="relative z-10 flex h-full min-h-0 flex-col gap-[8px] overflow-y-auto bg-sidebar p-[8px] text-sidebar-foreground pointer-events-auto touch-manipulation"
               {...props}
               data-pl-main-sidebar="1"
             >

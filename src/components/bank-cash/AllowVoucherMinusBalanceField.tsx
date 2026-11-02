@@ -48,7 +48,7 @@ export function AllowVoucherMinusBalanceField<T extends FieldValues>({
                     aria-label="About allowing minus balance on vouchers"
                   />
                 </TooltipTrigger>
-                <TooltipContent side="top" className="max-w-sm text-xs leading-relaxed">
+                <TooltipContent side="top" className="max-w-sm text-xs leading-relaxed" data-pl-intro="">
                   {ALLOW_VOUCHER_MINUS_BALANCE_INFO}
                 </TooltipContent>
               </Tooltip>

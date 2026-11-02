@@ -9,6 +9,7 @@ import { MasterListRow } from "@/components/ui/master-list-row";
 import { MasterListNameTooltip } from "@/components/entity/MasterListNameTooltip";
 import { useDate } from "@/hooks/useDate";
 import { masterListOrderKey, useMasterListDisplayRows, useMasterListRowMotion } from "@/hooks/useMasterListRowMotion";
+import { useRowChangeHighlight } from "@/hooks/useRowChangeHighlight";
 import { Receipt, DollarSign, Building } from "lucide-react";
 import { StaffAccountFallbackIcon } from "@/components/entity/StaffEntityIcon";
 import { ResolvedEntityAvatar } from "@/components/entity/ResolvedEntityAvatar";
@@ -118,6 +119,8 @@ export function PayeeList({
     listOrderKey,
     { enabled: isRowAnimationEnabled, holdMs: layoutHoldMs }
   );
+  /** Add/edit (naya ya data change) row par ~1s highlight; sort/filter/first load par nahi. */
+  const rowChangeHighlight = useRowChangeHighlight(displayPayees, { getId: (row) => `${row.type}-${row.id}` });
 
   return (
     <div className={masterListShellCn} data-theme-list="account-list">
@@ -138,6 +141,7 @@ export function PayeeList({
                 key={`${payee.type}-${payee.id}`}
                 layoutDependency={displayOrderKey}
                 {...rowMotionProps}
+                className={rowChangeHighlight.highlightClassName(`${payee.type}-${payee.id}`)}
               >
                 <MasterListRow
                   selected={isSelected}

@@ -66,6 +66,66 @@ export function EntityListQuickFilterBar({
   const setHideSettled = onHideSettledChange ?? hideSettledCtx.setHideSettled;
   const showSettledSort = filters.some((f) => f.key === "settled");
   const showHideSettledToggle = showSettledSort && active !== "settled";
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const dragRef = React.useRef({
+    tracking: false,
+    moved: false,
+    pointerId: -1,
+    x: 0,
+    scroll: 0,
+  });
+  const [dragging, setDragging] = React.useState(false);
+
+  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    dragRef.current = {
+      tracking: true,
+      moved: false,
+      pointerId: event.pointerId,
+      x: event.clientX,
+      scroll: el.scrollLeft,
+    };
+  };
+  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    const el = scrollRef.current;
+    if (!drag.tracking || !el) return;
+    const dx = event.clientX - drag.x;
+    if (!drag.moved && Math.abs(dx) < 6) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      setDragging(true);
+      if (el.hasPointerCapture?.(drag.pointerId) !== true) {
+        try {
+          el.setPointerCapture(drag.pointerId);
+        } catch {
+          /* pointer already released */
+        }
+      }
+    }
+    el.scrollLeft = drag.scroll - dx;
+  };
+  const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    const drag = dragRef.current;
+    if (el && drag.moved) {
+      try {
+        el.releasePointerCapture(event.pointerId);
+      } catch {
+        /* already released */
+      }
+    }
+    drag.tracking = false;
+    setDragging(false);
+  };
+  const onClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!dragRef.current.moved) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragRef.current.moved = false;
+  };
 
   return (
     <div
@@ -74,7 +134,18 @@ export function EntityListQuickFilterBar({
         className,
       )}
     >
-      <div className="w-full min-w-0 overflow-x-auto pl-ledger-footer-scroll">
+      <div
+        ref={scrollRef}
+        className={cn(
+          "w-full min-w-0 overflow-x-auto pl-ledger-footer-scroll",
+          dragging ? "cursor-grabbing select-none [&_button]:cursor-grabbing" : "[&_button]:cursor-grab"
+        )}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onClickCapture={onClickCapture}
+      >
         <div className="pl-mlc-quick-filter-inner flex min-w-full w-full items-center gap-[2px]">
           {filters.map((f) => {
             if (f.key === "settled" && hideSettled) return null;

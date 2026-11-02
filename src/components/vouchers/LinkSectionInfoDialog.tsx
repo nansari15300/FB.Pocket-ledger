@@ -16,6 +16,8 @@ import {
   NESTED_VOUCHER_LINK_DIALOG_CONTENT_CN,
   NESTED_VOUCHER_LINK_DIALOG_OVERLAY_CN,
 } from "@/lib/dialogShellChrome";
+import { usePlI18nOptional } from "@/contexts/PlI18nContext";
+import { introTabLang } from "@/lib/i18n/introLangTab";
 
 // Keep link-help content grouped by language and section so every voucher can reuse one consistent "Read me" guide.
 const LINK_SECTION_INFO = {
@@ -157,16 +159,17 @@ export function LinkSectionInfoDialog({
   /** When true, render the Read me + Info trigger button (e.g. when not controlled). */
   showTrigger?: boolean;
 }) {
+  const i18n = usePlI18nOptional();
   const isControlled = open !== undefined && onOpenChange !== undefined;
   const [internalOpen, setInternalOpen] = React.useState(false);
-  const [tab, setTab] = React.useState<"en" | "hi" | "ne">("en");
+  const [tab, setTab] = React.useState<"en" | "hi" | "ne">(() => introTabLang(i18n?.intro));
 
   const isOpen = isControlled ? open : internalOpen;
   const setIsOpen = isControlled ? (onOpenChange ?? (() => {})) : setInternalOpen;
 
   React.useEffect(() => {
-    if (isOpen) setTab("en");
-  }, [isOpen]);
+    if (isOpen) setTab(introTabLang(i18n?.intro));
+  }, [isOpen, i18n?.intro]);
 
   // Exactly 4 boxes: General, Bill wise, Payment In/Direct Income → Payment/Direct Exp, Contra (special) contra to Contra & contra to other; 30px gap.
   const renderLanguageContent = (lang: "en" | "hi" | "ne") => (
@@ -210,6 +213,7 @@ export function LinkSectionInfoDialog({
             size="sm"
             className="h-8 gap-1.5 shrink-0 text-muted-foreground hover:text-foreground"
             aria-label="Link section information"
+            data-pl-intro=""
           >
             <Info className="h-4 w-4 shrink-0" />
             Read me

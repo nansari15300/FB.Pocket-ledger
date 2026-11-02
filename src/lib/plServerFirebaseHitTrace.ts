@@ -127,6 +127,23 @@ export function tracePlServerFirebaseHit(
   void detail;
 }
 
+/** Header "Move Firebase files" only: one HTTPS download of that exact leftover URL, then PB rewrite. */
+const migrateFetchAllow = new Set<string>();
+
+export function beginFirebaseMigrateFetchAllow(url: string): () => void {
+  const raw = String(url || "").trim();
+  if (!raw) return () => {};
+  migrateFetchAllow.add(raw);
+  return () => {
+    migrateFetchAllow.delete(raw);
+  };
+}
+
+function isFirebaseMigrateFetchAllowed(raw: string): boolean {
+  const s = String(raw || "").trim();
+  return !!s && migrateFetchAllow.has(s);
+}
+
 /**
  * @returns true → caller must skip Firebase Storage SDK/fetch (PL isolation).
  */
@@ -138,6 +155,7 @@ export function blockFirebaseStorageHitOnPlServer(
   if (!raw) return false;
   const isHttps = /^https?:\/\//i.test(raw);
   if (!looksLikeFirebaseStorageUrlOrPath(raw) && isHttps) return false;
+  if (isFirebaseMigrateFetchAllowed(raw)) return false;
 
   // Pocket Ledger Server login only (PocketBase attachments `pbatt:`): Firebase Storage is not the file server and
   // there is no Firebase sign-in, so never fall back to a Storage read.
@@ -187,24 +205,28 @@ export function installPlServerFirebaseNetworkTrace(): void {
               ? input.url
               : String(input);
       const lower = String(raw || "").toLowerCase();
+      const isStorage =
+        lower.includes("firebasestorage.googleapis.com") ||
+        lower.includes("firebasestorage.app") ||
+        (lower.includes("storage.googleapis.com") && lower.includes("/o/"));
+      if (
+        isStorage &&
+        !isFirebaseMigrateFetchAllowed(String(raw)) &&
+        (isPocketBaseOnlyAppSession() || shouldBlockFirebaseStorageOnPlServer())
+      ) {
+        tracePlServerFirebaseHit("network_fetch", {
+          source: "window.fetch",
+          url: String(raw),
+          action: "blocked",
+        });
+        return new Response(JSON.stringify({ error: "pl_server_blocks_firebase_storage" }), {
+          status: 499,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (shouldLogFirebaseHitsOnPlServerGate()) {
-        const isStorage =
-          lower.includes("firebasestorage.googleapis.com") ||
-          lower.includes("firebasestorage.app") ||
-          (lower.includes("storage.googleapis.com") && lower.includes("/o/"));
         const isFirestore = lower.includes("firestore.googleapis.com");
         if (isStorage || isFirestore) {
-          if (isStorage && shouldBlockFirebaseStorageOnPlServer()) {
-            tracePlServerFirebaseHit("network_fetch", {
-              source: "window.fetch",
-              url: String(raw),
-              action: "blocked",
-            });
-            return new Response(JSON.stringify({ error: "pl_server_blocks_firebase_storage" }), {
-              status: 499,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
           tracePlServerFirebaseHit(isFirestore ? "firestore_other" : "network_fetch", {
             source: "window.fetch",
             url: String(raw),

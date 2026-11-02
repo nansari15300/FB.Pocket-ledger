@@ -173,6 +173,9 @@ import { resolveLedgerTransactionUserDisplayName, buildActiveRecurringTriggerVou
 import {
   computeLedgerUnifiedTableMinPx,
   stabilizeLedgerUnifiedPx,
+  measureLedgerNaturalColWidths,
+  mergeLedgerMeasuredColWidths,
+  LEDGER_UNIFIED_WIDTH_STABLE_EPS_PX,
 } from "@/lib/ledgerUnifiedContentWidth";
 import { isRecurringVoucherGenerationEnabled } from "@/lib/recurringVoucherSettings";
 import { useRecurringAccrualTemplates } from "@/hooks/useDashboardRecurringAccrual";
@@ -203,7 +206,7 @@ import {
   writeLedgerTxnTableTone,
   LEDGER_TXN_TABLE_TONE_CHANGED_EVENT,
 } from "@/lib/ledgerTxnTableTone";
-import { chromeProPillCn, chromePillActive } from "@/lib/chromePillButton";
+import { LedgerTxnTableTonePills } from "@/components/vouchers/LedgerTxnTableTonePills";
 import {
   LEDGER_CLOSING_BALANCE_ACTIONS_CN,
   LEDGER_CLOSING_BALANCE_CARD_ROW_CN,
@@ -1543,7 +1546,7 @@ export function TransactionsTable({
   
   // Get animation settings - check enabled flag explicitly (match PartyList / list motion). Disable when parent asks (e.g. view toggle).
   const isRowAnimationEnabled = !disableLayoutAnimation && animationSettings?.rows?.enabled === true;
-  const rowAnimationDuration = isRowAnimationEnabled ? (animationSettings?.rows?.duration ?? 0.4) : 0;
+  const rowAnimationDuration = isRowAnimationEnabled ? (animationSettings?.rows?.duration ?? 2.5) : 0;
   const isNumberAnimationEnabled = animationSettings?.numbers?.enabled === true;
   const numberAnimationDuration = isNumberAnimationEnabled ? (animationSettings?.numbers?.duration ?? 2.5) : 0;
   /** Row reorder animation — bank statement (short txn) same as party/staff when settings enabled. */
@@ -1564,8 +1567,8 @@ export function TransactionsTable({
         : dateRange?.to
           ? new Date(dateRange.to as string | number).getTime()
           : "";
-    return `${prefix}-filter-${fromMs}-${toMs}-${tableTransactions.length}`;
-  }, [hasSpendWiseGroups, ledgerDateFilterActive, dateRange?.from, dateRange?.to, tableTransactions.length]);
+    return `${prefix}-filter-${fromMs}-${toMs}`;
+  }, [hasSpendWiseGroups, ledgerDateFilterActive, dateRange?.from, dateRange?.to]);
 
   useEffect(() => {
     setBillWiseLinkPreview(null);
@@ -3106,11 +3109,17 @@ export function TransactionsTable({
   const unifiedWidthApplyingRef = useRef(false);
   /** Survives width remount (Show/Hide linked, row count) — cleanup must not lose H position. */
   const ledgerUnifiedScrollLeftRef = useRef(0);
+  /** Plan A: measured natural col px (entity ledger desktop split tables) - floors only, constants stay minimums. */
+  const [ledgerMeasuredColWidths, setLedgerMeasuredColWidths] = useState<number[]>([]);
+  const ledgerMeasuredColWidthsRef = useRef<number[]>([]);
 
   const effectiveSplitScrollColWidths = useMemo((): (number | string)[] => {
     if (!splitScrollColProportionalGate || splitScrollColWidths.length === 0) return splitScrollColWidths;
     if (!splitScrollColWidths.every((w) => typeof w === "number")) return splitScrollColWidths;
-    const nums = splitScrollColWidths as number[];
+    const nums = mergeLedgerMeasuredColWidths(
+      splitScrollColWidths as number[],
+      ledgerDesktopSplitScrollGate ? ledgerMeasuredColWidths : []
+    );
     const keys = ledgerEntityColKeys;
     if (intrinsicDateTypeColPx && intrinsicDateTypeCols && keys.length === nums.length) {
       let fixedSum = 0;
@@ -3142,11 +3151,13 @@ export function TransactionsTable({
       });
     }
     const sum = nums.reduce((a, b) => a + b, 0);
-    if (ledgerHostClientWidth <= 0 || sum >= ledgerHostClientWidth) return splitScrollColWidths;
+    if (ledgerHostClientWidth <= 0 || sum >= ledgerHostClientWidth) return nums;
     const scale = ledgerHostClientWidth / sum;
     return nums.map((w) => Math.round(w * scale));
   }, [
     splitScrollColWidths,
+    ledgerMeasuredColWidths,
+    ledgerDesktopSplitScrollGate,
     ledgerHostClientWidth,
     splitScrollColProportionalGate,
     intrinsicDateTypeColPx,
@@ -3243,6 +3254,33 @@ export function TransactionsTable({
           }
         }
 
+        // Plan A: content-measured col widths (header th / body rows <=200 / footer totals), floor = constants.
+        // Sum + V-scroll gutter feeds the min-px var so narrow hosts scroll instead of overlapping cells.
+        if (ledgerDesktopSplitScrollGate && !isDaybookUnifiedHost && bodyEl && baseColSum > 0) {
+          const baseNums = splitScrollColWidths as number[];
+          const shellEl = bodyEl.closest(".pl-ledger-detail-table-shell");
+          const measureTables = shellEl
+            ? Array.from(
+                shellEl.querySelectorAll<HTMLTableElement>(
+                  "[data-pl-ledger-txn-header] table, [data-pl-ledger-txn] table, [data-pl-ledger-txn-fixed-summary] table"
+                )
+              )
+            : [];
+          const measured = measureLedgerNaturalColWidths(measureTables, baseNums.length);
+          if (measured) {
+            const prevMeasured = ledgerMeasuredColWidthsRef.current;
+            const measuredChanged =
+              prevMeasured.length !== measured.length ||
+              measured.some((w, i) => Math.abs(w - prevMeasured[i]) > LEDGER_UNIFIED_WIDTH_STABLE_EPS_PX);
+            if (measuredChanged) {
+              ledgerMeasuredColWidthsRef.current = measured;
+              setLedgerMeasuredColWidths(measured);
+            }
+          }
+          const mergedNums = mergeLedgerMeasuredColWidths(baseNums, ledgerMeasuredColWidthsRef.current);
+          baseColSum = mergedNums.reduce((a, b) => a + b, 0) + ledgerVScrollGutterPx;
+        }
+
         const { tableMinPx: rawTableMinPx, scaleTargetPx: rawScaleTargetPx } = computeLedgerUnifiedTableMinPx({
           host,
           bodyTable: bodyEl?.querySelector("table") ?? null,
@@ -3312,9 +3350,6 @@ export function TransactionsTable({
     scheduleApplyUnifiedTableWidthVar();
     const ro = new ResizeObserver(() => scheduleApplyUnifiedTableWidthVar());
     ro.observe(host);
-    const bodyEl = tableContainerRef.current;
-    const onBodyScroll = () => scheduleApplyUnifiedTableWidthVar();
-    bodyEl?.addEventListener("scroll", onBodyScroll, { passive: true });
     const onHostScroll = () => {
       if (unifiedWidthApplyingRef.current) return;
       ledgerUnifiedScrollLeftRef.current = host.scrollLeft;
@@ -3327,7 +3362,6 @@ export function TransactionsTable({
         ledgerUnifiedScrollLeftRef.current = host.scrollLeft;
       }
       unifiedLedgerWidthApplyRef.current = null;
-      bodyEl?.removeEventListener("scroll", onBodyScroll);
       host.removeEventListener("scroll", onHostScroll);
       ro.disconnect();
       if (widthApplyFrame) cancelAnimationFrame(widthApplyFrame);
@@ -3404,7 +3438,9 @@ export function TransactionsTable({
         headerTable?.scrollWidth ?? 0,
         body?.clientWidth ?? 0
       );
-      setDashboardRecentHScrollWidth(w);
+      setDashboardRecentHScrollWidth((prev) =>
+        Math.abs(prev - w) <= LEDGER_UNIFIED_WIDTH_STABLE_EPS_PX ? prev : w
+      );
       if (dashboardRecentFyAttachmentGate && shell && body) {
         const { headerPadPx, bodyPadPx } = measureLedgerTxnVerticalScrollPads(body);
         const headerPadVar = `${headerPadPx}px`;
@@ -3452,9 +3488,16 @@ export function TransactionsTable({
           typePx = Math.max(typePx, measureRecentTxnCellPx(node as HTMLElement));
         });
         if (datePx > 0 && typePx > 0) {
-          setIntrinsicDateTypeColPx((prev) =>
-            prev?.date === datePx && prev?.type === typePx ? prev : { date: datePx, type: typePx }
-          );
+          setIntrinsicDateTypeColPx((prev) => {
+            if (
+              prev &&
+              Math.abs(prev.date - datePx) <= LEDGER_UNIFIED_WIDTH_STABLE_EPS_PX &&
+              Math.abs(prev.type - typePx) <= LEDGER_UNIFIED_WIDTH_STABLE_EPS_PX
+            ) {
+              return prev;
+            }
+            return { date: datePx, type: typePx };
+          });
         }
       }
     };
@@ -4212,7 +4255,7 @@ export function TransactionsTable({
                         className="flex items-center gap-2"
                       >
                         <CheckSquare className="h-3.5 w-3.5" />
-                        {isStatementChecked ? "Unmark as checked" : "Mark as checked"}
+                        {isStatementChecked ? "Unmark as reconciled" : "Mark as reconciled"}
                       </DropdownMenuItem>
                     ) : null}
                     {isPendingApproval && canApproveCardRow ? (
@@ -4672,7 +4715,7 @@ export function TransactionsTable({
                   >
                     {block.items.map((t: any, itemIdx: number) => (
                       <motion.div
-                        key={`${blockIdx}-${itemIdx}-${t.id ?? (t as any)._rowKey ?? ""}`}
+                        key={t.id ?? (t as any)._rowKey ?? `${blockIdx}-${itemIdx}`}
                         layout="position"
                         initial={false}
                         transition={isRowAnimationEnabled ? { duration: rowAnimationDuration, ease: "easeInOut" } : { duration: 0 }}
@@ -5197,36 +5240,7 @@ export function TransactionsTable({
         >
           <TableCell colSpan={footerClosingLabelColSpan} className="align-middle">
             <div data-pl-closing-balance-card="" className={LEDGER_CLOSING_BALANCE_CARD_ROW_CN}>
-              <div
-                className="flex shrink-0 flex-nowrap items-center gap-1"
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
-              >
-                {(
-                  [
-                    { id: "default", label: "Default" },
-                    { id: "green", label: "Green" },
-                    { id: "blue", label: "Blue" },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    className={cn(
-                      chromeProPillCn,
-                      "h-7 rounded-full px-2.5 text-[11px] font-semibold",
-                      txnTableTone === opt.id && chromePillActive
-                    )}
-                    aria-pressed={txnTableTone === opt.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      applyTxnTableTone(opt.id);
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+              <LedgerTxnTableTonePills value={txnTableTone} onChange={applyTxnTableTone} />
               <div className={LEDGER_CLOSING_BALANCE_TOTAL_CN}>
                 {closingBalanceActions ? (
                   <div
@@ -5484,7 +5498,7 @@ export function TransactionsTable({
                             style={{ verticalAlign: "top" }}
                           >
                             <motion.div
-                              layout={!ledgerDateFilterActive ? "position" : false}
+                              layout={useTxnRowLayoutAnimation && !ledgerDateFilterActive ? "position" : false}
                               initial={false}
                               exit={{ transition: { duration: 0 } }}
                               transition={{ duration: rowAnimationDuration, ease: "easeInOut" }}
@@ -5835,7 +5849,7 @@ export function TransactionsTable({
   );
 
   return (
-    <div className="pl-ledger-detail-table-shell flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className="pl-ledger-detail-table-shell flex h-0 min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       {desktopSplitTableScrollGate ? (
         <div
           ref={dashboardRecentHeaderScrollRef}
@@ -5885,11 +5899,8 @@ export function TransactionsTable({
           "w-full pl-ledger-txn-scroll-native outline-none focus:outline-none",
           desktopSplitTableScrollGate
             ? cn(
-                "min-h-0 max-w-full flex-1 overflow-y-auto pl-dashboard-recent-hide-hscroll",
-                dashboardRecentFyAttachmentGate ? "min-w-0" : "min-w-full",
-                ledgerUnifiedHScrollActive || dashboardRecentFyAttachmentGate
-                  ? "overflow-x-hidden [scrollbar-gutter:auto]"
-                  : "overflow-x-auto [scrollbar-gutter:auto]"
+                "h-0 min-h-0 max-w-full flex-1 overflow-y-auto overflow-x-hidden pl-dashboard-recent-hide-hscroll",
+                dashboardRecentFyAttachmentGate ? "min-w-0" : "min-w-full"
               )
             : "overflow-x-auto",
           tableScrollBottomBorderCn

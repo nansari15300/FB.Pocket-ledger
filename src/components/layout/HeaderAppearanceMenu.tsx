@@ -8,15 +8,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useTheme } from "@/hooks/useTheme";
-import {
-  APP_THEME_OPTIONS_APP,
-  APP_THEME_OPTIONS_SERVER,
-  type AppThemeOption,
-} from "@/lib/appThemes";
+import { APP_THEME_OPTIONS, type AppThemeOption } from "@/lib/appThemes";
 import { cn } from "@/lib/utils";
 
 function themeSwatchStyle(color: string): CSSProperties {
@@ -51,7 +46,7 @@ function ThemeRow({
 export function HeaderAppearanceMenu({ className }: { className?: string }) {
   const { theme, setTheme, setPrimaryColor } = useTheme();
 
-  const pick = (option: AppThemeOption) => {
+  const pickTheme = (option: AppThemeOption) => {
     setTheme(option.themeValue as Parameters<typeof setTheme>[0]);
     setPrimaryColor(option.primaryValue as Parameters<typeof setPrimaryColor>[0]);
   };
@@ -71,23 +66,13 @@ export function HeaderAppearanceMenu({ className }: { className?: string }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>App theme</DropdownMenuLabel>
-        {APP_THEME_OPTIONS_APP.map((option) => (
+        <DropdownMenuLabel>Background Theme</DropdownMenuLabel>
+        {APP_THEME_OPTIONS.map((option) => (
           <ThemeRow
             key={option.themeValue}
             option={option}
             active={theme === option.themeValue}
-            onPick={pick}
-          />
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>Server</DropdownMenuLabel>
-        {APP_THEME_OPTIONS_SERVER.map((option) => (
-          <ThemeRow
-            key={option.themeValue}
-            option={option}
-            active={theme === option.themeValue}
-            onPick={pick}
+            onPick={pickTheme}
           />
         ))}
       </DropdownMenuContent>

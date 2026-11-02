@@ -38,6 +38,7 @@ import { isPocketBaseAppSessionActive, readPocketBaseAppProfile } from "@/lib/po
 import { pbRequest } from "@/lib/pocketbaseData/pbClient";
 import { USER_GLOBAL_ROOTS } from "@/lib/pocketbaseData/pbGlobalDocs";
 import { isSuperAdminEmail } from "@/lib/recovery/recoveryMode";
+import { isPocketBaseRealtimeLive } from "@/lib/pocketbaseData/pbRealtimeState";
 
 
 type AnyRec = Record<string, unknown>;
@@ -869,13 +870,19 @@ async function adminGetQuerySnapshot(
 }
 
 const ADMIN_POLL_MS = 30_000;
+/** SSE down: poll udoc every 10s. SSE up: skip ticks until this fallback. */
 const USER_POLL_MS = 10_000;
+const USER_POLL_WHEN_LIVE_MS = 90_000;
 
 const userPollers = new Set<() => void>();
 let userPollTicker: ReturnType<typeof setInterval> | null = null;
+let lastUserPollAt = 0;
 function startUserPollTicker(): void {
   if (userPollTicker) return;
   userPollTicker = setInterval(() => {
+    const now = Date.now();
+    if (isPocketBaseRealtimeLive() && now - lastUserPollAt < USER_POLL_WHEN_LIVE_MS) return;
+    lastUserPollAt = now;
     for (const fn of Array.from(userPollers)) {
       try {
         fn();
@@ -964,9 +971,11 @@ function onAdminSnapshot(args: unknown[], t: AdminTarget): () => void {
   };
   let poll: ReturnType<typeof setInterval> | null = null;
   if (t.mode === "user") {
-    // one shared ticker for all user-mode listeners so their reads land in the same batched request
+    // one shared ticker for all user-mode listeners so their reads land in the same batched request.
+    // While SSE is live, ticks are skipped (pl-udoc-written + 90s fallback); 10s only if the stream is down.
     userPollers.add(pollTick);
     startUserPollTicker();
+    lastUserPollAt = Date.now();
   } else {
     poll = setInterval(pollTick, ADMIN_POLL_MS);
   }

@@ -106,24 +106,12 @@ body {
     --sidebar-background: var(--background);
     --sidebar-foreground: var(--foreground);
   }
-  .theme-soft-pink { 
-    --background: 350 100% 94%; 
-    --foreground: 350 80% 25%; 
-    --card: var(--background);
-    --card-foreground: var(--foreground);
-    --popover: var(--background);
-    --popover-foreground: var(--foreground);
-    --sidebar-background: var(--background);
-    --sidebar-foreground: var(--foreground);
-  }
-
   .primary-pure-white { --primary: 22 96% 54%; --primary-foreground: 210 40% 98%; --ring: 22 96% 54%; }
   .primary-soft-green { --primary: 95 35% 45%; --primary-foreground: 95 35% 95%; --ring: 95 35% 45%; }
   .primary-dim-soft-green { --primary: 140 70% 50%; --primary-foreground: 140 70% 95%; --ring: 140 70% 50%; }
   .primary-soft-blue { --primary: 210 90% 50%; --primary-foreground: 210 90% 95%; --ring: 210 90% 50%; }
   .primary-sky-blue { --primary: 199 89% 50%; --primary-foreground: 199 89% 95%; --ring: 199 89% 50%; }
   .primary-soft-yellow { --primary: 45 95% 55%; --primary-foreground: 45 95% 20%; --ring: 45 95% 55%; }
-  .primary-soft-pink { --primary: 350 80% 60%; --primary-foreground: 350 80% 95%; --ring: 350 80% 60%; }
 
   .dark {
     --background: 220 13% 10%;

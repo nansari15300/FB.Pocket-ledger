@@ -13,6 +13,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getLoanFormIntro, type LoanIntroLang } from "../constants/loanFormIntros";
+import { usePlI18nOptional } from "@/contexts/PlI18nContext";
+import { introTabLang } from "@/lib/i18n/introLangTab";
 
 type Props = {
   introKey: string;
@@ -28,8 +30,9 @@ const LANGS: { id: LoanIntroLang; label: string }[] = [
 
 /** (i) only — full intro in English / हिन्दी / नेपाली tabs, default English. */
 export function LoanHelpInfo({ introKey, compact = false, className }: Props) {
+  const i18n = usePlI18nOptional();
   const [open, setOpen] = useState(false);
-  const [lang, setLang] = useState<LoanIntroLang>("en");
+  const [lang, setLang] = useState<LoanIntroLang>(() => introTabLang(i18n?.intro));
   const copy = getLoanFormIntro(introKey);
   if (!copy) return null;
 
@@ -49,14 +52,14 @@ export function LoanHelpInfo({ introKey, compact = false, className }: Props) {
               onClick={(e) => {
                 stop(e);
                 e.preventDefault();
-                setLang("en");
+                setLang(introTabLang(i18n?.intro));
                 setOpen(true);
               }}
               onMouseDown={stop}
               onPointerDown={stop}
             />
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="max-w-[260px] text-xs">
+          <TooltipContent side="bottom" className="max-w-[260px] text-xs" data-pl-intro="">
             Click for full introduction (English / हिन्दी / नेपाली). Default English.
           </TooltipContent>
         </Tooltip>

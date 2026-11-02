@@ -54,6 +54,7 @@ export function StatementCheckedRowMessageLabel({ className, align = "end" }: Pr
         <PopoverContent
           align={align}
           className="w-80 text-sm leading-relaxed"
+          data-pl-intro=""
           onClick={(e) => e.stopPropagation()}
         >
           <div className="mb-1.5 flex items-start justify-between gap-2">

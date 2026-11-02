@@ -30,6 +30,8 @@ export const DASHBOARD_TAB_CHANGED_EVENT = "pl-dashboard-tab-changed";
 export const DASHBOARD_TAB_SESSION_KEY = "dashboardVisibleCard";
 /** Chart footer = Summary screen + mini charts (not a separate route tab id). */
 export const DASHBOARD_SUMMARY_CHARTS_SESSION_KEY = "dashboardSummaryChartsActive";
+export const DASHBOARD_SUMMARY_CHART_KIND_KEY = "dashboardSummaryChartKind";
+export type DashboardSummaryChartKind = "bar" | "line";
 
 export function normalizeDashboardVisibleCard(saved: string | null | undefined): string {
   if (!saved || saved === "auto-recurring" || saved === "all") return "financial-summaries";
@@ -54,6 +56,26 @@ export function readDashboardSummaryChartsFromStorage(): boolean {
     return tabSession === "dashboard-charts" || tabLocal === "dashboard-charts";
   } catch {
     return false;
+  }
+}
+
+export function readDashboardSummaryChartKindFromStorage(): DashboardSummaryChartKind {
+  if (typeof window === "undefined") return "bar";
+  try {
+    const session = sessionStorage.getItem(DASHBOARD_SUMMARY_CHART_KIND_KEY);
+    const local = localStorage.getItem(DASHBOARD_SUMMARY_CHART_KIND_KEY);
+    return session === "line" || local === "line" ? "line" : "bar";
+  } catch {
+    return "bar";
+  }
+}
+
+export function syncDashboardSummaryChartKindToSession(kind: DashboardSummaryChartKind): void {
+  try {
+    sessionStorage.setItem(DASHBOARD_SUMMARY_CHART_KIND_KEY, kind);
+    localStorage.setItem(DASHBOARD_SUMMARY_CHART_KIND_KEY, kind);
+  } catch {
+    /* private mode / quota */
   }
 }
 

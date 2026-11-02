@@ -22,7 +22,7 @@ import usePermissions from "@/hooks/usePermissions";
 import { useCompany } from "@/hooks/useCompany";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Printer, RotateCw, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from "recharts";
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from "recharts";
 import {
     startOfDay,
     endOfDay,
@@ -459,6 +459,8 @@ type FinancialSummaryCardsProps = {
     compact?: boolean; // Compact layout for report page
     /** Dashboard "Chart" tab: har voucher summary card ke niche din ke hisaab se amount sparkline/bar. */
     showVoucherDateCharts?: boolean;
+    /** Dashboard Chart vs Line footer tab. */
+    voucherDateChartKind?: "bar" | "line";
     /** Dashboard: Outstanding jaisa `col-span-1` cell — Auto recurring card (optional) */
     recurringSummarySlot?: React.ReactNode;
 };
@@ -586,6 +588,7 @@ export function FinancialSummaryCards({
     showDetails = true,
     compact = false,
     showVoucherDateCharts = false,
+    voucherDateChartKind = "bar",
     recurringSummarySlot,
 }: FinancialSummaryCardsProps) {
     /** Live snapshot / SQLite merge nayi array de — current frame (scroll/click) pe heavy recompute mat lagao. */
@@ -2644,12 +2647,8 @@ export function FinancialSummaryCards({
             variant === "mini"
                 ? { top: 2, right: 2, left: 0, bottom: 0 }
                 : { top: 16, right: 24, left: 8, bottom: 48 };
-        const barChart = (
-            <BarChart
-                data={data}
-                margin={margin}
-                {...(chartSize ? { width: chartSize.width, height: chartSize.height } : {})}
-            >
+        const axis = (
+            <>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-35" />
                 <XAxis
                     dataKey="name"
@@ -2668,22 +2667,45 @@ export function FinancialSummaryCards({
                     }
                     labelFormatter={(l) => `Date: ${l}`}
                 />
-                <Bar
-                    dataKey="amount"
-                    fill={barColor}
-                    radius={[2, 2, 0, 0]}
-                    isAnimationActive={false}
-                />
-            </BarChart>
+            </>
         );
-        if (chartSize) return barChart;
+        const chartProps = {
+            data,
+            margin,
+            ...(chartSize ? { width: chartSize.width, height: chartSize.height } : {}),
+        };
+        const chart =
+            voucherDateChartKind === "line" ? (
+                <LineChart {...chartProps}>
+                    {axis}
+                    <Line
+                        type="monotone"
+                        dataKey="amount"
+                        stroke={barColor}
+                        strokeWidth={2}
+                        dot={variant === "full"}
+                        isAnimationActive={false}
+                    />
+                </LineChart>
+            ) : (
+                <BarChart {...chartProps}>
+                    {axis}
+                    <Bar
+                        dataKey="amount"
+                        fill={barColor}
+                        radius={[2, 2, 0, 0]}
+                        isAnimationActive={false}
+                    />
+                </BarChart>
+            );
+        if (chartSize) return chart;
         return (
             <ResponsiveContainer
                 width="100%"
                 height="100%"
                 debounce={DASHBOARD_CHART_RESIZE_DEBOUNCE_MS}
             >
-                {barChart}
+                {chart}
             </ResponsiveContainer>
         );
     };

@@ -7,6 +7,7 @@ import { MasterListRow } from "@/components/ui/master-list-row";
 import { Item } from "@/components/items/types";
 import { useDate } from "@/hooks/useDate";
 import { masterListOrderKey, useMasterListDisplayRows, useMasterListRowMotion } from "@/hooks/useMasterListRowMotion";
+import { useRowChangeHighlight } from "@/hooks/useRowChangeHighlight";
 import { Package } from "lucide-react";
 import type { StockView } from "./ItemDetails";
 import React, { useMemo, useState } from "react";
@@ -170,6 +171,8 @@ export function ItemList({
     listOrderKey,
     { enabled: isRowAnimationEnabled, holdMs: layoutHoldMs }
   );
+  /** Add/edit (naya ya data change) row par ~1s highlight; sort/filter/first load par nahi. */
+  const rowChangeHighlight = useRowChangeHighlight(displayListRows, { getId: (row) => row.id });
 
   if (displayListRows.length === 0) {
     return (
@@ -252,7 +255,7 @@ export function ItemList({
                   </div>
                 );
                 return (
-                  <motion.li key={item.id} layoutDependency={displayOrderKey} {...rowMotionProps}>
+                  <motion.li key={item.id} layoutDependency={displayOrderKey} {...rowMotionProps} className={rowChangeHighlight.highlightClassName(item.id)}>
                     {href ? (
                       // Master list navigation: per-row auto-prefetch off rakho to avoid repeat background bursts on revisit.
                       <Link

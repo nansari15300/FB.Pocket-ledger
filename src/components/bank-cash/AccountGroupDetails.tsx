@@ -18,6 +18,7 @@ import { LedgerDesktopFooter } from "@/components/vouchers/LedgerDesktopFooter";
 import { useStatementLedgerCheckModePaging } from "@/hooks/useStatementLedgerCheckModePaging";
 import { useLedgerUnapprovedOnlyFilter } from "@/hooks/useLedgerUnapprovedOnlyFilter";
 import { useLedgerDetailSessionMemory } from "@/hooks/useLedgerDetailSessionMemory";
+import { useLedgerRowMotionGate } from "@/hooks/useLedgerRowMotionGate";
 import { useBankSpendWiseView } from "@/hooks/useBankSpendWiseView";
 import {
   ledgerDetailSessionStorageKey,
@@ -1080,6 +1081,12 @@ export function AccountGroupDetails({
     };
   }, [filteredMobileTransactions, mobileFilterBlocks, spendWiseView, currentPage, rowsPerPage]);
 
+  /** Page / rows-per-page change par row slide off (Spend-wise toggle wala flag upar alag hai). */
+  const ledgerRowGate = useLedgerRowMotionGate({
+    pageKey: `${currentPage}|${rowsPerPage}|${ledgerViewMode}`,
+    rowSignals: [paginatedTransactions, mobileTransactionsToShow],
+  });
+
   const mobilePagerEdgeCounts = useMemo(() => {
     const list = filteredMobileTransactions;
     if (rowsPerPage <= 0) return { before: 0, after: 0 };
@@ -1486,7 +1493,7 @@ export function AccountGroupDetails({
               closingBalanceActions={memberClosingBalanceActions}
               isBalanceMasked={isBalanceMasked}
               scrollOnlyTransactions
-              disableLayoutAnimation={disableTableLayoutAnimation}
+              disableLayoutAnimation={disableTableLayoutAnimation || ledgerRowGate.suppress}
               blinkMode={spendWiseBlinkMode}
               spendWiseGroupPrint={spendWiseGroupPrint}
               {...statementCheck.tableProps}
@@ -1933,7 +1940,7 @@ export function AccountGroupDetails({
               closingBalanceRowActions={memberClosingBalanceRowActions}
               closingBalanceActions={memberClosingBalanceActions}
               isBalanceMasked={isBalanceMasked}
-              disableLayoutAnimation={disableTableLayoutAnimation}
+              disableLayoutAnimation={disableTableLayoutAnimation || ledgerRowGate.suppress}
               blinkMode={spendWiseBlinkMode}
               spendWiseGroupPrint={spendWiseGroupPrint}
               {...statementCheck.tableProps}

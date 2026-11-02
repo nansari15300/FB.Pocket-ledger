@@ -427,6 +427,23 @@ export async function listCompanyDocRawRowsWithLocalRefHint(
   }
 }
 
+/** Header migrate: vouchers whose JSON still has a leftover Firebase Storage URL. */
+export async function listCompanyDocRawRowsWithFirebaseUrlHint(
+  companyId: string,
+  collectionName: string
+): Promise<Array<{ id: string; data: string }>> {
+  if (typeof window === "undefined" || !companyId || !collectionName) return [];
+  try {
+    const db = await getBrowserDbForCompanyId(companyId);
+    if (!db) return [];
+    const sql =
+      "SELECT id, data FROM company_docs WHERE company_id = ? AND collection = ? AND (data LIKE '%firebasestorage%' OR data LIKE '%storage.googleapis.com%' OR data LIKE '%firebasestorage.app%')";
+    return db.prepare(sql).all(companyId, collectionName) as Array<{ id: string; data: string }>;
+  } catch {
+    return [];
+  }
+}
+
 /** Lightweight voucher rows for dashboard/recent UI via the projection table (cheap read). */
 export async function listVoucherSummaryProjectionFromBrowserDb(
   companyId: string,

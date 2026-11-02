@@ -16,6 +16,8 @@ import {
   getBsCheckHelp,
   type BsCheckHelpLang,
 } from "@/lib/reports/balanceSheetCheckEngineHelp";
+import { usePlI18nOptional } from "@/contexts/PlI18nContext";
+import { introTabLang } from "@/lib/i18n/introLangTab";
 
 type Props = {
   checkId: string;
@@ -31,8 +33,9 @@ const LANGS: { id: BsCheckHelpLang; label: string }[] = [
 
 export function BalanceSheetCheckHelpInfo({ checkId, compact = true, className }: Props) {
   const copy = getBsCheckHelp(checkId);
+  const i18n = usePlI18nOptional();
   const [open, setOpen] = useState(false);
-  const [lang, setLang] = useState<BsCheckHelpLang>("en");
+  const [lang, setLang] = useState<BsCheckHelpLang>(() => introTabLang(i18n?.intro));
 
   if (!copy) return null;
 
@@ -52,14 +55,14 @@ export function BalanceSheetCheckHelpInfo({ checkId, compact = true, className }
               onClick={(e) => {
                 stop(e);
                 e.preventDefault();
-                setLang("en");
+                setLang(introTabLang(i18n?.intro));
                 setOpen(true);
               }}
               onMouseDown={stop}
               onPointerDown={stop}
             />
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="max-w-[240px] text-xs">
+          <TooltipContent side="bottom" className="max-w-[240px] text-xs" data-pl-intro="">
             What is this? What went wrong? What to do — English / हिन्दी / नेपाली
           </TooltipContent>
         </Tooltip>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
@@ -8,7 +8,7 @@ import { useAuth } from "./useAuth";
 import usePermissions from "@/hooks/usePermissions";
 import { useCompany } from "@/hooks/useCompany";
 
-type AnimationSettings = {
+export type AnimationSettings = {
   numbers: {
     enabled: boolean;
     duration: number;
@@ -47,7 +47,24 @@ function readAnimationFromLocalStorage(userDocId: string): AnimationSettings | n
   }
 }
 
-export function useAnimationSettings() {
+export type AnimationSettingsState = {
+  settings: AnimationSettings;
+  loading: boolean;
+  useLocalAnimationOnly: boolean;
+};
+
+/**
+ * Single shared source (AnimationSettingsProvider, dashboard layout). Jab provider mounted ho,
+ * `useAnimationSettings()` isi context se padhta hai — har consumer apna snapshot/BroadcastChannel nahi kholta.
+ */
+export const AnimationSettingsContext = createContext<AnimationSettingsState | null>(null);
+
+/**
+ * Actual loader (users doc `animationSettings` + localStorage + BroadcastChannel).
+ * `disabled: true` → koi subscription nahi (provider context available hai).
+ */
+export function useAnimationSettingsSource(options?: { disabled?: boolean }): AnimationSettingsState {
+  const disabled = options?.disabled === true;
   const { user, customUser } = useAuth();
   const { can } = usePermissions();
   const { company } = useCompany();
@@ -60,6 +77,7 @@ export function useAnimationSettings() {
   );
 
   useEffect(() => {
+    if (disabled) return;
     if (!userDocId) {
       window.queueMicrotask(() => {
         setSettings(defaultSettings);
@@ -115,10 +133,11 @@ export function useAnimationSettings() {
     );
 
     return () => unsubscribe();
-  }, [userDocId, useLocalAnimationOnly]);
+  }, [userDocId, useLocalAnimationOnly, disabled]);
 
   // Live update across tabs: when another tab saves animation settings, apply here immediately
   useEffect(() => {
+    if (disabled) return;
     if (typeof BroadcastChannel === "undefined") return;
     const channel = new BroadcastChannel(ANIMATION_SETTINGS_CHANNEL);
     const handler = (e: MessageEvent) => {
@@ -135,9 +154,16 @@ export function useAnimationSettings() {
       channel.removeEventListener("message", handler);
       channel.close();
     };
-  }, []);
+  }, [disabled]);
 
   return { settings, loading, useLocalAnimationOnly };
+}
+
+/** Existing callers unchanged: provider ho to context, warna purana per-hook load (fallback). */
+export function useAnimationSettings(): AnimationSettingsState {
+  const shared = useContext(AnimationSettingsContext);
+  const own = useAnimationSettingsSource({ disabled: shared !== null });
+  return shared ?? own;
 }
 
 export { animationLocalStorageKey };

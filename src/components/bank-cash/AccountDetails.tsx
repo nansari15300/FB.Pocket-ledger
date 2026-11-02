@@ -76,6 +76,7 @@ import {
 import { useDate } from "@/hooks/useDate";
 import { useLedgerUnapprovedOnlyFilter } from "@/hooks/useLedgerUnapprovedOnlyFilter";
 import { useLedgerDetailSessionMemory } from "@/hooks/useLedgerDetailSessionMemory";
+import { useLedgerRowMotionGate } from "@/hooks/useLedgerRowMotionGate";
 import {
   ledgerDetailSessionStorageKey,
   writeLedgerDetailSessionSnapshot,
@@ -1640,6 +1641,12 @@ export function AccountDetails({
     [mobileTransactionsToShow, bankDrCrPerspective]
   );
 
+  /** Page / rows-per-page / Spend-wise toggle par row slide off; sort + add/edit par FLIP chalu. */
+  const ledgerRowGate = useLedgerRowMotionGate({
+    pageKey: `${currentPage}|${rowsPerPage}|${ledgerViewMode}`,
+    rowSignals: [displayPaginatedTransactions, displayMobileTransactionsToShow],
+  });
+
   /** Book vs dated opening: flatStart===0 par books; warna slice se pehle txn ki date (PartyDetails tail paging). */
   const ledgerOpeningPeriodStartDate = useMemo(() => {
     if (rowsPerPage <= 0) {
@@ -1904,7 +1911,7 @@ export function AccountDetails({
             closingBalanceRowActions={accountClosingBalanceRowActions}
             closingBalanceActions={accountClosingBalanceActions}
             highlightPendingApproval
-            disableLayoutAnimation
+            disableLayoutAnimation={ledgerRowGate.suppress}
             blinkMode={spendWiseBlinkMode}
             spendWiseGroupPrint={spendWiseGroupPrint}
             {...bankDepositWithdrawColumnLabels}
@@ -2290,7 +2297,7 @@ export function AccountDetails({
               closingBalanceRowActions={accountClosingBalanceRowActions}
               closingBalanceActions={accountClosingBalanceActions}
               highlightPendingApproval
-              disableLayoutAnimation
+              disableLayoutAnimation={ledgerRowGate.suppress}
               blinkMode={spendWiseBlinkMode}
               spendWiseGroupPrint={spendWiseGroupPrint}
               {...bankDepositWithdrawColumnLabels}

@@ -13,6 +13,7 @@ import {
 } from "@/lib/masterListChrome";
 import { useDate } from "@/hooks/useDate";
 import { masterListOrderKey, useMasterListDisplayRows, useMasterListRowMotion } from "@/hooks/useMasterListRowMotion";
+import { useRowChangeHighlight } from "@/hooks/useRowChangeHighlight";
 import { LoanLiabilityEntityIcon } from "@/components/entity/LoanLiabilityEntityIcon";
 import { MasterListRow } from "@/components/ui/master-list-row";
 import { MasterListNameTooltip } from "@/components/entity/MasterListNameTooltip";
@@ -139,6 +140,8 @@ export function LoanAccountList({
     listOrderKey,
     { enabled: isRowAnimationEnabled, holdMs: layoutHoldMs }
   );
+  /** Add/edit (naya ya data change) row par ~1s highlight; sort/filter/first load par nahi. */
+  const rowChangeHighlight = useRowChangeHighlight(displayListRows, { getId: (row) => row.id });
 
   return (
     <div className={masterListShellCn}>
@@ -227,7 +230,7 @@ export function LoanAccountList({
                 </div>
               );
               return (
-                <motion.li key={account.id} layoutDependency={displayOrderKey} {...rowMotionProps}>
+                <motion.li key={account.id} layoutDependency={displayOrderKey} {...rowMotionProps} className={rowChangeHighlight.highlightClassName(account.id)}>
                   <MasterListRow
                     selected={isSelected}
                     className={cardClassName}

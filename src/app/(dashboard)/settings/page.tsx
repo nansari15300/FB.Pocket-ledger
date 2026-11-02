@@ -52,11 +52,10 @@ const SETTINGS_NAV_INSET_X = "px-[4px]";
 const SETTINGS_LIST_SHELL =
   "app-chrome-sidebar-ribbon pl-settings-list-shell pl-dashboard-tone-card pl-dashboard-ribbon-emerald w-full min-w-0 rounded-lg border bg-card overflow-hidden shadow-none";
 /** Header ↔ items split — 1px divider */
-const SETTINGS_LIST_HEADER_RULE =
-  "border-b border-emerald-400/55";
+const SETTINGS_LIST_HEADER_RULE = "";
 /** Mobile detail: footer bar — 1px divider */
 const SETTINGS_MOBILE_DETAIL_FOOTER_RULE =
-  "border-t border-black bg-background dark:border-black";
+  "border-t border-border bg-background";
 
 /** Daen kinara ~10mm — document capture; company/share/voucher… sab detail par list sheet swipe */
 const SETTINGS_LIST_SHEET_RIGHT_EDGE_OPTS: EdgeSwipeDocumentOptions = { edgeWidthMm: 10 };
@@ -558,7 +557,7 @@ function SettingsPageContent() {
     const renderFixedUpdateRow = () => (
         <div
             className={cn(
-                "flex-shrink-0 border-t border-black/15 pt-2 pb-1 dark:border-white/15",
+                "flex-shrink-0 border-t border-border pt-2 pb-1",
                 SETTINGS_NAV_INSET_X
             )}
         >

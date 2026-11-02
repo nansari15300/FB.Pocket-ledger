@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { masterListShellCn, masterListRowUnselectedCn, MASTER_LIST_AVATAR_CN, MASTER_LIST_AVATAR_FALLBACK_CN } from "@/lib/masterListChrome";
 import { useDate } from "@/hooks/useDate";
 import { masterListOrderKey, useMasterListDisplayRows, useMasterListRowMotion } from "@/hooks/useMasterListRowMotion";
+import { useRowChangeHighlight } from "@/hooks/useRowChangeHighlight";
 import { MasterListRow } from "@/components/ui/master-list-row";
 import { MasterListNameTooltip } from "@/components/entity/MasterListNameTooltip";
 import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
@@ -112,6 +113,8 @@ export function StaffList({
     listOrderKey,
     { enabled: isRowAnimationEnabled, holdMs: layoutHoldMs }
   );
+  /** Add/edit (naya ya data change) row par ~1s highlight; sort/filter/first load par nahi. */
+  const rowChangeHighlight = useRowChangeHighlight(displayListRows, { getId: (row) => row.id });
 
   return (
     <div className={masterListShellCn} data-theme-list="account-list">
@@ -180,7 +183,7 @@ export function StaffList({
                 </div>
               );
               return (
-                <motion.li key={staffMember.id} layoutDependency={displayOrderKey} {...rowMotionProps}>
+                <motion.li key={staffMember.id} layoutDependency={displayOrderKey} {...rowMotionProps} className={rowChangeHighlight.highlightClassName(staffMember.id)}>
                   {href ? (
                     // Master list navigation: per-row auto-prefetch off rakho to avoid repeat background bursts on revisit.
                     <Link

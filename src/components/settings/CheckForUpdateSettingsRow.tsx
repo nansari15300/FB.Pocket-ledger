@@ -73,7 +73,7 @@ export function CheckForUpdateSettingsRow({ rowClassName }: Props) {
     return (
       <div
         className={cn(
-          "min-w-0 max-w-full w-full overflow-hidden py-2 px-3 border border-black rounded-md",
+          "min-w-0 max-w-full w-full overflow-hidden py-2 px-3 border border-border rounded-md",
           "flex items-center gap-3 text-left text-sm",
           rowClassName
         )}
@@ -91,7 +91,7 @@ export function CheckForUpdateSettingsRow({ rowClassName }: Props) {
       <button
         type="button"
         className={cn(
-          "min-w-0 max-w-full w-full overflow-hidden py-2 px-3 cursor-pointer border border-black rounded-md transition-all duration-200",
+          "min-w-0 max-w-full w-full overflow-hidden py-2 px-3 cursor-pointer border border-border rounded-md transition-all duration-200",
           "flex items-center gap-3 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           "hover:bg-muted/30",
           checking && "opacity-70 pointer-events-none",

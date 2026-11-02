@@ -42,11 +42,11 @@ export const LEDGER_TXN_PAGE_ROOT_CN =
   "flex h-full min-h-0 w-full max-w-full min-w-0 flex-1 flex-col overflow-hidden box-border";
 /** Single H-scroll owner (table + footer move together). */
 export const LEDGER_TXN_SCROLL_HOST_CN =
-  "pl-ledger-txn-scroll-host flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overflow-y-hidden pl-ledger-txn-scroll-native w-full max-w-full";
+  "pl-ledger-txn-scroll-host flex h-0 min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overflow-y-hidden pl-ledger-txn-scroll-native w-full max-w-full";
 export const LEDGER_TXN_SCROLL_INNER_CN =
-  "pl-ledger-txn-scroll-host-inner flex min-h-0 min-w-full max-h-full flex-1 flex-col";
+  "pl-ledger-txn-scroll-host-inner flex h-0 min-h-0 w-full flex-1 flex-col overflow-hidden";
 export const LEDGER_TXN_TABLE_HOST_CN =
-  "pl-ledger-txn-table-host flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden";
+  "pl-ledger-txn-table-host flex h-0 min-h-0 min-w-0 flex-1 flex-col overflow-hidden";
 /** Ribbon slot inside unified H-scroll — width follows table min width. */
 export const LEDGER_TXN_SCROLL_HEADER_CN =
   "pl-ledger-txn-scroll-header shrink-0 min-w-full w-full box-border";

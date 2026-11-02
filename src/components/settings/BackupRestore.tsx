@@ -2897,11 +2897,12 @@ export function BackupRestore() {
                         type="button"
                         className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                         aria-label="Backup data information"
+                        data-pl-intro=""
                       >
                         <Info className="h-4 w-4" aria-hidden />
                       </button>
                     </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-[20rem] text-xs leading-snug">
+                    <TooltipContent side="top" className="max-w-[20rem] text-xs leading-snug" data-pl-intro="">
                       Download a complete backup of your company&apos;s data. You can choose to encrypt it for security.
                     </TooltipContent>
                   </Tooltip>
@@ -3101,11 +3102,12 @@ export function BackupRestore() {
                         type="button"
                         className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                         aria-label="Auto backup information"
+                        data-pl-intro=""
                       >
                         <Info className="h-3.5 w-3.5" aria-hidden />
                       </button>
                     </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-[22rem] text-xs leading-snug">
+                    <TooltipContent side="top" className="max-w-[22rem] text-xs leading-snug" data-pl-intro="">
                       Tick companies below. At the chosen time, each selected company is backed up to your saved
                       location as Company / Year / MonthName / Day. Month names follow Date system (AD: July, BS:
                       Shrawan). File name uses the same calendar with full month name.
@@ -3277,7 +3279,7 @@ export function BackupRestore() {
                       />
                     </div>
                   </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-[16rem] text-xs leading-snug">
+                  <TooltipContent side="top" className="max-w-[16rem] text-xs leading-snug" data-pl-intro="">
                     Uses plan quota; larger backup files. {!attachmentFeatureOn ? "Not included on your plan." : null}
                   </TooltipContent>
                 </Tooltip>
@@ -3387,11 +3389,12 @@ export function BackupRestore() {
                                         type="button"
                                         className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                                         aria-label="Files info"
+                                        data-pl-intro=""
                                       >
                                         <Info className="h-3.5 w-3.5" aria-hidden />
                                       </button>
                                     </PopoverTrigger>
-                                    <PopoverContent side="top" align="start" className="max-w-[18rem] text-xs leading-snug p-3">
+                                    <PopoverContent side="top" align="start" className="max-w-[18rem] text-xs leading-snug p-3" data-pl-intro="">
                                       Local-only can embed device files without Files tick. Tick Files only if Online merge must download missing attachments.
                                     </PopoverContent>
                                   </Popover>
@@ -3436,11 +3439,12 @@ export function BackupRestore() {
                                       type="button"
                                       className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                                       aria-label="Files info"
+                                      data-pl-intro=""
                                     >
                                       <Info className="h-3.5 w-3.5" aria-hidden />
                                     </button>
                                   </PopoverTrigger>
-                                  <PopoverContent side="top" align="end" className="max-w-[18rem] text-xs leading-snug p-3">
+                                  <PopoverContent side="top" align="end" className="max-w-[18rem] text-xs leading-snug p-3" data-pl-intro="">
                                     Local-only can embed device files without Files tick. Tick Files only if Online merge must download missing attachments.
                                   </PopoverContent>
                                 </Popover>
@@ -3796,11 +3800,12 @@ export function BackupRestore() {
                     type="button"
                     className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                     aria-label="Auto backup settings information"
+                    data-pl-intro=""
                   >
                     <Info className="h-4 w-4" aria-hidden />
                   </button>
                 </PopoverTrigger>
-                <PopoverContent side="bottom" align="start" className="max-w-[20rem] text-xs leading-snug p-3">
+                <PopoverContent side="bottom" align="start" className="max-w-[20rem] text-xs leading-snug p-3" data-pl-intro="">
                   {autoBackupSettingsCompany?.name
                     ? `Choose backup source and contents for ${autoBackupSettingsCompany.name}. Saved settings apply to scheduled and Backup now runs.`
                     : "Per-company auto backup options."}
@@ -3916,11 +3921,12 @@ export function BackupRestore() {
                                 type="button"
                                 className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
                                 aria-label="Attachment backup info"
+                                data-pl-intro=""
                               >
                                 <Info className="h-3.5 w-3.5" aria-hidden />
                               </button>
                             </PopoverTrigger>
-                            <PopoverContent side="top" align="start" className="max-w-[18rem] text-xs leading-snug p-3">
+                            <PopoverContent side="top" align="start" className="max-w-[18rem] text-xs leading-snug p-3" data-pl-intro="">
                               Attachment backup is only available in the <strong>EXE or APK (static app)</strong>. Web app can only backup data and attachment links.
                             </PopoverContent>
                           </Popover>
@@ -3987,11 +3993,12 @@ export function BackupRestore() {
                                 type="button"
                                 className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
                                 aria-label="Attachment backup info"
+                                data-pl-intro=""
                               >
                                 <Info className="h-3.5 w-3.5" aria-hidden />
                               </button>
                             </PopoverTrigger>
-                            <PopoverContent side="top" align="start" className="max-w-[18rem] text-xs leading-snug p-3">
+                            <PopoverContent side="top" align="start" className="max-w-[18rem] text-xs leading-snug p-3" data-pl-intro="">
                               Attachment backup is only available in the <strong>EXE or APK (static app)</strong>. Web app can only backup data and attachment links.
                             </PopoverContent>
                           </Popover>
@@ -4014,11 +4021,12 @@ export function BackupRestore() {
                       type="button"
                       className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
                       aria-label="Restore access info"
+                      data-pl-intro=""
                     >
                       <Info className="h-3.5 w-3.5" aria-hidden />
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent side="top" align="start" className="max-w-[20rem] text-xs leading-snug p-3">
+                  <PopoverContent side="top" align="start" className="max-w-[20rem] text-xs leading-snug p-3" data-pl-intro="">
                     Optional. These Gmail accounts can restore backups for this company (in addition to owner). Use the same Gmail as Firebase login on the restore device.
                   </PopoverContent>
                 </Popover>

@@ -11,29 +11,26 @@ import {
 } from "@/components/ui/dialog";
 import { AttachmentHoverPortal } from "@/components/vouchers/AttachmentHoverPortal";
 import { useAttachmentNoFile } from "@/lib/attachmentNoFileSession";
+import { usePlI18nOptional } from "@/contexts/PlI18nContext";
+import { introTabLang } from "@/lib/i18n/introLangTab";
 
-/**
- * Explanation shown (on click only) for ledger rows whose attachment has a URL but no file bytes.
- * The app has no global i18n layer, so all three supported languages are shown together
- * (Nepali, Hindi, English).
- */
-const NO_FILE_EXPLANATION: ReadonlyArray<{ lang: string; label: string; text: string }> = [
-  {
-    lang: "ne",
-    label: "नेपाली",
-    text: "यो file यसकारण देखिएको छैन किनभने केवल यसको link सेभ गरिएको छ। file आफैं अहिलेसम्म यो device वा server मा उपलब्ध छैन — upload पूरा नभएको हुन सक्छ, वा file हटाइएको हुन सक्छ। file उपलब्ध भएपछि preview देखिनेछ। यहाँ देख्न, जुन device बाट यो file upload गरिएको थियो त्यहाँ refresh गर्नुहोस् वा फेरि पठाउने/प्राप्त गर्ने प्रयास गर्नुहोस्।",
-  },
-  {
-    lang: "hi",
-    label: "हिन्दी",
-    text: "यह file इसलिए नहीं दिख रही है क्योंकि सिर्फ़ इसका link सेव है। file खुद अभी इस device या server पर उपलब्ध नहीं है — हो सकता है upload पूरा न हुआ हो, या file हटा दी गई हो। file उपलब्ध होते ही preview दिखने लगेगा। इसे यहाँ देखने के लिए, जिस device से यह file upload हुई थी वहाँ refresh करें या फिर से भेजने/पाने की कोशिश करें।",
-  },
-  {
-    lang: "en",
-    label: "English",
+const NO_FILE_COPY: Record<
+  "en" | "hi" | "ne",
+  { title: string; text: string }
+> = {
+  en: {
+    title: "File not showing",
     text: "This file is not showing because only its link is saved. The file itself is not available on this device or server yet — it may not have finished uploading, or it may have been removed. The preview will appear once the file is available. To see it here, open the device this file was uploaded from and try refreshing there, or send/receive it again.",
   },
-];
+  hi: {
+    title: "फ़ाइल नहीं दिख रही",
+    text: "यह file इसलिए नहीं दिख रही है क्योंकि सिर्फ़ इसका link सेव है। file खुद अभी इस device या server पर उपलब्ध नहीं है — हो सकता है upload पूरा न हुआ हो, या file हटा दी गई हो। file उपलब्ध होते ही preview दिखने लगेगा। इसे यहाँ देखने के लिए, जिस device से यह file upload हुई थी वहाँ refresh करें या फिर से भेजने/पाने की कोशिश करें।",
+  },
+  ne: {
+    title: "फाइल देखिएको छैन",
+    text: "यो file यसकारण देखिएको छैन किनभने केवल यसको link सेभ गरिएको छ। file आफैं अहिलेसम्म यो device वा server मा उपलब्ध छैन — upload पूरा नभएको हुन सक्छ, वा file हटाइएको हुन सक्छ। file उपलब्ध भएपछि preview देखिनेछ। यहाँ देख्न, जुन device बाट यो file upload गरिएको थियो त्यहाँ refresh गर्नुहोस् वा फेरि पठाउने/प्राप्त गर्ने प्रयास गर्नुहोस्।",
+  },
+};
 
 /** Small eye icon (no preview box). Click opens a centered dialog with the full explanation. */
 export function AttachmentNoFileEye({
@@ -43,6 +40,11 @@ export function AttachmentNoFileEye({
   size?: "sm" | "md";
   className?: string;
 }) {
+  const i18n = usePlI18nOptional();
+  const introCode = i18n?.intro || "en";
+  const tab = introTabLang(introCode);
+  const hand = introCode === "hi" || introCode === "ne";
+  const copy = hand ? NO_FILE_COPY[tab] : NO_FILE_COPY.en;
   const [open, setOpen] = React.useState(false);
   const descId = React.useId();
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
@@ -69,25 +71,28 @@ export function AttachmentNoFileEye({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           data-pl-txn-file-nofile=""
+          data-pl-intro=""
           aria-describedby={descId}
           className="w-[min(92vw,28rem)] max-w-[min(92vw,28rem)] max-h-[calc(100dvh-1rem)] gap-4 overflow-y-auto p-5 text-sm sm:p-6"
           onClick={stop}
           onDoubleClick={stop}
         >
           <DialogHeader>
-            <DialogTitle className="pr-6 text-base leading-snug">File not showing</DialogTitle>
+            <DialogTitle
+              className="pr-6 text-base leading-snug"
+              data-pl-no-translate={hand ? "" : undefined}
+            >
+              {copy.title}
+            </DialogTitle>
           </DialogHeader>
-          <div id={descId} className="space-y-2.5">
-            {NO_FILE_EXPLANATION.map((row) => (
-              <div key={row.lang} className="space-y-1 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {row.label}
-                </p>
-                <p lang={row.lang} className="text-sm leading-relaxed text-foreground">
-                  {row.text}
-                </p>
-              </div>
-            ))}
+          <div
+            id={descId}
+            className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"
+            data-pl-no-translate={hand ? "" : undefined}
+          >
+            <p lang={hand ? tab : "en"} className="text-sm leading-relaxed text-foreground">
+              {copy.text}
+            </p>
           </div>
           <div className="flex justify-end">
             <button

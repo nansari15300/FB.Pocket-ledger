@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardWelcomeClockLine } from "@/components/dashboard/DashboardWelcomeClockLine";
 import { proDashboardRibbonClass } from "@/lib/proTheme";
 import { cn } from "@/lib/utils";
+import { useAnimationSettings } from "@/hooks/useAnimationSettings";
 
 export const DAYBOOK_SHIFT_DATE_EVENT = "pl-daybook-shift-date";
 
@@ -44,6 +45,9 @@ export function DashboardWelcomeFooterBanner({
   lineSections = false,
   showDaybookDateNav = false,
 }: DashboardWelcomeFooterBannerProps) {
+  const { settings: animationSettings, loading: animationSettingsLoading } = useAnimationSettings();
+  /** Settings → Row Animation off → New Year pop-in nahi (seedha final state). */
+  const motionOn = !animationSettingsLoading && animationSettings?.rows?.enabled === true;
   const shellCn = cn(
     "col-span-full overflow-hidden relative py-1 px-2",
     lineSections
@@ -67,9 +71,9 @@ export function DashboardWelcomeFooterBanner({
         {newYearInfo?.isNewYear ? (
           <div className="flex flex-col items-center justify-center py-0.5">
             <motion.div
-              initial={{ scale: 0, y: 12 }}
+              initial={motionOn ? { scale: 0, y: 12 } : false}
               animate={{ scale: 1, y: 0 }}
-              transition={{ type: "spring", stiffness: 260, damping: 20 }}
+              transition={motionOn ? { type: "spring", stiffness: 260, damping: 20 } : { duration: 0 }}
               className="text-lg font-bold leading-tight bg-gradient-to-r from-amber-400 via-red-500 to-fuchsia-600 bg-clip-text text-transparent sm:text-xl"
             >
               {newYearInfo.event}

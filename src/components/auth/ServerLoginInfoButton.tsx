@@ -10,6 +10,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePlI18nOptional } from "@/contexts/PlI18nContext";
+import { introTabLang } from "@/lib/i18n/introLangTab";
 
 type Lang = "en" | "hi" | "ne";
 
@@ -57,8 +59,9 @@ const COPY: Record<Lang, { title: string; points: string[] }> = {
 
 /** (i) next to the login options: which sign-in to use (English / हिन्दी / नेपाली). */
 export function ServerLoginInfoButton({ className }: { className?: string }) {
+  const i18n = usePlI18nOptional();
   const [open, setOpen] = useState(false);
-  const [lang, setLang] = useState<Lang>("en");
+  const [lang, setLang] = useState<Lang>(() => introTabLang(i18n?.intro));
   return (
     <>
       <AppFreshInfoButton
@@ -67,7 +70,7 @@ export function ServerLoginInfoButton({ className }: { className?: string }) {
         aria-label="Sign-in help"
         onClick={(e) => {
           e.preventDefault();
-          setLang("en");
+          setLang(introTabLang(i18n?.intro));
           setOpen(true);
         }}
       />

@@ -457,6 +457,8 @@ function CompanyItem({
   const isSelected = company.id === selectedCompanyId;
   return (
     <div
+      data-pl-company-row=""
+      data-pl-company-row-selected={isSelected ? "" : undefined}
       className={cn(
         "flex items-center justify-between rounded-lg border bg-card p-3 transition-colors hover:bg-muted/50",
         isSelected && "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
@@ -1556,7 +1558,7 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
   return (
     <>
       <div className="flex h-dvh max-h-dvh min-h-0 items-center justify-center overflow-hidden bg-background p-3 sm:p-4">
-        <Card className="flex h-[90dvh] max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden">
+        <Card data-pl-company-select-card="" className="flex h-[90dvh] max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden">
           <CardHeader className="shrink-0 space-y-1 pb-3">
             <div className="flex flex-col gap-1">
               <div className="min-w-0">

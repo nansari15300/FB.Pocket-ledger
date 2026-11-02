@@ -92,7 +92,7 @@ export function BankLedgerDrCrPerspectiveSwitch({
               onPointerDown={(e) => e.stopPropagation()}
             />
           </PopoverTrigger>
-          <PopoverContent align="end" className="z-[80] w-[min(92vw,22rem)] space-y-2 p-3 text-left">
+          <PopoverContent align="end" className="z-[80] w-[min(92vw,22rem)] space-y-2 p-3 text-left" data-pl-intro="">
             <p className="text-sm font-semibold">{BANK_LEDGER_DRCR_PERSPECTIVE_INFO.title}</p>
             <div className="space-y-2 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
               {BANK_LEDGER_DRCR_PERSPECTIVE_INFO.body}

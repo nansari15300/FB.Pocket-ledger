@@ -128,6 +128,7 @@ export function FirebaseLedgerSyncModeSwitch({ sidebarOpen, compact }: Props) {
           className="rounded-full p-1 text-muted-foreground hover:bg-background/70 hover:text-foreground"
           aria-label="Sync mode rules"
           title={RULE_TEXT}
+          data-pl-intro=""
         >
           <Info className="size-3.5" />
         </button>

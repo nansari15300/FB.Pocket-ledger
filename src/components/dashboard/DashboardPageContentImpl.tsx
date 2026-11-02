@@ -43,6 +43,7 @@ import {
   Factory,
   HandCoins,
   BarChart3,
+  LineChart,
   Search,
 } from 'lucide-react';
 import { MasterListChromeChevronToggle } from "@/components/layout/MasterListChromeChevronToggle";
@@ -195,7 +196,9 @@ import {
   dashboardTabLoadsSummaryStockStats,
   dashboardTabShouldKeepAlivePanel,
   readDashboardVisibleCardFromStorage,
+  readDashboardSummaryChartKindFromStorage,
   readDashboardSummaryChartsFromStorage,
+  syncDashboardSummaryChartKindToSession,
   syncDashboardSummaryChartsToSession,
 } from "@/lib/dashboardTabPanels";
 
@@ -908,6 +911,9 @@ export function DashboardPageContentImpl() {
   const [summaryChartsPane, setSummaryChartsPane] = useState(() =>
     readDashboardSummaryChartsFromStorage(),
   );
+  const [summaryChartKind, setSummaryChartKind] = useState(() =>
+    readDashboardSummaryChartKindFromStorage(),
+  );
   const [summaryChartPaneMounted, setSummaryChartPaneMounted] = useState(false);
   const summaryChartMountIdleRef = useRef<number | null>(null);
   /** Summary/Chart: dubara mount na ho; doosre footer tab par voucher scan band. */
@@ -948,10 +954,14 @@ export function DashboardPageContentImpl() {
     [],
   );
   const applySummaryChartsPane = useCallback(
-    (chart: boolean) => {
+    (chart: boolean, kind?: "bar" | "line") => {
       startTransition(() => {
         setSummaryChartsPane(chart);
         syncDashboardSummaryChartsToSession(chart);
+        if (kind) {
+          setSummaryChartKind(kind);
+          syncDashboardSummaryChartKindToSession(kind);
+        }
         if (chart) scheduleSummaryChartPaneMount();
       });
     },
@@ -2244,6 +2254,7 @@ export function DashboardPageContentImpl() {
         showDetails={reportsEnabled}
         compact={false}
         showVoucherDateCharts={showVoucherDateCharts}
+        voucherDateChartKind={summaryChartKind}
         recurringSummarySlot={
           !showVoucherDateCharts && visibleCard === "financial-summaries"
             ? recurringSummarySlot
@@ -2622,6 +2633,7 @@ export function DashboardPageContentImpl() {
           aria-hidden={!summaryTabVisible}
           style={{ display: summaryTabVisible ? "block" : "none" }}
           className="min-w-0"
+          data-pl-dashboard-home=""
         >
           <div className="lg:min-w-[1260px]" style={{ display: summaryChartsPane ? "none" : "block" }}>
             {renderFinancialSummaries(isReportsEnabled, false, !summaryChartsPane)}
@@ -2675,6 +2687,7 @@ export function DashboardPageContentImpl() {
   const dashboardCards = [
     { id: "financial-summaries", title: "Summary" },
     { id: "dashboard-charts", title: "Chart" },
+    { id: "dashboard-line-charts", title: "Line" },
     { id: "bank-cash-summary", title: "Bank" },
     { id: "daybook", title: "Daybook" },
     { id: "recent-transactions", title: "Recent" },
@@ -2688,12 +2701,14 @@ export function DashboardPageContentImpl() {
     "recent-transactions": "border-violet-500 bg-violet-300 text-violet-950 dark:border-violet-400 dark:bg-violet-700 dark:text-violet-50",
     "dashboard-charts":
       "border-pink-500 bg-pink-300 text-pink-950 dark:border-pink-400 dark:bg-pink-700 dark:text-pink-50",
+    "dashboard-line-charts":
+      "border-pink-500 bg-pink-300 text-pink-950 dark:border-pink-400 dark:bg-pink-700 dark:text-pink-50",
   };
 
   const renderDashboardFooterTab = (
     card: { id: string; title: string },
     shellClassName?: string,
-    summaryChartSegment?: "left" | "right",
+    summaryChartSegment?: "left" | "mid" | "right",
   ) => {
     const Icon =
       card.id === "financial-summaries"
@@ -2704,13 +2719,17 @@ export function DashboardPageContentImpl() {
             ? Landmark
             : card.id === "dashboard-charts"
               ? BarChart3
-              : History;
+              : card.id === "dashboard-line-charts"
+                ? LineChart
+                : History;
     const footerTabActive =
       card.id === "dashboard-charts"
-        ? visibleCard === "financial-summaries" && summaryChartsPane
-        : card.id === "financial-summaries"
-          ? visibleCard === "financial-summaries" && !summaryChartsPane
-          : visibleCard === card.id;
+        ? visibleCard === "financial-summaries" && summaryChartsPane && summaryChartKind !== "line"
+        : card.id === "dashboard-line-charts"
+          ? visibleCard === "financial-summaries" && summaryChartsPane && summaryChartKind === "line"
+          : card.id === "financial-summaries"
+            ? visibleCard === "financial-summaries" && !summaryChartsPane
+            : visibleCard === card.id;
     const isSummaryChartPair = Boolean(summaryChartSegment);
     return (
       <Button
@@ -2733,10 +2752,16 @@ export function DashboardPageContentImpl() {
           "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1",
         )}
         data-pl-footer-tab={card.id}
+        data-pl-footer-tab-active={footerTabActive ? "" : undefined}
         {...(isSummaryChartPair ? { "data-pl-footer-summary-chart-segment": summaryChartSegment } : {})}
         onClick={() => {
           if (card.id === "dashboard-charts") {
-            applySummaryChartsPane(true);
+            applySummaryChartsPane(true, "bar");
+            setVisibleCard("financial-summaries");
+            return;
+          }
+          if (card.id === "dashboard-line-charts") {
+            applySummaryChartsPane(true, "line");
             setVisibleCard("financial-summaries");
             return;
           }
@@ -2749,7 +2774,14 @@ export function DashboardPageContentImpl() {
         }}
       >
         {!isMobile && <Icon className="h-3.5 w-3.5 shrink-0" />}
-        <span className="text-[9px] font-medium leading-tight sm:text-[10px]">{card.title}</span>
+        <span
+          className={cn(
+            "font-medium leading-tight",
+            isSummaryChartPair && (isMobile || isRealMobile) ? "text-[13px]" : "text-[9px] sm:text-[10px]",
+          )}
+        >
+          {card.title}
+        </span>
       </Button>
     );
   };
@@ -3024,7 +3056,7 @@ export function DashboardPageContentImpl() {
         <div
           data-pl-dashboard-footer-tabs=""
           className={cn(
-            "grid w-full shrink-0 items-stretch gap-0.5 border-0 bg-background px-0",
+            "grid w-full min-w-0 shrink-0 grid-flow-col items-stretch gap-0.5 overflow-hidden border-0 bg-background px-0",
             showRecentCompactBottomControls ? "grid-cols-5" : "grid-cols-4",
             isMobile ? "h-8" : "h-[38px]",
             /* Mobile Recent: footer chevron hidden => bottom tabs bhi hide (sirf up-chevron dikhe). */
@@ -3032,17 +3064,27 @@ export function DashboardPageContentImpl() {
             /* Mobile Daybook: same behaviour (alag key). */
             showDaybookMobileFooter && daybookFooterHidden && "hidden",
           )}
+          style={
+            isMobile || isRealMobile
+              ? {
+                  gridTemplateColumns: showRecentCompactBottomControls
+                    ? "1.44fr 1fr 1fr 1fr 1fr"
+                    : "1.44fr 1fr 1fr 1fr",
+                }
+              : undefined
+          }
         >
           <div
             data-pl-dashboard-footer-summary-chart-pair=""
             className="col-span-1 flex min-h-0 min-w-0 overflow-hidden rounded-md border-2 border-pink-500 bg-pink-300 text-pink-950 dark:border-pink-400 dark:bg-pink-800 dark:text-pink-50"
           >
             {renderDashboardFooterTab(dashboardCards[0], "h-full min-w-0 flex-1", "left")}
-            {renderDashboardFooterTab(dashboardCards[1], "h-full min-w-0 flex-1", "right")}
+            {renderDashboardFooterTab(dashboardCards[1], "h-full min-w-0 flex-1", "mid")}
+            {renderDashboardFooterTab(dashboardCards[2], "h-full min-w-0 flex-1", "right")}
           </div>
-          {renderDashboardFooterTab(dashboardCards[2])}
           {renderDashboardFooterTab(dashboardCards[3])}
           {renderDashboardFooterTab(dashboardCards[4])}
+          {renderDashboardFooterTab(dashboardCards[5])}
           {/* Mobile Recent: Change date tab (right end), existing BS/AD pickers reuse. */}
           {showRecentCompactBottomControls ? (
           <div data-pl-footer-tab="recent-change-date" className="col-span-1 flex min-h-0 min-w-0 overflow-hidden rounded-md border-2 border-violet-400 bg-violet-100 text-violet-950 dark:border-violet-600 dark:bg-violet-900 dark:text-violet-50">

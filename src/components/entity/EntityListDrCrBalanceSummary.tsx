@@ -74,7 +74,7 @@ export function EntityListDrCrBalanceSummary({
           <PopoverTrigger asChild>
             <AppFreshInfoButton size="sm" aria-label="Intro" />
           </PopoverTrigger>
-          <PopoverContent align="center" className="w-72 text-sm">
+          <PopoverContent align="center" className="w-72 text-sm" data-pl-intro="">
             <p className="mb-1 font-semibold text-blue-900">Intro</p>
             <p className="text-muted-foreground">{FOOTER_INTRO}</p>
           </PopoverContent>

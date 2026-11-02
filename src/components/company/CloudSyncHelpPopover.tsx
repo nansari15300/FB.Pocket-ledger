@@ -38,6 +38,7 @@ export function CloudSyncHelpPopover({
         align="start"
         collisionPadding={12}
         className="z-[10050] max-w-[min(22rem,calc(100vw-2rem))] p-3 text-xs leading-relaxed text-foreground"
+        data-pl-intro=""
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <p className="font-semibold text-sm mb-1.5">{label}</p>

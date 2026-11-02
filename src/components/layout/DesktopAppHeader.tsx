@@ -86,6 +86,7 @@ import { isInterCompanyVoucherFeatureDisabled } from "@/lib/interCompany/interCo
 import usePermissions from "@/hooks/usePermissions";
 import { DriveCloudSyncHeaderIndicator } from "@/components/layout/DriveCloudSyncHeaderIndicator";
 import { HeaderSyncButton } from "@/components/layout/HeaderSyncButton";
+import { HeaderFirebaseToPbButton } from "@/components/layout/HeaderFirebaseToPbButton";
 import { usePendingInterCompanySystemJoinCount } from "@/lib/interCompany/usePendingInterCompanySystemJoinCount";
 import { useMasterDetailHeaderIdSnapshot } from "@/hooks/useMasterDetailHeaderIdSnapshot";
 import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
@@ -118,6 +119,7 @@ import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { GlobalFileHoverPreviewSwitch } from "@/components/layout/GlobalFileHoverPreviewSwitch";
 import { HeaderAppearanceMenu } from "@/components/layout/HeaderAppearanceMenu";
+import { LanguageGlobeButton } from "@/components/layout/LanguageGlobeButton";
 import { useFileHoverPreview } from "@/contexts/FileHoverPreviewContext";
 import { CopyLedgerHeaderButton } from "@/components/ledger/CopyLedgerHeaderButton";
 import { ShareForReconciliationHeaderButton } from "@/components/reconciliation/ShareForReconciliationHeaderButton";
@@ -2479,8 +2481,10 @@ export function DesktopAppHeader() {
             </div>
               <div className="ml-2 flex shrink-0 items-center gap-1">
                 <HeaderSyncButton />
+                <HeaderFirebaseToPbButton />
                 <PlServerCompanyConnectionStatus />
                 <DriveCloudSyncHeaderIndicator />
+                <LanguageGlobeButton />
                 <HeaderAppearanceMenu />
                 <UserProfileButton />
               </div>
@@ -2534,12 +2538,14 @@ export function DesktopAppHeader() {
               {/* Desktop: pehle Add New (mobile pe stripe me profile ke pehle) — purani daen-cluster order */}
               <AddNewButtonOnReportPage />
               <HeaderSyncButton />
+              <HeaderFirebaseToPbButton />
               <DriveCloudSyncHeaderIndicator />
               <PlServerCompanyConnectionStatus />
               <HeaderServerSwitch />
               <UserProfileButton />
               <CopyLedgerHeaderButton />
               <ShareForReconciliationHeaderButton />
+              <LanguageGlobeButton />
               <HeaderAppearanceMenu />
               <GlobalFileHoverPreviewSwitch />
               <ScreenControls />

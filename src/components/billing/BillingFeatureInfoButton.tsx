@@ -16,6 +16,8 @@ import {
   type BillingHelpKey,
   type BillingHelpLang,
 } from "@/lib/billingFeatureHelp";
+import { usePlI18nOptional } from "@/contexts/PlI18nContext";
+import { introTabLang } from "@/lib/i18n/introLangTab";
 
 type Props = {
   helpKey: BillingHelpKey;
@@ -26,6 +28,7 @@ const LANGS: BillingHelpLang[] = ["en", "hi", "ne"];
 
 /** Blue (i) — click opens English / Hindi / Nepali help for a billing feature row. */
 export function BillingFeatureInfoButton({ helpKey, className }: Props) {
+  const i18n = usePlI18nOptional();
   const [open, setOpen] = useState(false);
   const copy = BILLING_FEATURE_HELP[helpKey];
   if (!copy) return null;
@@ -64,7 +67,7 @@ export function BillingFeatureInfoButton({ helpKey, className }: Props) {
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs defaultValue="en" className="flex min-h-0 flex-1 flex-col">
+          <Tabs defaultValue={introTabLang(i18n?.intro)} className="flex min-h-0 flex-1 flex-col">
             <div className="border-b px-3 pt-2">
               <TabsList className="grid h-9 w-full grid-cols-3">
                 <TabsTrigger value="en" className="text-xs">

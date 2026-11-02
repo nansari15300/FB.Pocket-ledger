@@ -6,6 +6,7 @@ import * as React from "react";
 import { openPrintDirect } from "@/lib/printDirect";
 import { applyLedgerPageToPrintPayload } from "@/lib/ledgerPagePrint";
 import { useLedgerDetailSessionMemory } from "@/hooks/useLedgerDetailSessionMemory";
+import { useLedgerRowMotionGate } from "@/hooks/useLedgerRowMotionGate";
 import {
   ledgerDetailSessionStorageKey,
   writeLedgerDetailSessionSnapshot,
@@ -618,6 +619,11 @@ export function AccountDetails({
   }, [filteredMobileTransactions, rowsPerPage, currentPage, useTailPaging]);
 
   const mobileReportPaginatedTransactions = mobileReportPagingWindow.pageTransactions;
+  /** Page / rows-per-page change par row slide off; sort + add/edit par FLIP chalu. */
+  const ledgerRowGate = useLedgerRowMotionGate({
+    pageKey: `${currentPage}|${rowsPerPage}`,
+    rowSignals: [paginatedTransactions, mobileReportPaginatedTransactions],
+  });
   const mobileReportPagerEdgeCounts = {
     before: mobileReportPagingWindow.before,
     after: mobileReportPagingWindow.after,
@@ -875,6 +881,7 @@ export function AccountDetails({
                   ) : null
                 }
                 transactionCardSearchHighlight={mobileSearchTerm}
+                disableLayoutAnimation={ledgerRowGate.suppress}
                 {...statementCheck.tableProps}
               />
               )}
@@ -1174,6 +1181,7 @@ export function AccountDetails({
                 ) : null
               }
             
+              disableLayoutAnimation={ledgerRowGate.suppress}
               {...statementCheck.tableProps}/>
           </div>
           <ScrollBar orientation="horizontal" txnChrome />

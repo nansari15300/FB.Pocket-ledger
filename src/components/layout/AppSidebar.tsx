@@ -64,8 +64,6 @@ import usePermissions from "@/hooks/usePermissions";
 import { useCompany } from "@/hooks/useCompany";
 import { useVouchers } from "@/hooks/useVouchers";
 import { firestore, auth, signOutWithFirestoreTeardown } from "@/lib/firebase";
-import { isPocketBaseSessionUser } from "@/lib/pocketbaseData/pbAppSession";
-import { isServerOnlyLoginSession } from "@/lib/pocketbaseData/serverSessionCompanyScope";
 import { useEmbeddedLogout } from "@/contexts/EmbeddedLogoutContext";
 import type { Permission } from "@/lib/permissions";
 import { Button } from "../ui/button";
@@ -846,7 +844,7 @@ export function AppSidebar() {
       </SidebarHeader>
 
       {/* SidebarContent: flex-col + overflow-hidden — Account/Profile neeche pin; lambi nav upar scroll; default overflow-y-auto yahan suppressed */}
-      <SidebarContent className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <SidebarContent className="flex min-h-0 flex-1 flex-col gap-[8px] overflow-hidden">
         {loadingFeatures ? (
           <div className="flex h-full flex-1 items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin" />
@@ -854,11 +852,11 @@ export function AppSidebar() {
         ) : (
           <>
             {/* flex-1: bachi hui sidebar height — mint nav yahi andar scroll (footer hamesha dikhayi de) */}
-            <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
+            <div className="flex min-h-0 flex-1 flex-col gap-[8px] overflow-x-hidden overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
               {/* User request: Main + More ek hi mint/emerald chrome card — do alag pink/green boxes nahi */}
               {combinedDashboardNavItems.length > 0 && (
                 <div className="pl-chrome-card app-chrome-top-ribbon pl-chrome-tone-emerald w-full shrink-0 p-2">
-                  <SidebarMenu className="gap-0.5 py-1">
+                  <SidebarMenu className="gap-2 px-0 py-0">
                     {combinedDashboardNavItems.map((item) => (
                       <React.Fragment key={item.href}>
                         {renderMainNavRow(item)}
@@ -875,28 +873,14 @@ export function AppSidebar() {
             </div>
 
             {/* User request: Account + profile ko viewport ke sidebar bottom par chipkana */}
-            <div className="mt-auto flex shrink-0 flex-col gap-0.5">
+            <div className="mt-auto flex shrink-0 flex-col gap-[8px]">
               <div className="pl-chrome-card app-chrome-top-ribbon pl-chrome-tone-amber w-full shrink-0 p-2">
                 {isOpen ? (
                   <>
                     <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Account</p>
-                    {user ? (
-                      <p
-                        data-pl-login-kind={isServerOnlyLoginSession() || isPocketBaseSessionUser(user) ? "pocketbase" : "firebase"}
-                        title="Which login this session uses"
-                        className={cn(
-                          "mx-1 mb-1 rounded-md border-[1px] px-1.5 py-0.5 text-[10px] font-semibold",
-                          isServerOnlyLoginSession() || isPocketBaseSessionUser(user)
-                            ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                            : "border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                        )}
-                      >
-                        Signed in: {isServerOnlyLoginSession() || isPocketBaseSessionUser(user) ? "Pocket Ledger Server" : "Firebase"}
-                      </p>
-                    ) : null}
                   </>
                 ) : null}
-                <SidebarMenu className="gap-0.5 py-1">{visibleBottomMenuItems.map(renderBottomNavRow)}</SidebarMenu>
+                <SidebarMenu className="gap-2 px-0 py-0">{visibleBottomMenuItems.map(renderBottomNavRow)}</SidebarMenu>
               </div>
               {/* User request: profile/user card ko green tone me dikhana */}
               <div className="pl-chrome-card app-chrome-top-ribbon pl-chrome-tone-emerald w-full shrink-0 overflow-hidden p-0">{userProfileSection}</div>

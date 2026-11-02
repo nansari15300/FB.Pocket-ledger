@@ -11,6 +11,7 @@ import { cn, masterDetailBalanceToneClass } from "@/lib/utils"
 import { masterListShellCn, masterListRowUnselectedCn, MASTER_LIST_AVATAR_CN, MASTER_LIST_AVATAR_FALLBACK_CN } from "@/lib/masterListChrome";
 import { useDate } from "@/hooks/useDate";
 import { masterListOrderKey, useMasterListDisplayRows, useMasterListRowMotion } from "@/hooks/useMasterListRowMotion";
+import { useRowChangeHighlight } from "@/hooks/useRowChangeHighlight";
 import { Landmark, Crown } from "lucide-react";
 import { MasterListRow } from "@/components/ui/master-list-row";
 import { MasterListNameTooltip } from "@/components/entity/MasterListNameTooltip";
@@ -128,6 +129,8 @@ export function AccountList({
     listOrderKey,
     { enabled: isRowAnimationEnabled, holdMs: layoutHoldMs }
   );
+  /** Add/edit (naya ya data change) row par ~1s highlight; sort/filter/first load par nahi. */
+  const rowChangeHighlight = useRowChangeHighlight(displayListRows, { getId: (row) => row.id });
 
   return (
     <div className={masterListShellCn} data-theme-list="account-list">
@@ -220,7 +223,7 @@ export function AccountList({
                 </div>
               );
               return (
-                <motion.li key={account.id} layoutDependency={displayOrderKey} {...rowMotionProps}>
+                <motion.li key={account.id} layoutDependency={displayOrderKey} {...rowMotionProps} className={rowChangeHighlight.highlightClassName(account.id)}>
                   {href ? (
                     // Master list navigation: per-row auto-prefetch off rakho to avoid repeat background bursts on revisit.
                     <Link

@@ -54,8 +54,6 @@ export function computeLedgerUnifiedTableMinPx(args: {
   const { host, baseColSum, hostViewportPx } = args;
 
   const bandEls: (Element | null)[] = [
-    host.querySelector(".pl-ledger-header-outer-row"),
-    host.querySelector(".pl-ledger-header-ribbon-wrap"),
     host.querySelector("[data-pl-closing-balance-card]"),
     host.querySelector("[data-pl-footer-parent-pill]"),
   ];
@@ -86,10 +84,87 @@ export function computeLedgerUnifiedTableMinPx(args: {
   }
 
   let tableMinPx = winnerPx;
-  if (hostViewportPx > 0 && winnerPx > 0 && winnerPx < hostViewportPx) {
-    tableMinPx = hostViewportPx;
+  if (hostViewportPx > 0 && winnerPx <= hostViewportPx) {
+    tableMinPx = 0;
   }
 
   const scaleTargetPx = Math.max(winnerPx, tableMinPx);
   return { tableMinPx, scaleTargetPx, winnerPx };
+}
+/**
+ * Plan A: natural (content) width per column for the entity-ledger split tables (header / body / footer).
+ * Temporarily switches each table to auto layout (max-content), clears colgroup widths, hides rows that do
+ * not map 1:1 onto columns (narration / colSpan > 2 rows wrap and must not drive widths) and rows past
+ * `maxBodyRows`, reads one fully 1:1 row per table, then restores everything synchronously (no paint between).
+ * Returned widths include cell padding (px-[5px] each side). Returns null when nothing could be measured.
+ */
+export function measureLedgerNaturalColWidths(
+  tables: HTMLTableElement[],
+  colCount: number,
+  maxBodyRows = 200
+): number[] | null {
+  if (colCount <= 0 || tables.length === 0) return null;
+  const out = new Array<number>(colCount).fill(0);
+  let found = false;
+  for (const table of tables) {
+    const hidden: HTMLTableRowElement[] = [];
+    let probe: HTMLTableRowElement | null = null;
+    let bodyRows = 0;
+    for (const tr of Array.from(table.rows)) {
+      const cells = Array.from(tr.cells);
+      const span = cells.reduce((s, c) => s + (c.colSpan || 1), 0);
+      const isBody = tr.parentElement?.tagName === "TBODY";
+      const wide = cells.some((c) => (c.colSpan || 1) > 2);
+      if (wide || span !== colCount || (isBody && bodyRows >= maxBodyRows)) {
+        hidden.push(tr);
+        continue;
+      }
+      if (isBody) bodyRows += 1;
+      if (!probe && cells.every((c) => (c.colSpan || 1) === 1)) probe = tr;
+    }
+    if (!probe) continue;
+    const cols = Array.from(table.querySelectorAll<HTMLElement>(":scope > colgroup > col"));
+    const tableProps = ["table-layout", "width", "min-width", "max-width"] as const;
+    const prevTable = tableProps.map((k) => [table.style.getPropertyValue(k), table.style.getPropertyPriority(k)]);
+    const prevCols = cols.map((c) => [c.style.width, c.style.minWidth]);
+    const prevRows = hidden.map((r) => [r.style.getPropertyValue("display"), r.style.getPropertyPriority("display")]);
+    try {
+      hidden.forEach((r) => r.style.setProperty("display", "none", "important"));
+      cols.forEach((c) => {
+        c.style.width = "";
+        c.style.minWidth = "";
+      });
+      table.style.setProperty("table-layout", "auto", "important");
+      table.style.setProperty("width", "max-content", "important");
+      table.style.setProperty("min-width", "0px", "important");
+      table.style.setProperty("max-width", "none", "important");
+      Array.from(probe.cells).forEach((cell, i) => {
+        if (i >= colCount) return;
+        out[i] = Math.max(out[i], Math.ceil(cell.getBoundingClientRect().width || 0));
+      });
+      found = true;
+    } finally {
+      tableProps.forEach((k, i) => {
+        const [v, pr] = prevTable[i];
+        if (v) table.style.setProperty(k, v, pr);
+        else table.style.removeProperty(k);
+      });
+      cols.forEach((c, i) => {
+        c.style.width = prevCols[i][0];
+        c.style.minWidth = prevCols[i][1];
+      });
+      hidden.forEach((r, i) => {
+        const [v, pr] = prevRows[i];
+        if (v) r.style.setProperty("display", v, pr);
+        else r.style.removeProperty("display");
+      });
+    }
+  }
+  return found ? out : null;
+}
+
+/** Plan A: per-column max(constant floor, measured natural px). Measured list must match length, else floors. */
+export function mergeLedgerMeasuredColWidths(base: number[], measured: number[]): number[] {
+  if (measured.length !== base.length) return base;
+  return base.map((w, i) => Math.max(w, Math.ceil(measured[i] || 0)));
 }

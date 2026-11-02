@@ -401,7 +401,7 @@ function AutoRenewInfoButton({ hasStripeSubscription }: { hasStripeSubscription:
           onMouseDown={(e) => e.stopPropagation()}
         />
       </PopoverTrigger>
-      <PopoverContent side="top" align="start" className="max-w-xs text-left text-xs leading-snug">
+      <PopoverContent side="top" align="start" className="max-w-xs text-left text-xs leading-snug" data-pl-intro="">
         {hasStripeSubscription ? AUTO_RENEW_TIP_STRIPE : AUTO_RENEW_TIP_NO_SUB}
       </PopoverContent>
     </Popover>
@@ -451,6 +451,7 @@ function BillingTipInfoButton({ tip, ariaLabel }: { tip: string; ariaLabel: stri
         align="end"
         sideOffset={6}
         className="z-[160] max-w-xs text-left text-xs leading-snug"
+        data-pl-intro=""
         onOpenAutoFocus={(e) => e.preventDefault()}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}

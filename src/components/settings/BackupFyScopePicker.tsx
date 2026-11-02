@@ -357,11 +357,12 @@ export function BackupFyScopePicker({
                   type="button"
                   className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
                   aria-label="FY range info"
+                  data-pl-intro=""
                 >
                   <Info className="h-3.5 w-3.5" aria-hidden />
                 </button>
               </PopoverTrigger>
-              <PopoverContent side="top" align="start" className="max-w-[20rem] text-xs leading-snug p-3">
+              <PopoverContent side="top" align="start" className="max-w-[20rem] text-xs leading-snug p-3" data-pl-intro="">
                 Tick fiscal years from this company&apos;s vouchers. Middles between the first and last tick auto-select (one contiguous block). Closing balances of earlier FYs become openings in this backup only.
               </PopoverContent>
             </Popover>

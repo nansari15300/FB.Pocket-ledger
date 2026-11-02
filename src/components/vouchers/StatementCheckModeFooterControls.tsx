@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -42,17 +42,17 @@ export function StatementCheckModeFooterControls({
         htmlFor={checkId}
         className="cursor-pointer whitespace-nowrap text-sm font-medium leading-none text-blue-900"
       >
-        Check mode
+        Reconcile
         {enabled && hiddenCount > 0 ? (
           <span className="font-normal text-blue-800/70"> ({hiddenCount} hidden)</span>
         ) : null}
       </label>
       <Popover>
         <PopoverTrigger asChild>
-          <AppFreshInfoButton size="sm" aria-label="Check mode shortcuts" />
+          <AppFreshInfoButton size="sm" aria-label="Reconcile shortcuts" />
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-80 text-sm">
-          <p className="mb-2 font-semibold">Check mode</p>
+        <PopoverContent align="start" className="w-80 text-sm" data-pl-intro="">
+          <p className="mb-2 font-semibold">Reconcile</p>
           <ul className="list-disc space-y-1.5 pl-4 text-muted-foreground">
             <li><kbd className="rounded border bg-muted px-1 text-foreground">↑</kbd> / <kbd className="rounded border bg-muted px-1 text-foreground">↓</kbd> — move between transactions</li>
             <li><kbd className="rounded border bg-muted px-1 text-foreground">Space</kbd> — mark / unmark row (soft green highlight)</li>
@@ -62,7 +62,7 @@ export function StatementCheckModeFooterControls({
             <li><kbd className="rounded border bg-muted px-1 text-foreground">Ctrl</kbd>+<kbd className="rounded border bg-muted px-1 text-foreground">Alt</kbd>+<kbd className="rounded border bg-muted px-1 text-foreground">U</kbd> — unhide all hidden rows</li>
           </ul>
           <p className="mt-2 text-xs text-muted-foreground">
-            Check mode stays on when you leave and return. Turn it off to reset hidden rows and marks.
+            Reconcile stays on when you leave and return. Turn it off to reset hidden rows and marks.
           </p>
         </PopoverContent>
       </Popover>

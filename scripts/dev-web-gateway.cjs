@@ -218,26 +218,58 @@ function serveWebsite(req, res) {
   fs.createReadStream(filePath).pipe(res);
 }
 
+function mergeMaxOldSpace(env, mb) {
+  const flag = `--max-old-space-size=${mb}`;
+  const cur = String(env.NODE_OPTIONS || "").trim();
+  if (/\b--max-old-space-size=\d+\b/.test(cur)) {
+    return { ...env, NODE_OPTIONS: cur.replace(/--max-old-space-size=\d+/, flag) };
+  }
+  return { ...env, NODE_OPTIONS: [cur, flag].filter(Boolean).join(" ") };
+}
+
 function proxyHttp(req, res) {
-  const headers = { ...req.headers, host: `127.0.0.1:${nextPort}` };
-  const opts = {
-    hostname: "127.0.0.1",
-    port: Number(nextPort),
-    path: req.url,
-    method: req.method,
-    headers,
-  };
-  const upstream = http.request(opts, (pres) => {
-    res.writeHead(pres.statusCode || 502, pres.headers);
-    pres.pipe(res);
-  });
-  upstream.on("error", (err) => {
-    if (!res.headersSent) {
-      res.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
+  const method = String(req.method || "GET").toUpperCase();
+  const canRetry = method === "GET" || method === "HEAD";
+  const maxAttempts = canRetry ? 20 : 1;
+  const retryCodes = { ECONNRESET: 1, ECONNREFUSED: 1, EPIPE: 1 };
+  let attempt = 0;
+  let piped = false;
+
+  const tryOnce = () => {
+    attempt += 1;
+    const headers = { ...req.headers, host: `127.0.0.1:${nextPort}` };
+    const upstream = http.request(
+      {
+        hostname: "127.0.0.1",
+        port: Number(nextPort),
+        path: req.url,
+        method: req.method,
+        headers,
+      },
+      (pres) => {
+        res.writeHead(pres.statusCode || 502, pres.headers);
+        pres.pipe(res);
+      }
+    );
+    upstream.on("error", (err) => {
+      const code = err && err.code;
+      if (canRetry && attempt < maxAttempts && retryCodes[code] && !res.headersSent) {
+        setTimeout(tryOnce, Math.min(2000, 200 * attempt));
+        return;
+      }
+      if (!res.headersSent) {
+        res.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
+      }
+      res.end(`[dev-gateway] Next not ready on :${nextPort}\n${err.message}`);
+    });
+    if (!piped) {
+      piped = true;
+      req.pipe(upstream);
+    } else {
+      upstream.end();
     }
-    res.end(`[dev-gateway] Next not ready on :${nextPort}\n${err.message}`);
-  });
-  req.pipe(upstream);
+  };
+  tryOnce();
 }
 
 /**
@@ -340,17 +372,20 @@ const nextArgs = [
 
 const nextChild = spawn(process.execPath, nextArgs, {
   stdio: "inherit",
-  env: {
-    ...process.env,
-    PORT: nextPort,
-    WEB_APP_BASE_PATH: "/app",
-    NEXT_PUBLIC_WEB_APP_BASE_PATH: "/app",
-    PL_PROJECT_ROOT: projectRoot,
-    NEXT_PUBLIC_PL_DEV_LOCAL_SERVER: "1",
-    /** App absolute URL in browser (OAuth / absolute links that read this) */
-    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${publicPort}/app`,
-    NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${publicPort}/app`,
-  },
+  env: mergeMaxOldSpace(
+    {
+      ...process.env,
+      PORT: nextPort,
+      WEB_APP_BASE_PATH: "/app",
+      NEXT_PUBLIC_WEB_APP_BASE_PATH: "/app",
+      PL_PROJECT_ROOT: projectRoot,
+      NEXT_PUBLIC_PL_DEV_LOCAL_SERVER: "1",
+      /** App absolute URL in browser (OAuth / absolute links that read this) */
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${publicPort}/app`,
+      NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${publicPort}/app`,
+    },
+    8192
+  ),
 });
 
 nextChild.on("exit", (code, signal) => {
