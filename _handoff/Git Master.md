@@ -100,6 +100,22 @@
 - **जाँच:** proxy और `/pb` health दोनों 200 देते हैं और server जैसा ही जवाब देते हैं। `/pb/api/collections` server का 401 देता है। Realtime पर `PB_CONNECT` मिला। `/app` और `/app/dashboard` 200 देते हैं। 3000 और 3001 पर इस dev server का कुछ नहीं है, और git status साफ़ है।
 - **Reboot के बाद:** सिर्फ़ `C:\PocketLedger-Sync\start-dev-2000.cmd` चलाएँ। अगर sign-in screen पर अब भी `127.0.0.1:8090` दिखे, तो browser के localStorage से `pl_online_data_server_settings_v1` हटाकर reload करें, या "Server address" में `http://localhost:2000/pb` लिखें।
 
+## 2026-11-02 ~15:25 (नेपाल समय): HR module के लिए अलग worktree (सिर्फ़ laptop)
+- फ़ोल्डर: `C:\Project xxx\Refference apps\Touri-HR`. यह `git worktree` है, यानी main repo वाला ही `.git` इस्तेमाल होता है।
+- Branch: `feature/hr-module`, main के commit `5181a7c8` से बनी। इसका कोई upstream नहीं है और यह push नहीं हुई है।
+- Launcher: `C:\PocketLedger-Sync\start-dev-hr-2100.cmd` (repo से बाहर)।
+  - Gateway `:2100` पर और Next `:2101` पर चलते हैं। PB है `http://localhost:2100/pb`, जो pb-proxy `127.0.0.1:18090` से होकर ServerWin10 का PB है।
+  - Log: `C:\PocketLedger-Sync\dev-server-hr.log`; पिछला log `dev-server-hr.prev.log` में रहता है।
+  - pb-proxy पहले से चल रहा हो तो वही इस्तेमाल होता है। 2100 पर कुछ पहले से चल रहा हो तो launcher नया server शुरू नहीं करता।
+- `.env.local` main से copy किया गया है। `node_modules` के लिए `npm ci` सिर्फ़ Touri-HR में चलाया गया।
+- main के 26 electron files skip-worktree हैं, लेकिन यह setting हर worktree की अलग होती है, इसलिए HR worktree में वे सामान्य रूप से checkout हैं। Excludes (`src-tauri/`, `desktop-sidecar/`, `TAURI-MIGRATION.md`, `*.log`) दोनों worktree में लागू हैं।
+- नियम:
+  - auto-sync सिर्फ़ main फ़ोल्डर (`Touri + React`) को sync करता है, Touri-HR को कभी नहीं।
+  - `feature/hr-module` तभी push होगी जब user खुद कहे।
+  - force push कभी नहीं करना है।
+  - main में merge सिर्फ़ user के "हाँ" कहने के बाद होगा।
+  - PB schema दोनों का साझा है (एक ही server PB), इसलिए HR के लिए collection या field बदलने से main ऐप पर भी असर पड़ेगा। ऐसा बदलाव user से पूछकर ही करें।
+
 ## अगला कदम
 1. यूज़र `pocket-ledger-server` repo बनाए, फिर उसके लिए भी auto-sync लगाया जाए (Cloudflare और डेटा नियम 3–4 के साथ)।
 2. यूज़र बताए कि Tauri का काम पूरा हो गया है। तब `.git/info/exclude` से Tauri फ़ोल्डर हटाकर उन्हें commit किया जाए।
