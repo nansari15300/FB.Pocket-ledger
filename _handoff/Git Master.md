@@ -1,6 +1,6 @@
 # Git Master — हैंडऑफ़ (दो PC का GitHub sync)
 
-अंतिम अपडेट: 2026-11-02 14:15 (UTC+5:45, नेपाल समय)
+अंतिम अपडेट: 2026-11-02 14:47 (UTC+5:45, नेपाल समय)
 
 ## लक्ष्य
 दोनों Windows PC का प्रोजेक्ट GitHub से हमेशा up to date रहे। Windows Task Scheduler से हर 10 मिनट में auto-sync चले और अधूरा या टूटा कोड कभी push न हो।
@@ -25,7 +25,7 @@
 - लैपटॉप पर git, node और go PATH में नहीं हैं, इसलिए पूरा path इस्तेमाल करें: `C:\Program Files\Git\cmd\git.exe`, `C:\Program Files\nodejs`, `C:\Program Files\Go\bin`।
 
 ## नियम (यूज़र के फ़ैसले)
-1. **Sync अभी HOLD पर है।** Tauri migration पूरा होने तक, और यूज़र के खुद बताने तक, कोई commit, push, pull, init या overwrite नहीं करना है। यूज़र की हाँ के बिना कुछ भी push नहीं करना है।
+1. **Sync अभी HOLD पर है।** Tauri migration पूरा होने तक, और यूज़र के खुद बताने तक, कोई commit, push, pull, init या overwrite नहीं करना है। यूज़र की हाँ के बिना कुछ भी push नहीं करना है। (2026-11-02 को यूज़र ने ऐप repo के sync, push और 10 मिनट auto-sync की इजाज़त दी; नीचे 14:47 वाली एंट्री देखें। Tauri फ़ोल्डर अब भी commit नहीं होंगे।)
 2. अधूरा कोड push नहीं करना है। पिछले लगभग 3 मिनट में कोई फ़ाइल बदली हो तो उस round को छोड़ दें। बदली हुई TS फ़ाइल हो तो ऐप में `npx tsc --noEmit --incremental false` चलाएँ, बदली हुई Go फ़ाइल हो तो उस module में `go vet ./...` या `go build ./...` चलाएँ। जाँच fail हो तो commit न करें।
 3. Cloudflare की फ़ाइलें **सिर्फ़ ServerWin10 पर** रहेंगी और कभी git में नहीं जाएँगी: `start-server-and-tunnel.bat`, `stop-server-and-tunnel.bat`, `server-helper.ps1`, `server-helper.sh`, `cloudflared*`, `config.yml`, `cert.pem` और `.cloudflared/`।
 4. डेटा फ़ोल्डर sync नहीं होंगे, हर PC का अपना रहेगा: `pb_data/`, `pb_data_backups/`, `pb_public/`, `hosting_deploys/`, `logs/`, `backups/`, `main-server/data/`।
@@ -38,7 +38,7 @@
 ## .gitignore ड्राफ़्ट
 दोनों ड्राफ़्ट बॉट के कंप्यूटर पर `/workspace/sync-setup/app.gitignore` और `server.gitignore` में हैं। ये अभी किसी PC पर लगाए नहीं गए हैं। मुख्य नियम: `node_modules/ .next/ out/ dist/ dist-build/ build/ .build-logs/ .data/ android/app/build/ .gradle/ android/app/src/main/assets/public/ src-tauri/target/ src-tauri/gen/ *.apk *.aab *.exe *.log *.tsbuildinfo`, ऊपर के secrets, और सर्वर repo में डेटा और Cloudflare वाले नियम।
 
-## 10 मिनट auto-sync योजना (अभी बना नहीं है)
+## 10 मिनट auto-sync योजना (2026-11-02 14:45 से दोनों PC पर ऐप repo के लिए चालू है)
 हर PC पर Task Scheduler में एक PowerShell script लगेगी, ताकि बॉट offline हो तब भी sync चले। Log: लैपटॉप पर `C:\Project xxx\git-sync.log`, ServerWin10 पर D: पर।
 1. `git fetch`। अगर न local बदलाव है न remote बदलाव, तो कुछ न करें।
 2. Local बदलाव हो तो नियम 2 की जाँच करें, फिर commit करें (message में PC का नाम और समय)।
@@ -72,7 +72,27 @@
 - Tauri का काम अधूरा है: `src-tauri/`, `desktop-sidecar/` और `TAURI-MIGRATION.md` laptop के `.git/info/exclude` में डाले गए हैं (यह सिर्फ़ local है), ताकि यूज़र के कहने तक ये commit न हों।
 - Rebase से पहले यूज़र के फ़ैसले चाहिए (Bot Leader के ज़रिए पूछा है): `electron-build.log` हटाना, 4 एक जैसी untracked फ़ाइलें हटाकर अलग रखना, version 1.1.74 या 1.1.73, `CheckForUpdateSettingsRow.tsx` और `pbReadSeam.ts` में किसका बदलाव रखें, और `electron/` फ़ोल्डर को हटाना push करें या नहीं।
 
+## 2026-11-02 ~14:47 (नेपाल समय): sync पूरा, auto-sync चालू
+- **तीनों एक ही commit पर हैं:** laptop HEAD, server HEAD और `origin/main` तीनों `8dbb355c` पर हैं। दोनों PC के working tree में कोई अनचाहा tracked बदलाव नहीं है।
+- **Laptop** ने `42fbbf7f` push किया (14:38 पर origin तब भी `aaef002e` पर था, इसलिए rebase की ज़रूरत नहीं पड़ी)। फिर auto-sync test का commit `8dbb355c` push हुआ। Laptop के 26 `electron/` फ़ाइलों पर skip-worktree बना हुआ है।
+- **Server** ने सिर्फ़ fast-forward pull किया (`aaef002e` → `42fbbf7f` → `8dbb355c`)। Server पर कोई commit या push नहीं हुआ, और बिना commit के बदलाव नहीं थे, इसलिए बैकअप की ज़रूरत नहीं पड़ी।
+- **package.json:** सिर्फ़ scripts बदले (`electron:*` हटे; `sidecar:build`, `tauri:dev`, `tauri:build`, `release:publish:tauri` जुड़े)। Dependencies और `package-lock.json` नहीं बदले, इसलिए npm install नहीं चलाया। `scripts/dev-web-gateway.cjs` भी बदला (Next के लिए retry, 8 GB memory)।
+- **Server का dev server एक बार restart हुआ**, ताकि नया gateway code चले। पुराने PID जाँचकर ही रोके गए, और cloudflared (PID 132) को छुआ नहीं गया। नए PID: cmd 4428, npm 2536, gateway 13124 (:3000), Next 12412 (127.0.0.1:3001)। Log: `D:\PocketLedger-Sync\dev-server.log`। `127.0.0.1:3000/`, `/app` और `https://dev.pocket-ledger.com` तीनों 200 दे रहे हैं।
+- **Laptop का dev server छुआ नहीं गया।** `localhost:3000/` और `/app` दोनों 200 दे रहे हैं।
+- **Scheduled task `\PocketLedger Git AutoSync`** दोनों PC पर लगा है: हर 10 मिनट, बिना अंत, hidden (conhost --headless), सिर्फ़ user के login रहने पर, Limited। Laptop पर user ASUS, server पर newpa। Last result 0।
+  - Scripts: laptop पर `C:\PocketLedger-Sync\`, server पर `D:\PocketLedger-Sync\` (`git-autosync.ps1`, `install-autosync.ps1`)।
+  - Logs: laptop पर `C:\Project xxx\git-sync.log`, server पर `D:\PocketLedger-Backups\git-sync.log` (ATTENTION फ़ाइल उसी फ़ोल्डर में बनती है)।
+  - रोकना या देखना हो तो: `install-autosync.ps1 -Disable`, `-Enable` या `-Status`।
+- **End-to-end test पास हुआ:** laptop पर `_handoff/sync-test.md` बनाई गई। Quiet period में auto-sync ने उसे छोड़ दिया, फिर commit और push किया (`8dbb355c`)। उसके बाद server task ने उसे pull किया, फ़ाइल server पर मौजूद है और HEAD बराबर है।
+- **Log फ़ाइलें बाहर रखी गईं:** दोनों PC के `.git/info/exclude` में `*.log` जोड़ा गया (सिर्फ़ local)। Script के secret guard में भी नई `*.log` फ़ाइलें रोकने का नियम जुड़ा। पहले laptop पर लगभग 47 log फ़ाइलें और server पर `dev-server.log` auto-commit हो सकती थीं।
+- **बाकी काम:**
+  1. Auto-sync के अंदर की `tsc` जाँच अभी test नहीं हुई है (test में सिर्फ़ `.md` फ़ाइल बदली थी)।
+  2. `.gitignore` में `*.log` जोड़ना है या नहीं, यह अभी तय नहीं हुआ है।
+  3. `pocket-ledger-server` repo अभी भी नहीं बना है।
+  4. Tauri फ़ोल्डर (`src-tauri/`, `desktop-sidecar/`, `TAURI-MIGRATION.md`) अब भी laptop के `.git/info/exclude` में हैं और commit नहीं होंगे।
+
 ## अगला कदम
-1. यूज़र `pocket-ledger-server` repo बनाए।
-2. यूज़र बताए कि Tauri का काम पूरा हो गया है।
-3. फिर नया बैकअप लें, GitHub `232d05c` और local का अंतर देखें, `.gitignore` लगाएँ और secrets की जाँच करें। उसके बाद यूज़र की हाँ लेकर पहला push करें, फिर sync script और scheduled task लगाएँ, और जाँचें कि एक test बदलाव 10 मिनट में दूसरे PC तक पहुँचता है।
+1. यूज़र `pocket-ledger-server` repo बनाए, फिर उसके लिए भी auto-sync लगाया जाए (Cloudflare और डेटा नियम 3–4 के साथ)।
+2. यूज़र बताए कि Tauri का काम पूरा हो गया है। तब `.git/info/exclude` से Tauri फ़ोल्डर हटाकर उन्हें commit किया जाए।
+3. यूज़र तय करे कि `.gitignore` में `*.log` जोड़ना है या नहीं।
+4. किसी `.ts` बदलाव पर auto-sync की `tsc` जाँच देखी जाए।
