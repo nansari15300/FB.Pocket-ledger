@@ -91,6 +91,15 @@
   3. `pocket-ledger-server` repo अभी भी नहीं बना है।
   4. Tauri फ़ोल्डर (`src-tauri/`, `desktop-sidecar/`, `TAURI-MIGRATION.md`) अब भी laptop के `.git/info/exclude` में हैं और commit नहीं होंगे।
 
+## 2026-11-02 ~15:02 (नेपाल समय): laptop dev server port 2000 पर, PB के लिए pb-proxy
+- **क्यों:** port 3000 अब Tauri EXE के लिए है (EXE का app UI 3000–3099 में पहला खाली port लेता है, sharing का default 3001 है)। Laptop पर `127.0.0.1:8090` PocketBase नहीं है, वहाँ Hikvision iVMS-4200 का nginx चलता है। इसी वजह से localhost पर sign-in fail हो रहा था।
+- **कोई tracked फ़ाइल नहीं बदली।** सब कुछ repo के बाहर `C:\PocketLedger-Sync\` में है:
+  - `start-dev-2000.cmd`: एक ही command दोनों चीज़ें चलाता है। पहले pb-proxy (hidden) चलाता है, अगर 18090 पहले से चालू न हो। फिर `PORT=2000`, `NEXT_INTERNAL_PORT=2001`, `PL_PB_PROXY_TARGET=http://127.0.0.1:18090` और `NEXT_PUBLIC_POCKETBASE_URL=http://localhost:2000/pb` के साथ `npm run dev` चलाता है। Log `dev-server.log` में जाता है और पुराना log `dev-server.prev.log` बन जाता है। अगर 2000 पहले से चालू है तो दूसरा dev server शुरू नहीं होता। पुराना launcher `start-dev-2000.cmd.bak` में रखा है।
+  - `pb-proxy.cjs`: सिर्फ़ Node built-ins इस्तेमाल करता है। `127.0.0.1:18090` से `https://np.pocket-ledger.com` (ServerWin10 का PB, Cloudflare tunnel से) पर सब कुछ stream करता है, realtime SSE भी। Log `pb-proxy.log` में सिर्फ़ method, path और status लिखता है। दूसरा instance चलाने पर exit 3 देता है।
+- **रास्ता:** browser → `http://localhost:2000/pb` → gateway → `127.0.0.1:18090` → HTTPS → np.pocket-ledger.com → ServerWin10 PB। LAN (`192.168.1.64:8090`) इसलिए नहीं चला, क्योंकि ServerWin10 के firewall में 8090 का कोई inbound rule नहीं है।
+- **जाँच:** proxy और `/pb` health दोनों 200 देते हैं और server जैसा ही जवाब देते हैं। `/pb/api/collections` server का 401 देता है। Realtime पर `PB_CONNECT` मिला। `/app` और `/app/dashboard` 200 देते हैं। 3000 और 3001 पर इस dev server का कुछ नहीं है, और git status साफ़ है।
+- **Reboot के बाद:** सिर्फ़ `C:\PocketLedger-Sync\start-dev-2000.cmd` चलाएँ। अगर sign-in screen पर अब भी `127.0.0.1:8090` दिखे, तो browser के localStorage से `pl_online_data_server_settings_v1` हटाकर reload करें, या "Server address" में `http://localhost:2000/pb` लिखें।
+
 ## अगला कदम
 1. यूज़र `pocket-ledger-server` repo बनाए, फिर उसके लिए भी auto-sync लगाया जाए (Cloudflare और डेटा नियम 3–4 के साथ)।
 2. यूज़र बताए कि Tauri का काम पूरा हो गया है। तब `.git/info/exclude` से Tauri फ़ोल्डर हटाकर उन्हें commit किया जाए।
