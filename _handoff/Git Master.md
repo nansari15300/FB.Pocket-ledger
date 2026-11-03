@@ -116,6 +116,22 @@
   - main में merge सिर्फ़ user के "हाँ" कहने के बाद होगा।
   - PB schema दोनों का साझा है (एक ही server PB), इसलिए HR के लिए collection या field बदलने से main ऐप पर भी असर पड़ेगा। ऐसा बदलाव user से पूछकर ही करें।
 
+## 2026-11-03 ~16:15 (नेपाल समय): फ़ोल्डर rename, path fix, HR branch push, server worktree
+- **Rename:** user ने `C:\Project xxx` का नाम `C:\Project ERP` कर दिया। अब main repo `C:\Project ERP\Refference apps\Touri + React` और HR worktree `C:\Project ERP\Refference apps\Touri-HR` है।
+- **Backup (fix से पहले):** `C:\PocketLedger-Backups\pre-path-fix-20261103-1605\` में main का `git bundle --all`, दोनों launcher, task XML और worktree metadata रखे गए हैं।
+- **Path fix:**
+  - `git worktree repair` चलाया। अब `gitdir` और `Touri-HR\.git` दोनों नए path पर हैं।
+  - `start-dev-2000.cmd` और `start-dev-hr-2100.cmd` में नया path डाला गया।
+  - Auto-sync task को installer (`-Headless`) से फिर register किया गया, अब `-Repos "C:\Project ERP\Refference apps\Touri + React" -LogPath "C:\Project ERP\git-sync.log"` के साथ। Rename के बाद task ने पुराने path पर एक खाली `C:\Project xxx\git-sync.log` बना दिया था, जो अब इस्तेमाल नहीं होता।
+- **Dev server शुरू करने का तरीका:** launcher को `Start-Process cmd.exe -WindowStyle Hidden` से चलाएँ। WMI से चलाने पर शुरू करने वाला shell बंद होते ही server बंद हो गया था।
+- **HR push:** `feature/hr-module` पर commit `09fa15b5` ("HR module: employees + attendance") बना और `origin/feature/hr-module` पर push हुआ। उससे पहले `tsc` में 0 errors थे। इस commit में leaves वाली फ़ाइलें भी हैं। Main पर कुछ merge नहीं हुआ।
+- **Server worktree:** ServerWin10 पर `D:\Touri-HR` बना, branch `feature/hr-module` (track `origin/feature/hr-module`, HEAD `09fa15b5`)। `.env.local` Online Project से copy किया गया और `npm ci` चलाया गया। Server का auto-sync अब भी सिर्फ़ `Online Project` को sync करता है।
+- **HR के नियम:**
+  - HR branch को auto-sync कभी sync नहीं करेगा। इसका sync सिर्फ़ हाथ से, Git Master के ज़रिए होगा (commit/pull/push, force कभी नहीं)।
+  - Payroll (d)+(e) का काम सिर्फ़ server (`D:\Touri-HR`) पर होगा, `src/modules/hr/payroll/**` और `src/app/(dashboard)/hr/payroll/**` में।
+  - Leaves (c) का काम सिर्फ़ laptop (`C:\Project ERP\Refference apps\Touri-HR`) पर होगा।
+  - इस बँटवारे से दोनों PC एक ही फ़ाइल नहीं छूते। Main में merge सिर्फ़ user के "हाँ" कहने के बाद होगा।
+
 ## अगला कदम
 1. यूज़र `pocket-ledger-server` repo बनाए, फिर उसके लिए भी auto-sync लगाया जाए (Cloudflare और डेटा नियम 3–4 के साथ)।
 2. यूज़र बताए कि Tauri का काम पूरा हो गया है। तब `.git/info/exclude` से Tauri फ़ोल्डर हटाकर उन्हें commit किया जाए।
