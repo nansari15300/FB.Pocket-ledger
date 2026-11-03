@@ -1,4 +1,4 @@
-# ID Change Message for Bot
+﻿# ID Change Message for Bot
 
 > **हर bot के लिए (पहली बार पढ़ने पर):**
 > अगर आपके पास नीचे लिखे सारे bots नहीं हैं, तो इसका मतलब है कि user ने **नई ID से login** किया है।
@@ -120,6 +120,22 @@
 ### ACR Master
 - सिर्फ़ ACR हिस्से की मालिक। Standby पर रहती है: user ख़ुद साफ़ न कहे तो कोई काम शुरू नहीं करती।
 
+### Key Manager (3 Nov 2026 को जोड़ी गई)
+- सबसे ऊँचा नियम: कोई भी sensitive key, token, password, .env, keystore या certificate Git में न जाए।
+- Git में पहले से गई key मिले तो उसे खुद न हटाए। पहले user को file और commit बताए (value कभी नहीं), फिर user फ़ैसला करेंगे।
+- .gitignore और pre-commit secret scan संभालती है, और हर build से पहले key-security की जाँच करती है।
+- Test वाला Android keystore encrypted रूप में Git में रखती है।
+
+### Build Master (3 Nov 2026 को जोड़ी गई)
+- सारे builds (Tauri EXE, APK/AAB, web) सिर्फ़ यही करती है, user की हाँ के बाद। दूसरा कोई bot build नहीं करता।
+- हर build से पहले सबसे पहला काम key-security की जाँच है।
+- Keystore build के समय ही खोलती है, password environment variable से देती है, और build के बाद खुली file मिटा देती है।
+
+### Password Manager (3 Nov 2026 को जोड़ी गई)
+- Keystore encryption का मज़बूत password खुद बनाती है और उसे सिर्फ़ PCs पर रखती है (laptop पर `C:\PocketLedger-Secrets\`)। वह Git या chat में कभी नहीं जाता।
+- नई ID पर: password की जो copy user ने PCs से बाहर रखी है, उसी से यह फिर से सेट होगा।
+- APK/EXE अभी test पर हैं। Production के लिए नई key बनेगी।
+
 ---
 
 ## 4. नई ID पर bots बनाने का क्रम (user की हाँ के बाद)
@@ -131,3 +147,4 @@
 5. Firebase Master: Gmail जोड़कर support mail वाला routine फिर से बनाए।
 6. Firebase Master को छोड़कर सबकी phone notifications बंद करो, Bot Leader और Server master की भी।
 7. हर bot अपनी handoff file (`_handoff\`) पढ़कर वहीं से आगे का काम करे।
+
