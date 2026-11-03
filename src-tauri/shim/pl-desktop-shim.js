@@ -6,6 +6,7 @@
  * par jaata hai: `window.__TAURI_INTERNALS__.invoke(...)`.
  *
  * Rust side is file ke aage `window.__PL_TAURI_BOOT__ = {...}` jodta hai (boot/tab ids).
+ * `plElectronAuth.openExternalAuthUrl` = Google login page system browser me (pl_open_external_auth).
  * Sirf `plElectronAuth.signInWithGoogleExternal` (src/ me use nahi hota) abhi
  * `{ ok:false, error:"PL_TAURI_NOT_IMPLEMENTED:<name>" }` deta hai.
  */
@@ -237,6 +238,10 @@
 
   expose("plElectronAuth", {
     signInWithGoogleExternal: notImpl("auth.signInWithGoogleExternal"),
+    /** "Login with Google" (pbClient `pocketBaseGoogleSignIn`): Google page system browser me. Sirf https://accounts.google.com/. */
+    openExternalAuthUrl: function (url) {
+      return invR("pl_open_external_auth", { url: String(url || "") });
+    },
   });
 
   expose("plElectronGate", {

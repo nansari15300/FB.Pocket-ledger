@@ -70,6 +70,7 @@ const LOCAL_ONLY_PERMS: &[&str] = &[
     "allow-pl-bridge-upsert",
     "allow-pl-update-download",
     "allow-pl-bridge-result",
+    "allow-pl-open-external-auth",
 ];
 
 fn add_content_capability(app: &AppHandle, port: u16) -> Result<(), String> {
@@ -329,6 +330,22 @@ async fn pl_open_url_in_new_tab(app: AppHandle, webview: Webview, url: String) -
             json!({ "ok": false, "error": e })
         }
     }
+}
+
+/// "Login with Google" (src/lib/pocketbaseData/pbClient.ts `pocketBaseGoogleSignIn`): Google sign-in page
+/// system browser me kholta hai (Google WebView ke andar login block karta hai). Least privilege: sirf
+/// `https://accounts.google.com/` URLs; baaki sab mana. Permission sirf local app-content ko (LOCAL_ONLY_PERMS).
+#[tauri::command]
+fn pl_open_external_auth(url: String) -> serde_json::Value {
+    let url = url.trim().to_string();
+    if !url.starts_with("https://accounts.google.com/") {
+        return json!({ "ok": false, "error": "url-not-allowed" });
+    }
+    if !cfg!(windows) {
+        return json!({ "ok": false, "error": "unsupported" });
+    }
+    native::open_external(&url);
+    json!({ "ok": true })
 }
 
 #[tauri::command]
@@ -701,6 +718,7 @@ fn main() {
             win_show_app_menu,
             win_start_drag,
             pl_open_url_in_new_tab,
+            pl_open_external_auth,
             pl_tab_sync_done,
             pl_device_display_info,
             pl_trace_log,

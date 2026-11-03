@@ -1,9 +1,6 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  signOut as firebaseSignOut,
-} from "@/lib/pbCompat/auth";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useLayoutEffect, useCallback } from "react";
@@ -22,7 +19,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { auth, FIREBASE_WEB_OAUTH_CLIENT_ID } from "@/lib/firebase";
 import {
   REMEMBER_EMAIL_ENABLED_KEY,
   REMEMBER_EMAIL_KEY,
@@ -40,6 +36,7 @@ import {
   pocketBaseResendSignUpOtp,
   pocketBaseSignIn,
   pocketBaseGoogleSignIn,
+  GOOGLE_LOGIN_NOT_CONFIGURED_MESSAGE,
   PocketBaseGoogleLoginError,
   pocketBaseSignOut,
   pocketBaseSignUp,
@@ -455,19 +452,6 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
         } catch (e) {
           throw Object.assign(new Error("SIGN_IN_FAILED"), { code: serverSignInErrorCode(e) });
         }
-        // Persisted Firebase login (IndexedDB) may not be restored yet - wait for it, then sign it out.
-        try {
-          await withTimeout(auth.authStateReady(), 4000);
-        } catch {
-          /* ignore */
-        }
-        if (auth.currentUser) {
-          try {
-            await firebaseSignOut(auth);
-          } catch {
-            /* ignore */
-          }
-        }
         try {
           await startPocketBaseAppSession();
         } catch (e) {
@@ -507,7 +491,10 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
         return;
       }
       // Email/password login: choose dashboard directly when remember window for last company is valid.
-      navigateAfterAuth(auth.currentUser?.uid, auth.currentUser?.email);
+      {
+        const p = readPocketBaseAppProfile();
+        navigateAfterAuth(p ? pocketBaseSessionUid(p) : undefined, p?.email ?? values.email);
+      }
 
     } catch (error: any) {
       if (error.code === "pl-account-otp") {
@@ -563,18 +550,6 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
       // every read / write after this uses the server only.
       await pocketBaseGoogleSignIn();
       try {
-        await withTimeout(auth.authStateReady(), 4000);
-      } catch {
-        /* ignore */
-      }
-      if (auth.currentUser) {
-        try {
-          await firebaseSignOut(auth);
-        } catch {
-          /* ignore */
-        }
-      }
-      try {
         await startPocketBaseAppSession();
       } catch (e) {
         pocketBaseSignOut();
@@ -595,11 +570,11 @@ export function LoginForm({ onChangeAccount }: { onChangeAccount?: () => void })
       } else if (gCode === "popup_blocked") {
         description = "The Google window was blocked. Allow pop-ups for this app and try again.";
       } else if (gCode === "not_configured") {
-        description = "Google sign-in is not set up on this server yet. Ask the server admin to add the Google client in the PocketBase admin (pl_users > OAuth2).";
+        description = GOOGLE_LOGIN_NOT_CONFIGURED_MESSAGE;
       } else if (gCode === "denied") {
         description = "Google sign-in was cancelled.";
       } else if (gCode === "timeout") {
-        description = "Google sign-in took too long. Please try again.";
+        description = "Google sign-in took too long (3 minutes). Please try again.";
       } else if (gCode === "unsupported") {
         description = "Google sign-in is not available in this window. Use the email and password form.";
       } else if (eCode === "pl-server-profile") {

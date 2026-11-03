@@ -1,31 +1,30 @@
 # Firebase Master — Pocket Ledger से Firebase हटाकर PocketBase पर ले जाना
 
-अंतिम अपडेट: 2026-11-02 12:30 (Asia/Kathmandu, UTC+5:45)
+अंतिम अपडेट: 2026-11-03 22:30 (Asia/Kathmandu, UTC+5:45)
 
 ## 1) उद्देश्य
-Pocket Ledger app (`C:\Project xxx\Refference apps\Touri + React`) से Firebase (Firestore, Storage, firebase-admin, बचा हुआ Auth code) पूरी तरह हटाना और सब कुछ PocketBase (Pocket Ledger Server) पर चलाना। Firebase Hosting (marketing website) अभी रहेगी।
+Pocket Ledger app (`C:\Project ERP\Refference apps\Touri + React`) से Firebase (Firestore, Storage, firebase-admin, बचा हुआ Auth code) पूरी तरह हटाना और सब कुछ PocketBase (Pocket Ledger Server, `C:\Project ERP\Refference apps\PocketLedger-Server\sub-server`, live: `np.pocket-ledger.com`) पर चलाना। Firebase Hosting (marketing website) अभी रहेगी।
+
+**नया path (2026-11-03):** project अब `C:\Project ERP\...` में है (पुराना `C:\Project xxx\...` अब नहीं)।
 
 ## 2) नियम
-- कोई भी बदलाव करने से पहले plan + user की हाँ ज़रूरी। पहले backup (`C:\PocketLedger-Backups\`)।
-- user की हाँ के बिना git commit/push नहीं।
+- कोई भी बदलाव करने से पहले plan + user की हाँ ज़रूरी। पहले backup (`C:\PocketLedger-Backups\`); हर file बदलने से पहले उसकी copy backup के `pre-edit\` में।
+- git commit/push/stash/reset/checkout नहीं (Git sync अभी रुका है)।
 - Folder names नहीं बदलने।
 - Cloudflare/cloudflared files नहीं छूना।
-- दूसरी bots की files छूने से पहले user से पूछना:
-  - Trxn Table Master: `src\components\vouchers\TransactionsTable.tsx`, `transactionTableShared.tsx`, `src\lib\ledgerUnifiedContentWidth.ts`, `src\lib\ledgerHeaderChrome.ts`, `src\app\globals.css`
-  - Theme Master: `appThemes.ts`, `proTheme.ts`, `useTheme.tsx`, `layout.tsx`, `ThemeSettings.tsx`
-  - Animation Master: `useAnimationSettings.tsx`, `AnimationSettings.tsx` — AnimationSettingsProvider का सम्मान करें (देखें `_handoff\Animation Master.md` भाग 9)
-  - AccountDetails files: `src\components\account\AccountDetails.tsx`, `src\components\bank-cash\AccountDetails.tsx`
-- `android\` और `electron\` अभी बंद (TAURI-MIGRATION.md के अनुसार)। android `google-services.json`/gradle plugin अभी नहीं छूना।
-- Firebase Hosting अभी रहेगी (`firebase.json` का hosting हिस्सा)।
+- Secrets (client secret, tokens, `.env` values) कहीं print/लिखना नहीं — सिर्फ़ नाम।
+- Firebase code अभी delete नहीं (चरण 5 में)।
+- **Google keys रखनी हैं (हटाना नहीं):** `NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID` (`.env.local`), `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` (`apphosting.yaml`, Drive backup), `src\lib\firebase.ts` में `FIREBASE_WEB_OAUTH_CLIENT_ID` constant (~41), `capacitor.config.ts` का `serverClientId`।
+- **दूसरी bots की files:** user ने 2026-11-03 को Firebase हटाने के काम के लिए दूसरी bots की files (src-tauri, android आदि) बदलने की अनुमति दी। फिर भी सिर्फ़ ज़रूरी बदलाव, और उनकी handoff में note।
+- `TAURI-MIGRATION.md` का "Google external notImpl" और "android/capacitor नहीं छूना" — इस काम के लिए user ने override किया: desktop पर भी Google login चाहिए।
 - काम शुरू करने से पहले `TAURI-MIGRATION.md` और `_handoff\NIYAM.md` पढ़ें।
-
 ## 3) Firebase का पूरा नक्शा (हर item के साथ PocketBase विकल्प)
 | हिस्सा | अभी कहाँ | PocketBase विकल्प |
 |---|---|---|
 | Dependencies | `package.json`: `firebase` ^12.8.0, `firebase-admin` ^13.6.0, `@codetrix-studio/capacitor-google-auth` ^3.4.0-rc.4; `pocketbase` npm package **नहीं** है (अपना client `src\lib\pocketbaseData\pbClient.ts`) | अंत में `firebase`, `firebase-admin` हटाना; Google auth plugin का फ़ैसला android के साथ |
 | Init/config | `src\lib\firebase.ts` (initializeApp ~46, Firestore ~305-332, getStorage ~337), `src\firebase\*`, `firebaseProjectId.ts`, `FirebaseErrorListener.tsx` | `pbClient.ts` / `pbAppSession.ts` |
 | Choke point | `src\lib\pbCompat\{app,firestore,storage}.ts` = `export * from "firebase/..."` (firestore 317 imports, auth 13, app 4, storage 2) | यहीं एक जगह PB implementation लगाना |
-| Auth | Firebase Auth पहले से हटा: `pbCompat\auth.ts` stub; Email/password `LoginForm.tsx` ~423/454 → `pocketBaseSignIn`; Google `LoginForm.tsx` ~559-602, `googleFirebaseSignIn.ts` → `pocketBaseGoogleSignIn`। Phone auth नहीं। बचा dead code: `useAuth.tsx`, `firebaseAuthForApi.ts`, `ensureFreshIdToken.ts`, `plFirebaseAuthHandoff.ts`, `PlFirebaseAuthHandoffBootstrap.tsx`, `api\auth\pl-firebase-handoff` | `authWithPassword` / `authWithOAuth2` (server पर Google OAuth provider चाहिए) |
+| Auth | Firebase Auth पहले से हटा (2026-11-03: `LoginForm.tsx` से stub calls भी हटे, नीचे चरण 1 देखें): `pbCompat\auth.ts` stub; Email/password `LoginForm.tsx` ~423/454 → `pocketBaseSignIn`; Google `LoginForm.tsx` ~559-602, `googleFirebaseSignIn.ts` → `pocketBaseGoogleSignIn`। Phone auth नहीं। बचा dead code: `useAuth.tsx`, `firebaseAuthForApi.ts`, `ensureFreshIdToken.ts`, `plFirebaseAuthHandoff.ts`, `PlFirebaseAuthHandoffBootstrap.tsx`, `api\auth\pl-firebase-handoff` | `authWithPassword` / `authWithOAuth2` (server पर Google OAuth provider चाहिए) |
 | Firestore | ~500 files, `onSnapshot` 364; बड़े: `voucherActionsClient.ts`, `firestoreMutationsInternal.ts`, `useCompany.tsx`, `useVouchers.tsx`, `localVoucherOutbox.ts`, `recurringVouchers.ts`, `writeGateway\legacy\*`, `interCompany\*`, `fiscalSplit\*Firestore.ts` | `getList/getFullList/getOne`, `create/update/delete`, realtime `subscribe` (`pbRealtime.ts`, `pbReadSeam.ts`), transactions के लिए `/api/pl/data/batch` / server hooks |
 | Storage | 125 hits (`uploadBytes/getDownloadURL/deleteObject`): `firebaseStorageDownloadUrl.ts`, `firebaseStoragePaths.ts`, `storage.ts`, `storageClient.ts`, `voucherFormAttachmentSave.ts`, `voucherLocalAttachmentUpload.ts`, `offlineAttachmentUrlCache.ts` आदि | `pl_attachments` / `pl_stored_files` file fields (`pbAttachments.ts`, `pbStorage.ts`) |
 | firebase-admin | ~78 files: `src\lib\firebaseAdmin.ts`, ~37 `src\app\api\**` routes (admin, company plan/billing, payments eSewa/Khalti/Stripe, webhooks), `src\lib\server\*`, `payments\*`, `adminPanelAccounting\*`, `adminPanelCompany\*`, `fyPagination\server\*` | PB superuser token / `pb_hooks` custom routes (`pbBillingDb.ts` शुरू) |
@@ -37,35 +36,53 @@ Pocket Ledger app (`C:\Project xxx\Refference apps\Touri + React`) से Fireba
 | Tauri | CSP में Firebase domain नहीं; सिर्फ़ comments/trace | — |
 | Scripts | `scripts\pl-migrate-firebase.mjs` (Firestore→PB migration पहले से), `apply-firebase-storage-cors.cjs`, `assert-no-firestore-mutations-outside-gateway.cjs` | migration script दोबारा इस्तेमाल |
 
+
 ## 4) चरण-वार प्लान + checklist
-- **चरण 0 — backup + handoff**
-  - [x] `_handoff\Firebase Master.md` बनाई (2026-11-01 18:30)
-  - [ ] code बदलने से पहले backup `C:\PocketLedger-Backups\`
-  - [ ] Server master से PB collections की पुष्टि (Appendix A)
-- **चरण 1 — dead Firebase auth code हटाना**
-  - [ ] `pbCompat\auth.ts` के callers को PB session पर
-  - [ ] `firebaseAuthForApi.ts`, `ensureFreshIdToken.ts`, `plFirebaseAuthHandoff.ts`, `PlFirebaseAuthHandoffBootstrap.tsx`, `api\auth\pl-firebase-handoff` हटाना
-  - [ ] `useAuth.tsx` साफ़ करना
-- **चरण 2 — Storage**
-  - [ ] upload/download/delete → `pl_attachments`/`pl_stored_files`
-  - [ ] पुराने Firebase URLs का migration/rewrite
-  - [ ] `firebaseStorage*` files हटाना
-- **चरण 3 — Firestore (हर collection, `pbCompat\firestore.ts` से)**
-  - [ ] companies + members
-  - [ ] masters (parties, bank_accounts, staff, items, taxes, expense_accounts, groups)
-  - [ ] vouchers + `_pl_change_log` + `_pl_ledger_idem`
-  - [ ] बाकी company subcollections (pl_docs)
-  - [ ] top-level: users, app_settings, admin_notifications, conversations, inter_company_*, reconciliation_shares, activity_logs, distributor_applications, payments, config
-- **चरण 4 — firebase-admin routes**
-  - [ ] billing/payments/plan routes → PB superuser / pb_hooks
-  - [ ] admin routes
-- **चरण 5 — deps/config/env हटाना**
-  - [ ] `firebase`, `firebase-admin` packages
-  - [ ] Firestore/Storage config (Hosting रखें)
-  - [ ] Firebase env names
-  - [ ] (user की हाँ पर) android google-services
+**पुराने चरण (2026-11-01 वाला प्लान) रद्द** — 2026-11-02 को user ने manual काम किया (header "Firebase → PB" button आदि), और 2026-11-03 को नया प्लान तय हुआ। पूरा data पहले से PocketBase पर है।
+
+**2026-11-03 scan का सार:**
+- Login: Email/password और Google दोनों सिर्फ़ PocketBase (`pocketBaseSignIn`, `pocketBaseGoogleSignIn`)। असली Firebase Auth कहीं नहीं चलता; `LoginForm.tsx` में सिर्फ़ no-op stub (`pbCompat\auth.ts`) calls बचे थे → हटाए।
+- Server: `auth-methods` में `oauth2.enabled = true` पर **Google provider नहीं** (providers खाली) — इसलिए Google login अभी server पर बंद है। Server code (`pb_hooks\google_oauth.pb.js`, `pb_hooks\lib\google_oauth.js`, migration `1763000000_pl_users_google_oauth.js`) तैयार है; कोई env var नहीं, client id/secret PocketBase admin UI में डालने हैं।
+- गिनती (src, files): `pbCompat/firestore` 320, `@/lib/firebase` 306, `pbCompat/auth` 13, `pbCompat/storage` 2, `onSnapshot` 130, firebase-admin 79 (इनमें `app\api` routes 36); `writeGateway` 191 और `pbReadSeam` 254 files में पहले से।
+- Packages: `firebase` ^12.8.0, `firebase-admin` ^13.6.0, `@codetrix-studio/capacitor-google-auth` (src में runtime use नहीं, सिर्फ़ `src\types\modules.d.ts`), `@capacitor/browser` ^6.0.6 पहले से (android में registered)।
+- Tauri: पहले कोई system-browser opener command नहीं था; shim में `plElectronAuth.signInWithGoogleExternal` = notImpl।
+
+**नया प्लान:**
+- **चरण 0 — backup** ✅ (2026-11-03 22:17)
+- **चरण 1 — login पूरा PocketBase पर** ✅ code (server पर Google provider डालना बाकी — नीचे "Server पर क्या चाहिए")
+  - [x] Email/Google login path में Firebase Auth calls नहीं (LoginForm stub calls हटाए)
+  - [x] `pocketBaseGoogleSignIn` platform-aware (वही realtime `@oauth2` flow): Web = popup; Android/Capacitor = Chrome Custom Tab (`Browser.open`, सफल/cancel पर `Browser.close()`, `browserFinished` = cancel, 2.5 सेकंड grace); Tauri = system browser (`plElectronAuth.openExternalAuthUrl` → Rust `pl_open_external_auth`, सिर्फ़ `https://accounts.google.com/`); timeout 3 मिनट
+  - [x] server पर Google provider न हो तो साफ़ संदेश: "Google login server pe abhi set nahi hai…"
+  - [ ] Server admin: PocketBase में Google provider + Google Cloud Console में redirect URI (user/Server master)
+  - [ ] Android APK और Tauri EXE पर असली test (नया APK/EXE build चाहिए)
+- **चरण 2 — data layer:** call sites को `writeGateway` / `pbReadSeam` के पीछे migrate करना (Firestore → PB)
+- **चरण 3 — server API:** `src\app\api\**` routes को firebase-admin से हटाना (PB superuser / pb_hooks)
+- **चरण 4 — scripts/release flow:** release को `release:upload:np` (`scripts\upload-releases-to-pl-server.cjs`) पर
+- **चरण 5 — Firebase files + packages delete** (Google keys ऊपर वाली रखते हुए)
+- **चरण 6 — verify** (typecheck, lint, build, APK/EXE/web login + data test)
+
+**Server पर क्या चाहिए (Google login, कोई secret यहाँ नहीं):**
+1. PocketBase admin (`https://np.pocket-ledger.com/_/`) → Collections → `pl_users` → ⚙ Options → OAuth2 → Add provider → Google → Client ID + Client secret (Google Cloud Console के Web OAuth client से) → Save।
+2. Google Cloud Console → उसी OAuth client (Web application) → Authorized redirect URIs में: `https://np.pocket-ledger.com/api/oauth2-redirect` (हर country server के लिए अपना `https://<cc>.pocket-ledger.com/api/oauth2-redirect`)।
+3. जाँच: `https://np.pocket-ledger.com/api/collections/pl_users/auth-methods` में `oauth2.providers` में `google` दिखे।
+
+**user के फ़ैसले (2026-11-03):**
+- Website के लिए Firebase Hosting अभी रहेगी।
+- Android पर Google login = Custom Tab (`@capacitor/browser`)।
+- Drive backup की Google key (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`) रहेगी।
+- सारा data पहले से PocketBase पर है।
+- Firebase हटाने के लिए दूसरी bots की files बदलने की अनुमति।
 
 ## 5) बदली/हटाई फ़ाइलें
+**2026-11-03 (चरण 1):**
+- `src\lib\pocketbaseData\pbClient.ts` — `pocketBaseGoogleSignIn` platform-aware (popup / Custom Tab / system browser), 3 मिनट timeout, `GOOGLE_LOGIN_NOT_CONFIGURED_MESSAGE`
+- `src\components\auth\LoginForm.tsx` — `pbCompat\auth` + `@/lib/firebase` imports और no-op `authStateReady`/`signOut` calls हटाए; not_configured/timeout संदेश
+- `src-tauri\src\main.rs` — नया command `pl_open_external_auth` (सिर्फ़ `https://accounts.google.com/`), `generate_handler!` + `LOCAL_ONLY_PERMS` में `allow-pl-open-external-auth`
+- `src-tauri\build.rs` — command list में `pl_open_external_auth`
+- `src-tauri\shim\pl-desktop-shim.js` — `plElectronAuth.openExternalAuthUrl` (shim `include_str!` से EXE में जाता है → नया EXE build चाहिए)
+- `src-tauri\permissions\autogenerated\pl_open_external_auth.toml` — नया (build से auto-generate)
+
+**2026-11-02:**
 - `src\lib\plServerFirebaseHitTrace.ts` — header migrate के लिए एक URL का one-shot fetch allowlist
 - `src\lib\pocketbaseData\pbAttachments.ts` — `uploadBlobAsPocketBaseAttachment`
 - `src\lib\localCompanyDocMirror.ts` — `listCompanyDocRawRowsWithFirebaseUrlHint`
@@ -74,7 +91,13 @@ Pocket Ledger app (`C:\Project xxx\Refference apps\Touri + React`) से Fireba
 - `src\components\layout\DesktopAppHeader.tsx` — Sync के पास button
 
 ## 6) Backups
-- `C:\PocketLedger-Backups\firebase-cut-20261102-1224\`
+- **2026-11-03:** `C:\PocketLedger-Backups\firebase-kickout-2026-11-03\`
+  - `app\` — 8505 files, ~1.16 GB (node_modules, .next, target, .git, out, dist, android build/.gradle, src-tauri\target छोड़कर)
+  - `server\` — 89 files (pb_hooks, pb_migrations, config, root scripts)
+  - `pre-edit\` — चरण 1 में बदली हर file की पुरानी copy (same relative path)
+  - `logs\` — typecheck/eslint/cargo check logs (पहले/बाद)
+  - `BACKUP-INFO.txt` — समय, git HEAD `948d54a`, branch main
+- 2026-11-02: `C:\PocketLedger-Backups\firebase-cut-20261102-1224\`
 
 ## 7) Progress log (Asia/Kathmandu, UTC+5:45)
 - 2026-11-01 18:11 — read-only scan शुरू।
@@ -82,13 +105,19 @@ Pocket Ledger app (`C:\Project xxx\Refference apps\Touri + React`) से Fireba
 - 2026-11-01 18:30 — user: चरण 0-1 का code काम अभी नहीं; Firebase Hosting रहेगी; schema list Server master को जाएगी; दूसरी bots की files और android का फ़ैसला pending।
 - 2026-11-01 18:30 — यह handoff file बनाई (laptop घड़ी 18:30:43)।
 - 2026-11-02 12:30 — leftover Firebase Storage URLs on transactions: auto नहीं। Header button (Sync के पास, HardDriveUpload): file एक बार fetch → `pl_attachments` / `pbatt:` → voucher से Firebase URL हटा। सिर्फ़ Firebase URL। PocketBase login + PB company पर दिखे।
+- 2026-11-02 — user ने manual काम किया; पुराने चरण रद्द।
+- 2026-11-03 — नया scan; नया प्लान (चरण 0-6) और user के फ़ैसले।
+- 2026-11-03 22:17 — चरण 0 backup पूरा (`firebase-kickout-2026-11-03`)।
+- 2026-11-03 22:20 — baseline: typecheck 0 errors; eslint (3 files) 3 errors + 20 warnings (पहले से)।
+- 2026-11-03 ~22:25 — चरण 1 code: pbClient, LoginForm, Tauri command + shim।
+- 2026-11-03 22:28 — बाद में: typecheck 0 errors; eslint 3 errors (वही पुराने `any`) + 19 warnings; `cargo check` OK (1 पुरानी warning `LogicalSize`)।
+- 2026-11-03 22:30 — यह file अपडेट।
 
 ## 8) अगला कदम
-- Server master से PB collections (Appendix A) बनने + user की हाँ का इंतज़ार।
-- Pending सवाल:
-  1. दूसरी bots की files (TransactionsTable.tsx, transactionTableShared.tsx, useAnimationSettings.tsx, AccountDetails आदि) में Firebase/pbCompat imports कब और कौन बदलेगा?
-  2. android `google-services.json` + gradle plugin + capacitor GoogleAuth — कब हटाना?
-
+- Server admin/user: PocketBase में Google provider + Google Cloud Console redirect URI (ऊपर "Server पर क्या चाहिए")।
+- फिर test: web (popup), Android APK (नया build, Custom Tab), Tauri EXE (नया build, system browser)।
+- उसके बाद चरण 2 (data layer → `writeGateway`/`pbReadSeam`), user की हाँ के साथ।
+- Pending सवाल: android `google-services.json` + gradle plugin + capacitor GoogleAuth plugin — चरण 5 में हटाना? (`serverClientId` रखना है)
 ---
 
 ## Appendix A — PocketBase schema request (Server master के लिए)

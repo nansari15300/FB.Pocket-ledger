@@ -10,6 +10,7 @@
 
 import { resolvePocketBaseServerUrl } from "@/lib/onlineDataServer";
 import { isPlServerPackedApp, plServerPackedSameOrigin } from "@/lib/plServerPackedApp";
+import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 
 const AUTH_KEY = "pl_pb_data_auth_v1";
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -235,11 +236,46 @@ export class PocketBaseGoogleLoginError extends Error {
   }
 }
 
+/** How long "Login with Google" waits for Google (popup / Android Custom Tab / desktop system browser). */
+const GOOGLE_LOGIN_TIMEOUT_MS = 180_000;
+/** Android: after the Custom Tab closes, wait a moment - the server may still be sending the Google code. */
+const GOOGLE_CUSTOM_TAB_CLOSE_GRACE_MS = 2_500;
+/** Shown when the server has no Google provider in PocketBase (pl_users > OAuth2). */
+export const GOOGLE_LOGIN_NOT_CONFIGURED_MESSAGE =
+  "Google login server pe abhi set nahi hai. Server admin se kahein (PocketBase admin > pl_users > OAuth2 > Google). Tab tak email aur password se login karein.";
+
+/** Desktop (Tauri) shim: `window.plElectronAuth.openExternalAuthUrl` opens the system browser (src-tauri `pl_open_external_auth`). */
+type DesktopAuthShim = {
+  openExternalAuthUrl?: (url: string) => Promise<{ ok?: boolean; error?: string } | undefined>;
+};
+
+function desktopAuthShim(): DesktopAuthShim | null {
+  try {
+    const shim = (window as unknown as { plElectronAuth?: DesktopAuthShim }).plElectronAuth;
+    return shim && typeof shim.openExternalAuthUrl === "function" ? shim : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Where the Google page opens:
+ * - Android / iOS app (Capacitor): Chrome Custom Tab (`@capacitor/browser`), Google blocks sign-in inside WebViews.
+ * - Desktop app (Tauri, new shim): the system browser.
+ * - Web (and older desktop builds without the shim command): popup window.
+ */
+function googleLoginOpener(): "popup" | "custom_tab" | "system_browser" {
+  if (isCapacitorNativeApp()) return "custom_tab";
+  if (desktopAuthShim()) return "system_browser";
+  return "popup";
+}
+
 /**
  * "Login with Google" on the Pocket Ledger Server (PocketBase OAuth2 on `pl_users`), no Firebase.
- * Same flow as the PocketBase JS SDK `authWithOAuth2`: popup -> Google -> `<server>/api/oauth2-redirect`
+ * Same flow as the PocketBase JS SDK `authWithOAuth2`: Google page -> `<server>/api/oauth2-redirect`
  * -> realtime event (`@oauth2`) -> `auth-with-oauth2` exchange. Stores only the server token, so every
- * read / write afterwards uses the server. Call it directly from the click handler (popup blockers).
+ * read / write afterwards uses the server. Call it directly from the click handler (web popup blockers).
+ * The Google page opens per platform (see googleLoginOpener); the wait ends after GOOGLE_LOGIN_TIMEOUT_MS.
  * Server errors (pending / rejected account) are thrown as PocketBaseRequestError (see pocketBaseApprovalState).
  */
 export async function pocketBaseGoogleSignIn(url?: string): Promise<PocketBaseAuthState> {
@@ -247,20 +283,44 @@ export async function pocketBaseGoogleSignIn(url?: string): Promise<PocketBaseAu
     throw new PocketBaseGoogleLoginError("unsupported", "Google sign-in is not available here");
   }
   const base = normalizePocketBaseUrl(url || getPocketBaseServerUrl());
-  // open the popup first, inside the click gesture
-  const popup = window.open("about:blank", "pl_pb_google_login", "width=520,height=720");
-  if (!popup) throw new PocketBaseGoogleLoginError("popup_blocked", "Allow pop-ups for this app, then try again");
+  const opener = googleLoginOpener();
+  // Web: open the popup first, inside the click gesture.
+  const popup = opener === "popup" ? window.open("about:blank", "pl_pb_google_login", "width=520,height=720") : null;
+  if (opener === "popup" && !popup) {
+    throw new PocketBaseGoogleLoginError("popup_blocked", "Allow pop-ups for this app, then try again");
+  }
   let es: EventSource | null = null;
-  const cleanup = () => {
+  let customTabOpened = false;
+  let customTabListener: { remove: () => Promise<void> | void } | null = null;
+  let graceTimer: ReturnType<typeof setTimeout> | null = null;
+  let stopWaiting: ((e: Error) => void) | null = null;
+  const cleanup = async () => {
+    if (graceTimer) clearTimeout(graceTimer);
     try {
       es?.close();
     } catch {
       /* ignore */
     }
     try {
-      popup.close();
+      popup?.close();
     } catch {
       /* ignore */
+    }
+    if (customTabListener) {
+      try {
+        await customTabListener.remove();
+      } catch {
+        /* ignore */
+      }
+    }
+    if (customTabOpened) {
+      // After success or cancel: bring the user back from the Custom Tab to the app.
+      try {
+        const { Browser } = await import("@capacitor/browser");
+        await Browser.close();
+      } catch {
+        /* ignore */
+      }
     }
   };
   try {
@@ -269,10 +329,7 @@ export async function pocketBaseGoogleSignIn(url?: string): Promise<PocketBaseAu
     };
     const provider = (methods?.oauth2?.providers || []).find((p) => p?.name === "google");
     if (!methods?.oauth2?.enabled || !provider?.authURL) {
-      throw new PocketBaseGoogleLoginError(
-        "not_configured",
-        "Google sign-in is not set up on this server yet (PocketBase admin > pl_users > OAuth2 > Google)"
-      );
+      throw new PocketBaseGoogleLoginError("not_configured", GOOGLE_LOGIN_NOT_CONFIGURED_MESSAGE);
     }
     const stream = new EventSource(base + "/api/realtime");
     es = stream;
@@ -288,7 +345,14 @@ export async function pocketBaseGoogleSignIn(url?: string): Promise<PocketBaseAu
       };
     });
     const waiting = new Promise<{ state?: string; code?: string; error?: string }>((resolve, reject) => {
-      const t = setTimeout(() => reject(new PocketBaseGoogleLoginError("timeout", "Google sign-in timed out")), 240_000);
+      const t = setTimeout(
+        () => reject(new PocketBaseGoogleLoginError("timeout", "Google sign-in timed out (3 minutes)")),
+        GOOGLE_LOGIN_TIMEOUT_MS
+      );
+      stopWaiting = (e: Error) => {
+        clearTimeout(t);
+        reject(e);
+      };
       stream.addEventListener("@oauth2", (ev) => {
         clearTimeout(t);
         try {
@@ -303,7 +367,36 @@ export async function pocketBaseGoogleSignIn(url?: string): Promise<PocketBaseAu
     const redirectURL = base + "/api/oauth2-redirect";
     const authUrl = new URL(provider.authURL + encodeURIComponent(redirectURL));
     authUrl.searchParams.set("state", clientId);
-    popup.location.href = authUrl.toString();
+    const href = authUrl.toString();
+    if (opener === "custom_tab") {
+      const { Browser } = await import("@capacitor/browser");
+      // User closed the Custom Tab = cancel (after a short grace, the code may already be on its way).
+      customTabListener = await Browser.addListener("browserFinished", () => {
+        if (graceTimer) clearTimeout(graceTimer);
+        graceTimer = setTimeout(
+          () => stopWaiting?.(new PocketBaseGoogleLoginError("denied", "Google sign-in was cancelled")),
+          GOOGLE_CUSTOM_TAB_CLOSE_GRACE_MS
+        );
+      });
+      try {
+        await Browser.open({ url: href });
+        customTabOpened = true;
+      } catch {
+        throw new PocketBaseGoogleLoginError("failed", "Could not open the Google sign-in page");
+      }
+    } else if (opener === "system_browser") {
+      let r: { ok?: boolean; error?: string } | undefined;
+      try {
+        r = await desktopAuthShim()?.openExternalAuthUrl?.(href);
+      } catch (e) {
+        r = { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+      if (!r || r.ok === false) {
+        throw new PocketBaseGoogleLoginError("failed", "Could not open the browser for Google sign-in");
+      }
+    } else if (popup) {
+      popup.location.href = href;
+    }
     const got = await waiting;
     if (got.error || !got.code) throw new PocketBaseGoogleLoginError("denied", "Google sign-in was cancelled");
     if (got.state !== clientId) throw new PocketBaseGoogleLoginError("failed", "Google sign-in state mismatch");
@@ -322,10 +415,9 @@ export async function pocketBaseGoogleSignIn(url?: string): Promise<PocketBaseAu
     writePocketBaseAuth(state, true);
     return state;
   } finally {
-    cleanup();
+    await cleanup();
   }
-}
-/** Self-registration (Pocket Ledger Server login). The server's "New account approval"
+}/** Self-registration (Pocket Ledger Server login). The server's "New account approval"
  *  setting decides the result: "approved" (Auto, can sign in right away) or "pending"
  *  (Manual, cannot sign in until a main admin approves it in the server panel).
  *  "otp": the server has email (SMTP) set up and sent a 6-digit code to the email; the

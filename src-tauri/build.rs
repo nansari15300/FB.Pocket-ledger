@@ -36,6 +36,7 @@ fn main() {
             "pl_bridge_upsert",
             "pl_update_download",
             "pl_bridge_result",
+            "pl_open_external_auth",
         ]),
     ))
     .expect("failed to run tauri-build");
