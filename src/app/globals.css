@@ -3150,7 +3150,7 @@ button.day_selected.is-today.has-transactions {
   table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]):not([data-pl-online-trigger-log-inner]) thead th,
   table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]):not([data-pl-online-trigger-log-inner]) tbody td,
   table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]):not([data-pl-online-trigger-log-inner]) tfoot td {
-    border-width: 3px !important;
+    border-width: 1px !important;
     border-color: #000000 !important;
   }
   [data-pl-gstr-report] table,
@@ -7457,7 +7457,7 @@ body[class*="theme-"] main table:not([data-pl-manage-sharing-users-table]):not([
 body[class*="theme-"] [data-theme-table="transactions"] table,
 body[class*="theme-"] [data-theme-table="transactions"] table th,
 body[class*="theme-"] [data-theme-table="transactions"] table td {
-  border-color: #000 !important;
+  border-color: hsl(var(--border)) !important;
 }
 /* Transaction table — saari themes: column dividers (vertical) band */
 body[class*="theme-"] [data-theme-table="transactions"] tbody tr:not([data-pl-spend-wise-group]):not([data-pl-spend-wise-opening]):not([data-pl-recon-matched]):not([data-pl-recon-unmatched]) > td {

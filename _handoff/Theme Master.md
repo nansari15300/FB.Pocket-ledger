@@ -209,3 +209,11 @@ User ne kaha: 'kaam jo ruka hua hai uske sab ko reject karwa do maine sab manual
 User ne laptop par folder 'C:\Project xxx' ka naam badalkar 'C:\Project ERP' kar diya. Main app ab: C:\Project ERP\Refference apps\Touri + React. Purane backups (backup-theme-2026110x-*) aur theme-work-tmp ab C:\Project ERP\ ke andar hain. Is file me upar jahan bhi 'C:\Project xxx' likha hai, use 'C:\Project ERP' samjhein. Folder ka naam wapas mat badlein.
 Account list ki dono lines (Pro theme): right edge 2 Nov 3:49 PM aur left edge 3:52 PM par ho chuki hain (handle ki duplicate line chhipayi, globals.css lines 15742-15755). Is kaam me kuch baaki nahi.
 
+
+## 2026-11-03 18:22 Asia/Kathmandu - Table border: #000 -> theme token; 4K table border 3px -> 1px
+- Approved by user 6:19 PM NPT Nov 3, 2026. File: src/app/globals.css (only 2 lines changed, CRLF/no BOM kept).
+- Line 7460 (rule at 7453-7461, selectors: body[class*="theme-"] main table:not([data-pl-manage-sharing-users-table]):not([data-pl-manage-sharing-limits-table]):not(.pl-special-account-usage-table):not([data-pl-online-trigger-log-inner]) + th/td/tr, and body[class*="theme-"] [data-theme-table="transactions"] table/th/td): before `  border-color: #000 !important;` after `  border-color: hsl(var(--border)) !important;`. Global (all themes), not Pro-scoped; Pro --border = 0 0% 0% so Pro stays black.
+- Line 3153 (inside @media (min-width: 3840px) and (hover: hover) and (pointer: fine), line 3142; selectors 3146-3152: table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]):not([data-pl-online-trigger-log-inner]) + td/th/tr/thead th/tbody td/tfoot td): before `    border-width: 3px !important;` after `    border-width: 1px !important;`. Global 4K-only; Pro on 4K also gets 1px (was 3px). Line 3154 border-color #000000 left untouched (not in approved scope).
+- Backup: C:\Project ERP\backup-theme-20261103-1820\ (src\app\globals.css, _handoff\Theme Master.md).
+- Checks: postcss parse OK; npx tsc --noEmit exit 0; diff vs backup = only lines 3153 and 7460; CRLF, no BOM; Trxn Table Master region, electron\, src-tauri\ untouched.
+- Pending: visual check on localhost:2000 (transaction tables e.g. Party/Bank-Cash account detail, Dashboard, Reports > Accounts Statement; 4K check needs >=3840px desktop). Notify HR Module Master.
