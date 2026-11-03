@@ -1,7 +1,20 @@
 # HR Module Master
 
 HR module (Employees / Attendance / Leaves / Payroll) — Pocket Ledger के अंदर अलग, plan-gated module।
-Worktree: `C:\Project xxx\Refference apps\Touri-HR` (branch `feature/hr-module`)।
+Worktree: `C:\Project ERP\Refference apps\Touri-HR` (branch `feature/hr-module`)। (पुराना नाम `C:\Project xxx` था — folder rename हो गया, अब हर जगह `C:\Project ERP`।)
+
+## PC बँटवारा (PC split) — 2026-11-03 से
+
+| PC | Worktree | काम | कहाँ लिख सकता है |
+|---|---|---|---|
+| **Laptop** DESKTOP-M4HAJE9 | `C:\Project ERP\Refference apps\Touri-HR` | (c) Leaves + **सारी shared HR files** (types, hrApi, hooks, utils, HrGate, HrHomePage, barrels, routes, plans/permissions, यह handoff file) | पूरा Touri-HR worktree (नियम ऊपर/नीचे वाले), backups `C:\PocketLedger-Backups\HR\` |
+| **ServerWin10** | `D:\Touri-HR` | (d) Payroll + (e) Salary slip | **सिर्फ़** `src/modules/hr/payroll/**` और `src/app/(dashboard)/hr/payroll/**` — write-only |
+
+- ServerWin10 पर **dev server / `tsc` नहीं** चलाना। Payroll का test **laptop** पर होगा, Git Master के sync के बाद (preview :2100)।
+- ServerWin10 के backups **सिर्फ़ `D:`** पर (जैसे `D:\PocketLedger-Backups\HR\<yyyyMMdd-HHmmss>\`)।
+- Laptop bot `src/modules/hr/payroll/**` और `src/app/(dashboard)/hr/payroll/**` को **कभी न बनाए / न बदले**।
+- ServerWin10 bot shared files (types.ts, hrApi.ts, index.ts, pages/index.ts, HrHomePage.tsx, यह file) **न बदले** — ज़रूरत हो तो इसी file के "अगला कदम" में note लिखवाए / laptop से माँगे; laptop bot जोड़ेगा (जैसे barrel export, HrHomePage पर Payroll card active करना)।
+- दोनों PCs पर git सिर्फ़ **Git Master** चलाएगा।
 
 ## नियम
 
@@ -34,7 +47,7 @@ Worktree: `C:\Project xxx\Refference apps\Touri-HR` (branch `feature/hr-module`)
 | `src/modules/hr/pages/LeavesPage.tsx` | Pending / All tabs, "New leave request" form (validation, दिन गिनती, overlap रोक), Approve/Reject (सिर्फ़ `canApproveLeave`) |
 | `src/app/(dashboard)/hr/leaves/page.tsx` | route `/hr/leaves` (HrGate + next/dynamic) |
 | `src/modules/hr/components/HrGate.tsx` | plan + permission gate ("HR आपके plan में उपलब्ध नहीं है") |
-| `src/modules/hr/pages/HrHomePage.tsx` | HR home (Employees active, बाक़ी "जल्द आ रहा है") |
+| `src/modules/hr/pages/HrHomePage.tsx` | HR home (Employees / Attendance / Leaves active; Payroll "जल्द आ रहा है" — Payroll card laptop bot active करेगा) |
 | `src/modules/hr/pages/EmployeesPage.tsx` | Employees list |
 | `src/modules/hr/pages/EmployeeDetailsPage.tsx` | Employee add (`new`) / view / edit / remove |
 | `src/modules/hr/pages/index.ts`, `src/modules/hr/index.ts` | barrel exports |
@@ -45,6 +58,8 @@ Worktree: `C:\Project xxx\Refference apps\Touri-HR` (branch `feature/hr-module`)
 | `src/config/plans.ts` (shared) | `hrModuleEnabled` entitlement — basic=false, advance/pro/pro-plus=true |
 | `src/lib/permissions.ts` (shared) | `hr_view`, `hr_manage`, `hr_attendance`, `hr_leave_approve`, `hr_payroll` + "HR" group (सबसे आख़िर में) |
 | `src/hooks/useCachedFeatureConfig.ts` (shared) | offline default `hr: true` |
+| `src/modules/hr/payroll/**` (ServerWin10) | (d) Payroll + (e) slip — **सिर्फ़ ServerWin10 bot**; laptop यहाँ नहीं लिखता |
+| `src/app/(dashboard)/hr/payroll/**` (ServerWin10) | route `/hr/payroll` — **सिर्फ़ ServerWin10 bot** |
 | `src/components/layout/AppSidebar.tsx` (shared) | `hr` menu item (Briefcase, `permission: "hr_view"`) — Theme Master की मंज़ूरी से लगाया; plan-based hiding अभी नहीं |
 
 ## Checklist — v1 features
@@ -52,8 +67,9 @@ Worktree: `C:\Project xxx\Refference apps\Touri-HR` (branch `feature/hr-module`)
 - [x] Foundation: types, hrApi, useHrModuleFeature, HrGate, plan entitlement, permissions, feature config
 - [ ] (a) Employee profile — UI बन गया (list / add / edit / remove); **server routes बाक़ी** (Server Master)
 - [ ] (b) Attendance — UI बन गया (daily mark + bulk save, monthly grid); **server routes बाक़ी** (Server Master)
-- [ ] (c) Leaves — UI बन गया (request form, Pending/All, approve/reject, attendance में approved leave prefill); **server routes बाक़ी** (Server Master)
-- [ ] (d) Payroll — महीने का हिसाब (present_days, gross, deductions, net) + voucher post (`/payroll/post`)
+- [ ] (c) Leaves — UI पूरा (commit `09fa15b5`; 2026-11-03 review ✓: request form, Pending/All, approve/reject, attendance में approved leave prefill + monthly legend); **server routes बाक़ी** (Server Master) — **Laptop**
+- [ ] (d) Payroll — महीने का हिसाब (present_days, gross, deductions, net) + voucher post (`/payroll/post`) — **ServerWin10** (`src/modules/hr/payroll/**`)
+- [ ] (e) Salary slip — **ServerWin10** (`src/modules/hr/payroll/**`)
 - [x] (e1) Sidebar menu item `hr` (2026-11-02, Theme Master approved)
 - [ ] (e2) Admin plan editor में HR toggle; sidebar में plan-based hiding (user के फ़ैसले के बाद)
 
@@ -71,6 +87,10 @@ Worktree: `C:\Project xxx\Refference apps\Touri-HR` (branch `feature/hr-module`)
 - **2026-11-02 15:49 (NPT)** — Backup `C:\PocketLedger-Backups\HR\20261102-154937\` → `src\modules\hr\pages\AttendancePage.tsx`, `src\modules\hr\pages\HrHomePage.tsx`, `src\modules\hr\pages\index.ts`, `src\modules\hr\index.ts`, `_handoff\HR Module Master.md`।
 - **2026-11-02 15:50–16:05 (NPT)** — (c) Leaves: नई files `utils/leaves.ts`, `hooks/useHrLeaves.ts`, `pages/LeavesPage.tsx`, route `/hr/leaves`; HrHomePage पर Leaves card active; barrels में exports। Request बनाना सिर्फ़ `canManage || canAttendance`, Approve/Reject सिर्फ़ `canApproveLeave`; बाक़ी read-only। v1 में request edit/cancel नहीं; `decided_by` raw id दिखता है।
 - **2026-11-02 16:05 (NPT)** — Attendance integration: Daily view में approved leave + कोई saved record नहीं → status `leave` prefill (नीले italic note के साथ, Save ज़रूरी; save पर `data.leave_app_id`); "Mark all present" ऐसी rows छोड़ देता है। Monthly grid में ऐसे दिन हल्का italic "L" (counts में नहीं) + legend। tsc → 0 errors।
+- **2026-11-03 16:21 (NPT)** — Git Master ने `09fa15b5` ("HR module: employees + attendance") commit किया; इसमें (a)+(b)+(c) Leaves की सारी files पहले से हैं (`utils/leaves.ts`, `hooks/useHrLeaves.ts`, `pages/LeavesPage.tsx`, route `/hr/leaves`, attendance integration, HrHomePage Leaves card, barrels)। Working tree clean।
+- **2026-11-03 16:22 (NPT)** — (c) Leaves review (laptop): दोबारा नहीं बनाया, spec से मिलाया — सब मौजूद, कोई code बदलाव ज़रूरी नहीं। Backup `C:\PocketLedger-Backups\HR\20261103-162224\` → `_handoff\HR Module Master.md`।
+- **2026-11-03 16:23 (NPT)** — `npx tsc --noEmit -p .` → 0 errors। Preview `/app/hr/leaves/` → 308 → `/app/hr/leaves` → **200**।
+- **2026-11-03 16:25 (NPT)** — यह file: path `C:\Project xxx` → `C:\Project ERP`; PC बँटवारा section (laptop: (c) + shared; ServerWin10 `D:\Touri-HR`: (d)+(e) सिर्फ़ payroll folders में); file map में payroll paths; checklist में (e) slip।
 
 ## अगला कदम
 
@@ -81,3 +101,4 @@ Worktree: `C:\Project xxx\Refference apps\Touri-HR` (branch `feature/hr-module`)
 5. Server बनने के बाद Employees + Attendance का end-to-end test, फिर (c) Leaves। Attendance server note: `attendance/list` को `from`/`to`/`employee` filter और `attendance/upsert` को `app_id` पर upsert चाहिए (client deterministic `att_<employee>_<date>` भेजता है)।
 6. **Git Master**: ऊपर की files commit करे (मैं git नहीं चलाता)।
 7. **Server Master (Leaves)**: `leaves/list` पर `employee` filter (और `from`/`to` का अर्थ तय करें — overlap बेहतर), `leaves/decide` server पर `decided_by` (current user) + `decided_at` set करे, और decide सिर्फ़ `hr_leave_approve`/owner/admin को।
+8. **ServerWin10 (Payroll)**: (d)+(e) सिर्फ़ `src/modules/hr/payroll/**` + `src/app/(dashboard)/hr/payroll/**` में। Sync के बाद laptop: `tsc` + `/app/hr/payroll` curl, फिर barrels में payroll export + HrHomePage पर Payroll card `active: true` (backup के साथ)।
