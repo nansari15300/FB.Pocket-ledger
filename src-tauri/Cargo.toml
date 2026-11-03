@@ -1,0 +1,47 @@
+[package]
+name = "pocket-ledger-desktop"
+version = "1.1.74"
+description = "Pocket Ledger desktop (Tauri v2) — Electron replacement"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# `unstable` = multiwebview (ek window me tab strip + har tab ka alag webview).
+tauri = { version = "2", features = ["unstable", "tray-icon"] }
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+base64 = "0.23"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_System_SystemInformation",
+  "Wdk_System_SystemServices",
+  "Win32_System_Registry",
+  "Win32_System_Power",
+  "Win32_System_LibraryLoader",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_Graphics_Gdi",
+] }
+# WebView2 COM (context menu, request headers, CDP reload) + folder picker — sab Cargo.lock me pehle se (tauri/wry deps).
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_UI_Shell",
+  "Win32_UI_Shell_Common",
+  "Win32_UI_WindowsAndMessaging",
+] }
+windows-core = "0.62"
+webview2-com = "0.39"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

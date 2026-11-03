@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pl-tab-sync-done"
+description = "Enables the pl_tab_sync_done command without any pre-configured scope."
+commands.allow = ["pl_tab_sync_done"]
+
+[[permission]]
+identifier = "deny-pl-tab-sync-done"
+description = "Denies the pl_tab_sync_done command without any pre-configured scope."
+commands.deny = ["pl_tab_sync_done"]

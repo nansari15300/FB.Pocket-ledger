@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pl-print-done"
+description = "Enables the pl_print_done command without any pre-configured scope."
+commands.allow = ["pl_print_done"]
+
+[[permission]]
+identifier = "deny-pl-print-done"
+description = "Denies the pl_print_done command without any pre-configured scope."
+commands.deny = ["pl_print_done"]

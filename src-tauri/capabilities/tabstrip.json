@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "tabstrip",
+  "description": "Tab strip webview (bundled local asset): sirf tab + window chrome commands. Koi fs/shell/core plugin permission nahi.",
+  "local": true,
+  "webviews": ["tabstrip", "tabstrip-*"],
+  "permissions": [
+    "allow-tab-strip-action",
+    "allow-tab-reload-active",
+    "allow-win-chrome-action",
+    "allow-win-show-app-menu",
+    "allow-win-start-drag"
+  ]
+}

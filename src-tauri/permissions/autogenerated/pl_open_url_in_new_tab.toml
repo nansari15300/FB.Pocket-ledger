@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pl-open-url-in-new-tab"
+description = "Enables the pl_open_url_in_new_tab command without any pre-configured scope."
+commands.allow = ["pl_open_url_in_new_tab"]
+
+[[permission]]
+identifier = "deny-pl-open-url-in-new-tab"
+description = "Denies the pl_open_url_in_new_tab command without any pre-configured scope."
+commands.deny = ["pl_open_url_in_new_tab"]

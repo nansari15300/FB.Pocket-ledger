@@ -1,0 +1,5 @@
+# Rust/Tauri build output
+/target/
+/gen/schemas
+# Sidecar binary build output (desktop-sidecar se `npm run sidecar:build`)
+/binaries/*.exe

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pl-set-remote-auth"
+description = "Enables the pl_set_remote_auth command without any pre-configured scope."
+commands.allow = ["pl_set_remote_auth"]
+
+[[permission]]
+identifier = "deny-pl-set-remote-auth"
+description = "Denies the pl_set_remote_auth command without any pre-configured scope."
+commands.deny = ["pl_set_remote_auth"]

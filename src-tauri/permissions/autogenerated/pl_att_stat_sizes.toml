@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pl-att-stat-sizes"
+description = "Enables the pl_att_stat_sizes command without any pre-configured scope."
+commands.allow = ["pl_att_stat_sizes"]
+
+[[permission]]
+identifier = "deny-pl-att-stat-sizes"
+description = "Denies the pl_att_stat_sizes command without any pre-configured scope."
+commands.deny = ["pl_att_stat_sizes"]

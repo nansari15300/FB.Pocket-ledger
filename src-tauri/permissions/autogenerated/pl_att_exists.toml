@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pl-att-exists"
+description = "Enables the pl_att_exists command without any pre-configured scope."
+commands.allow = ["pl_att_exists"]
+
+[[permission]]
+identifier = "deny-pl-att-exists"
+description = "Denies the pl_att_exists command without any pre-configured scope."
+commands.deny = ["pl_att_exists"]

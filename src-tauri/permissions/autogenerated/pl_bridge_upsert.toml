@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pl-bridge-upsert"
+description = "Enables the pl_bridge_upsert command without any pre-configured scope."
+commands.allow = ["pl_bridge_upsert"]
+
+[[permission]]
+identifier = "deny-pl-bridge-upsert"
+description = "Denies the pl_bridge_upsert command without any pre-configured scope."
+commands.deny = ["pl_bridge_upsert"]

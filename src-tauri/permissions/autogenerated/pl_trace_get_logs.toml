@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pl-trace-get-logs"
+description = "Enables the pl_trace_get_logs command without any pre-configured scope."
+commands.allow = ["pl_trace_get_logs"]
+
+[[permission]]
+identifier = "deny-pl-trace-get-logs"
+description = "Denies the pl_trace_get_logs command without any pre-configured scope."
+commands.deny = ["pl_trace_get_logs"]

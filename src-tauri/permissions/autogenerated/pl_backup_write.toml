@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pl-backup-write"
+description = "Enables the pl_backup_write command without any pre-configured scope."
+commands.allow = ["pl_backup_write"]
+
+[[permission]]
+identifier = "deny-pl-backup-write"
+description = "Denies the pl_backup_write command without any pre-configured scope."
+commands.deny = ["pl_backup_write"]

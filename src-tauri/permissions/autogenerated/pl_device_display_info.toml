@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pl-device-display-info"
+description = "Enables the pl_device_display_info command without any pre-configured scope."
+commands.allow = ["pl_device_display_info"]
+
+[[permission]]
+identifier = "deny-pl-device-display-info"
+description = "Denies the pl_device_display_info command without any pre-configured scope."
+commands.deny = ["pl_device_display_info"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pl-att-write"
+description = "Enables the pl_att_write command without any pre-configured scope."
+commands.allow = ["pl_att_write"]
+
+[[permission]]
+identifier = "deny-pl-att-write"
+description = "Denies the pl_att_write command without any pre-configured scope."
+commands.deny = ["pl_att_write"]

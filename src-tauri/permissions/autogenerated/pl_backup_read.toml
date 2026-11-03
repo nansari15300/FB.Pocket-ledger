@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pl-backup-read"
+description = "Enables the pl_backup_read command without any pre-configured scope."
+commands.allow = ["pl_backup_read"]
+
+[[permission]]
+identifier = "deny-pl-backup-read"
+description = "Denies the pl_backup_read command without any pre-configured scope."
+commands.deny = ["pl_backup_read"]

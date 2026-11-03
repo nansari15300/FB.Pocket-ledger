@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-win-chrome-action"
+description = "Enables the win_chrome_action command without any pre-configured scope."
+commands.allow = ["win_chrome_action"]
+
+[[permission]]
+identifier = "deny-win-chrome-action"
+description = "Denies the win_chrome_action command without any pre-configured scope."
+commands.deny = ["win_chrome_action"]

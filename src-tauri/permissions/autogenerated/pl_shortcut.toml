@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pl-shortcut"
+description = "Enables the pl_shortcut command without any pre-configured scope."
+commands.allow = ["pl_shortcut"]
+
+[[permission]]
+identifier = "deny-pl-shortcut"
+description = "Denies the pl_shortcut command without any pre-configured scope."
+commands.deny = ["pl_shortcut"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pl-bridge-result"
+description = "Enables the pl_bridge_result command without any pre-configured scope."
+commands.allow = ["pl_bridge_result"]
+
+[[permission]]
+identifier = "deny-pl-bridge-result"
+description = "Denies the pl_bridge_result command without any pre-configured scope."
+commands.deny = ["pl_bridge_result"]

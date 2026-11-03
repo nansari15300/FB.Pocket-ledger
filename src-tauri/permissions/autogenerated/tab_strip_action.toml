@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-tab-strip-action"
+description = "Enables the tab_strip_action command without any pre-configured scope."
+commands.allow = ["tab_strip_action"]
+
+[[permission]]
+identifier = "deny-tab-strip-action"
+description = "Denies the tab_strip_action command without any pre-configured scope."
+commands.deny = ["tab_strip_action"]
