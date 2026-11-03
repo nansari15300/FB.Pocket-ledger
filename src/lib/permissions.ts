@@ -74,7 +74,13 @@ export type Permission =
   | "sync_reconciliation_transaction"
   /** Freeze party / bank / staff / tax master account (block new txns + banner). */
   | "freeze_master_account"
-  | "unlock_locked_pdf";
+  | "unlock_locked_pdf"
+  /** HR module (plan-gated: entitlements.hrModuleEnabled) */
+  | "hr_view"
+  | "hr_manage"
+  | "hr_attendance"
+  | "hr_leave_approve"
+  | "hr_payroll";
 
 export type PermissionInfo = {
   key: Permission;
@@ -231,6 +237,17 @@ export const PermissionGroups: PermissionGroup[] = [
         permissions: [
             { key: "add_adjustment_voucher", label: "Add Adjustment Voucher" },
             { key: "edit_adjustment_voucher", label: "Edit Adjustment Voucher" },
+        ],
+    },
+    {
+        // HR group sabse aakhir me rakho — role arrays positional hain (usePermissions flattenedPermissions).
+        title: "HR",
+        permissions: [
+            { key: "hr_view", label: "View HR" },
+            { key: "hr_manage", label: "Manage Employees" },
+            { key: "hr_attendance", label: "Mark Attendance" },
+            { key: "hr_leave_approve", label: "Approve Leaves" },
+            { key: "hr_payroll", label: "Manage Payroll" },
         ],
     },
 ];

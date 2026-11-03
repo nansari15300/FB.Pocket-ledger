@@ -14,6 +14,8 @@ const OFFLINE_BASE_FEATURE_CONFIG: Record<string, boolean> = {
   "bank-cash": true,
   staff: true,
   loans: true,
+  // HR: offline par menu chhupao mat — asli gate plan (hrModuleEnabled) + hr_view permission (HrGate / useHrModuleFeature).
+  hr: true,
   tax: true,
   incomes: true,
   items: true,

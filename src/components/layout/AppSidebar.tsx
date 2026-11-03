@@ -32,6 +32,7 @@ import {
   Table,
   Cloud,
   CalendarDays,
+  Briefcase,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -118,6 +119,7 @@ const allMenuItems: MenuItem[] = [
   { id: 'party', href: "/party", label: "Parties", icon: Users },
   { id: 'bank-cash', href: "/bank-cash", label: "Bank/Cash", icon: Landmark },
   { id: 'staff', href: "/staff", label: STAFF_ENTITY_LABEL, icon: StaffEntityNavIcon },
+  { id: 'hr', href: "/hr", label: "HR", icon: Briefcase, permission: "hr_view" },
   { id: 'tax', href: "/tax", label: "Tax", icon: Banknote },
   { id: 'incomes', href: "/incomes", label: "Income & Expense", icon: DollarSign },
   { id: 'items', href: "/items", label: "Items & Service", icon: BookText },
