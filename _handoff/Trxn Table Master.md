@@ -5,8 +5,8 @@
 ## मेरा काम
 Pocket Ledger के Transaction (trxn) टेबल का ढाँचा मेरी ज़िम्मेदारी है: उसके कॉलम, फ़ील्ड, डेटा टाइप, रिलेशन और इंडेक्स, और यह कि client और server (PocketBase + Go) में यह टेबल कैसे इस्तेमाल होती है। इसके अलावा ledger के TransactionsTable का layout भी मेरे पास है।
 - trxn सिर्फ़ client में UI/route का नाम है। असल डेटा PocketBase की collection `pl_vouchers` में रहता है।
-- Schema: `C:\Project xxx\Refference apps\PocketLedger-Server\sub-server\pb_migrations\1761500000_app_data_collections.js` (लाइन ~160–175)। इसमें 19 कॉलम और 6 इंडेक्स हैं, जिनमें UNIQUE(company, app_id) भी है। इससे जुड़ा logic `pb_hooks` में है।
-- Client: `C:\Project xxx\Refference apps\Touri + React` (laptop DESKTOP-M4HAJE9 पर)।
+- Schema: `C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_migrations\1761500000_app_data_collections.js` (लाइन ~160–175)। इसमें 19 कॉलम और 6 इंडेक्स हैं, जिनमें UNIQUE(company, app_id) भी है। इससे जुड़ा logic `pb_hooks` में है।
+- Client: `C:\Project ERP\Refference apps\Touri + React` (laptop DESKTOP-M4HAJE9 पर)।
 - Live server: ServerWin10 पर `C:\Project Next.js Balgram\PocketLedger-Server\sub-server`। उसका PocketBase `192.168.1.64:8090` पर और `https://np.pocket-ledger.com` पर मिलता है।
 
 ## नियम
@@ -18,6 +18,7 @@ Pocket Ledger के Transaction (trxn) टेबल का ढाँचा म�
 6. dev server laptop पर ही चलाना है।
 7. Firebase पूरी तरह हटाया जा रहा है और अब सब कुछ सिर्फ़ PocketBase पर चलेगा। कोई नया Firebase code नहीं जोड़ना। कहीं Firebase वाली चीज़ दिखे तो Firebase Master को बताना।
 8. user से हमेशा हिंदी (देवनागरी) में और स्त्रीलिंग में बात करनी है।
+9. नया नियम (2026-11-03): phone notification सिर्फ़ Firebase Master (mail alerts) भेजेगी; Trxn Table Master की notification बंद।
 
 ## बदली हुई फ़ाइलें (कुछ भी commit नहीं हुआ)
 **Plan A (ledger column alignment):**
@@ -37,8 +38,8 @@ Pocket Ledger के Transaction (trxn) टेबल का ढाँचा म�
 - `TransactionsTable.tsx:4713`: mobile group item की key अब `t.id ?? _rowKey ?? idx` है।
 
 ## बैकअप
-- Plan A से पहले का: `C:\Project xxx\backup-trxn-table-20261101-1602\`। इसमें 5 फ़ाइलें हैं: TransactionsTable.tsx, ledgerUnifiedContentWidth.ts, ledgerHeaderChrome.ts, transactionTableShared.tsx और globals.css।
-- Animation fixes से पहले का: `C:\Project xxx\backup-trxn-anim-20261101-1735\src\components\vouchers\`, जिसमें दोनों फ़ाइलें हैं।
+- Plan A से पहले का: `C:\Project ERP\backup-trxn-table-20261101-1602\`। इसमें 5 फ़ाइलें हैं: TransactionsTable.tsx, ledgerUnifiedContentWidth.ts, ledgerHeaderChrome.ts, transactionTableShared.tsx और globals.css।
+- Animation fixes से पहले का: `C:\Project ERP\backup-trxn-anim-20261101-1735\src\components\vouchers\`, जिसमें दोनों फ़ाइलें हैं।
 - Restore करते समय `globals.css` को पूरा मत बदलना, सिर्फ़ मेरा वाला एक rule वापस करना, ताकि Theme Master के बदलाव न मिटें।
 
 ## Dev setup (laptop)
@@ -76,4 +77,7 @@ Pocket Ledger के Transaction (trxn) टेबल का ढाँचा म�
 - Ledger rows highlight (`highlightRowIds` / `pl-row-change-highlight`)
 
 ## Progress log (Asia/Kathmandu, laptop clock)
-- 2026-11-02 15:32 : Account/Party details trxn table ki rows ke beech wali moti line ko 1px karne ka kaam - **BLOCKED, koi code edit nahi hua**. Source: line border nahi hai, Theme Master ka card gap hai - `src\app\globals.css` line 14713 (section 11): har main-row td par `border-top: 8px solid transparent !important` (section 9 line 14654 me 5px tha, 14713 override karta hai), td `background-clip: padding-box` (line 14649) se gap me table ka background `hsl(var(--pl-row-gap))` (line 14412) dikhta hai; Medium theme me --pl-row-gap 0 0% 22% (line 14277) = dark. Ye sab Theme Master block (line 14016 - 15722 `/* === end Theme Master === */`) ke andar hai, isliye edit nahi kiya. tsc nahi chalaya (koi .ts/.tsx/.css change nahi). Sirf is handoff file ka backup: `C:\Project xxx\backup-trxn-rowborder-20261102-1532\_handoff\Trxn Table Master.md`.
+- 2026-11-02 15:32 : Account/Party details trxn table ki rows ke beech wali moti line ko 1px karne ka kaam - **BLOCKED, koi code edit nahi hua**. Source: line border nahi hai, Theme Master ka card gap hai - `src\app\globals.css` line 14713 (section 11): har main-row td par `border-top: 8px solid transparent !important` (section 9 line 14654 me 5px tha, 14713 override karta hai), td `background-clip: padding-box` (line 14649) se gap me table ka background `hsl(var(--pl-row-gap))` (line 14412) dikhta hai; Medium theme me --pl-row-gap 0 0% 22% (line 14277) = dark. Ye sab Theme Master block (line 14016 - 15722 `/* === end Theme Master === */`) ke andar hai, isliye edit nahi kiya. tsc nahi chalaya (koi .ts/.tsx/.css change nahi). Sirf is handoff file ka backup: `C:\Project ERP\backup-trxn-rowborder-20261102-1532\_handoff\Trxn Table Master.md`.
+- 2026-11-03 17:22 : Path badla: C:\Project xxx -> C:\Project ERP (user ne khud kiya); handoff me sab paths update.
+- 2026-11-03 17:22 : Row gap 1px: user ne option A chuna; Theme Master apne block me 8px -> 1px karegi; Trxn Table Master ka koi code badlav nahi.
+- 2026-11-03 17:22 : Naya niyam (2026-11-03): phone notification sirf Firebase Master (mail alerts); Trxn Table Master ki notification band.

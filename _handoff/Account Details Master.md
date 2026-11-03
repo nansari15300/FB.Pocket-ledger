@@ -1,0 +1,24 @@
+# Account Details Master
+
+अंतिम अपडेट: 2026-11-03 17:25 (Asia/Kathmandu)
+
+## नक्शा
+- लक्ष्य: Pocket Ledger के Account Details पेज और Group Details पेज का UI, डेटा, बग और नए फ़ीचर संभालना।
+- Project path: `C:\Project ERP\Refference apps\Touri + React` (3 नवंबर 2026 को user ने `C:\Project xxx` का नाम बदलकर `C:\Project ERP` किया)।
+- मुख्य files: `src\components\account\AccountDetails.tsx`, `src\components\account\AccountGroupDetails.tsx`।
+- Ledger header strip की shared class `.pl-ledger-header-ribbon-wrap` (`src\app\globals.css`, `src\lib\ledgerHeaderChrome.ts`) से आती है।
+- नियम: बदलाव से पहले user की हाँ और backup (`C:\PocketLedger-Backups\`); commit/push नहीं; Firebase code नहीं (सिर्फ़ PocketBase)।
+
+## Checklist
+- [x] Header strip (white/blue) को theme से मिलाने की जाँच और plan (विकल्प 1/2/3)
+- [x] Header strip बदलाव (`globals.css:277`, विकल्प 1): **REJECTED** — user ने खुद manually कर दिया; मैंने कोई code नहीं बदला
+
+## प्रगति लॉग
+| Date/time (Asia/Kathmandu) | क्या किया | बदली files | Backup path |
+|---|---|---|---|
+| 2026-11-01 18:40 | Header strip का कारण खोजा, 3 विकल्पों वाला plan बनाया (read-only) | कोई नहीं | — |
+| 2026-11-02 14:02 | User के कहने पर header strip का काम रद्द (user ने manually किया) | कोई नहीं | — |
+| 2026-11-03 17:25 | यह handoff फ़ाइल बनाई, नया project path दर्ज किया | `_handoff\Account Details Master.md` | — (नई फ़ाइल) |
+
+## अगला कदम
+- अभी कोई काम बाकी नहीं; user के अगले काम का इंतज़ार।

@@ -1,8 +1,8 @@
 # Animation Master — Pocket Ledger
 
 > यह फ़ाइल handoff के लिए है। कोई भी दूसरा bot (अलग id वाला) इसे पढ़कर Animation का काम वहीं से आगे बढ़ा सकता है।
-> Project root: `C:\Project xxx\Refference apps\Touri + React`
-> आख़िरी update: 2026-11-02 14:05 (Asia/Kathmandu, NPT)
+> Project root: `C:\Project ERP\Refference apps\Touri + React`
+> आख़िरी update: 2026-11-03 17:21 (Asia/Kathmandu, NPT)
 
 ---
 
@@ -47,6 +47,8 @@
 13. **Firebase app से हटाया जा रहा है (सिर्फ़ PocketBase रहेगा)।** कोई नया Firebase code नहीं जोड़ना; Firebase से जुड़ी कोई भी बात **Firebase Master** को report करनी है।
 14. git: `C:\Program Files\Git\cmd\git.exe` — सिर्फ़ read-only commands, हमेशा `--no-optional-locks` के साथ।
 15. हर बदलाव के बाद यह `.md` फ़ाइल update करनी है।
+16. Project का path अब `C:\Project ERP\Refference apps\Touri + React` है (3 नवंबर 2026 से)।
+17. फ़ोन notification सिर्फ़ Firebase Master देती है (mail alerts); Animation Master की notification setting बंद है (3 नवंबर 2026)।
 
 ### काम करने के tips (इस machine पर)
 - Node PATH पर नहीं है → `C:\Program Files\nodejs\node.exe` पूरा path इस्तेमाल करें।
@@ -100,7 +102,7 @@
 
 ## 4. Backups
 
-- Folder: `C:\Project xxx\Refference apps\Touri + React\.animation-backups\2026-11-01\`
+- Folder: `C:\Project ERP\Refference apps\Touri + React\.animation-backups\2026-11-01\`
 - हर फ़ाइल वहीं उसी relative path पर है (hash से verify किया गया)। कुल 15 फ़ाइलें:
   1. `src/hooks/useAnimationSettings.tsx`
   2. `src/app/(dashboard)/layout.tsx`
@@ -118,7 +120,7 @@
   14. `src/components/payee/PayeeList.tsx`
   15. `src/modules/loans/components/LoanAccountList.tsx`
 - नई 4 फ़ाइलों का backup नहीं है (वे पहले थीं ही नहीं) — rollback = उन्हें हटाना + ऊपर की 15 फ़ाइलें restore करना।
-- Trxn Table Master का अपना backup: `C:\Project xxx\backup-trxn-anim-20261101-1735\`
+- Trxn Table Master का अपना backup: `C:\Project ERP\backup-trxn-anim-20261101-1735\`
 
 ---
 
@@ -127,7 +129,7 @@
 - [x] Audit (read-only)
 - [x] Steps 1–4 (global provider + CSS gate, ledger page-change gate, dashboard summary/banner setting follow)
 - [x] Master lists पर 1s highlight (8 lists)
-- [x] Trxn Table Master ने 6 में से 5 trxn fixes किए: exit 0, fallback 2.5, spend-wise layout gate, key से `tableTransactions.length` हटाया, mobile keys ID से। (उनका backup: `C:\Project xxx\backup-trxn-anim-20261101-1735\`)
+- [x] Trxn Table Master ने 6 में से 5 trxn fixes किए: exit 0, fallback 2.5, spend-wise layout gate, key से `tableTransactions.length` हटाया, mobile keys ID से। (उनका backup: `C:\Project ERP\backup-trxn-anim-20261101-1735\`)
 - [x] FY divider transition — **rejected, user ने खुद किया** (2026-11-02)
 - [x] Ledger transaction rows का highlight — **rejected, user ने खुद किया** (2026-11-02)। पुराना change request (सिर्फ़ record के लिए, अब लागू नहीं):
   1. `MainRow` / `NarrationRow` पर `rowClassName` prop (transactionTableShared.tsx — Trxn Table Master)
@@ -147,6 +149,7 @@
 | 2026-11-01 ~17:48 | Steps 1–4 + highlight पूरे, tsc pass, eslint में कोई नई problem नहीं |
 | 2026-11-01 18:12 | यह handoff फ़ाइल बनाई; `useAnimationSettings` का backend (Firebase/PocketBase) read-only जाँचा — नीचे section 9 |
 | 2026-11-02 14:05 | user ने सभी रुके हुए काम reject करवाए और खुद manually कर दिए, कोई नया बदलाव नहीं। Read-only जाँच: 4 नई + 15 बदली फ़ाइलें ठीक (कोई आधा edit नहीं, backup से diff सिर्फ़ intended edits, 2026-11-01 के बाद कोई बदलाव नहीं); `tsc --noEmit --incremental false -p tsconfig.typecheck.json` exit 0, कोई error नहीं। |
+| 2026-11-03 17:21 | user ने खुद folder `C:\Project xxx` का नाम बदलकर `C:\Project ERP` किया; इस file के सभी paths अपडेट किए। Folder का नाम वापस नहीं बदलना। |
 
 ---
 
