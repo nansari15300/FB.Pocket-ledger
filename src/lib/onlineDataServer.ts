@@ -59,13 +59,14 @@ export const ONLINE_DATA_SERVERS: readonly OnlineDataServerDef[] = [
   },
 ];
 
-export const DEFAULT_ONLINE_DATA_SERVER_ID: OnlineDataServerId = "firebase";
+export const DEFAULT_ONLINE_DATA_SERVER_ID: OnlineDataServerId = "pocketbase";
 
 /** Shown only for a server whose data sync is not built (falls back to Firebase). */
 export const POCKETBASE_BACKEND_NOT_IMPLEMENTED_MESSAGE =
   "This server's data sync is not available; data saves to Firebase.";
 
 export const ONLINE_DATA_SERVER_POCKETBASE_ID: OnlineDataServerId = "pocketbase";
+export const ONLINE_DATA_SERVER_CHANGED_EVENT = "pl-online-data-server-changed";
 
 export type OnlineDataServerSettings = {
   serverId: OnlineDataServerId;
@@ -260,16 +261,37 @@ export function writeCachedOnlineDataServerSettings(settings: OnlineDataServerSe
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(CACHE_KEY, JSON.stringify(settings));
+    window.dispatchEvent(
+      new CustomEvent(ONLINE_DATA_SERVER_CHANGED_EVENT, { detail: settings })
+    );
   } catch {
     /* ignore */
   }
 }
 
+/**
+ * Fetch `app_settings/online_data_server` from the Pocket Ledger Server (PocketBase).
+ * Public route that requires no authentication; returns null if unreachable or not set.
+ */
+export async function fetchOnlineDataServerFromPocketBase(): Promise<OnlineDataServerSettings | null> {
+  try {
+    const { pbPublicRequest } = await import("@/lib/pocketbaseData/pbClient");
+    const res = (await pbPublicRequest("/api/pl/app-settings/online_data_server", { timeoutMs: 5000 })) as {
+      exists?: boolean;
+      data?: unknown;
+    } | null;
+    if (!res || res.exists !== true) return null;
+    return applyLocalDevPocketBaseGuard(normalizeOnlineDataServerSettings(res.data));
+  } catch {
+    return null;
+  }
+}
+
 let onlineDataServerHydratePromise: Promise<OnlineDataServerSettings> | null = null;
 
-/** One-shot Firestore read into local cache (falls back to cache / default on error). */
+/** One-shot read into local cache: PocketBase first, Firestore fallback on error. */
 export async function ensureOnlineDataServerSettingsHydrated(opts?: {
-  /** Re-read Firestore even if already hydrated this session (e.g. right before company create). */
+  /** Re-read server even if already hydrated this session (e.g. right before company create). */
   force?: boolean;
 }): Promise<OnlineDataServerSettings> {
   if (typeof window === "undefined") return { ...DEFAULT_ONLINE_DATA_SERVER_SETTINGS };
@@ -277,17 +299,29 @@ export async function ensureOnlineDataServerSettingsHydrated(opts?: {
   if (!onlineDataServerHydratePromise) {
     onlineDataServerHydratePromise = (async () => {
       try {
-        // Login type (email / Google / Pocket Ledger Server account) does not pick the backend.
-        // SuperAdmin Settings (Firebase vs Pocket Ledger Server) is the only source.
-        const { doc, getDoc } = await import("@/lib/pbCompat/firestore");
-        const { firestore } = await import("@/lib/firebase");
-        const snap = await Promise.race([
-          getDoc(doc(firestore, ONLINE_DATA_SERVER_SETTINGS_COLLECTION, ONLINE_DATA_SERVER_SETTINGS_ID)),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
-        ]);
-        const next = applyLocalDevPocketBaseGuard(normalizeOnlineDataServerSettings(snap.exists() ? snap.data() : undefined));
-        writeCachedOnlineDataServerSettings(next);
-        return next;
+        // 1. Try Pocket Ledger Server first (PocketBase is the primary data server)
+        const fromPb = await fetchOnlineDataServerFromPocketBase();
+        if (fromPb) {
+          writeCachedOnlineDataServerSettings(fromPb);
+          return fromPb;
+        }
+
+        // 2. Fallback to Firestore if not blocked
+        const { isFirestoreBlockedForServerSession } = await import("@/lib/firebase");
+        if (!isFirestoreBlockedForServerSession()) {
+          const { doc, getDoc } = await import("@/lib/pbCompat/firestore");
+          const { firestore } = await import("@/lib/firebase");
+          const snap = await Promise.race([
+            getDoc(doc(firestore, ONLINE_DATA_SERVER_SETTINGS_COLLECTION, ONLINE_DATA_SERVER_SETTINGS_ID)),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000)),
+          ]);
+          if (snap.exists()) {
+            const next = applyLocalDevPocketBaseGuard(normalizeOnlineDataServerSettings(snap.data()));
+            writeCachedOnlineDataServerSettings(next);
+            return next;
+          }
+        }
+        return readCachedOnlineDataServerSettings();
       } catch {
         onlineDataServerHydratePromise = null;
         return readCachedOnlineDataServerSettings();

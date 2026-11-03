@@ -437,6 +437,16 @@ export class PocketBaseNotSignedInError extends PocketBaseRequestError {
   }
 }
 
+/** Unauthenticated or optional-auth request to the configured PocketBase server (e.g. public app settings). */
+export async function pbPublicRequest(
+  path: string,
+  init: { method?: string; body?: unknown; timeoutMs?: number; signal?: AbortSignal } = {}
+): Promise<unknown> {
+  const url = getPocketBaseServerUrl();
+  const token = getValidPocketBaseAuth()?.token;
+  return await rawRequest(url, path, { ...init, token });
+}
+
 /** Authenticated request to the configured server. */
 export async function pbRequest(
   path: string,
