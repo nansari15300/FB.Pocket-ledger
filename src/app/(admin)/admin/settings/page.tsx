@@ -40,6 +40,7 @@ import {
   ONLINE_DATA_SERVER_SETTINGS_COLLECTION,
   ONLINE_DATA_SERVER_SETTINGS_ID,
   POCKETBASE_BACKEND_NOT_IMPLEMENTED_MESSAGE,
+  fetchOnlineDataServerFromPocketBase,
   getActiveOnlineDataServer,
   normalizeOnlineDataServerSettings,
   pocketBaseUrlDraftValue,
@@ -138,6 +139,16 @@ function GlobalSettingsPage() {
   const loadOnlineDataServerSettings = useCallback(async () => {
     setOnlineServerLoading(true);
     try {
+      // Try PocketBase first (primary source of truth)
+      const fromPb = await fetchOnlineDataServerFromPocketBase();
+      if (fromPb) {
+        setOnlineServer(fromPb);
+        setPocketbaseUrlDraft(pocketBaseUrlDraftValue(fromPb.pocketbaseUrl));
+        writeCachedOnlineDataServerSettings(fromPb);
+        setOnlineServerLoading(false);
+        return;
+      }
+      // Fallback to Firestore/admin seam
       const snap = await getDocFromServer(
         doc(firestore, ONLINE_DATA_SERVER_SETTINGS_COLLECTION, ONLINE_DATA_SERVER_SETTINGS_ID)
       );
