@@ -204,3 +204,8 @@ User ne kaha: 'kaam jo ruka hua hai uske sab ko reject karwa do maine sab manual
 - Change: src/app/globals.css appended lines 15749-15755: body.theme-pro [data-pl-main-sidebar] > [role="separator"]:not(:hover):not(:active) > div { background-color: transparent !important; }. Lines 1-15748 byte-identical.
 - Backup: C:\Project xxx\backup-theme-20261102-1551\ (src/app/globals.css, _handoff/Theme Master.md)
 - Checks: postcss OK, tsc exit 0, CRLF/no BOM, Trxn Table region unchanged. Status: done, NOT visually verified.
+
+## PATH BADLAV (3 Nov 2026, 4:03 PM Asia/Kathmandu)
+User ne laptop par folder 'C:\Project xxx' ka naam badalkar 'C:\Project ERP' kar diya. Main app ab: C:\Project ERP\Refference apps\Touri + React. Purane backups (backup-theme-2026110x-*) aur theme-work-tmp ab C:\Project ERP\ ke andar hain. Is file me upar jahan bhi 'C:\Project xxx' likha hai, use 'C:\Project ERP' samjhein. Folder ka naam wapas mat badlein.
+Account list ki dono lines (Pro theme): right edge 2 Nov 3:49 PM aur left edge 3:52 PM par ho chuki hain (handle ki duplicate line chhipayi, globals.css lines 15742-15755). Is kaam me kuch baaki nahi.
+
