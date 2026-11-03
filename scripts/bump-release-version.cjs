@@ -54,6 +54,7 @@ function updateElectronPackage(next) {
 
 function updateTauriVersion(next) {
   const cargo = "src-tauri/Cargo.toml";
+  if (!fs.existsSync(path.join(root, cargo))) return;
   write(cargo, read(cargo).replace(/^version = "[^"]+"/m, `version = "${next}"`));
   const conf = "src-tauri/tauri.conf.json";
   const json = JSON.parse(read(conf));
