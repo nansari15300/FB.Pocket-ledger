@@ -36,7 +36,7 @@ const THEME_CLASS_NAMES: Theme[] = [...APP_THEME_CLASS_NAMES, "theme-vagawa"];
 const PRIMARY_CLASS_NAMES: PrimaryColor[] = [...APP_PRIMARY_CLASS_NAMES, "primary-vagawa"];
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
-  // SSR + first paint: Server Gray default (layout.tsx body class + boot script ke saath same).
+  // SSR + first paint: Pro default (layout.tsx body class + boot script ke saath same).
   const [theme, setThemeState] = useState<Theme>(DEFAULT_THEME_CLASS);
   const [primaryColor, setPrimaryColorState] = useState<PrimaryColor>(DEFAULT_PRIMARY_CLASS);
   const [themeHydrated, setThemeHydrated] = useState(false);

@@ -20,9 +20,9 @@ export const COLORFULL_PRIMARY_CLASS = "primary-colorfull" as const;
 export const SERVER_GRAY_THEME_CLASS = "theme-pl-gray" as const;
 export const SERVER_GRAY_PRIMARY_CLASS = "primary-pl-gray" as const;
 
-/** Naya install / khali storage - Server Gray default. */
-export const DEFAULT_THEME_CLASS = SERVER_GRAY_THEME_CLASS;
-export const DEFAULT_PRIMARY_CLASS = SERVER_GRAY_PRIMARY_CLASS;
+/** Naya install / khali storage - Pro default (Nov 4 2026; rev same, saved choice nahi badalti). */
+export const DEFAULT_THEME_CLASS = PRO_THEME_CLASS;
+export const DEFAULT_PRIMARY_CLASS = PRO_PRIMARY_CLASS;
 
 /** Removed themes: saved value -> Server Gray. Pro is available again. */
 export const REMOVED_THEME_CLASSES: readonly string[] = [
@@ -76,7 +76,7 @@ export function resolveStoredThemePreference(
 }
 
 /** Settings → Theme picker — pehli row */
-export const PRO_THEME_DISPLAY_NAME = "Pro";
+export const PRO_THEME_DISPLAY_NAME = "Default";
 
 /** Pro: containers ke baahar page/shell — gray (cards andar colorful) */
 export const PRO_PAGE_SURFACE_BG = "hsl(220 14% 96%)";

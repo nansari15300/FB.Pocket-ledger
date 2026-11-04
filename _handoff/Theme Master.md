@@ -217,3 +217,16 @@ Account list ki dono lines (Pro theme): right edge 2 Nov 3:49 PM aur left edge 3
 - Backup: C:\Project ERP\backup-theme-20261103-1820\ (src\app\globals.css, _handoff\Theme Master.md).
 - Checks: postcss parse OK; npx tsc --noEmit exit 0; diff vs backup = only lines 3153 and 7460; CRLF, no BOM; Trxn Table Master region, electron\, src-tauri\ untouched.
 - Pending: visual check on localhost:2000 (transaction tables e.g. Party/Bank-Cash account detail, Dashboard, Reports > Accounts Statement; 4K check needs >=3840px desktop). Notify HR Module Master.
+
+## 2026-11-04 08:33 Asia/Kathmandu - Pro = default theme for new users; Pro label renamed to "Default"
+- User request 8:28 AM NPT Nov 4, 2026: "them ko default me pro kardo, and pro ko rename karke default kardo".
+- Internal id/class unchanged: theme-pro / primary-pro (saved settings + all CSS keep working). Only the display label changed. No other theme was labelled "Default" before this change. There is no separate accent list; both pickers (Settings > Background Theme, header Appearance menu) read APP_THEME_OPTIONS.
+- src/lib/appThemes.ts line 14: `name: "Pro",` -> `name: "Default",`.
+- src/lib/proTheme.ts line 23 comment updated; line 24 `DEFAULT_THEME_CLASS = SERVER_GRAY_THEME_CLASS` -> `= PRO_THEME_CLASS`; line 25 `DEFAULT_PRIMARY_CLASS = SERVER_GRAY_PRIMARY_CLASS` -> `= PRO_PRIMARY_CLASS`; line 79 `PRO_THEME_DISPLAY_NAME = "Pro"` -> `"Default"` (constant is not used anywhere yet).
+- src/app/layout.tsx line 49: body SSR class `theme-pl-gray primary-pl-gray` -> `theme-pro primary-pro`; line 57 boot script `DT="theme-pl-gray",DP="primary-pl-gray"` -> `DT="theme-pro",DP="primary-pro"`. V="5" unchanged.
+- src/hooks/useTheme.tsx line 39: comment only (Server Gray default -> Pro default).
+- THEME_DEFAULT_REV stays "5" (no bump), no new migration: anyone with a saved valid theme keeps it. Only an empty theme key, or a theme/accent from REMOVED_* lists, falls back to Pro now (before: Server Gray).
+- globals.css, theme colours, electron\, src-tauri\ untouched. CRLF/no BOM kept.
+- Backup: C:\Project ERP\backup-theme-20261104-0831\ (src\lib\proTheme.ts, src\lib\appThemes.ts, src\app\layout.tsx, src\hooks\useTheme.tsx, _handoff\Theme Master.md).
+- Checks: npx tsc --noEmit exit 0.
+- Pending: visual check on localhost:2000 - fresh browser profile (or delete localStorage keys "theme" and "primaryColor") should open in Pro, labelled "Default" in Settings > Background Theme and the header Appearance menu; an existing user who picked e.g. Gray should stay on Gray.

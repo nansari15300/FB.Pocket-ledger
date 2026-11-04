@@ -46,7 +46,7 @@ export default function RootLayout({
         <meta name="theme-color" content="#f1f5f9" />
         <meta name="google" content="notranslate" />
       </head>
-      <body className="font-body antialiased theme-pl-gray primary-pl-gray" suppressHydrationWarning>
+      <body className="font-body antialiased theme-pro primary-pro" suppressHydrationWarning>
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var u=localStorage.getItem("pl_server_ui_lang")||"en";document.documentElement.lang=u;if(/^(ar|he|fa|ur|ps|sd|yi)$/.test(u))document.documentElement.dir="rtl";}catch(e){}})();`,
@@ -54,7 +54,7 @@ export default function RootLayout({
         />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{localStorage.removeItem("pl-color-mode");var R="pl-theme-default-rev",V="5",TK="theme",PK="primaryColor",DT="theme-pl-gray",DP="primary-pl-gray",OT=["theme-pure-white","theme-colorfull","theme-dim-soft-green","theme-sky-blue","theme-soft-yellow","theme-pl-dark","theme-soft-pink"],OP=["primary-pure-white","primary-colorfull","primary-dim-soft-green","primary-sky-blue","primary-soft-yellow","primary-pl-dark","primary-soft-pink"];var rev=localStorage.getItem(R),t=localStorage.getItem(TK),p=localStorage.getItem(PK),m=rev!==V;if(!t||OT.indexOf(t)>-1){t=DT;m=true;}if(!p||OP.indexOf(p)>-1){p=DP;m=true;}if(m){localStorage.setItem(R,V);localStorage.setItem(TK,t);localStorage.setItem(PK,p);}var dark=t==="theme-pl-medium";document.body.className="font-body antialiased "+t+" "+p+(dark?" dark":"");}catch(e){}})();`,
+            __html: `(function(){try{localStorage.removeItem("pl-color-mode");var R="pl-theme-default-rev",V="5",TK="theme",PK="primaryColor",DT="theme-pro",DP="primary-pro",OT=["theme-pure-white","theme-colorfull","theme-dim-soft-green","theme-sky-blue","theme-soft-yellow","theme-pl-dark","theme-soft-pink"],OP=["primary-pure-white","primary-colorfull","primary-dim-soft-green","primary-sky-blue","primary-soft-yellow","primary-pl-dark","primary-soft-pink"];var rev=localStorage.getItem(R),t=localStorage.getItem(TK),p=localStorage.getItem(PK),m=rev!==V;if(!t||OT.indexOf(t)>-1){t=DT;m=true;}if(!p||OP.indexOf(p)>-1){p=DP;m=true;}if(m){localStorage.setItem(R,V);localStorage.setItem(TK,t);localStorage.setItem(PK,p);}var dark=t==="theme-pl-medium";document.body.className="font-body antialiased "+t+" "+p+(dark?" dark":"");}catch(e){}})();`,
           }}
         />
         <script

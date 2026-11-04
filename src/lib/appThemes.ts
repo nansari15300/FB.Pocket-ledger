@@ -11,7 +11,7 @@ export type AppThemeOption = {
 
 export const APP_THEME_OPTIONS: AppThemeOption[] = [
   {
-    name: "Pro",
+    name: "Default",
     themeValue: "theme-pro",
     primaryValue: "primary-pro",
     color: "linear-gradient(90deg, #ecfdf5, #e0f2fe, #ede9fe, #fffbeb, #ffe4e6)",
