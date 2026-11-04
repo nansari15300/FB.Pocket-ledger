@@ -238,3 +238,73 @@ Account list ki dono lines (Pro theme): right edge 2 Nov 3:49 PM aur left edge 3
 - Encoding: tsx UTF-8 no BOM, LF kept (as before); globals.css CRLF no BOM kept. No backup (Git), no commit.
 - Checks: postcss parse OK; tsc --noEmit exit 0; git diff --stat = only these 3 files.
 - Pending: visual check on localhost:2000 (Pro: Messages > Reminder form + Ledger Reminder popup borders; Deleted tab list + Restore).
+## 2026-11-04 16:26 Asia/Kathmandu - Fix: Pro Reminder form Title/Time/AM-PM/Remind before/Message still black
+- Cause: globals.css line 5711-5720 "Pro: saare main forms - gray field + black border": `body.theme-pro main input:not(...)x7` / textarea / select / `button[role="combobox"]:not(...)x6` with `border-color:#000 !important`. Its specificity (~0,8,3) beat our block (~0,4,2), both !important. Date / Link to / Entity / You looked blue only because they are chrome pills with their own blue rules.
+- Fix (only our block, globals.css 15756-15769): selector now `html body.theme-pro [data-pl-reminder-form] :is(input, textarea, select, button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip]):not([type="checkbox"]):not([type="radio"]):not(#pl-theme-master-none):not(#pl-theme-master-none-2)` (ID weight wins); hover/focus-visible same. Other rules untouched. All fields are inside the wrapper (no portal / native select); border is a real border, not ring/shadow.
+- Checks: postcss OK; tsc --noEmit exit 0; CRLF/no BOM kept.
+- Pending: visual recheck on localhost:2000/app/messages (Pro).
+## 2026-11-04 16:31 Asia/Kathmandu - Reminder form Combobox popups wider + Pro blue edge
+- User request: "combo box ka width bada dikhna banado and iska b border blue" (Select entity names wrapped to 3 lines).
+- src/components/messages/AlarmsTab.tsx lines 673 (Link to), 674 (Select entity), 682 (Select users / You): `popoverContentClassName="pl-reminder-combo-popover"` (existing Combobox prop; skips trigger-width inline style only for these 3). Shared combobox.tsx untouched.
+- src/app/globals.css lines 15770-15780 (inside our Reminder block, before its end marker): `html body .pl-reminder-combo-popover:not(#pl-theme-master-none):not(#pl-theme-master-none-2)` width max(trigger width, 20rem), max-width calc(100vw - 1rem) (all themes); `html body.theme-pro .pl-reminder-combo-popover...` border 1px solid rgb(147 197 253), radius calc(var(--radius) - 2px).
+- Checks: postcss OK; tsc --noEmit exit 0; tsx LF / css CRLF, no BOM.
+- Pending: visual check localhost:2000/app/messages (Pro).
+## 2026-11-04 16:34 Asia/Kathmandu - Messages Reminder form: Date + H + M + AM/PM one row
+- User request: "time titel ko box me hi H/M dikhao and date calander ko Hour k left me same size sare box". All themes, presentational only.
+- src/components/messages/AlarmsTab.tsx lines 626-669 (replaced old Date row 626-654 + Time row 655-664): one `flex flex-wrap justify-start gap-2` row; Date (BS BsDatePicker and/or AD Popover Button), Hour, Minute, AM/PM each `flex-1 basis-24 min-w-[6rem] h-10` (equal size, wraps on narrow). "Time" label and ":" removed. Hour/Minute always have a value (10/00) so a placeholder would never show -> in-box absolute prefix span "H"/"M" (pointer-events-none, aria-hidden), input pl-6. Values, onChange/onBlur logic unchanged; date text truncates.
+- Blue border CSS unchanged (still matches input / button[aria-haspopup] / role=combobox inside [data-pl-reminder-form]).
+- Checks: tsc --noEmit exit 0; LF, no BOM.
+- Pending: visual check localhost:2000/app/messages (BS, AD and Both date systems).
+## 2026-11-04 16:35 Asia/Kathmandu - Reminder form: H / M / AM-PM always one row
+- User: "H/M Am Ko v ek row me". src/components/messages/AlarmsTab.tsx lines ~658-671: Hour, Minute, AM/PM wrapped in `flex flex-[3_1_15rem] min-w-[12.5rem] flex-nowrap gap-2` group; each `flex-1 basis-0 min-w-[4rem]` (equal, shrink). Date box(es) (`flex-1 basis-24 min-w-[6rem]`) stay left on same row, else wrap above. Presentational only. tsc exit 0; LF, no BOM.
+## 2026-11-04 16:37 Asia/Kathmandu - Reminder form: Date box ~30% wider than H/M/AM-PM
+- AlarmsTab.tsx: BS date wrapper + AD date Button `flex-1 basis-24 min-w-[6rem]` -> `flex-[1.3_1_0%] min-w-[8.5rem]`; H/M/AM-PM group `flex-[3_1_15rem]` -> `flex-[3_1_0%]` (min-w 12.5rem, nowrap; boxes equal). At ~400px form column: date ~136px, each time box ~80px, one line. Presentational only. tsc exit 0; LF, no BOM.
+## 2026-11-04 16:39 Asia/Kathmandu - Pro Manage Reminders: item cards + active tab blue border
+- AlarmsTab.tsx: `data-pl-reminder-item` on AlarmList item card div; `data-pl-reminder-list` on Manage Reminders column wrapper.
+- globals.css (our Reminder block, before its end marker): `html body.theme-pro [data-pl-reminder-list] [data-pl-reminder-item]` and `... [role="tab"][data-state="active"]` + `:not(#pl-theme-master-none):not(#pl-theme-master-none-2)` -> border-color rgb(147 197 253) !important. Shapes/fill unchanged; other pages untouched.
+- Checks: postcss OK; tsc exit 0; tsx LF / css CRLF, no BOM.
+## 2026-11-04 16:41 Asia/Kathmandu - Pro Reminder tabs + form fields 3D raise / hover lift
+- globals.css (our Reminder block, before its end marker): `html body.theme-pro [data-pl-reminder-list] [role="tab"]` and the reminder form field selector (input/textarea/select/role=combobox/aria-haspopup=dialog, excl. .bg-primary / skip / checkbox / radio), both + `:not(#pl-theme-master-none):not(#pl-theme-master-none-2)`: box-shadow inset highlight + var(--pl-raise-shadow), transition .15s; :hover (not disabled) var(--pl-raise-shadow-hover) + translateY(-1px). Same tokens as section 43 header chrome pills. Blue borders kept; item cards not lifted. CSS only.
+- Checks: postcss OK; tsc exit 0; CRLF, no BOM.
+## 2026-11-04 16:43 Asia/Kathmandu - Pro Reminder 3D lift + globals.css corruption repaired + AlarmsTab jitter fix
+- 3D: globals.css (our Reminder block, before its end marker): `html body.theme-pro [data-pl-reminder-list] [role="tab"]` + reminder form field selector, both with `:not(#pl-theme-master-none):not(#pl-theme-master-none-2)`: inset highlight + var(--pl-raise-shadow), transition .15s; :hover (not disabled) var(--pl-raise-shadow-hover) + translateY(-1px) (section 43 header-pill tokens). Item cards not lifted.
+- INCIDENT ~16:40: my write script reused a variable name that PowerShell treats case-insensitively ($T/$t), so globals.css was overwritten with a single selector line -> dev build "globals.css:1:6 Unknown word body.theme-pro". Repaired ~16:42 by rebuilding from `git show HEAD:src/app/globals.css` (auto-sync f8975d64, 15:55) + re-applying today's later reminder edits (strengthened selectors, combo popover, reminder-list borders, 3D). git diff vs HEAD = only hunk at 15756 (our block). CRLF, no BOM; postcss OK. Any OTHER agent's uncommitted globals.css edit between 15:55 and 16:40 would have been lost; line count check (15805 vs 15804 before) suggests none.
+- Jitter fix 1: AlarmsTab.tsx `const AlarmList` -> `renderAlarmList` (plain function), 3 usages -> `{renderAlarmList({ ... })}` so the list DOM is not remounted on the 1s clock. Clock unchanged; no logic change. LF, no BOM.
+- Checks: postcss OK; tsc --noEmit exit 0.
+## 2026-11-04 16:44 Asia/Kathmandu - Reminder Set button shorter + Pro 3D lift
+- AlarmsTab.tsx Set/Update Reminder Button: `w-full` -> `w-auto px-6` (left-aligned) + `data-pl-reminder-submit`.
+- globals.css (Reminder block): `html body.theme-pro [data-pl-reminder-form] button[data-pl-reminder-submit]` + ID-weight nots: raise shadow + .15s transition; hover var(--pl-raise-shadow-hover) + translateY(-1px). postcss OK; tsc exit 0; encodings kept.
+## 2026-11-04 16:46 Asia/Kathmandu - Reminder "Select users to notify" trigger label
+- No existing multi-select trigger-label prop in combobox.tsx, so added optional `multiTriggerLabel?: string` (used only in multi mode when passed; all other callers unchanged; selection logic untouched).
+- AlarmsTab.tsx: `usersTriggerLabel` memo (after contextOptions): none -> placeholder, 'all' or all users -> "All", 1 -> name, 2 -> "A, B", >2 -> "N users"; passed to the users Combobox. Display only.
+- Checks: tsc exit 0; LF, no BOM; file size/line count verified before/after.
+## 2026-11-04 16:48 Asia/Kathmandu - Reminder form: "Remind before" label above select
+- AlarmsTab.tsx Remind before row: `flex items-center justify-center gap-2` -> `flex flex-col items-start gap-2` (label above, left-aligned; label style same as "Message (optional)"). Presentational only. tsc exit 0; LF, no BOM; line count unchanged.
+## 2026-11-04 16:50 Asia/Kathmandu - Reminder form: Users combobox beside Remind before
+- AlarmsTab.tsx lines 683-707: one `flex items-start gap-2` row = Remind before block (shrink-0, label above) + new "Users" block (flex-1 min-w-0, label above, same label style) with the users multi-select Combobox (props unchanged). Old separate users row removed; Link to / Select entity row now follows. Presentational only. tsc exit 0; LF, no BOM; 786 -> 791 lines (20-line block -> 25).
+## 2026-11-04 16:51 Asia/Kathmandu - Reminder form: Remind before / Users equal width
+- AlarmsTab.tsx ~683-704: both blocks `flex min-w-0 flex-1 basis-0 flex-col items-stretch`; SelectTrigger w-40 -> w-full; users Combobox + triggerClassName="w-full". Presentational only. tsc exit 0; LF, no BOM; +1 line.
+
+## 2026-11-04 16:52 Asia/Kathmandu - Reminder form: Remind before -> shared Combobox
+- AlarmsTab.tsx ~686-693: Remind before Select replaced by Combobox (single-select, search) with options=REMIND_BEFORE_OPTIONS, value=remindBefore, onChange=setRemindBefore, triggerClassName w-full, popoverContentClassName pl-reminder-combo-popover (Pro blue). combobox.tsx untouched; Select import kept (AM/PM uses it). tsc exit 0; LF, no BOM; +4 lines.
+
+## 2026-11-04 16:54 Asia/Kathmandu - Reminder form: all single-line boxes same height
+- AlarmsTab.tsx: h-10 min-h-10 on Title Input, AD date Button, H/M inputs, AM/PM SelectTrigger, Remind before/Users/Link to/Select entity Combobox triggerClassName (BS picker already had it). Textarea unchanged. 796 -> 797 lines.
+- globals.css: inside our reminder block (before end marker) added all-theme rule forcing height/min-height 2.5rem !important on form inputs (non checkbox/radio), button[role=combobox], button[aria-haspopup=dialog] with :not(#pl-theme-master-none) strong selector. 15827 -> 15832 lines, CRLF kept.
+- postcss OK, tsc exit 0.
+
+## 2026-11-04 16:57 Asia/Kathmandu - Remind before: custom N min Add row
+- Storage check: remindBefore is minutes string -> Number() -> remindBeforeMinutes (save helper normalizeRemindBefore, notifyAt = time - N min); arbitrary minutes already work, no helper/Firebase change.
+- combobox.tsx: new optional prop customAddForSearch(search) => {value,label}|null; when set it replaces addNewLabel items and label shown as-is. Default off. 605 -> 611 lines.
+- AlarmsTab.tsx: remindBeforeOptions memo (base + current custom 'N min before' if not in base, so trigger shows it; base const unchanged); remindBeforeCustomAdd accepts digits 1-1440 not already in options -> 'Add: N min before'. 797 -> 811 lines.
+- tsc exit 0; LF, no BOM.
+
+## 2026-11-04 17:02 Asia/Kathmandu - Mobile Company selector popup max-height
+- globals.css: new block after reminder end marker. @media (max-width:767px),(pointer:coarse): [data-pl-company-selector-popup] (CompanySelector.tsx ~3057 DropdownMenuContent) max-height 2.5in, overflow-y auto, touch pan-y, 3px dim scrollbar. Desktop unchanged. No tsx change. postcss OK, tsc exit 0.
+- Also read-only dark (theme-pl-medium) header icon investigation done (no change): cause = Button ghost variant text-slate-700 (button.tsx:27).
+
+## 2026-11-04 17:04 Asia/Kathmandu - Dark (theme-pl-medium) all text white
+- Dark list item maps to theme-pl-medium (appThemes.ts:30); theme-pl-dark is legacy, migrated away in layout.tsx boot script.
+- globals.css new block after mobile company block (15849 -> 15866 lines, CRLF): html body.theme-pl-medium * color #fff !important with ID-weight :not, excluding text-green/red/emerald/rose-*, text-destructive, [style*=color], bg-primary/bg-destructive/strong green/emerald/red/blue/amber fills and their descendants. Placeholders white/0.6. Header button hover = accent.
+- Fixes header invisible icons (cause: Button ghost text-slate-700, button.tsx:27; avatar fallback inherits it; upload light circle = hover bg-slate-200/70).
+- postcss OK, tsc exit 0. Not visually verified.

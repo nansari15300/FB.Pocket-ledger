@@ -15756,16 +15756,94 @@ body.theme-pro [data-pl-main-sidebar] > [role="separator"]:not(:hover):not(:acti
 /* === Theme Master: Pro Reminder form fields = pill blue border, rectangular (Nov 4 2026) === */
 /* Messages > Reminder (AlarmsTab.tsx) + Reminder popup (LedgerReminderDialog.tsx) wrapper [data-pl-reminder-form].
    Fields: Input / Textarea, Select + Combobox triggers (role=combobox), date triggers (BsDatePicker + AD Calendar = Button via
-   PopoverTrigger -> aria-haspopup="dialog"). Set Reminder (.bg-primary) / Cancel Edit (no popup attr) untouched. */
-body.theme-pro [data-pl-reminder-form] :is(input, textarea, button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip]) {
+   PopoverTrigger -> aria-haspopup="dialog"). Set Reminder (.bg-primary) / Cancel Edit (no popup attr) untouched.
+   Two :not(#id) = ID weight, so it beats line ~5712 "Pro: saare main forms - black border" (body.theme-pro main input:not(...)x7 !important). */
+html body.theme-pro [data-pl-reminder-form] :is(input, textarea, select, button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip]):not([type="checkbox"]):not([type="radio"]):not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
   border: 1px solid rgb(147 197 253) !important; /* blue-300 = Pro chromePill border */
   border-radius: calc(var(--radius) - 2px) !important;
 }
-body.theme-pro [data-pl-reminder-form] :is(input, textarea, button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip]):hover,
-body.theme-pro [data-pl-reminder-form] :is(input, textarea, button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip]):focus-visible {
+html body.theme-pro [data-pl-reminder-form] :is(input, textarea, select, button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip]):not([type="checkbox"]):not([type="radio"]):not(#pl-theme-master-none):not(#pl-theme-master-none-2):hover,
+html body.theme-pro [data-pl-reminder-form] :is(input, textarea, select, button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip]):not([type="checkbox"]):not([type="radio"]):not(#pl-theme-master-none):not(#pl-theme-master-none-2):focus-visible {
   border-color: rgb(96 165 250) !important; /* blue-400 = pill hover */
 }
+/* Reminder form Combobox popups (Link to / Select entity / You): Radix portal = outside [data-pl-reminder-form], so AlarmsTab passes
+   popoverContentClassName="pl-reminder-combo-popover". Wider (>= trigger, >= 20rem, viewport cap) so names don't wrap; Pro = blue edge. */
+html body .pl-reminder-combo-popover:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  width: max(var(--radix-popover-trigger-width, 0px), 20rem) !important;
+  min-width: min(20rem, calc(100vw - 1rem)) !important;
+  max-width: calc(100vw - 1rem) !important;
+}
+html body.theme-pro .pl-reminder-combo-popover:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  border: 1px solid rgb(147 197 253) !important; /* blue-300 = Pro chromePill border */
+  border-radius: calc(var(--radius) - 2px) !important;
+}
+
+/* Messages > Manage Reminders (AlarmsTab.tsx [data-pl-reminder-list]): Pro reminder item cards + active tab trigger = blue edge (shape/fill same). */
+html body.theme-pro [data-pl-reminder-list] [data-pl-reminder-item]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pro [data-pl-reminder-list] [role="tab"][data-state="active"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  border-color: rgb(147 197 253) !important; /* blue-300 = Pro chromePill border */
+}
+/* Pro Reminder: tabs (Upcoming/Expired/Deleted) + form fields = 3D raise + hover lift, same tokens as header chrome pills
+   (section 43: --pl-raise-shadow / --pl-raise-shadow-hover, translateY(-1px), .15s). Item cards excluded (jitter pending). */
+html body.theme-pro [data-pl-reminder-list] [role="tab"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pro [data-pl-reminder-form] :is(input, textarea, select, button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip]):not([type="checkbox"]):not([type="radio"]):not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), var(--pl-raise-shadow) !important;
+  transition: box-shadow .15s ease, transform .15s ease, background-color .15s ease, border-color .15s ease !important;
+}
+html body.theme-pro [data-pl-reminder-list] [role="tab"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(:disabled):hover,
+html body.theme-pro [data-pl-reminder-form] :is(input, textarea, select, button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip]):not([type="checkbox"]):not([type="radio"]):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(:disabled):hover {
+  box-shadow: var(--pl-raise-shadow-hover) !important;
+  transform: translateY(-1px) !important;
+}
+/* Pro Reminder: Set/Update Reminder button (auto width, AlarmsTab) = header-pill 3D raise + hover lift (fill unchanged). */
+html body.theme-pro [data-pl-reminder-form] button[data-pl-reminder-submit]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), var(--pl-raise-shadow) !important;
+  transition: box-shadow .15s ease, transform .15s ease, background-color .15s ease !important;
+}
+html body.theme-pro [data-pl-reminder-form] button[data-pl-reminder-submit]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(:disabled):hover {
+  box-shadow: var(--pl-raise-shadow-hover) !important;
+  transform: translateY(-1px) !important;
+}
+/* Reminder form: sab single-line boxes same height (h-10), textarea excluded; all themes */
+html body [data-pl-reminder-form] :is(input:not([type="checkbox"]):not([type="radio"]), button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip]):not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  height: 2.5rem !important;
+  min-height: 2.5rem !important;
+}
 /* === end Theme Master: Pro Reminder form blue fields === */
+
+/* === Theme Master: mobile Company selector popup max-height 2.5in (Nov 2026) === */
+@media (max-width: 767px), (pointer: coarse) {
+  html body [data-pl-company-selector-popup]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+    max-height: 2.5in !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  }
+  html body [data-pl-company-selector-popup]:not(#pl-theme-master-none):not(#pl-theme-master-none-2)::-webkit-scrollbar { width: 3px; height: 3px; }
+  html body [data-pl-company-selector-popup]:not(#pl-theme-master-none):not(#pl-theme-master-none-2)::-webkit-scrollbar-track { background: transparent; }
+  html body [data-pl-company-selector-popup]:not(#pl-theme-master-none):not(#pl-theme-master-none-2)::-webkit-scrollbar-thumb { background-color: hsl(var(--muted-foreground) / 0.35); border-radius: 3px; }
+}
+/* === end Theme Master: mobile Company selector popup max-height === */
+
+/* === Theme Master: Dark (theme-pl-medium) all text white (Nov 2026) ===
+   Dark list item = theme-pl-medium (theme-pl-dark is legacy, migrated). Excluded: amount / Dr-Cr colors
+   (text-green/red/emerald/rose-*, inline color), text-destructive, colored-fill buttons (bg-primary,
+   bg-destructive, strong green/emerald/red/blue/amber fills) and everything inside them. */
+html body.theme-pl-medium *:not(:is([class*="text-green-"], [class*="text-red-"], [class*="text-emerald-"], [class*="text-rose-"], .text-destructive, [style*="color"], .bg-primary, .bg-destructive, [class*="bg-green-6"], [class*="bg-green-7"], [class*="bg-emerald-5"], [class*="bg-emerald-6"], [class*="bg-red-5"], [class*="bg-red-6"], [class*="bg-blue-6"], [class*="bg-amber-5"])):not(:is([class*="text-green-"], [class*="text-red-"], [class*="text-emerald-"], [class*="text-rose-"], .text-destructive, [style*="color"], .bg-primary, .bg-destructive, [class*="bg-green-6"], [class*="bg-green-7"], [class*="bg-emerald-5"], [class*="bg-emerald-6"], [class*="bg-red-5"], [class*="bg-red-6"], [class*="bg-blue-6"], [class*="bg-amber-5"]) *) {
+  color: #fff !important;
+}
+html body.theme-pl-medium :is(input, textarea):not(:is([class*="text-green-"], [class*="text-red-"], [class*="text-emerald-"], [class*="text-rose-"], .text-destructive, [style*="color"], .bg-primary, .bg-destructive, [class*="bg-green-6"], [class*="bg-green-7"], [class*="bg-emerald-5"], [class*="bg-emerald-6"], [class*="bg-red-5"], [class*="bg-red-6"], [class*="bg-blue-6"], [class*="bg-amber-5"]) *)::placeholder {
+  color: rgb(255 255 255 / 0.6) !important;
+  opacity: 1 !important;
+}
+/* Header ghost icons (Button ghost = text-slate-700, button.tsx:27): currentColor ab white; hover fill dim */
+html body.theme-pl-medium header button:not(:is([class*="text-green-"], [class*="text-red-"], [class*="text-emerald-"], [class*="text-rose-"], .text-destructive, [style*="color"], .bg-primary, .bg-destructive, [class*="bg-green-6"], [class*="bg-green-7"], [class*="bg-emerald-5"], [class*="bg-emerald-6"], [class*="bg-red-5"], [class*="bg-red-6"], [class*="bg-blue-6"], [class*="bg-amber-5"])):not(:disabled):hover {
+  background-color: hsl(var(--accent)) !important;
+}
+/* === end Theme Master: Dark all text white === */
 
 
 /* Reuse company attachment — list rows match green dialog theme border */

@@ -88,6 +88,10 @@ type ComboboxProps = {
   title?: string;
   /** Pencil icon on each option row → opens that master's Edit dialog (does NOT select). Falls back to ComboboxEditOptionContext. */
   onEditOption?: (value: string) => void;
+  /** Multi-select only: caller ka custom trigger text (e.g. "A, B" / "3 users" / "All"). Na diya ho to purana behaviour. */
+  multiTriggerLabel?: string;
+  /** Optional: typed search se ek custom 'Add' row banaye (null = row nahi). Default off; set ho to addNewLabel/addNewLabels ki jagah. */
+  customAddForSearch?: (search: string) => { value: string; label: string } | null;
 };
 
 export function Combobox({
@@ -99,6 +103,7 @@ export function Combobox({
   searchPlaceholder = "Search...",
   addNewLabel,
   addNewLabels,
+  customAddForSearch,
   disabled = false,
   isMultiSelect = false,
   triggerClassName,
@@ -118,6 +123,7 @@ export function Combobox({
   mobileWideOptionList = true,
   title,
   onEditOption,
+  multiTriggerLabel,
 }: ComboboxProps) {
   const editResolver = useComboboxEditOption();
   const editHandlerFor = React.useCallback(
@@ -238,6 +244,7 @@ export function Combobox({
   
   const displayValue = () => {
     if (isMultiSelect) {
+      if (multiTriggerLabel) return multiTriggerLabel;
       if (!Array.isArray(value) || value.length === 0 || value.includes('all')) return placeholder;
       if (value.length === 1) {
         return options.find(opt => opt.value === value[0])?.label || placeholder;
@@ -249,7 +256,10 @@ export function Combobox({
     return selectedOption?.triggerLabel || selectedOption?.label || placeholder;
   };
 
-  const addNewItems = addNewLabels || (addNewLabel ? [{value: "add-new", label: addNewLabel}] : []);
+  const customAddItem = customAddForSearch ? customAddForSearch(search.trim()) : null;
+  const addNewItems = customAddForSearch
+    ? (customAddItem ? [customAddItem] : [])
+    : addNewLabels || (addNewLabel ? [{value: "add-new", label: addNewLabel}] : []);
   const q = search.trim().toLowerCase();
   const qn = normalizeComboboxSearch(search);
   // Alias Name: from option.aliasText or the master alias index (by option value = entity id); searched, not shown as label.
@@ -584,7 +594,7 @@ export function Combobox({
                             >
                                 <span className="pointer-events-none flex w-full min-w-0 items-center">
                                   <Plus className="mr-2 h-4 w-4 shrink-0 text-green-600" />
-                                  {search.trim() ? `${item.label}: "${search.trim()}"` : item.label}
+                                  {customAddForSearch ? item.label : search.trim() ? `${item.label}: "${search.trim()}"` : item.label}
                                 </span>
                             </CommandItem>
                         ))}

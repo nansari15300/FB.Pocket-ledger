@@ -326,6 +326,19 @@ export function AlarmsTab() {
   const [selectedMinute, setSelectedMinute] = React.useState("00");
   const [selectedPeriod, setSelectedPeriod] = React.useState("AM");
   const [remindBefore, setRemindBefore] = React.useState("0");
+  // Remind before: custom N min (1-1440) sirf is reminder ke liye; REMIND_BEFORE_OPTIONS permanent nahi badalta.
+  const remindBeforeOptions = React.useMemo(() => {
+    if (REMIND_BEFORE_OPTIONS.some((o) => o.value === remindBefore)) return REMIND_BEFORE_OPTIONS;
+    const n = normalizeRemindBefore(remindBefore);
+    return n > 0 ? [...REMIND_BEFORE_OPTIONS, { value: String(n), label: `${n} min before` }] : REMIND_BEFORE_OPTIONS;
+  }, [remindBefore]);
+  const remindBeforeCustomAdd = React.useCallback((typed: string) => {
+    if (!/^\d+$/.test(typed)) return null;
+    const n = parseInt(typed, 10);
+    if (n < 1 || n > 1440) return null;
+    if (remindBeforeOptions.some((o) => o.value === String(n))) return null;
+    return { value: String(n), label: `Add: ${n} min before` };
+  }, [remindBeforeOptions]);
   const [selectedContext, setSelectedContext] = React.useState("");
   const [selectedEntityId, setSelectedEntityId] = React.useState("");
   const [newAlarmMessage, setNewAlarmMessage] = React.useState("");
@@ -339,6 +352,16 @@ export function AlarmsTab() {
   const reminderPrefillDoneRef = React.useRef(false);
 
   const contextOptions = REMINDER_CONTEXT_OPTIONS;
+
+  // "Select users to notify" trigger text (display only): 1 = naam, 2 = "A, B", >2 = "N users", sab = "All", khali = placeholder.
+  const usersTriggerLabel = React.useMemo(() => {
+    if (!selectedUsers.length) return undefined;
+    if (selectedUsers.includes("all") || (userOptions.length > 0 && selectedUsers.length >= userOptions.length)) return "All";
+    const names = selectedUsers.map((v) => userOptions.find((o) => o.value === v)?.label || v);
+    if (names.length === 1) return names[0];
+    if (names.length === 2) return names.join(", ");
+    return `${names.length} users`;
+  }, [selectedUsers, userOptions]);
 
   const entityOptions = React.useMemo(() => {
     if (!selectedContext) return [];
@@ -549,7 +572,8 @@ export function AlarmsTab() {
     return { upcomingAlarms: upcoming.sort((a,b) => (a.datetime?.toDate ? a.datetime.toDate().getTime() : 0) - (b.datetime?.toDate ? b.datetime.toDate().getTime() : 0)), expiredAlarms: expired };
   }, [alarms, currentTime]);
 
-  const AlarmList = ({ list, title, onSelectAll, isExpiredList, isDeletedList }: {list: Alarm[], title: string, onSelectAll: (check: boolean) => void, isExpiredList?: boolean, isDeletedList?: boolean }) => {
+  // Plain render function (not a component): inline component type remounted the DOM every 1s clock tick -> hover-lift jitter.
+  const renderAlarmList = ({ list, title, onSelectAll, isExpiredList, isDeletedList }: {list: Alarm[], title: string, onSelectAll: (check: boolean) => void, isExpiredList?: boolean, isDeletedList?: boolean }) => {
     const areAllSelected = list.length > 0 && list.every(a => selectedAlarms.has(a.id));
 
     return (
@@ -573,7 +597,7 @@ export function AlarmsTab() {
                         const alarmDate = alarm.datetime?.toDate ? alarm.datetime.toDate() : new Date(alarm.datetime);
                         const displayDateTime = dateSystem === 'AD' ? format(alarmDate, "PPP p") : `${formatDateBS(alarmDate)} ${format(alarmDate, 'p')}`;
                         return (
-                            <div key={alarm.id} className="flex items-center justify-between p-3 border rounded-lg gap-4">
+                            <div key={alarm.id} className="flex items-center justify-between p-3 border rounded-lg gap-4" data-pl-reminder-item>
                                 <div className="flex items-center gap-4">
                                     {!isDeletedList && <Checkbox checked={selectedAlarms.has(alarm.id)} onCheckedChange={(c) => handleSelectAlarm(alarm.id, c as boolean)} />}
                                     <div>
@@ -622,28 +646,32 @@ export function AlarmsTab() {
             placeholder="Reminder Title..."
             value={newAlarmTitle}
             onChange={(e) => setNewAlarmTitle(e.target.value)}
+            className="h-10 min-h-10"
           />
-            <div className={cn("flex gap-2", dateSystem === "Both" && "gap-2")}>
+            {/* Date + H + M + AM/PM: ek row, char boxes same size (h-10, flex-1 basis), left-aligned, narrow par wrap. */}
+            <div className="flex flex-wrap items-center justify-start gap-2">
               {(dateSystem === "BS" || dateSystem === "Both") && (
-                <div className="flex-1 min-w-0">
+                <div className="flex-[1.3_1_0%] min-w-[8.5rem]">
                   <BsDatePicker
                     valueAD={selectedDate}
                     onChangeAD={(d) => setSelectedDate(d ?? undefined)}
                     isRange={false}
-                    className="w-full"
+                    className="h-10 min-h-10 w-full truncate"
                   />
                 </div>
               )}
               {(dateSystem === "AD" || dateSystem === "Both") && (
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn("flex-1 justify-start text-left font-normal", !selectedDate && "text-muted-foreground")}>
+                    <Button variant="outline" className={cn("h-10 min-h-10 flex-[1.3_1_0%] min-w-[8.5rem] justify-start px-2 text-left font-normal", !selectedDate && "text-muted-foreground")}>
                       <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                      <span className="min-w-0 truncate">
                       {selectedDate
                         ? dateSystem === "Both"
                           ? formatDate(selectedDate)
                           : format(selectedDate, "PPP")
                         : "Pick a date"}
+                      </span>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="flex w-auto flex-col space-y-2 p-2">
@@ -651,35 +679,52 @@ export function AlarmsTab() {
                   </PopoverContent>
                 </Popover>
               )}
-            </div>
-             <div className="flex items-center justify-center gap-2">
-                <label className="text-sm font-medium text-foreground">Time</label>
-                <Input type="number" aria-label="Hour" value={selectedHour} onChange={e => setSelectedHour(e.target.value)} onBlur={() => { if (selectedHour.trim() === "") setSelectedHour("10"); }} className="w-20 text-center" placeholder="HH" maxLength={2} />
-                <span>:</span>
-                <Input type="number" aria-label="Minute" value={selectedMinute} onChange={e => setSelectedMinute(e.target.value)} onBlur={() => { if (selectedMinute.trim() === "") setSelectedMinute("00"); }} className="w-20 text-center" placeholder="MM" maxLength={2} />
+              <div className="flex flex-[3_1_0%] min-w-[12.5rem] flex-nowrap gap-2">
+                <div className="relative flex-1 basis-0 min-w-[4rem]">
+                  <span aria-hidden="true" className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground">H</span>
+                  <Input type="number" aria-label="Hour" value={selectedHour} onChange={e => setSelectedHour(e.target.value)} onBlur={() => { if (selectedHour.trim() === "") setSelectedHour("10"); }} className="h-10 min-h-10 w-full pl-6 text-center" placeholder="H" maxLength={2} />
+                </div>
+                <div className="relative flex-1 basis-0 min-w-[4rem]">
+                  <span aria-hidden="true" className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground">M</span>
+                  <Input type="number" aria-label="Minute" value={selectedMinute} onChange={e => setSelectedMinute(e.target.value)} onBlur={() => { if (selectedMinute.trim() === "") setSelectedMinute("00"); }} className="h-10 min-h-10 w-full pl-6 text-center" placeholder="M" maxLength={2} />
+                </div>
                  <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                    <SelectTrigger className="w-24"><SelectValue/></SelectTrigger>
+                    <SelectTrigger className="h-10 min-h-10 flex-1 basis-0 min-w-[4rem]" aria-label="AM/PM"><SelectValue/></SelectTrigger>
                     <SelectContent><SelectItem value="AM">AM</SelectItem><SelectItem value="PM">PM</SelectItem></SelectContent>
                 </Select>
+              </div>
             </div>
-            <div className="flex items-center justify-center gap-2">
+            <div className="flex items-start gap-2">
+              <div className="flex min-w-0 flex-1 basis-0 flex-col items-stretch gap-2">
                 <label className="text-sm font-medium text-foreground">Remind before</label>
-                <Select value={remindBefore} onValueChange={setRemindBefore}>
-                    <SelectTrigger className="w-40" aria-label="Remind before"><SelectValue/></SelectTrigger>
-                    <SelectContent>{REMIND_BEFORE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
-                </Select>
+                <Combobox
+                  options={remindBeforeOptions}
+                  value={remindBefore}
+                  onChange={(v) => setRemindBefore(v)}
+                  customAddForSearch={remindBeforeCustomAdd}
+                  placeholder="Remind before..."
+                  triggerClassName="h-10 min-h-10 w-full"
+                  popoverContentClassName="pl-reminder-combo-popover"
+                />
+              </div>
+              <div className="flex min-w-0 flex-1 basis-0 flex-col items-stretch gap-2">
+                <label className="text-sm font-medium text-foreground">Users</label>
+                <Combobox
+                  options={userOptions}
+                  value={selectedUsers}
+                  onMultiChange={setSelectedUsers}
+                  placeholder="Select users to notify..."
+                  isMultiSelect
+                  multiTriggerLabel={usersTriggerLabel}
+                  triggerClassName="h-10 min-h-10 w-full"
+                  popoverContentClassName="pl-reminder-combo-popover"
+                />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-               <Combobox options={contextOptions} value={selectedContext} onChange={setSelectedContext} placeholder="Link to..." />
-               <Combobox options={entityOptions} value={selectedEntityId} onChange={setSelectedEntityId} placeholder="Select entity..." />
+               <Combobox options={contextOptions} value={selectedContext} onChange={setSelectedContext} placeholder="Link to..." triggerClassName="h-10 min-h-10" popoverContentClassName="pl-reminder-combo-popover" />
+               <Combobox options={entityOptions} value={selectedEntityId} onChange={setSelectedEntityId} placeholder="Select entity..." triggerClassName="h-10 min-h-10" popoverContentClassName="pl-reminder-combo-popover" />
             </div>
-           <Combobox 
-            options={userOptions}
-            value={selectedUsers}
-            onMultiChange={setSelectedUsers}
-            placeholder="Select users to notify..."
-            isMultiSelect
-          />
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">Message (optional)</label>
             <Textarea
@@ -690,7 +735,7 @@ export function AlarmsTab() {
               maxLength={500}
             />
           </div>
-          <Button className="w-full" onClick={handleSetOrUpdateAlarm} disabled={isProcessing}>
+          <Button className="w-auto px-6" onClick={handleSetOrUpdateAlarm} disabled={isProcessing} data-pl-reminder-submit>
             {isProcessing ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <AlarmPlus className="mr-2 h-4 w-4" />} 
             {alarmToEdit ? 'Update Reminder' : 'Set Reminder'}
           </Button>
@@ -698,7 +743,7 @@ export function AlarmsTab() {
         </div>
       </div>
       
-        <div className="flex flex-col gap-4 min-h-0">
+        <div className="flex flex-col gap-4 min-h-0" data-pl-reminder-list>
              <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Manage Reminders</h3>
                 <Button variant="destructive" size="sm" onClick={handleDeleteSelected} disabled={selectedAlarms.size === 0 || isProcessing}>
@@ -713,7 +758,7 @@ export function AlarmsTab() {
                     <TabsTrigger value="deleted" className="flex-1">Deleted ({deletedAlarms.length})</TabsTrigger>
                 </TabsList>
                 <TabsContent value="upcoming" className="mt-4 flex-1">
-                   <AlarmList list={upcomingAlarms} title="Upcoming Reminders" onSelectAll={(checked) => {
+                   {renderAlarmList({ list: upcomingAlarms, title: "Upcoming Reminders", onSelectAll: (checked) => {
                         const upcomingIds = upcomingAlarms.map(a => a.id);
                         setSelectedAlarms(prev => {
                             const newSet = new Set(prev);
@@ -724,10 +769,10 @@ export function AlarmsTab() {
                             }
                             return newSet;
                         })
-                   }} />
+                   } })}
                 </TabsContent>
                 <TabsContent value="expired" className="mt-4 flex-1">
-                   <AlarmList list={expiredAlarms} title="Expired Reminders" isExpiredList onSelectAll={(checked) => {
+                   {renderAlarmList({ list: expiredAlarms, title: "Expired Reminders", isExpiredList: true, onSelectAll: (checked) => {
                         const expiredIds = expiredAlarms.map(a => a.id);
                         setSelectedAlarms(prev => {
                             const newSet = new Set(prev);
@@ -738,10 +783,10 @@ export function AlarmsTab() {
                             }
                             return newSet;
                         })
-                   }} />
+                   } })}
                 </TabsContent>
                 <TabsContent value="deleted" className="mt-4 flex-1">
-                   <AlarmList list={deletedAlarms} title="Deleted Reminders" isDeletedList onSelectAll={() => {}} />
+                   {renderAlarmList({ list: deletedAlarms, title: "Deleted Reminders", isDeletedList: true, onSelectAll: () => {} })}
                 </TabsContent>
             </Tabs>
         </div>
