@@ -852,10 +852,24 @@ export function AppSidebar() {
         ) : (
           <>
             {/* flex-1: bachi hui sidebar height — mint nav yahi andar scroll (footer hamesha dikhayi de) */}
-            <div className="flex min-h-0 flex-1 flex-col gap-[8px] overflow-x-hidden overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
+            <div
+              className={cn(
+                "flex min-h-0 flex-1 flex-col gap-[8px]",
+                isMobile
+                  ? "basis-0"
+                  : "overflow-x-hidden overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"
+              )}
+            >
               {/* User request: Main + More ek hi mint/emerald chrome card — do alag pink/green boxes nahi */}
               {combinedDashboardNavItems.length > 0 && (
-                <div className="pl-chrome-card app-chrome-top-ribbon pl-chrome-tone-emerald w-full shrink-0 p-2">
+                <div
+                  className={cn(
+                    "pl-chrome-card app-chrome-top-ribbon pl-chrome-tone-emerald w-full p-2",
+                    isMobile
+                      ? "min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"
+                      : "shrink-0"
+                  )}
+                >
                   <SidebarMenu className="gap-2 px-0 py-0">
                     {combinedDashboardNavItems.map((item) => (
                       <React.Fragment key={item.href}>
@@ -873,8 +887,15 @@ export function AppSidebar() {
             </div>
 
             {/* User request: Account + profile ko viewport ke sidebar bottom par chipkana */}
-            <div className="mt-auto flex shrink-0 flex-col gap-[8px]">
-              <div className="pl-chrome-card app-chrome-top-ribbon pl-chrome-tone-amber w-full shrink-0 p-2">
+            <div className={cn(isMobile ? "contents" : "mt-auto flex shrink-0 flex-col gap-[8px]")}>
+              <div
+                className={cn(
+                  "pl-chrome-card app-chrome-top-ribbon pl-chrome-tone-amber w-full p-2",
+                  isMobile
+                    ? "min-h-0 flex-1 basis-0 overflow-x-hidden overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"
+                    : "shrink-0"
+                )}
+              >
                 {isOpen ? (
                   <>
                     <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Account</p>
