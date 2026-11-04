@@ -107,6 +107,16 @@ export function matchesCompanyAttachmentCatalogSearch(
 function attachmentLabelFromUrl(url: string): string {
   const trimmed = url.trim();
   if (!trimmed) return "Attachment";
+  if (trimmed.startsWith("pbatt:")) {
+    const after = trimmed.slice("pbatt:".length);
+    const base = after.split("/").pop() || after;
+    return decodeURIComponent(base) || "Server file";
+  }
+  if (trimmed.startsWith("plfile:")) {
+    const after = trimmed.slice("plfile:".length);
+    const base = after.split("/").pop() || after;
+    return decodeURIComponent(base) || "Server file";
+  }
   if (isLocalFileRef(trimmed)) return trimmed.slice("local:".length).slice(0, 12) || "Local file";
   if (isDriveFileRef(trimmed)) {
     const path = trimmed.replace(/^drive:/i, "");
@@ -158,6 +168,8 @@ function pushUrlUsage(
         !(
           url.startsWith("http://") ||
           url.startsWith("https://") ||
+          url.startsWith("pbatt:") ||
+          url.startsWith("plfile:") ||
           isLocalFileRef(url) ||
           isDriveFileRef(url)
         )
