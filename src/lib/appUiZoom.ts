@@ -7,8 +7,8 @@ export const APP_UI_ZOOM_CHANGED_EVENT = "pl-app-ui-zoom-changed";
 
 /** Browser Ctrl +/- jaisa step — 10% */
 export const APP_UI_ZOOM_STEP = 0.1;
-export const APP_UI_ZOOM_MIN = 0.75;
-export const APP_UI_ZOOM_MAX = 1.75;
+export const APP_UI_ZOOM_MIN = 0.5;
+export const APP_UI_ZOOM_MAX = 1.6;
 export const APP_UI_ZOOM_DEFAULT = 1;
 
 export function clampAppUiZoom(scale: number): number {

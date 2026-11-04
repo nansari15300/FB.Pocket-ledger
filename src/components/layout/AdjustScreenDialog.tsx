@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { Info, Minus, Plus } from "lucide-react";
 import {
   Dialog,
@@ -21,7 +22,7 @@ type AdjustScreenDialogProps = {
   onOpenChange: (open: boolean) => void;
 };
 
-/** Slider works in whole percent (75..175) — same min/max as `APP_UI_ZOOM_MIN/MAX` in `@/lib/appUiZoom`. */
+/** Slider works in whole percent (50..160) — same min/max as `APP_UI_ZOOM_MIN/MAX` in `@/lib/appUiZoom`. */
 const SLIDER_MIN_PCT = Math.round(APP_UI_ZOOM_MIN * 100);
 const SLIDER_MAX_PCT = Math.round(APP_UI_ZOOM_MAX * 100);
 
@@ -51,8 +52,9 @@ export function AdjustScreenDialog({ open, onOpenChange }: AdjustScreenDialogPro
           /* Thin strip: one centered row; overflow-visible so the mobile % badge can sit above it. */
           "flex items-center gap-2 overflow-visible p-0 px-2 max-w-none",
           isMobile
-            ? /* Mobile: 15mm tall, full width with exactly 10px gap left + right (centered by dialog's left-50% / -translate-x-1/2). */
-              "h-[15mm] w-[calc(100vw-20px)]"
+            ? /* Mobile: 15mm tall strip pinned 20mm above the screen bottom (overrides Radix top-50% / -translate-y-1/2),
+                 full width with exactly 10px gap left + right (centered by left-50% / -translate-x-1/2). */
+              "!top-auto !bottom-[20mm] !translate-y-0 h-[15mm] w-[calc(100vw-20px)]"
             : /* PC: 20mm tall, 6in..8in wide, never wider than the viewport. */
               "h-[20mm] w-[min(8in,calc(100vw-20px))] min-w-[min(6in,calc(100vw-20px))] max-w-[8in] px-3"
         )}
@@ -60,15 +62,20 @@ export function AdjustScreenDialog({ open, onOpenChange }: AdjustScreenDialogPro
         <DialogTitle className="sr-only">Adjust Screen</DialogTitle>
         <DialogDescription className="sr-only">{HELP_TEXT}</DialogDescription>
 
-        {isMobile ? (
-          <span
-            className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 rounded-full border bg-background px-3 py-0.5 text-xs font-semibold tabular-nums shadow"
-            aria-live="polite"
-            data-pl-adjust-screen-pct
-          >
-            {pct}%
-          </span>
-        ) : null}
+        {/* Mobile % pill: portaled to <body> because the dialog content has a transform (would break position:fixed).
+            Fixed 30mm from the top, centered, 100px x 50px. */}
+        {isMobile && typeof document !== "undefined"
+          ? createPortal(
+              <span
+                className="pointer-events-none fixed left-1/2 top-[30mm] z-[60] flex h-[50px] w-[100px] -translate-x-1/2 items-center justify-center rounded-full border bg-background text-center text-base font-semibold tabular-nums shadow"
+                aria-live="polite"
+                data-pl-adjust-screen-pct
+              >
+                {pct}%
+              </span>,
+              document.body
+            )
+          : null}
 
         <Button
           type="button"
@@ -98,14 +105,16 @@ export function AdjustScreenDialog({ open, onOpenChange }: AdjustScreenDialogPro
 
         <Popover>
           <PopoverTrigger asChild>
-            <button
+            <Button
               type="button"
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              variant="outline"
+              size="icon"
+              className={cn("shrink-0", isMobile ? "h-8 w-8" : "h-10 w-10")}
               aria-label="About Adjust Screen"
               title="Info"
             >
               <Info className="h-4 w-4" />
-            </button>
+            </Button>
           </PopoverTrigger>
           <PopoverContent side="top" className="w-56 p-2 text-xs">
             {HELP_TEXT}
