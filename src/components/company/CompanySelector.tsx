@@ -3122,6 +3122,9 @@ export function CompanyActions({
           data-pl-company-selector-popup=""
           className={cn(
             "w-[min(96vw,560px)] max-h-[80dvh] overflow-x-auto overflow-y-auto supports-[not(height:1dvh)]:max-h-[80vh]",
+            // Mobile/coarse: globals.css "Theme Master" caps this popup at 2.5in !important; override with higher specificity so the list uses most of the viewport (inner list scrolls only past this).
+            "[@media(max-width:767px)]:[html_body_&:not(#pl-cs-a):not(#pl-cs-b):not(#pl-cs-c)]:!max-h-[min(calc(100dvh-8rem),var(--radix-dropdown-menu-content-available-height,100dvh))]",
+            "[@media(pointer:coarse)]:[html_body_&:not(#pl-cs-a):not(#pl-cs-b):not(#pl-cs-c)]:!max-h-[min(calc(100dvh-8rem),var(--radix-dropdown-menu-content-available-height,100dvh))]",
             listTab === "online" && !showTrailingCompanyActions && "pb-0"
           )}
         >

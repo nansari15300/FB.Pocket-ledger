@@ -146,7 +146,7 @@ export function EntityListQuickFilterBar({
         onPointerCancel={endDrag}
         onClickCapture={onClickCapture}
       >
-        <div className="pl-mlc-quick-filter-inner flex min-w-full w-full items-center gap-[2px]">
+        <div className="pl-mlc-quick-filter-inner flex min-w-full w-full items-center gap-[5px] [&&&&]:!gap-[5px]">
           {filters.map((f) => {
             if (f.key === "settled" && hideSettled) return null;
             const amountActive = f.key === "amount" && isAmountFilter(active);
@@ -163,7 +163,7 @@ export function EntityListQuickFilterBar({
                   type="button"
                   size="sm"
                   variant={selected ? "default" : "outline"}
-                  className="pl-mlc-quick-filter-pill h-7 min-w-0 px-2 text-[11px] whitespace-nowrap"
+                  className="pl-mlc-quick-filter-pill h-7 min-w-0 px-2 text-[11px] whitespace-nowrap text-center justify-center [&&&&]:min-w-[calc(6ch+1rem)]"
                   onClick={() => {
                     if (f.key === "amount") {
                       onChange(active === "amount" ? "amount_asc" : "amount");
@@ -179,7 +179,7 @@ export function EntityListQuickFilterBar({
                     type="button"
                     size="sm"
                     variant={hideSettled ? "default" : "outline"}
-                    className="pl-mlc-quick-filter-pill h-7 min-w-0 px-2 text-[11px] whitespace-nowrap"
+                    className="pl-mlc-quick-filter-pill h-7 min-w-0 px-2 text-[11px] whitespace-nowrap text-center justify-center [&&&&]:min-w-[calc(6ch+1rem)]"
                     onClick={() => setHideSettled(!hideSettled)}
                   >
                     {hideSettled ? "Show Settled" : "Hide Settled"}
