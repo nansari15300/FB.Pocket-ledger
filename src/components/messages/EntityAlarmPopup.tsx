@@ -27,6 +27,8 @@ type AlarmDoc = {
   notified?: boolean;
   context?: string;
   entityId?: string;
+  /** Reminder v2 soft delete: deleted reminders kabhi popup nahi hote. */
+  deleted?: boolean;
 };
 
 const SNOOZE_MINUTES = 10;
@@ -87,6 +89,7 @@ export function EntityAlarmPopup({ context, entityId }: { context: string; entit
     const unsub = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as AlarmDoc));
       const forUser = docs.filter((a) => {
+        if (a.deleted === true) return false;
         if (company?.ownerId === user.uid) return true;
         if (a.users?.length && user.email && a.users.includes(user.email)) return true;
         return false;

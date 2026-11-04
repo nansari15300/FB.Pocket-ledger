@@ -1030,7 +1030,8 @@ export function TaxGroupDetails({
               <LedgerReminderDialog
                 open={reminderOpen}
                 onOpenChange={setReminderOpen}
-                context="Tax"
+                context="Tax Group"
+                entityId={group.id}
                 title={group.name}
               />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />

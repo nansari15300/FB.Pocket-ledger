@@ -1807,7 +1807,8 @@ export function AccountGroupDetails({
               <LedgerReminderDialog
                 open={reminderOpen}
                 onOpenChange={setReminderOpen}
-                context="Bank/Cash"
+                context="Bank/Cash Group"
+                entityId={group.id}
                 title={group.name}
               />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />

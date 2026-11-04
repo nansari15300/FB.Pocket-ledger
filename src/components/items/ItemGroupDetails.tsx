@@ -1078,7 +1078,8 @@ export function ItemGroupDetails({
               <LedgerReminderDialog
                 open={reminderOpen}
                 onOpenChange={setReminderOpen}
-                context="Items"
+                context="Item Group"
+                entityId={group.id}
                 title={group.name}
               />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />

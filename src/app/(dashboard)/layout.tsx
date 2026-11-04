@@ -36,6 +36,8 @@ import {
   type EdgeSwipeDocumentOptions,
 } from "@/hooks/useMobileEdgeSwipe";
 import { AlarmPopup } from "@/components/messages/AlarmPopup";
+import { ReminderScheduler } from "@/components/messages/ReminderScheduler";
+import { ReminderPreviewDialog } from "@/components/messages/ReminderPreviewDialog";
 import { RpOutstandingDialogProvider } from "@/contexts/RpOutstandingDialogContext";
 import { DeviceLimitProvider, useDeviceLimitContext } from "@/contexts/DeviceLimitContext";
 import { resolvePlanIdForActiveCompany } from "@/lib/accountPlanForOwner";
@@ -945,6 +947,8 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
          <>
             <GlobalLeftEdgeOpenAppMenuSwipe />
             <AlarmPopup />
+            <ReminderScheduler />
+            <ReminderPreviewDialog />
             <RpOutstandingDialogProvider>
             {/* Month-end recurring vouchers: app-open trigger runner (company settings + user scope aware). */}
             <RecurringVoucherAutoRunner />

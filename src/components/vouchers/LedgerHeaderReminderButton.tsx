@@ -16,7 +16,14 @@ export type LedgerReminderContext =
   | "Bank/Cash"
   | "Tax"
   | "Items"
-  | "Income/Expense";
+  | "Income/Expense"
+  /** Group Details pages: entityId = group id. */
+  | "Party Group"
+  | "Staff Group"
+  | "Bank/Cash Group"
+  | "Tax Group"
+  | "Item Group"
+  | "Income/Expense Group";
 
 /**
  * Phase 1: Reminder button sirf Messages → Reminder tab par prefilled form kholta hai.

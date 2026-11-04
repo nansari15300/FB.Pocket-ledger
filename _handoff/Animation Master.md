@@ -2,7 +2,7 @@
 
 > यह फ़ाइल handoff के लिए है। कोई भी दूसरा bot (अलग id वाला) इसे पढ़कर Animation का काम वहीं से आगे बढ़ा सकता है।
 > Project root: `C:\Project ERP\Refference apps\Touri + React`
-> आख़िरी update: 2026-11-03 17:21 (Asia/Kathmandu, NPT)
+> आख़िरी update: 2026-11-04 09:40 (Asia/Kathmandu, NPT)
 
 ---
 
@@ -25,7 +25,7 @@
 
 1. User से हमेशा **हिंदी देवनागरी** में बात करनी है, **स्त्रीलिंग (feminine) आवाज़** में — जैसे "मैंने कर दिया है", "मैं देख लूँगी"।
 2. किसी भी फ़ाइल में बदलाव से पहले user को plan दिखाना है और उनकी **"हाँ"** लेनी है।
-3. हर edit से पहले backup लेना है → `.animation-backups\<YYYY-MM-DD>\<वही relative path>`।
+3. नया नियम (4 नवंबर 2026, user का): code बदलने से पहले local backup लेने का नियम खत्म हो गया है। अब कोई local backup नहीं लेना। कुछ गड़बड़ हो तो file Git से वापस ली जाएगी। पुराने backups (`.animation-backups\` वगैरह) खुद से नहीं हटाने।
 4. **कभी commit या push नहीं करना** (git sync अभी hold पर है)। stash / checkout / reset भी नहीं।
 5. Folders का नाम नहीं बदलना — गलत spelling वाले नाम (जैसे `Refference apps`) वैसे ही रहेंगे।
 6. **Cloudflare, Android, Capacitor, electron, src-tauri** — इनसे जुड़ी किसी फ़ाइल को नहीं छूना।
@@ -150,6 +150,7 @@
 | 2026-11-01 18:12 | यह handoff फ़ाइल बनाई; `useAnimationSettings` का backend (Firebase/PocketBase) read-only जाँचा — नीचे section 9 |
 | 2026-11-02 14:05 | user ने सभी रुके हुए काम reject करवाए और खुद manually कर दिए, कोई नया बदलाव नहीं। Read-only जाँच: 4 नई + 15 बदली फ़ाइलें ठीक (कोई आधा edit नहीं, backup से diff सिर्फ़ intended edits, 2026-11-01 के बाद कोई बदलाव नहीं); `tsc --noEmit --incremental false -p tsconfig.typecheck.json` exit 0, कोई error नहीं। |
 | 2026-11-03 17:21 | user ने खुद folder `C:\Project xxx` का नाम बदलकर `C:\Project ERP` किया; इस file के सभी paths अपडेट किए। Folder का नाम वापस नहीं बदलना। |
+| 2026-11-04 09:40 | backup का नियम हटाया (user का नया नियम, Bot Leader के ज़रिए)। Account Details Master ने `(dashboard)/layout.tsx` में AlarmPopup के पास `<ReminderScheduler/>` और `<ReminderPreviewDialog/>` जोड़ने की बात बताई। AnimationSettingsProvider नहीं छुआ जाएगा। मुझे कोई आपत्ति नहीं। |
 
 ---
 

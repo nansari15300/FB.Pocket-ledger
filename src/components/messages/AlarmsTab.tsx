@@ -1,14 +1,13 @@
 "use client";
 
-import { updateDoc, writeBatch, addDoc, deleteDoc } from "@/lib/writeGateway/pbWrites";
-import { STAFF_ENTITY_LABEL } from "@/lib/staffEntityDisplayName";
+import { updateDoc, writeBatch, addDoc } from "@/lib/writeGateway/pbWrites";
 
 import * as React from "react";
 import { useCompany } from "@/hooks/useCompany";
 import { useDate } from "@/hooks/useDate";
 import { useAuth } from "@/hooks/useAuth";
-import { collection, query, orderBy, doc, serverTimestamp, Timestamp } from "@/lib/pbCompat/firestore";
-import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
+import { collection, query, orderBy, where, doc, serverTimestamp, Timestamp } from "@/lib/pbCompat/firestore";
+import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
 import {
@@ -44,7 +43,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Combobox } from "@/components/ui/combobox";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { useVouchers } from "@/hooks/useVouchers";
+import { useReminderEntityOptions, REMINDER_CONTEXT_OPTIONS } from "@/hooks/useReminderEntityOptions";
+import { useCompanyReminderUsers } from "@/hooks/useCompanyReminderUsers";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
@@ -62,7 +62,15 @@ type Alarm = {
   notified?: boolean;
   context?: string;
   entityId?: string;
+  /** Soft delete (Reminder v2): normal lists me hidden, popup ke "Deleted" tab me dikhte hain. */
+  deleted?: boolean;
+  deletedAt?: any;
+  deletedBy?: string | null;
+  createdAt?: any;
+  createdBy?: string | null;
 };
+
+export type ReminderAlarm = Alarm;
 
 /**
  * Shared reminder save path: AlarmsTab aur LedgerReminderDialog (Details pages) dono yahi use karte hain,
@@ -111,10 +119,157 @@ export async function createReminderAlarm(
   });
 }
 
+/*
+ * Reminder v2 data helpers. Saare alarms read/write/subscribe/notification yahin rehte hain (existing imports),
+ * naye files (LedgerReminderDialog, ReminderScheduler, ReminderPreviewDialog) sirf ye helpers import karte hain.
+ * Baad me Firebase Master ka `src/lib/pocketbaseData/reminders.ts` aaye to ye helpers wahan shift honge.
+ */
+const alarmsPath = (companyId: string) => `companies/${companyId}/alarms`;
+
+export function reminderTimeMs(value: any): number {
+  if (value == null) return NaN;
+  if (typeof value?.toDate === "function") return value.toDate().getTime();
+  if (typeof value?.seconds === "number") return value.seconds * 1000;
+  if (value instanceof Date) return value.getTime();
+  return new Date(value).getTime();
+}
+
+/** Due jab `(notifyAt ?? datetime) <= now`. */
+export function reminderDueMs(a: Pick<Alarm, "notifyAt" | "datetime">): number {
+  const notifyMs = reminderTimeMs(a?.notifyAt);
+  return Number.isFinite(notifyMs) ? notifyMs : reminderTimeMs(a?.datetime);
+}
+
+export function isReminderDeleted(a: Pick<Alarm, "deleted"> | null | undefined): boolean {
+  return a?.deleted === true;
+}
+
+/** Owner sab dekhta hai; baaki ko apne banaye hue ya jinke `users` me unka email ho. */
+export function isReminderVisibleToUser(
+  a: Alarm,
+  viewer: { uid?: string | null; email?: string | null },
+  ownerId?: string | null,
+): boolean {
+  if (ownerId && viewer.uid && viewer.uid === ownerId) return true;
+  if (a.createdBy && viewer.uid && a.createdBy === viewer.uid) return true;
+  const email = String(viewer.email ?? "").trim().toLowerCase();
+  if (email && Array.isArray(a.users) && a.users.some((u) => String(u ?? "").trim().toLowerCase() === email)) return true;
+  return false;
+}
+
+/** Company ke saare alarms (deleted bhi), datetime desc. */
+export function subscribeCompanyReminders(companyId: string, onChange: (list: Alarm[]) => void): () => void {
+  const q = query(collection(firestore, alarmsPath(companyId)), orderBy("datetime", "desc"));
+  return onSnapshot(q, (snapshot) => {
+    onChange(snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Alarm)));
+  });
+}
+
+/** Edit: `buildReminderAlarmData` se naya notifyAt; notified hamesha false. */
+export async function updateReminderAlarm(companyId: string, alarmId: string, alarmData: Omit<Alarm, "id">): Promise<void> {
+  await updateDoc(doc(firestore, alarmsPath(companyId), alarmId), { ...alarmData, notified: false });
+}
+
+/** Soft delete: record rehta hai (Deleted history), notified:true taaki fire na ho. */
+export async function softDeleteReminderAlarms(companyId: string, alarmIds: string[], deletedBy: string | null): Promise<void> {
+  if (!alarmIds.length) return;
+  const batch = writeBatch(firestore);
+  const deletedAt = Timestamp.fromDate(new Date());
+  for (const id of alarmIds) {
+    batch.update(doc(firestore, alarmsPath(companyId), id), {
+      deleted: true,
+      deletedAt,
+      deletedBy: deletedBy ?? null,
+      notified: true,
+    });
+  }
+  await batch.commit();
+}
+
+/** Restore: time abhi aage hai to dobara fire hoga, warna History me jaata hai. */
+export async function restoreReminderAlarm(companyId: string, alarm: Alarm): Promise<void> {
+  const dueMs = reminderDueMs(alarm);
+  const stillAhead = Number.isFinite(dueMs) && dueMs > Date.now();
+  await updateDoc(doc(firestore, alarmsPath(companyId), alarm.id), {
+    deleted: false,
+    deletedAt: null,
+    deletedBy: null,
+    notified: !stillAhead,
+  });
+}
+
+/** Scheduler: abhi tak fire na hue (notified==false), non-deleted alarms. */
+export function subscribePendingReminders(companyId: string, onChange: (list: Alarm[]) => void): () => void {
+  const q = query(collection(firestore, alarmsPath(companyId)), where("notified", "==", false));
+  return onSnapshot(q, (snapshot) => {
+    onChange(
+      snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() } as Alarm))
+        .filter((a) => !isReminderDeleted(a)),
+    );
+  });
+}
+
+/**
+ * Ek due reminder fire karo (claim-first): pehle fresh read, phir `notified:true` (claim), phir
+ * admin_notifications (AlarmPopup isi ko sunta hai, har screen par). Pehle ye Messages page ka loop tha.
+ * Returns true agar is call ne fire kiya.
+ */
+export async function fireDueReminder(
+  companyId: string,
+  alarm: Alarm,
+  opts: { ownerId?: string | null; createdByName?: (uid: string | null | undefined) => string | null },
+): Promise<boolean> {
+  const alarmRef = doc(firestore, alarmsPath(companyId), alarm.id);
+  const fresh = await getDoc(alarmRef);
+  if (!fresh.exists()) return false;
+  const data = { id: alarm.id, ...(fresh.data() as any) } as Alarm;
+  if (data.notified === true || isReminderDeleted(data)) return false;
+  const dueMs = reminderDueMs(data);
+  if (!Number.isFinite(dueMs) || dueMs > Date.now()) return false;
+
+  // Claim first: dusre tab / user ka scheduler isse dobara fire na kare.
+  await updateDoc(alarmRef, { notified: true });
+
+  let targetUserIds: string[] = [];
+  if (Array.isArray(data.users) && data.users.length > 0) {
+    const qUsers = query(collection(firestore, "users"), where("email", "in", data.users.slice(0, 10)));
+    const userSnaps = await getDocs(qUsers);
+    targetUserIds = userSnaps.docs
+      .map((d) => ({ id: d.id, ...d.data() } as any))
+      .map((u: any) => u.uid || u.id)
+      .filter(Boolean);
+  }
+  if (targetUserIds.length === 0 && opts.ownerId) targetUserIds.push(opts.ownerId);
+
+  for (const userId of Array.from(new Set(targetUserIds))) {
+    await addDoc(collection(firestore, "admin_notifications"), {
+      recipientUserId: userId,
+      type: "alarm",
+      alarmId: data.id,
+      message: data.message || data.title || `REMINDER: ${data.title}`,
+      alarmTitle: data.title,
+      timestamp: serverTimestamp(),
+      isRead: false,
+      companyId,
+      context: data.context || null,
+      entityId: data.entityId || null,
+      alarmForUsers: Array.isArray(data.users) ? data.users : [],
+      alarmCreatedBy: data.createdBy ?? null,
+      alarmCreatedByName: opts.createdByName?.(data.createdBy) ?? null,
+      alarmCreatedAt: data.createdAt ?? null,
+      alarmDatetime: data.datetime ?? null,
+      alarmNotifyAt: data.notifyAt ?? null,
+    });
+  }
+  return true;
+}
+
 export function AlarmsTab() {
   const { company, companyId } = useCompany();
   const { user } = useAuth();
-  const { processedPartiesForSelection, processedStaff, processedAccounts, processedTaxes, processedItems, expenseAccounts } = useVouchers();
+  const { options: reminderEntityOptions } = useReminderEntityOptions();
+  const { userOptions, defaultUsers, formatUsers } = useCompanyReminderUsers();
   const { dateSystem, formatDate, formatDateBS } = useDate();
 
   const [alarms, setAlarms] = React.useState<Alarm[]>([]);
@@ -137,26 +292,21 @@ export function AlarmsTab() {
   const reminderFormRef = React.useRef<HTMLDivElement>(null);
   const reminderPrefillDoneRef = React.useRef(false);
 
-  const contextOptions = [
-    { value: 'Party', label: 'Party' },
-    { value: 'Staff', label: STAFF_ENTITY_LABEL },
-    { value: 'Bank/Cash', label: 'Bank/Cash Account' },
-    { value: 'Tax', label: 'Tax' },
-    { value: 'Items', label: 'Items' },
-    { value: 'Income/Expense', label: 'Income/Expense Account' },
-  ];
+  const contextOptions = REMINDER_CONTEXT_OPTIONS;
 
   const entityOptions = React.useMemo(() => {
-    switch (selectedContext) {
-      case "Party": return processedPartiesForSelection.map(p => ({ value: p.id, label: p.name }));
-      case "Staff": return processedStaff.map(s => ({ value: s.id, label: s.name }));
-      case "Bank/Cash": return processedAccounts.map(a => ({ value: a.id, label: a.accountName }));
-      case "Tax": return processedTaxes.map(t => ({ value: t.id, label: t.name }));
-      case "Items": return processedItems.map(i => ({ value: i.id, label: i.name }));
-      case "Income/Expense": return expenseAccounts.map(e => ({ value: e.id, label: e.name }));
-      default: return [];
-    }
-  }, [selectedContext, processedPartiesForSelection, processedStaff, processedAccounts, processedTaxes, processedItems, expenseAccounts]);
+    if (!selectedContext) return [];
+    return reminderEntityOptions
+      .filter((o) => o.context === selectedContext)
+      .map((o) => ({ value: o.entityId, label: o.name }));
+  }, [selectedContext, reminderEntityOptions]);
+
+  // Default "users" = sirf current user (explicit email), jab tak form khali ho.
+  React.useEffect(() => {
+    if (alarmToEdit) return;
+    setSelectedUsers((prev) => (prev.length ? prev : defaultUsers));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultUsers]);
 
   // Ledger header Reminder button: /messages?tab=alarms&reminderContext=..&reminderEntityId=..&reminderTitle=..
   // Read once on mount, prefill the form, then strip the reminder* params so a reload does not re-prefill.
@@ -168,7 +318,7 @@ export function AlarmsTab() {
     const entityId = params.get("reminderEntityId") ?? "";
     const title = (params.get("reminderTitle") ?? "").trim();
     if (!ctx && !entityId && !title) return;
-    const validContexts = ["Party", "Staff", "Bank/Cash", "Tax", "Items", "Income/Expense"];
+    const validContexts: string[] = REMINDER_CONTEXT_OPTIONS.map((o) => o.value);
     const validCtx = validContexts.includes(ctx) ? ctx : "";
     setAlarmToEdit(null);
     setSelectedContext(validCtx);
@@ -197,24 +347,11 @@ export function AlarmsTab() {
       if (!companyId) return;
       const q = query(collection(firestore, `companies/${companyId}/alarms`), orderBy("datetime", "desc"));
       const unsub = onSnapshot(q, (snapshot) => {
-          setAlarms(snapshot.docs.map(d => ({id: d.id, ...d.data()} as Alarm)))
+          setAlarms(snapshot.docs.map(d => ({id: d.id, ...d.data()} as Alarm)).filter(a => !isReminderDeleted(a)))
       });
       return () => unsub();
   }, [companyId]);
 
-  const companyUsers = React.useMemo(() => {
-    if (!company) return [];
-    const owner = { id: company.ownerEmail, name: "Owner" };
-    const shared = (company.sharedWith || []).map((u: any) => ({
-      id: u.email,
-      name: u.name || u.email,
-    }));
-    const all = [owner, ...shared];
-    const unique = Array.from(new Map(all.map(item => [item.id, item])).values());
-    return unique;
-  }, [company]);
-  
-  const userOptions = React.useMemo(() => companyUsers.map(u => ({ value: u.id, label: u.name })), [companyUsers]);
 
   const handleSetOrUpdateAlarm = async () => {
     if (!newAlarmTitle || !selectedDate || !companyId) {
@@ -237,7 +374,7 @@ export function AlarmsTab() {
         });
         
         if (alarmToEdit) {
-            await updateDoc(doc(firestore, `companies/${companyId}/alarms`, alarmToEdit.id), alarmData);
+            await updateReminderAlarm(companyId, alarmToEdit.id, alarmData);
             toast.success("Reminder Updated", { description: `Your reminder for "${newAlarmTitle}" has been updated.`});
         } else {
              await createReminderAlarm(companyId, alarmData, user?.uid ?? null);
@@ -249,7 +386,7 @@ export function AlarmsTab() {
         setNewAlarmTitle("");
         setNewAlarmMessage("");
         setSelectedDate(new Date());
-        setSelectedUsers([]);
+        setSelectedUsers(defaultUsers);
         setSelectedContext('');
         setSelectedEntityId('');
     } catch (e) {
@@ -286,13 +423,8 @@ export function AlarmsTab() {
   const handleDeleteSelected = async () => {
     if (!companyId || selectedAlarms.size === 0) return;
     setIsProcessing(true);
-    const batch = writeBatch(firestore);
-    selectedAlarms.forEach(id => {
-        const docRef = doc(firestore, `companies/${companyId}/alarms`, id);
-        batch.delete(docRef);
-    });
     try {
-        await batch.commit();
+        await softDeleteReminderAlarms(companyId, Array.from(selectedAlarms), user?.uid ?? null);
         toast.success(`${selectedAlarms.size} reminder(s) deleted.`);
         setSelectedAlarms(new Set());
     } catch (e) {
@@ -306,7 +438,7 @@ export function AlarmsTab() {
     if (!companyId) return;
     setIsProcessing(true);
     try {
-      await deleteDoc(doc(firestore, `companies/${companyId}/alarms`, item.id));
+      await softDeleteReminderAlarms(companyId, [item.id], user?.uid ?? null);
       toast.success("Reminder deleted.");
     } catch(err) {
       toast.error("Failed to delete reminder.");
@@ -375,7 +507,7 @@ export function AlarmsTab() {
                                         {displayDateTime}
                                         </p>
                                         <p className="text-xs text-muted-foreground mt-1">
-                                        For: {alarm.users.length === 0 ? "You" : alarm.users.join(', ')}
+                                        For: {formatUsers(alarm.users)}
                                         </p>
                                     </div>
                                 </div>
@@ -521,7 +653,7 @@ export function AlarmsTab() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Reminder?</AlertDialogTitle>
-            <AlertDialogDescription>This reminder will be permanently deleted.</AlertDialogDescription>
+            <AlertDialogDescription>This reminder will be moved to Deleted history. You can restore it from the Reminder popup.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

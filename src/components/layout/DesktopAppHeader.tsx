@@ -86,6 +86,7 @@ import { isInterCompanyVoucherFeatureDisabled } from "@/lib/interCompany/interCo
 import usePermissions from "@/hooks/usePermissions";
 import { DriveCloudSyncHeaderIndicator } from "@/components/layout/DriveCloudSyncHeaderIndicator";
 import { HeaderSyncButton } from "@/components/layout/HeaderSyncButton";
+import { HeaderReminderTestButton } from "@/components/layout/HeaderReminderTestButton";
 import { HeaderFirebaseToPbButton } from "@/components/layout/HeaderFirebaseToPbButton";
 import { usePendingInterCompanySystemJoinCount } from "@/lib/interCompany/usePendingInterCompanySystemJoinCount";
 import { useMasterDetailHeaderIdSnapshot } from "@/hooks/useMasterDetailHeaderIdSnapshot";
@@ -2481,6 +2482,7 @@ export function DesktopAppHeader() {
             </div>
               <div className="ml-2 flex shrink-0 items-center gap-1">
                 <HeaderSyncButton />
+                <HeaderReminderTestButton />
                 <HeaderFirebaseToPbButton />
                 <PlServerCompanyConnectionStatus />
                 <DriveCloudSyncHeaderIndicator />
@@ -2538,6 +2540,7 @@ export function DesktopAppHeader() {
               {/* Desktop: pehle Add New (mobile pe stripe me profile ke pehle) — purani daen-cluster order */}
               <AddNewButtonOnReportPage />
               <HeaderSyncButton />
+              <HeaderReminderTestButton />
               <HeaderFirebaseToPbButton />
               <DriveCloudSyncHeaderIndicator />
               <PlServerCompanyConnectionStatus />
