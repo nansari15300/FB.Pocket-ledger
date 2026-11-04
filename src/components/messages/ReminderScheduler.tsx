@@ -12,8 +12,8 @@ import {
   type ReminderAlarm,
 } from "@/components/messages/AlarmsTab";
 
-/** Har 30 sec current time se due check (notifyAt ?? datetime <= now). */
-const DUE_RECHECK_MS = 30 * 1000;
+/** Har 5 sec current time se due check (notifyAt ?? datetime <= now). */
+const DUE_RECHECK_MS = 5 * 1000;
 
 /**
  * App-wide reminder firing (dashboard layout me AlarmPopup ke saath mount).
@@ -69,7 +69,7 @@ export function ReminderScheduler() {
           });
           if (ok) fired += 1;
         } catch {
-          // Agli 30 sec check par dobara koshish (claim nahi hua to).
+          // Agli 5 sec check par dobara koshish (claim nahi hua to).
         } finally {
           inFlightRef.current.delete(a.id);
         }

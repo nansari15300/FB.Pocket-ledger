@@ -68,9 +68,25 @@ type Alarm = {
   deletedBy?: string | null;
   createdAt?: any;
   createdBy?: string | null;
+  /** Kitne minute pehle notify karna (0 = At time). Purane records me nahi hota -> 0. */
+  remindBeforeMinutes?: number;
 };
 
 export type ReminderAlarm = Alarm;
+
+export const REMIND_BEFORE_OPTIONS: { value: string; label: string }[] = [
+  { value: "0", label: "At time" },
+  { value: "5", label: "5 min before" },
+  { value: "10", label: "10 min before" },
+  { value: "15", label: "15 min before" },
+  { value: "30", label: "30 min before" },
+  { value: "60", label: "1 hour before" },
+];
+
+export function normalizeRemindBefore(value: unknown): number {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
 
 /**
  * Shared reminder save path: AlarmsTab aur LedgerReminderDialog (Details pages) dono yahi use karte hain,
@@ -86,6 +102,7 @@ export function buildReminderAlarmData(input: {
   users?: string[];
   context?: string;
   entityId?: string;
+  remindBeforeMinutes?: number;
 }): Omit<Alarm, "id"> {
   let hours = parseInt(input.hour, 10);
   if (input.period === "PM" && hours < 12) hours += 12;
@@ -93,12 +110,14 @@ export function buildReminderAlarmData(input: {
 
   const finalDateTime = new Date(input.date);
   finalDateTime.setHours(hours, parseInt(input.minute, 10), 0, 0);
-  const notifyAt = new Date(finalDateTime.getTime() - 5 * 60 * 1000);
+  const remindBeforeMinutes = normalizeRemindBefore(input.remindBeforeMinutes);
+  const notifyAt = new Date(finalDateTime.getTime() - remindBeforeMinutes * 60 * 1000);
 
   return {
     title: input.title,
     datetime: finalDateTime,
     notifyAt: Timestamp.fromDate(notifyAt),
+    remindBeforeMinutes,
     message: input.message?.trim() || undefined,
     users: input.users ?? [],
     context: input.context || undefined,
@@ -125,6 +144,31 @@ export async function createReminderAlarm(
  * Baad me Firebase Master ka `src/lib/pocketbaseData/reminders.ts` aaye to ye helpers wahan shift honge.
  */
 const alarmsPath = (companyId: string) => `companies/${companyId}/alarms`;
+
+/**
+ * AlarmPopup "Off all": is alarm ke SAB users ke unread admin_notifications read kar do
+ * (har user ka global AlarmPopup listener `isRead==false` par hai, isliye sabka popup band ho jata hai).
+ * Alarm bhi `notified:true` (dobara fire na ho). Returns kitne notifications band hue.
+ */
+export async function markAlarmNotificationsReadForAll(companyId: string, alarmId: string): Promise<number> {
+  const snap = await getDocs(query(collection(firestore, "admin_notifications"), where("alarmId", "==", alarmId)));
+  const targets = snap.docs.filter((d) => {
+    const n = d.data() as any;
+    return n?.type === "alarm" && n?.isRead !== true && (!n?.companyId || n.companyId === companyId);
+  });
+  const batch = writeBatch(firestore);
+  for (const d of targets) batch.update(doc(firestore, "admin_notifications", d.id), { isRead: true });
+  batch.update(doc(firestore, alarmsPath(companyId), alarmId), { notified: true });
+  await batch.commit();
+  return targets.length;
+}
+
+/** Ek reminder record (AlarmPopup card / Extend edit ke liye). */
+export async function getReminderAlarm(companyId: string, alarmId: string): Promise<Alarm | null> {
+  const snap = await getDoc(doc(firestore, alarmsPath(companyId), alarmId));
+  if (!snap.exists()) return null;
+  return { id: alarmId, ...(snap.data() as any) } as Alarm;
+}
 
 export function reminderTimeMs(value: any): number {
   if (value == null) return NaN;
@@ -280,6 +324,7 @@ export function AlarmsTab() {
   const [selectedHour, setSelectedHour] = React.useState("10");
   const [selectedMinute, setSelectedMinute] = React.useState("00");
   const [selectedPeriod, setSelectedPeriod] = React.useState("AM");
+  const [remindBefore, setRemindBefore] = React.useState("0");
   const [selectedContext, setSelectedContext] = React.useState("");
   const [selectedEntityId, setSelectedEntityId] = React.useState("");
   const [newAlarmMessage, setNewAlarmMessage] = React.useState("");
@@ -371,6 +416,7 @@ export function AlarmsTab() {
             users: selectedUsers,
             context: selectedContext,
             entityId: selectedEntityId,
+            remindBeforeMinutes: Number(remindBefore),
         });
         
         if (alarmToEdit) {
@@ -387,6 +433,7 @@ export function AlarmsTab() {
         setNewAlarmMessage("");
         setSelectedDate(new Date());
         setSelectedUsers(defaultUsers);
+        setRemindBefore("0");
         setSelectedContext('');
         setSelectedEntityId('');
     } catch (e) {
@@ -413,6 +460,7 @@ export function AlarmsTab() {
     setSelectedHour(String(hour).padStart(2, '0'));
     setSelectedMinute(String(alarmDate.getMinutes()).padStart(2, '0'));
     setSelectedPeriod(period);
+    setRemindBefore(String(normalizeRemindBefore(alarm.remindBeforeMinutes)));
 
     setSelectedUsers(alarm.users || []);
     setSelectedContext(alarm.context || "");
@@ -574,6 +622,13 @@ export function AlarmsTab() {
                  <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
                     <SelectTrigger className="w-24"><SelectValue/></SelectTrigger>
                     <SelectContent><SelectItem value="AM">AM</SelectItem><SelectItem value="PM">PM</SelectItem></SelectContent>
+                </Select>
+            </div>
+            <div className="flex items-center justify-center gap-2">
+                <label className="text-sm font-medium text-foreground">Remind before</label>
+                <Select value={remindBefore} onValueChange={setRemindBefore}>
+                    <SelectTrigger className="w-40" aria-label="Remind before"><SelectValue/></SelectTrigger>
+                    <SelectContent>{REMIND_BEFORE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
                 </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">

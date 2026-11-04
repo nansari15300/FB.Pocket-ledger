@@ -6,16 +6,29 @@ import { useAuth } from "@/hooks/useAuth";
 import { collection, query, where, doc, Timestamp } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
-import { useCompany } from "@/hooks/useCompany";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { AlarmPlus, Check, Clock } from "lucide-react";
+import { AlarmClock, BellOff, CalendarClock, Check, Clock } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { ReminderCard, type ReminderCardData } from "@/components/messages/ReminderCard";
+import { markAlarmNotificationsReadForAll, normalizeRemindBefore } from "@/components/messages/AlarmsTab";
+import { openReminderEditor, setAlarmPopupActive } from "@/lib/reminderPreviewEvents";
 
 type AlarmNotification = {
   id: string;
@@ -26,15 +39,22 @@ type AlarmNotification = {
   message?: string;
   alarmTitle?: string;
   isRead?: boolean;
+  context?: string | null;
+  entityId?: string | null;
+  alarmForUsers?: string[];
+  alarmDatetime?: any;
 };
 
 const SNOOZE_MINUTES = 10;
-const NOTIFY_BEFORE_MINUTES = 5;
+/** Teeno buttons ki ek hi height / size (ek row me fit). */
+const ALARM_BTN = "h-8 min-w-0 flex-1 gap-1 px-2 text-xs";
 
 export function AlarmPopup() {
   const { user } = useAuth();
   const [alarmNotification, setAlarmNotification] = React.useState<AlarmNotification | null>(null);
+  const [alarmRecord, setAlarmRecord] = React.useState<ReminderCardData | null>(null);
   const [isProcessing, setIsProcessing] = React.useState(false);
+  const [confirmOffAll, setConfirmOffAll] = React.useState(false);
 
   React.useEffect(() => {
     if (!user?.uid) {
@@ -57,6 +77,31 @@ export function AlarmPopup() {
     });
     return () => unsub();
   }, [user?.uid]);
+
+  // Ek waqt me ek popup: alarm dikhe to ReminderPreviewDialog band / blocked.
+  const isOpen = !!alarmNotification;
+  React.useEffect(() => {
+    setAlarmPopupActive(isOpen);
+  }, [isOpen]);
+  React.useEffect(() => () => setAlarmPopupActive(false), []);
+
+  // Card ke liye poora alarm record (For / Link to / remind before).
+  const alarmKey = alarmNotification ? `${alarmNotification.companyId}|${alarmNotification.alarmId}` : "";
+  React.useEffect(() => {
+    setAlarmRecord(null);
+    if (!alarmNotification?.alarmId || !alarmNotification?.companyId) return;
+    let cancelled = false;
+    getDoc(doc(firestore, `companies/${alarmNotification.companyId}/alarms`, alarmNotification.alarmId))
+      .then((snap) => {
+        if (cancelled || !snap.exists()) return;
+        setAlarmRecord(snap.data() as ReminderCardData);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alarmKey]);
 
   const handleDone = async () => {
     if (!alarmNotification?.alarmId || !alarmNotification?.companyId || isProcessing) return;
@@ -90,7 +135,10 @@ export function AlarmPopup() {
       const data = alarmSnap.data();
       const currentDatetime = data?.datetime?.toDate ? data.datetime.toDate() : new Date(data?.datetime);
       const newDatetime = new Date(currentDatetime.getTime() + SNOOZE_MINUTES * 60 * 1000);
-      const newNotifyAt = new Date(newDatetime.getTime() - NOTIFY_BEFORE_MINUTES * 60 * 1000);
+      newDatetime.setSeconds(0, 0);
+      // Record ka apna "Remind before" (purane records me nahi -> 0 = At time).
+      const remindBeforeMinutes = normalizeRemindBefore(data?.remindBeforeMinutes);
+      const newNotifyAt = new Date(newDatetime.getTime() - remindBeforeMinutes * 60 * 1000);
       await updateDoc(alarmRef, {
         datetime: newDatetime,
         notifyAt: Timestamp.fromDate(newNotifyAt),
@@ -107,28 +155,101 @@ export function AlarmPopup() {
     }
   };
 
+  /** Extend date & time: notification read (dobara popup na ho), phir LedgerReminderDialog EDIT mode me. */
+  const handleExtend = async () => {
+    if (!alarmNotification?.alarmId || !alarmNotification?.companyId || isProcessing) return;
+    setIsProcessing(true);
+    const target = { alarmId: alarmNotification.alarmId, companyId: alarmNotification.companyId };
+    try {
+      await updateDoc(doc(firestore, "admin_notifications", alarmNotification.id), { isRead: true });
+      setAlarmNotification(null);
+      setAlarmPopupActive(false);
+      openReminderEditor(target);
+    } catch (e) {
+      toast.error("Failed to open reminder.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  /** Off all: is alarm ke sab users ke notifications read (sabka popup band). Done sirf current user ke liye hi hai. */
+  const handleOffAll = async () => {
+    if (!alarmNotification?.alarmId || !alarmNotification?.companyId || isProcessing) return;
+    setIsProcessing(true);
+    try {
+      await markAlarmNotificationsReadForAll(alarmNotification.companyId, alarmNotification.alarmId);
+      // Apna record bhi pakka read (agar query me na aaya ho).
+      await updateDoc(doc(firestore, "admin_notifications", alarmNotification.id), { isRead: true });
+      setAlarmNotification(null);
+      toast.success("Reminder turned off for all users.");
+    } catch (e) {
+      toast.error("Failed to turn off reminder for all users.");
+    } finally {
+      setIsProcessing(false);
+      setConfirmOffAll(false);
+    }
+  };
+
   if (!alarmNotification) return null;
+
+  const cardData: ReminderCardData = alarmRecord ?? {
+    title: alarmNotification.alarmTitle || "",
+    datetime: alarmNotification.alarmDatetime ?? null,
+    message: alarmNotification.message && alarmNotification.message !== alarmNotification.alarmTitle ? alarmNotification.message : undefined,
+    users: Array.isArray(alarmNotification.alarmForUsers) ? alarmNotification.alarmForUsers : [],
+    context: alarmNotification.context || undefined,
+    entityId: alarmNotification.entityId || undefined,
+  };
 
   return (
     <Dialog open={!!alarmNotification} onOpenChange={() => {}}>
-      <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-md" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <AlarmPlus className="h-5 w-5 text-primary" />
-            {alarmNotification.alarmTitle || "Reminder"}
+            <AlarmClock className="h-5 w-5 text-primary" />
+            Reminder
           </DialogTitle>
+          <DialogDescription>This reminder is due now</DialogDescription>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
-          {alarmNotification.message || "Reminder."}
-        </p>
-        <div className="flex gap-2 justify-end pt-2">
-          <Button variant="outline" size="sm" onClick={handleSnooze} disabled={isProcessing}>
-            <Clock className="h-4 w-4 mr-1" /> Snooze (+{SNOOZE_MINUTES} min)
+        <ReminderCard alarm={cardData} />
+        {/* 3 buttons hamesha ek row me (mobile ~320px bhi): chhote label, icons sirf sm+ par. */}
+        <div className="flex w-full flex-nowrap gap-1.5">
+          <Button variant="outline" size="sm" className={ALARM_BTN} onClick={handleSnooze} disabled={isProcessing} title={`Snooze (+${SNOOZE_MINUTES} min)`}>
+            <Clock className="hidden h-3.5 w-3.5 shrink-0 sm:inline" />
+            <span className="truncate">Snooze {SNOOZE_MINUTES}m</span>
           </Button>
-          <Button size="sm" onClick={handleDone} disabled={isProcessing}>
-            <Check className="h-4 w-4 mr-1" /> Done
+          <Button variant="outline" size="sm" className={ALARM_BTN} onClick={handleExtend} disabled={isProcessing} title="Extend date & time">
+            <CalendarClock className="hidden h-3.5 w-3.5 shrink-0 sm:inline" />
+            <span className="truncate">Extend</span>
+          </Button>
+          <Button variant="outline" size="sm" className={ALARM_BTN} onClick={() => setConfirmOffAll(true)} disabled={isProcessing} title="Off for all users">
+            <BellOff className="hidden h-3.5 w-3.5 shrink-0 sm:inline" />
+            <span className="truncate">Off all</span>
+          </Button>
+          <Button size="sm" className={ALARM_BTN} onClick={handleDone} disabled={isProcessing} title="Done">
+            <Check className="hidden h-3.5 w-3.5 shrink-0 sm:inline" />
+            <span className="truncate">Done</span>
           </Button>
         </div>
+        <AlertDialog open={confirmOffAll} onOpenChange={(o) => { if (!isProcessing) setConfirmOffAll(o); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Turn off this reminder for all users?</AlertDialogTitle>
+              <AlertDialogDescription>
+                The reminder popup will close for every user who received it.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => { e.preventDefault(); void handleOffAll(); }}
+                disabled={isProcessing}
+              >
+                Off for all
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

@@ -32,7 +32,6 @@ type AlarmDoc = {
 };
 
 const SNOOZE_MINUTES = 10;
-const NOTIFY_BEFORE_MINUTES = 5;
 /** How often to re-check whether a not-yet-due reminder has come due. */
 const DUE_RECHECK_MS = 30 * 1000;
 
@@ -129,7 +128,11 @@ export function EntityAlarmPopup({ context, entityId }: { context: string; entit
       const data = alarmSnap.data();
       const currentDatetime = data?.datetime?.toDate ? data.datetime.toDate() : new Date(data?.datetime);
       const newDatetime = new Date(currentDatetime.getTime() + SNOOZE_MINUTES * 60 * 1000);
-      const newNotifyAt = new Date(newDatetime.getTime() - NOTIFY_BEFORE_MINUTES * 60 * 1000);
+      newDatetime.setSeconds(0, 0);
+      // Record ka apna "Remind before" (purane records me nahi -> 0 = At time).
+      const rb = Math.round(Number(data?.remindBeforeMinutes));
+      const remindBeforeMinutes = Number.isFinite(rb) && rb > 0 ? rb : 0;
+      const newNotifyAt = new Date(newDatetime.getTime() - remindBeforeMinutes * 60 * 1000);
       await updateDoc(alarmRef, {
         datetime: newDatetime,
         notifyAt: Timestamp.fromDate(newNotifyAt),

@@ -39,6 +39,8 @@ import {
   buildReminderAlarmData,
   createReminderAlarm,
   isReminderDeleted,
+  normalizeRemindBefore,
+  REMIND_BEFORE_OPTIONS,
   reminderTimeMs,
   restoreReminderAlarm,
   softDeleteReminderAlarms,
@@ -61,10 +63,17 @@ type LedgerReminderDialogProps = {
   context?: LedgerReminderContext | null;
   entityId?: string | null;
   title?: string | null;
+  /** AlarmPopup "Extend date & time": is reminder ko EDIT mode me prefill karke kholo. */
+  editAlarm?: ReminderAlarm | null;
 };
 
 const NO_ACCOUNT = "__no_account__";
 const MAX_ACCOUNT_OPTIONS = 200;
+/** Form ke saare pill controls (Account, Date, Users, Remind before, Time) ki ek hi height. */
+const PILL_H = "h-8 min-h-8";
+/** Har field: label upar (left), control neeche. */
+const FIELD = "flex min-w-0 flex-col items-start gap-1";
+const FIELD_LABEL = "text-xs font-medium text-muted-foreground";
 
 /**
  * Ledger Details header Reminder button (aur header Test popup) -> Reminder popup.
@@ -72,7 +81,7 @@ const MAX_ACCOUNT_OPTIONS = 200;
  * Right: selected account ke reminders: Upcoming / History / Deleted (soft delete + restore).
  * Save path Messages -> Reminder tab (AlarmsTab) ke exported helpers hi hain.
  */
-export function LedgerReminderDialog({ open, onOpenChange, context, entityId, title }: LedgerReminderDialogProps) {
+export function LedgerReminderDialog({ open, onOpenChange, context, entityId, title, editAlarm }: LedgerReminderDialogProps) {
   const [isProcessing, setIsProcessing] = React.useState(false);
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!isProcessing) onOpenChange(next); }}>
@@ -82,6 +91,7 @@ export function LedgerReminderDialog({ open, onOpenChange, context, entityId, ti
           context={context}
           entityId={entityId}
           title={title}
+          editAlarm={editAlarm}
           isProcessing={isProcessing}
           setIsProcessing={setIsProcessing}
           onClose={() => onOpenChange(false)}
@@ -100,6 +110,7 @@ function LedgerReminderPanel({
   context,
   entityId,
   title,
+  editAlarm,
   isProcessing,
   setIsProcessing,
   onClose,
@@ -124,6 +135,7 @@ function LedgerReminderPanel({
   const [selectedHour, setSelectedHour] = React.useState("10");
   const [selectedMinute, setSelectedMinute] = React.useState("00");
   const [selectedPeriod, setSelectedPeriod] = React.useState("AM");
+  const [remindBefore, setRemindBefore] = React.useState("0");
   const [message, setMessage] = React.useState("");
   const [selectedUsers, setSelectedUsers] = React.useState<string[]>(defaultUsers);
   const usersTouchedRef = React.useRef(false);
@@ -212,6 +224,7 @@ function LedgerReminderPanel({
     setSelectedHour("10");
     setSelectedMinute("00");
     setSelectedPeriod("AM");
+    setRemindBefore("0");
     setMessage("");
     usersTouchedRef.current = false;
     setSelectedUsers(defaultUsers);
@@ -232,6 +245,7 @@ function LedgerReminderPanel({
     setSelectedHour(String(hour).padStart(2, "0"));
     setSelectedMinute(String(alarmDate.getMinutes()).padStart(2, "0"));
     setSelectedPeriod(period);
+    setRemindBefore(String(normalizeRemindBefore(alarm.remindBeforeMinutes)));
     setMessage(alarm.message || "");
     usersTouchedRef.current = true;
     setSelectedUsers(Array.isArray(alarm.users) ? alarm.users : []);
@@ -239,6 +253,15 @@ function LedgerReminderPanel({
     setAccountKey(key || NO_ACCOUNT);
     autoTitleRef.current = alarm.title || "";
   };
+
+  // Extend date & time: mount par ek baar edit mode prefill.
+  const editAppliedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (editAppliedRef.current || !editAlarm) return;
+    editAppliedRef.current = true;
+    handleEditClick(editAlarm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editAlarm]);
 
   const handleSave = async () => {
     const cleanTitle = reminderTitle.trim();
@@ -258,6 +281,7 @@ function LedgerReminderPanel({
         users: selectedUsers,
         context: selected?.context,
         entityId: selected?.entityId,
+        remindBeforeMinutes: Number(remindBefore),
       });
       if (editing) {
         await updateReminderAlarm(companyId, editing.id, alarmData);
@@ -428,8 +452,8 @@ function LedgerReminderPanel({
         </div>
 
         <div className="flex min-w-0 flex-col gap-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Account</label>
+          <div className={FIELD}>
+            <label className={FIELD_LABEL}>Account</label>
             <Combobox
               options={accountOptions}
               value={accountKey}
@@ -438,21 +462,28 @@ function LedgerReminderPanel({
               searchPlaceholder="Search account..."
               maxVisibleOptions={MAX_ACCOUNT_OPTIONS}
               autoFocusSearchOnOpen
+              fitTrigger
+              triggerClassName={cn(PILL_H, "inline-flex w-fit max-w-full")}
             />
           </div>
-          <Input
-            placeholder="Reminder Title..."
-            value={reminderTitle}
-            onChange={(e) => setReminderTitle(e.target.value)}
-          />
-          <div className="flex gap-2">
+          <div className={cn(FIELD, "items-stretch")}>
+            <label className={FIELD_LABEL}>Title</label>
+            <Input
+              placeholder="Reminder Title..."
+              value={reminderTitle}
+              onChange={(e) => setReminderTitle(e.target.value)}
+            />
+          </div>
+          <div className={FIELD}>
+            <label className={FIELD_LABEL}>Date</label>
+            <div className="flex flex-wrap items-center gap-2">
             {(dateSystem === "BS" || dateSystem === "Both") && (
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 max-w-[2.5in]">
                 <BsDatePicker
                   valueAD={selectedDate}
                   onChangeAD={(d) => setSelectedDate(d ?? undefined)}
                   isRange={false}
-                  className="w-full"
+                  className={cn(PILL_H, "w-full max-w-[2.5in] truncate")}
                 />
               </div>
             )}
@@ -461,14 +492,16 @@ function LedgerReminderPanel({
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className={cn("flex-1 justify-start text-left font-normal", !selectedDate && "text-muted-foreground")}
+                    className={cn(PILL_H, "min-w-0 max-w-[2.5in] justify-start px-2 text-left font-normal", !selectedDate && "text-muted-foreground")}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
-                    {selectedDate
-                      ? dateSystem === "Both"
-                        ? formatDate(selectedDate)
-                        : format(selectedDate, "PPP")
-                      : "Pick a date"}
+                    <span className="min-w-0 truncate">
+                      {selectedDate
+                        ? dateSystem === "Both"
+                          ? formatDate(selectedDate)
+                          : format(selectedDate, "PPP")
+                        : "Pick a date"}
+                    </span>
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="flex w-auto flex-col space-y-2 p-2">
@@ -476,16 +509,18 @@ function LedgerReminderPanel({
                 </PopoverContent>
               </Popover>
             )}
+            </div>
           </div>
-          <div className="flex items-center justify-center gap-2">
-            <label className="text-sm font-medium text-foreground">Time</label>
+          <div className={FIELD}>
+            <label className={FIELD_LABEL}>Time</label>
+            <div className="flex items-center justify-start gap-2">
             <Input
               type="number"
               aria-label="Hour"
               value={selectedHour}
               onChange={(e) => setSelectedHour(e.target.value)}
               onBlur={() => { if (selectedHour.trim() === "") setSelectedHour("10"); }}
-              className="w-20 text-center"
+              className={cn(PILL_H, "w-20 text-center")}
               placeholder="HH"
               maxLength={2}
             />
@@ -496,20 +531,32 @@ function LedgerReminderPanel({
               value={selectedMinute}
               onChange={(e) => setSelectedMinute(e.target.value)}
               onBlur={() => { if (selectedMinute.trim() === "") setSelectedMinute("00"); }}
-              className="w-20 text-center"
+              className={cn(PILL_H, "w-20 text-center")}
               placeholder="MM"
               maxLength={2}
             />
             <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-              <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+              <SelectTrigger className={cn(PILL_H, "w-24")}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="AM">AM</SelectItem>
                 <SelectItem value="PM">PM</SelectItem>
               </SelectContent>
             </Select>
+            </div>
           </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Notify users</label>
+          <div className={FIELD}>
+            <label className={FIELD_LABEL}>Remind before</label>
+            <Select value={remindBefore} onValueChange={setRemindBefore}>
+              <SelectTrigger className={cn(PILL_H, "w-40")} aria-label="Remind before"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {REMIND_BEFORE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className={cn(FIELD, "w-full")}>
+            <label className={FIELD_LABEL}>Notify users</label>
             <Combobox
               options={userOptions}
               value={selectedUsers}
@@ -519,10 +566,11 @@ function LedgerReminderPanel({
               }}
               placeholder="Select users to notify..."
               isMultiSelect
+              triggerClassName={cn(PILL_H, "w-full max-w-[2.5in] truncate")}
             />
           </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Message (optional)</label>
+          <div className={cn(FIELD, "items-stretch")}>
+            <label className={FIELD_LABEL}>Message (optional)</label>
             <Textarea
               placeholder="Add a message for the reminder notification..."
               value={message}
