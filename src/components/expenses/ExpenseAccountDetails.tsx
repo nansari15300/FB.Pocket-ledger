@@ -147,7 +147,8 @@ import {
   type LedgerDetailViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
-import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerHeaderReminderButton } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerReminderDialog } from "@/components/vouchers/LedgerReminderDialog";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 
 
@@ -231,6 +232,7 @@ export function ExpenseAccountDetails({
   const isMobile = useIsMobile();
   const calendarMonths = useCalendarMonths();
   const router = useRouter();
+  const [reminderOpen, setReminderOpen] = useState(false);
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const { vouchers, journalAccountNames: journalAccountNamesFromHook } = useVouchers();
@@ -862,9 +864,14 @@ export function ExpenseAccountDetails({
               <LedgerHeaderReminderButton
                 variant="outline"
                 disabled={account.id === "all"}
-                onClick={() =>
-                  router.push(buildLedgerReminderHref({ context: "Income/Expense", entityId: account.id, title: account.name }))
-                }
+                onClick={() => setReminderOpen(true)}
+              />
+              <LedgerReminderDialog
+                open={reminderOpen}
+                onOpenChange={setReminderOpen}
+                context="Income/Expense"
+                entityId={account.id}
+                title={account.name}
               />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
               {(dateSystem === "BS" || dateSystem === "Both") && (

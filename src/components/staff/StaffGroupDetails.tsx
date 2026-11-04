@@ -23,7 +23,8 @@ import {
   type LedgerDetailViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
-import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerHeaderReminderButton } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerReminderDialog } from "@/components/vouchers/LedgerReminderDialog";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 import { type TransactionSortBy, type TransactionSortOrder } from "@/components/vouchers/TransactionTableSortDropdown";
 import { LedgerDesktopFooter } from "@/components/vouchers/LedgerDesktopFooter";
@@ -256,6 +257,8 @@ export function StaffGroupDetails({
   const [mobileFooterDialogOpen, setMobileFooterDialogOpen] = useState<null | "payment_in" | "payment_out" | "add_salary">(null);
 
   const router = useRouter();
+
+  const [reminderOpen, setReminderOpen] = useState(false);
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const isMobile = useIsMobile();
@@ -1071,9 +1074,13 @@ export function StaffGroupDetails({
               <LedgerHeaderPrintButton variant="chromePill" onClick={handlePrint} />
               <LedgerHeaderReminderButton
                 variant="chromePill"
-                onClick={() =>
-                  router.push(buildLedgerReminderHref({ context: "Staff", title: group.name }))
-                }
+                onClick={() => setReminderOpen(true)}
+              />
+              <LedgerReminderDialog
+                open={reminderOpen}
+                onOpenChange={setReminderOpen}
+                context="Staff"
+                title={group.name}
               />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
               {(dateSystem === "BS" || dateSystem === "Both") && (

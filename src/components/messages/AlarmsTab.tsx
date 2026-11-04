@@ -64,6 +64,53 @@ type Alarm = {
   entityId?: string;
 };
 
+/**
+ * Shared reminder save path: AlarmsTab aur LedgerReminderDialog (Details pages) dono yahi use karte hain,
+ * taaki popup se bana reminder bhi Reminder tab me dikhe aur same tarah fire ho.
+ */
+export function buildReminderAlarmData(input: {
+  title: string;
+  date: Date;
+  hour: string;
+  minute: string;
+  period: string;
+  message?: string;
+  users?: string[];
+  context?: string;
+  entityId?: string;
+}): Omit<Alarm, "id"> {
+  let hours = parseInt(input.hour, 10);
+  if (input.period === "PM" && hours < 12) hours += 12;
+  if (input.period === "AM" && hours === 12) hours = 0;
+
+  const finalDateTime = new Date(input.date);
+  finalDateTime.setHours(hours, parseInt(input.minute, 10), 0, 0);
+  const notifyAt = new Date(finalDateTime.getTime() - 5 * 60 * 1000);
+
+  return {
+    title: input.title,
+    datetime: finalDateTime,
+    notifyAt: Timestamp.fromDate(notifyAt),
+    message: input.message?.trim() || undefined,
+    users: input.users ?? [],
+    context: input.context || undefined,
+    entityId: input.entityId || undefined,
+    notified: false,
+  };
+}
+
+export async function createReminderAlarm(
+  companyId: string,
+  alarmData: Omit<Alarm, "id">,
+  createdBy: string | null,
+): Promise<void> {
+  await addDoc(collection(firestore, `companies/${companyId}/alarms`), {
+    ...alarmData,
+    createdAt: serverTimestamp(),
+    createdBy,
+  });
+}
+
 export function AlarmsTab() {
   const { company, companyId } = useCompany();
   const { user } = useAuth();
@@ -175,36 +222,25 @@ export function AlarmsTab() {
        return;
     };
     
-    let hours = parseInt(selectedHour, 10);
-    if (selectedPeriod === "PM" && hours < 12) hours += 12;
-    if (selectedPeriod === "AM" && hours === 12) hours = 0; 
-
-    const finalDateTime = new Date(selectedDate);
-    finalDateTime.setHours(hours, parseInt(selectedMinute, 10), 0, 0);
-    const notifyAt = new Date(finalDateTime.getTime() - 5 * 60 * 1000);
-
     setIsProcessing(true);
     try {
-        const alarmData: Omit<Alarm, 'id'> = {
+        const alarmData: Omit<Alarm, 'id'> = buildReminderAlarmData({
             title: newAlarmTitle,
-            datetime: finalDateTime,
-            notifyAt: Timestamp.fromDate(notifyAt),
-            message: newAlarmMessage.trim() || undefined,
+            date: selectedDate,
+            hour: selectedHour,
+            minute: selectedMinute,
+            period: selectedPeriod,
+            message: newAlarmMessage,
             users: selectedUsers,
-            context: selectedContext || undefined,
-            entityId: selectedEntityId || undefined,
-            notified: false,
-        };
+            context: selectedContext,
+            entityId: selectedEntityId,
+        });
         
         if (alarmToEdit) {
             await updateDoc(doc(firestore, `companies/${companyId}/alarms`, alarmToEdit.id), alarmData);
             toast.success("Reminder Updated", { description: `Your reminder for "${newAlarmTitle}" has been updated.`});
         } else {
-             await addDoc(collection(firestore, `companies/${companyId}/alarms`), {
-                ...alarmData,
-                createdAt: serverTimestamp(),
-                createdBy: user?.uid ?? null,
-            });
+             await createReminderAlarm(companyId, alarmData, user?.uid ?? null);
             toast.success("Reminder Set", { description: `A reminder for "${newAlarmTitle}" has been scheduled.`})
         }
         

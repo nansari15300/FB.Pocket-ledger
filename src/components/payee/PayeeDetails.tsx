@@ -114,7 +114,8 @@ import {
   type LedgerDetailViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
-import { LedgerHeaderReminderButton, buildLedgerReminderHref, type LedgerReminderContext } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerHeaderReminderButton, type LedgerReminderContext } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerReminderDialog } from "@/components/vouchers/LedgerReminderDialog";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 import { useRowsPerPageSelectControl } from "@/hooks/useRowsPerPageSelect";
 import { ROWS_PER_PAGE_OPTIONS_DEFAULT } from "@/lib/rowsPerPageSelect";
@@ -189,6 +190,7 @@ export function PayeeDetails({
   const isMobile = useIsMobile();
   const calendarMonths = useCalendarMonths();
   const router = useRouter();
+  const [reminderOpen, setReminderOpen] = useState(false);
   const searchParams = useSearchParams();
 
   const party = useMemo(() => {
@@ -483,9 +485,14 @@ export function PayeeDetails({
               <LedgerHeaderReminderButton
                 variant="outline"
                 disabled={party.id === "all"}
-                onClick={() =>
-                  router.push(buildLedgerReminderHref({ context: payeeReminderContext, entityId: party.id, title: party.name }))
-                }
+                onClick={() => setReminderOpen(true)}
+              />
+              <LedgerReminderDialog
+                open={reminderOpen}
+                onOpenChange={setReminderOpen}
+                context={payeeReminderContext}
+                entityId={party.id}
+                title={party.name}
               />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
               {(dateSystem === 'BS' || dateSystem === 'Both') && (

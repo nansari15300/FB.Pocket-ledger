@@ -132,8 +132,19 @@
   - Leaves (c) का काम सिर्फ़ laptop (`C:\Project ERP\Refference apps\Touri-HR`) पर होगा।
   - इस बँटवारे से दोनों PC एक ही फ़ाइल नहीं छूते। Main में merge सिर्फ़ user के "हाँ" कहने के बाद होगा।
 
+## 2026-11-03 शाम से 2026-11-04 सुबह (नेपाल समय): Tauri, HR payroll, secret scan, नए नियम
+- **Tauri source:** main पर commit `10769d32` (src-tauri + desktop-sidecar, 86 files, कोई build artifact नहीं) push हुआ। Laptop के `.git/info/exclude` से `/src-tauri/` और `/desktop-sidecar/` हटा दिए गए। `/TAURI-MIGRATION.md` अभी भी excluded है।
+- **HR:** `feature/hr-module` पर `15d46237` (payroll + salary slip, server से) और `9c933256` (laptop HR handoff) push हुए। User के 3 Nov 5:34 PM के आदेश से अब HR का सारा काम सिर्फ़ laptop पर होगा। `D:\Touri-HR` जैसा है वैसा छोड़ना है: उसे delete नहीं करना और उसमें काम नहीं करना।
+- `C:\Project xxx` हटाया जा चुका है (Bot Leader ने हटाया)। पुराना path कभी दोबारा न बनाएँ।
+- **Secret scan (3 Nov 22:40):** laptop repo की सभी refs और 297 commits जाँचे गए। कोई high-risk secret नहीं मिला। सिर्फ़ `google-services.json` और `android/app/google-services.json` tracked हैं (commit `bfabfa6b`, Firebase Android key, low risk)। User के 10:35 PM वाले नियम के अनुसार Git में मिली किसी key को खुद नहीं हटाना है: पहले user को file और commit बताने हैं (value नहीं), फ़ैसला user करेंगे।
+- **Encrypted test keystore:** Key Manager ने `D:\PocketLedger-Backups\keystore-encrypted-20261103-2309\pocketledger-test.keystore.enc` बनाई है। इसे `android/signing/` में commit करने का काम user की हाँ के इंतज़ार में है। हाँ मिलने तक file repo में न रखें, वरना auto-sync उसे push कर देगा।
+- **Auto-sync को रोकना:** जब कोई bot laptop main पर बड़ा काम करे, तो `Disable-ScheduledTask "PocketLedger Git AutoSync"` से sync रोकें। उसका tsc 0 आने पर `Enable-ScheduledTask` से फिर चालू करें। (4 Nov को Account Details Master के Reminder काम के लिए ऐसा दो बार किया गया।)
+- **नए नियम:**
+  - (3 Nov) हर message की शुरुआत "I am idle" या "I am working" से करनी है।
+  - (4 Nov) code बदलने से पहले local backup लेने का नियम खत्म हो गया है। अब कोई local backup नहीं लेना, गड़बड़ होने पर file Git से वापस ली जाएगी। पुराने backups खुद से नहीं हटाने हैं।
+
 ## अगला कदम
 1. यूज़र `pocket-ledger-server` repo बनाए, फिर उसके लिए भी auto-sync लगाया जाए (Cloudflare और डेटा नियम 3–4 के साथ)।
-2. यूज़र बताए कि Tauri का काम पूरा हो गया है। तब `.git/info/exclude` से Tauri फ़ोल्डर हटाकर उन्हें commit किया जाए।
+2. (हो गया, `10769d32`) Tauri source commit हो चुका है।
 3. यूज़र तय करे कि `.gitignore` में `*.log` जोड़ना है या नहीं।
 4. किसी `.ts` बदलाव पर auto-sync की `tsc` जाँच देखी जाए।

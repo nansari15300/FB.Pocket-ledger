@@ -21,7 +21,8 @@ import {
   type LedgerDetailViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
-import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerHeaderReminderButton } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerReminderDialog } from "@/components/vouchers/LedgerReminderDialog";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 import {
   sortTransactionsWithFiscalMergeForCompany,
@@ -259,6 +260,7 @@ export default function ItemDetails({
   const { formatDate, formatDateBS, formatCurrency: formatMoney, dateSystem, formatCurrencyForPrint } = useDate();
   const { company, companyId } = useCompany(); 
   const router = useRouter();
+  const [reminderOpen, setReminderOpen] = useState(false);
   const pathname = usePathname();
   const searchParams = useLocationSearchParams();
   const isMobile = useIsMobile();
@@ -1198,9 +1200,14 @@ export default function ItemDetails({
             <LedgerHeaderReminderButton
               variant="outline"
               disabled={!currentItem?.id || currentItem.id === "all"}
-              onClick={() =>
-                router.push(buildLedgerReminderHref({ context: "Items", entityId: currentItem?.id, title: currentItem?.name }))
-              }
+              onClick={() => setReminderOpen(true)}
+            />
+            <LedgerReminderDialog
+              open={reminderOpen}
+              onOpenChange={setReminderOpen}
+              context="Items"
+              entityId={currentItem?.id}
+              title={currentItem?.name}
             />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
             {(dateSystem === 'BS' || dateSystem === 'Both') && (

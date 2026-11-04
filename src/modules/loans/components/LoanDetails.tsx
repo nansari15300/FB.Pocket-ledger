@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useRef, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { CalendarIcon, FilePlus, Pencil, Printer } from "lucide-react";
 import { LoanLiabilityEntityIcon } from "@/components/entity/LoanLiabilityEntityIcon";
@@ -11,7 +10,8 @@ import AdCalendar, { type DateRange } from "@/components/ui/ad-calendar";
 import BsDatePicker from "@/components/ui/BsDatePicker";
 import { DateRangePresetRow } from "@/components/ui/DateRangePresetRow";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
-import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerHeaderReminderButton } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerReminderDialog } from "@/components/vouchers/LedgerReminderDialog";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { HistoryDialog } from "@/components/vouchers/HistoryDialog";
@@ -109,7 +109,7 @@ export function LoanDetails({
   onSaveEdit?: (input: import("../types/loanTypes").LoanDraftInput) => Promise<void>;
   onLoanUpdated?: () => void | Promise<void>;
 }) {
-  const router = useRouter();
+  const [reminderOpen, setReminderOpen] = useState(false);
   const [payRow, setPayRow] = useState<LoanScheduleRow | null>(null);
   const [prepayOpen, setPrepayOpen] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
@@ -289,9 +289,14 @@ export function LoanDetails({
             <LedgerHeaderPrintButton variant="outline" onClick={() => void accountingRef.current?.print()} />
             <LedgerHeaderReminderButton
               variant="outline"
-              onClick={() =>
-                router.push(buildLedgerReminderHref({ context: liability ? "Staff" : null, entityId: liability?.id, title: headerName }))
-              }
+              onClick={() => setReminderOpen(true)}
+            />
+            <LedgerReminderDialog
+              open={reminderOpen}
+              onOpenChange={setReminderOpen}
+              context={liability ? "Staff" : null}
+              entityId={liability?.id}
+              title={headerName}
             />
               <LedgerUnapprovedFilterButton
               active={unapprovedOnly}

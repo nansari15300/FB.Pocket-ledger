@@ -52,7 +52,8 @@ import {
   type LedgerDetailViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
-import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerHeaderReminderButton } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerReminderDialog } from "@/components/vouchers/LedgerReminderDialog";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 
 
@@ -249,6 +250,7 @@ export function ItemGroupDetails({
   const isMobile = useIsMobile();
   const calendarMonths = useCalendarMonths();
   const router = useRouter();
+  const [reminderOpen, setReminderOpen] = useState(false);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const openingModalRef = useRef(false);
@@ -1071,9 +1073,13 @@ export function ItemGroupDetails({
               <LedgerHeaderPrintButton variant="outline" onClick={handlePrint} />
               <LedgerHeaderReminderButton
                 variant="outline"
-                onClick={() =>
-                  router.push(buildLedgerReminderHref({ context: "Items", title: group.name }))
-                }
+                onClick={() => setReminderOpen(true)}
+              />
+              <LedgerReminderDialog
+                open={reminderOpen}
+                onOpenChange={setReminderOpen}
+                context="Items"
+                title={group.name}
               />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
               {(dateSystem === "BS" || dateSystem === "Both") && (

@@ -62,7 +62,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { useDate } from "@/hooks/useDate";
 import { useLedgerUnapprovedOnlyFilter } from "@/hooks/useLedgerUnapprovedOnlyFilter";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
-import { LedgerHeaderReminderButton, buildLedgerReminderHref, type LedgerReminderContext } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerHeaderReminderButton, type LedgerReminderContext } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerReminderDialog } from "@/components/vouchers/LedgerReminderDialog";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 
 import { ScrollArea, ScrollBar } from "../ui/scroll-area";
@@ -184,6 +185,7 @@ export function AccountDetails({
   const isMobile = useIsMobile();
   const calendarMonths = useCalendarMonths();
   const router = useRouter();
+  const [reminderOpen, setReminderOpen] = useState(false);
   const { vouchers } = useVouchers();
 
   const [rowsPerPage, setRowsPerPage] = useRowsPerPage(20);
@@ -1080,9 +1082,14 @@ export function AccountDetails({
               <LedgerHeaderReminderButton
                 variant="outline"
                 disabled={account.id === "all"}
-                onClick={() =>
-                  router.push(buildLedgerReminderHref({ context: accountReminderContext, entityId: account.id, title: account.accountName }))
-                }
+                onClick={() => setReminderOpen(true)}
+              />
+              <LedgerReminderDialog
+                open={reminderOpen}
+                onOpenChange={setReminderOpen}
+                context={accountReminderContext}
+                entityId={account.id}
+                title={account.accountName}
               />
               {(dateSystem === "BS" || dateSystem === "Both") && (
                 <BsDatePicker

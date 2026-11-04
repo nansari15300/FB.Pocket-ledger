@@ -26,7 +26,8 @@ import {
   type LedgerDetailViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
-import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerHeaderReminderButton } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerReminderDialog } from "@/components/vouchers/LedgerReminderDialog";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 import {
   sortTransactionsWithFiscalMergeForCompany,
@@ -305,6 +306,8 @@ export function AccountGroupDetails({
   const [mobileFooterDialogOpen, setMobileFooterDialogOpen] = useState<null | "payment_in" | "payment_out" | "contra">(null);
 
   const router = useRouter();
+
+  const [reminderOpen, setReminderOpen] = useState(false);
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const isMobile = useIsMobile();
@@ -1799,9 +1802,13 @@ export function AccountGroupDetails({
               <LedgerHeaderPrintButton variant="chromePill" onClick={handlePrint} />
               <LedgerHeaderReminderButton
                 variant="chromePill"
-                onClick={() =>
-                  router.push(buildLedgerReminderHref({ context: "Bank/Cash", title: group.name }))
-                }
+                onClick={() => setReminderOpen(true)}
+              />
+              <LedgerReminderDialog
+                open={reminderOpen}
+                onOpenChange={setReminderOpen}
+                context="Bank/Cash"
+                title={group.name}
               />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
               {(dateSystem === 'BS' || dateSystem === 'Both') && (

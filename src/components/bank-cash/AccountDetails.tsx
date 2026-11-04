@@ -83,7 +83,8 @@ import {
   type LedgerDetailViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
-import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerHeaderReminderButton } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerReminderDialog } from "@/components/vouchers/LedgerReminderDialog";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 import { LedgerViewModePills, LedgerViewModeToggleButton } from "@/components/ui/LedgerViewModePills";
 
@@ -307,6 +308,7 @@ export function AccountDetails({
   /** Single-day popup: no range/FY preset chips in the calendar (Date Converter stays). */
   const PeekPresetRow = singleMonthCalendar ? HiddenPresetRow : MasterLedgerDateRangePresetRow;
   const router = useRouter();
+  const [reminderOpen, setReminderOpen] = useState(false);
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const { vouchers, processedAccounts, processedParties, processedStaff, processedExpenseAccounts, journalAccountNames } = useVouchers();
@@ -2132,9 +2134,14 @@ export function AccountDetails({
               <LedgerHeaderReminderButton
                 variant="outline"
                 disabled={account.id === "all"}
-                onClick={() =>
-                  router.push(buildLedgerReminderHref({ context: "Bank/Cash", entityId: account.id, title: account.accountName }))
-                }
+                onClick={() => setReminderOpen(true)}
+              />
+              <LedgerReminderDialog
+                open={reminderOpen}
+                onOpenChange={setReminderOpen}
+                context="Bank/Cash"
+                entityId={account.id}
+                title={account.accountName}
               />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
               {(dateSystem === "BS" || dateSystem === "Both") && (

@@ -179,7 +179,8 @@ import {
   type PartyTdsLedgerViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
-import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerHeaderReminderButton } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerReminderDialog } from "@/components/vouchers/LedgerReminderDialog";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 import {
   computeAccountConfirmationSummary,
@@ -391,6 +392,7 @@ export function PartyDetails({
   const isMobile = useIsMobile();
   const calendarMonths = useCalendarMonths();
   const router = useRouter();
+  const [reminderOpen, setReminderOpen] = useState(false);
   const searchParams = useSearchParams();
   const pathname = usePathname();
   useFyLoadOnDateRangeChange(dateRange);
@@ -2514,9 +2516,14 @@ export function PartyDetails({
               <LedgerHeaderReminderButton
                 variant="outline"
                 disabled={party.id === "all" || (isIcCompanyGroupView && !icGroupFilteredMember)}
-                onClick={() =>
-                  router.push(buildLedgerReminderHref({ context: "Party", entityId: headerIdentityParty.id, title: headerIdentityParty.name }))
-                }
+                onClick={() => setReminderOpen(true)}
+              />
+              <LedgerReminderDialog
+                open={reminderOpen}
+                onOpenChange={setReminderOpen}
+                context="Party"
+                entityId={headerIdentityParty.id}
+                title={headerIdentityParty.name}
               />
               <LedgerUnapprovedFilterButton
                 active={unapprovedOnly}
