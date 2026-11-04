@@ -15827,6 +15827,60 @@ html body [data-pl-reminder-form] :is(input:not([type="checkbox"]):not([type="ra
   html body [data-pl-company-selector-popup]:not(#pl-theme-master-none):not(#pl-theme-master-none-2)::-webkit-scrollbar-thumb { background-color: hsl(var(--muted-foreground) / 0.35); border-radius: 3px; }
 }
 /* === end Theme Master: mobile Company selector popup max-height === */
+/* === Theme Master: header Company selector width 2.5in (Nov 2026) ===
+   Cause: desktop trigger (CompanySelector.tsx) = "w-auto min-w-0 shrink max-w-[min(100%,280px)]" inside flex header pill,
+   so flex shrink squeezed it to ~0 and the truncate name span vanished. Hook: data-theme-header="company-selector". */
+@media (min-width: 768px) and (pointer: fine) {
+  html body button[data-theme-header="company-selector"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+    width: 2.5in !important;
+    min-width: 2.5in !important;
+    max-width: 2.5in !important;
+    flex: 0 0 2.5in !important;
+    overflow: hidden !important;
+  }
+  html body button[data-theme-header="company-selector"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > span.truncate {
+    display: block !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    color: hsl(var(--foreground)) !important;
+  }
+  html body.theme-pro button[data-theme-header="company-selector"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > span.truncate,
+  html body.theme-pl-light button[data-theme-header="company-selector"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > span.truncate {
+    color: rgb(29 78 216) !important; /* blue-700 (original) */
+  }
+}
+/* === end Theme Master: header Company selector width === */
+
+/* === Theme Master: hover 3D raise in ALL themes (Nov 2026) ===
+   Section 43 + Pro Reminder rules were body.theme-pro only. Same raise/lift for every theme; Pro keeps own (more specific) rules + blue borders. */
+:root, body {
+  --pl-raise-shadow: 0 1px 2px rgba(16,24,40,.06), 0 2px 8px rgba(16,24,40,.06);
+  --pl-raise-shadow-hover: 0 4px 10px rgba(16,24,40,.10), 0 10px 24px rgba(16,24,40,.12);
+}
+body.theme-pl-medium, body.theme-pl-dark, body.dark, .dark body {
+  --pl-raise-shadow: 0 1px 2px rgba(0,0,0,.22), 0 2px 8px rgba(0,0,0,.18);
+  --pl-raise-shadow-hover: 0 4px 10px rgba(0,0,0,.30), 0 10px 24px rgba(0,0,0,.26);
+}
+html body :is(.pl-chrome-btn-drop, button[class*="bg-sky-100/80"]):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not([role="combobox"]),
+html body [data-pl-master-list-chrome] [data-pl-master-list-tabs] [role="tab"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body [data-pl-reminder-list] [role="tab"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body [data-pl-reminder-form] :is(input, textarea, select, button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip]):not([type="checkbox"]):not([type="radio"]):not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body [data-pl-reminder-form] button[data-pl-reminder-submit]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  box-shadow: var(--pl-raise-shadow) !important;
+  transition: box-shadow .15s ease, transform .15s ease, background-color .15s ease, border-color .15s ease !important;
+}
+html body :is(.pl-chrome-btn-drop, button[class*="bg-sky-100/80"]):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not([role="combobox"]):not(:disabled):hover,
+html body [data-pl-master-list-chrome] [data-pl-master-list-tabs] [role="tab"]:not(:disabled):hover:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body [data-pl-reminder-list] [role="tab"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(:disabled):hover,
+html body [data-pl-reminder-form] :is(input, textarea, select, button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip]):not([type="checkbox"]):not([type="radio"]):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(:disabled):hover,
+html body [data-pl-reminder-form] button[data-pl-reminder-submit]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(:disabled):hover {
+  box-shadow: var(--pl-raise-shadow-hover) !important;
+  transform: translateY(-1px) !important;
+}
+/* === end Theme Master: hover 3D raise in ALL themes === */
 
 /* === Theme Master: Dark (theme-pl-medium) all text white (Nov 2026) ===
    Dark list item = theme-pl-medium (theme-pl-dark is legacy, migrated). Excluded: amount / Dr-Cr colors

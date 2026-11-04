@@ -308,3 +308,9 @@ Account list ki dono lines (Pro theme): right edge 2 Nov 3:49 PM aur left edge 3
 - globals.css new block after mobile company block (15849 -> 15866 lines, CRLF): html body.theme-pl-medium * color #fff !important with ID-weight :not, excluding text-green/red/emerald/rose-*, text-destructive, [style*=color], bg-primary/bg-destructive/strong green/emerald/red/blue/amber fills and their descendants. Placeholders white/0.6. Header button hover = accent.
 - Fixes header invisible icons (cause: Button ghost text-slate-700, button.tsx:27; avatar fallback inherits it; upload light circle = hover bg-slate-200/70).
 - postcss OK, tsc exit 0. Not visually verified.
+
+
+## Nov 4 2026 - Header Company selector 2.5in + hover 3D raise all themes
+- globals.css ~15830-15855: desktop button[data-theme-header="company-selector"] width/min/max 2.5in (was w-auto+shrink+min-w-0 -> collapsed); name span truncate ellipsis, readable color. Mobile popup rule untouched.
+- globals.css ~15857-15883: --pl-raise-shadow fallback on :root/body (+dark), header pills (.pl-chrome-btn-drop), master-list tabs, Reminder tabs/fields/submit get raise + hover translateY(-1px) in all themes; Pro rules/blue borders unchanged.
+- Verified: postcss parse, lightningcss block, tsc --noEmit OK.
