@@ -15753,6 +15753,19 @@ body.theme-pro [data-pl-main-sidebar] > [role="separator"]:not(:hover):not(:acti
   background-color: transparent !important;
 }
 /* === end Theme Master: Pro sidebar handle line === */
+/* === Theme Master: Pro Reminder form fields = pill blue border, rectangular (Nov 4 2026) === */
+/* Messages > Reminder (AlarmsTab.tsx) + Reminder popup (LedgerReminderDialog.tsx) wrapper [data-pl-reminder-form].
+   Fields: Input / Textarea, Select + Combobox triggers (role=combobox), date triggers (BsDatePicker + AD Calendar = Button via
+   PopoverTrigger -> aria-haspopup="dialog"). Set Reminder (.bg-primary) / Cancel Edit (no popup attr) untouched. */
+body.theme-pro [data-pl-reminder-form] :is(input, textarea, button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip]) {
+  border: 1px solid rgb(147 197 253) !important; /* blue-300 = Pro chromePill border */
+  border-radius: calc(var(--radius) - 2px) !important;
+}
+body.theme-pro [data-pl-reminder-form] :is(input, textarea, button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip]):hover,
+body.theme-pro [data-pl-reminder-form] :is(input, textarea, button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip]):focus-visible {
+  border-color: rgb(96 165 250) !important; /* blue-400 = pill hover */
+}
+/* === end Theme Master: Pro Reminder form blue fields === */
 
 
 /* Reuse company attachment — list rows match green dialog theme border */

@@ -451,7 +451,7 @@ function LedgerReminderPanel({
           </Tabs>
         </div>
 
-        <div className="flex min-w-0 flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4" data-pl-reminder-form>
           <div className={FIELD}>
             <label className={FIELD_LABEL}>Account</label>
             <Combobox

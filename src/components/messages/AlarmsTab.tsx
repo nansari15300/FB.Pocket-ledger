@@ -19,7 +19,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { isPast, isToday, isSameDay, isYesterday, format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Loader2, Trash2, AlarmPlus, Edit, Calendar as CalendarIcon, XCircle } from "lucide-react";
+import { Loader2, Trash2, AlarmPlus, Edit, Calendar as CalendarIcon, XCircle, RotateCcw } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -317,6 +317,7 @@ export function AlarmsTab() {
   const { dateSystem, formatDate, formatDateBS } = useDate();
 
   const [alarms, setAlarms] = React.useState<Alarm[]>([]);
+  const [deletedAlarms, setDeletedAlarms] = React.useState<Alarm[]>([]);
   
   const [alarmToEdit, setAlarmToEdit] = React.useState<Alarm | null>(null);
   const [newAlarmTitle, setNewAlarmTitle] = React.useState("");
@@ -393,6 +394,19 @@ export function AlarmsTab() {
       const q = query(collection(firestore, `companies/${companyId}/alarms`), orderBy("datetime", "desc"));
       const unsub = onSnapshot(q, (snapshot) => {
           setAlarms(snapshot.docs.map(d => ({id: d.id, ...d.data()} as Alarm)).filter(a => !isReminderDeleted(a)))
+      });
+      return () => unsub();
+  }, [companyId]);
+
+  // Deleted tab: soft-deleted reminders (popup jaisa), alag subscription; upar wali query unchanged.
+  React.useEffect(() => {
+      if (!companyId) { setDeletedAlarms([]); return; }
+      const unsub = subscribeCompanyReminders(companyId, (list) => {
+          setDeletedAlarms(
+              list
+                  .filter((a) => isReminderDeleted(a))
+                  .sort((a, b) => (reminderTimeMs(b.deletedAt) || 0) - (reminderTimeMs(a.deletedAt) || 0))
+          );
       });
       return () => unsub();
   }, [companyId]);
@@ -496,6 +510,19 @@ export function AlarmsTab() {
     }
   }
 
+  const handleRestore = async (item: Alarm) => {
+    if (!companyId) return;
+    setIsProcessing(true);
+    try {
+      await restoreReminderAlarm(companyId, item);
+      toast.success("Reminder restored.");
+    } catch(err) {
+      toast.error("Failed to restore reminder.");
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
   const handleSelectAlarm = (id: string, checked: boolean) => {
     setSelectedAlarms(prev => {
         const newSet = new Set(prev);
@@ -522,7 +549,7 @@ export function AlarmsTab() {
     return { upcomingAlarms: upcoming.sort((a,b) => (a.datetime?.toDate ? a.datetime.toDate().getTime() : 0) - (b.datetime?.toDate ? b.datetime.toDate().getTime() : 0)), expiredAlarms: expired };
   }, [alarms, currentTime]);
 
-  const AlarmList = ({ list, title, onSelectAll, isExpiredList }: {list: Alarm[], title: string, onSelectAll: (check: boolean) => void, isExpiredList?: boolean }) => {
+  const AlarmList = ({ list, title, onSelectAll, isExpiredList, isDeletedList }: {list: Alarm[], title: string, onSelectAll: (check: boolean) => void, isExpiredList?: boolean, isDeletedList?: boolean }) => {
     const areAllSelected = list.length > 0 && list.every(a => selectedAlarms.has(a.id));
 
     return (
@@ -530,10 +557,10 @@ export function AlarmsTab() {
             <CardHeader>
                 <div className="flex justify-between items-center">
                     <CardTitle>{title}</CardTitle>
-                    <div className="flex items-center space-x-2">
+                    {!isDeletedList && <div className="flex items-center space-x-2">
                         <Checkbox id={`select-all-${title}`} checked={areAllSelected} onCheckedChange={(c) => onSelectAll(c as boolean)} />
                         <label htmlFor={`select-all-${title}`} className="text-sm font-medium">Select All</label>
-                    </div>
+                    </div>}
                 </div>
             </CardHeader>
             <CardContent className="flex-1">
@@ -548,7 +575,7 @@ export function AlarmsTab() {
                         return (
                             <div key={alarm.id} className="flex items-center justify-between p-3 border rounded-lg gap-4">
                                 <div className="flex items-center gap-4">
-                                    <Checkbox checked={selectedAlarms.has(alarm.id)} onCheckedChange={(c) => handleSelectAlarm(alarm.id, c as boolean)} />
+                                    {!isDeletedList && <Checkbox checked={selectedAlarms.has(alarm.id)} onCheckedChange={(c) => handleSelectAlarm(alarm.id, c as boolean)} />}
                                     <div>
                                         <p className="font-semibold">{alarm.title}</p>
                                         <p className="text-sm text-muted-foreground">
@@ -557,12 +584,23 @@ export function AlarmsTab() {
                                         <p className="text-xs text-muted-foreground mt-1">
                                         For: {formatUsers(alarm.users)}
                                         </p>
+                                        {isDeletedList && (
+                                        <p className="text-xs text-muted-foreground">
+                                        Deleted: {(() => { const ms = reminderTimeMs(alarm.deletedAt); if (!ms) return "-"; const d = new Date(ms); return dateSystem === 'AD' ? format(d, "PPP p") : `${formatDateBS(d)} ${format(d, 'p')}`; })()}
+                                        </p>
+                                        )}
                                     </div>
                                 </div>
+                                {isDeletedList ? (
+                                <div className="flex items-center gap-1">
+                                    <Button variant="outline" size="sm" onClick={() => void handleRestore(alarm)} disabled={isProcessing}><RotateCcw className="mr-1 h-4 w-4" /> Restore</Button>
+                                </div>
+                                ) : (
                                 <div className="flex items-center gap-1">
                                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditClick(alarm)}><Edit className="h-4 w-4 text-blue-600"/></Button>
                                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setItemToDelete(alarm)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
                                 </div>
+                                )}
                             </div>
                         )
                     })
@@ -577,7 +615,7 @@ export function AlarmsTab() {
   return (
     <Card className="h-full flex flex-col">
     <div className="grid grid-cols-1 md:grid-cols-[400px_1fr] gap-6 p-6 flex-1 min-h-0">
-      <div ref={reminderFormRef} className="flex flex-col gap-4">
+      <div ref={reminderFormRef} className="flex flex-col gap-4" data-pl-reminder-form>
         <h3 className="text-lg font-semibold">{alarmToEdit ? 'Edit Reminder' : 'Set New Reminder'}</h3>
         <div className="space-y-4">
           <Input
@@ -672,6 +710,7 @@ export function AlarmsTab() {
                 <TabsList className="w-full">
                     <TabsTrigger value="upcoming" className="flex-1">Upcoming ({upcomingAlarms.length})</TabsTrigger>
                     <TabsTrigger value="expired" className="flex-1">Expired ({expiredAlarms.length})</TabsTrigger>
+                    <TabsTrigger value="deleted" className="flex-1">Deleted ({deletedAlarms.length})</TabsTrigger>
                 </TabsList>
                 <TabsContent value="upcoming" className="mt-4 flex-1">
                    <AlarmList list={upcomingAlarms} title="Upcoming Reminders" onSelectAll={(checked) => {
@@ -701,6 +740,9 @@ export function AlarmsTab() {
                         })
                    }} />
                 </TabsContent>
+                <TabsContent value="deleted" className="mt-4 flex-1">
+                   <AlarmList list={deletedAlarms} title="Deleted Reminders" isDeletedList onSelectAll={() => {}} />
+                </TabsContent>
             </Tabs>
         </div>
     </div>
@@ -708,7 +750,7 @@ export function AlarmsTab() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Reminder?</AlertDialogTitle>
-            <AlertDialogDescription>This reminder will be moved to Deleted history. You can restore it from the Reminder popup.</AlertDialogDescription>
+            <AlertDialogDescription>This reminder will be moved to Deleted history. You can restore it from the Deleted tab.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

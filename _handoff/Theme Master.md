@@ -230,3 +230,11 @@ Account list ki dono lines (Pro theme): right edge 2 Nov 3:49 PM aur left edge 3
 - Backup: C:\Project ERP\backup-theme-20261104-0831\ (src\lib\proTheme.ts, src\lib\appThemes.ts, src\app\layout.tsx, src\hooks\useTheme.tsx, _handoff\Theme Master.md).
 - Checks: npx tsc --noEmit exit 0.
 - Pending: visual check on localhost:2000 - fresh browser profile (or delete localStorage keys "theme" and "primaryColor") should open in Pro, labelled "Default" in Settings > Background Theme and the header Appearance menu; an existing user who picked e.g. Gray should stay on Gray.
+
+## 2026-11-04 15:40 Asia/Kathmandu - Reminder form pill-blue fields (Pro) + Messages Reminder "Deleted" tab
+- User approved B + C (layout A not done).
+- B: src/components/messages/AlarmsTab.tsx line 618 form wrapper + src/components/vouchers/LedgerReminderDialog.tsx line 454 field wrapper got `data-pl-reminder-form`. src/app/globals.css lines 15756-15768 (after "end Theme Master: Pro sidebar handle line"): `body.theme-pro [data-pl-reminder-form] :is(input, textarea, button[role="combobox"], button[aria-haspopup="dialog"]):not(.bg-primary):not([data-pl-reminder-skip])` = 1px solid rgb(147 197 253) (blue-300 = Pro chromePill border), radius calc(var(--radius) - 2px); hover/focus-visible rgb(96 165 250). Date triggers (BsDatePicker + AD Calendar) are outline Buttons via Radix PopoverTrigger (aria-haspopup="dialog"). Set Reminder (.bg-primary) and Cancel Edit excluded. Pro only.
+- C: AlarmsTab.tsx - new `deletedAlarms` state (320) + separate useEffect with subscribeCompanyReminders filtered by isReminderDeleted, sorted deletedAt desc, unsubscribe cleanup (401-413); handleRestore -> restoreReminderAlarm (513-525); AlarmList `isDeletedList` (no Select All/checkbox/edit/delete; "Deleted: date" + Restore with RotateCcw); TabsTrigger "Deleted (n)" (713) + TabsContent (743-745); delete dialog text -> "restore it from the Deleted tab" (753). Main alarms query (393-398) and data helpers (142-310) unchanged.
+- Encoding: tsx UTF-8 no BOM, LF kept (as before); globals.css CRLF no BOM kept. No backup (Git), no commit.
+- Checks: postcss parse OK; tsc --noEmit exit 0; git diff --stat = only these 3 files.
+- Pending: visual check on localhost:2000 (Pro: Messages > Reminder form + Ledger Reminder popup borders; Deleted tab list + Restore).
