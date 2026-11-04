@@ -4318,7 +4318,7 @@ export function TransactionsTable({
                         Move to recycle bin
                       </DropdownMenuItem>
                     ) : null}
-                    <div className="mt-1 border-t border-border/60 px-1 pt-1">
+                    <div data-pl-card-theme-section="" className="mt-1 border-t border-border/60 px-1 pt-1">
                       <DropdownMenuItem
                         onSelect={() => setMobileCardColorPickerOpen(true)}
                         className="px-2 py-1 text-xs font-semibold text-muted-foreground"

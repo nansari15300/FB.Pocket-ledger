@@ -1,3 +1,4 @@
+import type { LedgerReminderContext } from "@/components/vouchers/LedgerHeaderReminderButton";
 import type { BalanceSheetRow } from "@/lib/reports/balanceSheetAccounting";
 import type {
   ReceivablesPayablesFinancialSummary,
@@ -576,4 +577,28 @@ export function rpDialogRowToBalanceSheetLedgerRow(row: RpDialogRow): BalanceShe
     signedBalance: row.balance,
     entityType,
   };
+}
+
+/** Default narration when a collection deadline has no custom message. */
+export const RP_DEADLINE_DEFAULT_NARRATION = "Need to call the party to ask payment";
+
+/** R/P row -> Reminder popup "Link to" context (same values as Account Details pages). */
+export function rpDialogKindToReminderContext(kind: RpEntityKind): LedgerReminderContext {
+  switch (kind) {
+    case "party":
+      return "Party";
+    case "bank":
+      return "Bank/Cash";
+    case "staff":
+      return "Staff";
+    case "tax":
+      return "Tax";
+    default:
+      return "Income/Expense";
+  }
+}
+
+/** Default reminder title for an R/P row ("Collect payment - <name>"). */
+export function rpDeadlineReminderTitle(name: string): string {
+  return `Collect payment - ${name}`;
 }

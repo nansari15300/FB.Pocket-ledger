@@ -548,7 +548,8 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
   const { availability: createCompanyAvailability } = useCreateCompanyAvailability();
   const canCreateAnyCompany = createCompanyAvailability.canCreateAny;
   const visibleStorageTabs = useMemo(
-    () => visibleCompanySelectorTabs(featureConfig),
+    // Firebase tab UI se hidden (user request); internal "online" id/data logic unchanged.
+    () => visibleCompanySelectorTabs(featureConfig).filter((t) => t !== "online") as CompanyListTab[],
     [featureConfig]
   );
   const { adminLedgerMode, applyFilter: applyAdminPanelCompanyListFilter } =
@@ -1427,7 +1428,8 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
 
   useEffect(() => {
     if (!visibleStorageTabs.includes(listTab)) {
-      setListTab(resolveVisibleCompanySelectorTab(featureConfig, defaultSelectorTab(companyId, buckets)));
+      const nextTab = resolveVisibleCompanySelectorTab(featureConfig, defaultSelectorTab(companyId, buckets));
+      setListTab(visibleStorageTabs.includes(nextTab) ? nextTab : (visibleStorageTabs[0] ?? nextTab));
     }
   }, [visibleStorageTabs, listTab, featureConfig, companyId, buckets]);
 
@@ -1627,7 +1629,7 @@ export function CompanySelector({ companies: initialCompanies }: { companies: Co
                 ) : null}
                 {visibleStorageTabs.includes("pocketbase") ? (
                   <TabsTrigger value="pocketbase" className="px-1 text-[11px] sm:text-xs">
-                    PocketBase
+                    Online
                     {pocketbaseList.length > 0 ? ` (${pocketbaseList.length})` : ""}
                   </TabsTrigger>
                 ) : null}
@@ -2261,7 +2263,8 @@ export function CompanyActions({
   const { availability: createCompanyAvailability } = useCreateCompanyAvailability();
   const canCreateAnyCompany = createCompanyAvailability.canCreateAny;
   const visibleStorageTabs = useMemo(
-    () => visibleCompanySelectorTabs(featureConfig),
+    // Firebase tab UI se hidden (user request); internal "online" id/data logic unchanged.
+    () => visibleCompanySelectorTabs(featureConfig).filter((t) => t !== "online") as CompanyListTab[],
     [featureConfig]
   );
   const { adminLedgerMode, applyFilter: applyAdminPanelCompanyListFilter } =
@@ -2904,7 +2907,8 @@ export function CompanyActions({
 
   useEffect(() => {
     if (!visibleStorageTabs.includes(listTab)) {
-      setListTab(resolveVisibleCompanySelectorTab(featureConfig, defaultSelectorTab(companyId, buckets)));
+      const nextTab = resolveVisibleCompanySelectorTab(featureConfig, defaultSelectorTab(companyId, buckets));
+      setListTab(visibleStorageTabs.includes(nextTab) ? nextTab : (visibleStorageTabs[0] ?? nextTab));
     }
   }, [visibleStorageTabs, listTab, featureConfig, companyId, buckets]);
 
@@ -3015,11 +3019,71 @@ export function CompanyActions({
     Boolean(activeCompany?.isOwned) ||
     Boolean(activeCompany && isServerGateCompany(activeCompany));
 
+  /** Mobile header trigger: tap = open menu; press-hold 1s = name horizontal scroll mode (click suppressed). */
+  const mobileNameScrollRef = useRef<HTMLSpanElement | null>(null);
+  const mobileHoldRef = useRef<{ timer: number | null; hold: boolean; startX: number; startY: number; startScroll: number; moved: boolean }>({
+    timer: null, hold: false, startX: 0, startY: 0, startScroll: 0, moved: false,
+  });
+  const clearMobileHoldTimer = () => {
+    const st = mobileHoldRef.current;
+    if (st.timer != null) window.clearTimeout(st.timer);
+    st.timer = null;
+  };
+  const mobileHoldScrollHandlers = {
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (e.button !== 0 || uploadLocked) return;
+      e.preventDefault(); // Radix pointerdown-open skip; open on tap release instead.
+      const st = mobileHoldRef.current;
+      clearMobileHoldTimer();
+      st.hold = false;
+      st.moved = false;
+      st.startX = e.clientX;
+      st.startY = e.clientY;
+      st.startScroll = mobileNameScrollRef.current?.scrollLeft ?? 0;
+      // Capture sirf hold (1s) ke baad: tab tak header row ka native pan-x scroll free rahe.
+      const holdEl = e.currentTarget;
+      const holdPointerId = e.pointerId;
+      st.timer = window.setTimeout(() => {
+        st.timer = null;
+        st.hold = true;
+        try { holdEl.setPointerCapture(holdPointerId); } catch { /* ignore */ }
+        st.startScroll = mobileNameScrollRef.current?.scrollLeft ?? 0;
+      }, 1000);
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => {
+      const st = mobileHoldRef.current;
+      const dx = e.clientX - st.startX;
+      if (st.hold) {
+        if (mobileNameScrollRef.current) mobileNameScrollRef.current.scrollLeft = st.startScroll - dx;
+        return;
+      }
+      if (Math.abs(dx) > 10 || Math.abs(e.clientY - st.startY) > 10) {
+        st.moved = true;
+        clearMobileHoldTimer();
+      }
+    },
+    onPointerUp: (e: React.PointerEvent<HTMLButtonElement>) => {
+      const st = mobileHoldRef.current;
+      const wasTap = st.timer != null && !st.moved && !st.hold;
+      clearMobileHoldTimer();
+      st.hold = false;
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+      if (wasTap) setMenuOpen((o) => !o);
+    },
+    onPointerCancel: () => {
+      clearMobileHoldTimer();
+      mobileHoldRef.current.hold = false;
+    },
+    onContextMenu: (e: React.MouseEvent<HTMLButtonElement>) => e.preventDefault(),
+  };
+
   return (
     <>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild disabled={uploadLocked}>
           <Button
+            {...(triggerLayout === "mobile" ? mobileHoldScrollHandlers : {})}
+            data-pl-company-selector-trigger={triggerLayout}
             variant="outline"
             disabled={uploadLocked}
             className={cn(
@@ -3047,7 +3111,7 @@ export function CompanyActions({
               }}
             />
             <Building2 className="hidden h-6 w-6 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 truncate text-left font-medium text-blue-700">
+            <span ref={mobileNameScrollRef} data-pl-company-name-scroll="" className="min-w-0 truncate text-left font-medium text-blue-700">
               {companyTriggerLabel}
             </span>
             <PlServerOnlineStatusDot company={activeCompany} className="ml-0.5" />

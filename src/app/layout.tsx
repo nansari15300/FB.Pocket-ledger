@@ -41,7 +41,7 @@ export default function RootLayout({
   return (
     <html lang="en" translate="no" className="notranslate" suppressHydrationWarning>
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5, user-scalable=yes" />
         <meta name="color-scheme" content="light only" />
         <meta name="theme-color" content="#f1f5f9" />
         <meta name="google" content="notranslate" />

@@ -100,6 +100,8 @@ function firstPersistableAttachmentRefInPlainText(text: string): string | null {
   if (localMatch?.[0]) candidates.push(localMatch[0]);
   const driveMatch = trimmed.match(/drive:[^\s<>"']+/i);
   if (driveMatch?.[0]) candidates.push(driveMatch[0]);
+  const pbMatch = trimmed.match(/pbatt:[^\s<>"']+/i);
+  if (pbMatch?.[0]) candidates.push(pbMatch[0]);
 
   for (const raw of candidates) {
     const ref = String(raw || "").trim();
@@ -109,6 +111,7 @@ function firstPersistableAttachmentRefInPlainText(text: string): string | null {
       ref.startsWith("https://") ||
       isLocalFileRef(ref) ||
       ref.startsWith("drive:") ||
+      ref.startsWith("pbatt:") ||
       ref.startsWith("companies/") ||
       ref.startsWith("voucher-files/")
     ) {
@@ -353,6 +356,29 @@ export async function fetchBlobForAttachmentHoldPaste(
       blob: b,
       fileName: payload.n || src.split("/").pop() || "attachment",
       contentType: payload.t || b.type || "application/octet-stream",
+    };
+  }
+
+  if (src && src.startsWith("pbatt:")) {
+    const { fetchPbAttachmentBlob } = await import("@/lib/pocketbaseData/pbAttachments");
+    const b = await fetchPbAttachmentBlob(src);
+    if (!b || b.size === 0 || signal?.aborted) return null;
+    const fileName = payload.n || src.split("/").pop() || "attachment";
+    const ext = (fileName.split(".").pop() || "").toLowerCase();
+    const guessed =
+      ext === "jpg" || ext === "jpeg"
+        ? "image/jpeg"
+        : ext === "png"
+          ? "image/png"
+          : ext === "webp"
+            ? "image/webp"
+            : ext === "pdf"
+              ? "application/pdf"
+              : "";
+    return {
+      blob: b,
+      fileName,
+      contentType: payload.t || b.type || guessed || "application/octet-stream",
     };
   }
 

@@ -28,6 +28,9 @@ import {
   filterRpDialogSectionsForDeadlineDate,
   formatRpDeadlineYmd,
   normalizeReceivablesPayablesSummary,
+  RP_DEADLINE_DEFAULT_NARRATION,
+  rpDeadlineReminderTitle,
+  rpDialogKindToReminderContext,
   readRpDeadlinesFromStorage,
   readRpDeadlineNarrationsFromStorage,
   rpDialogRowSelectionKey,
@@ -42,6 +45,7 @@ import {
   type RpDeadlinesMap,
   type RpDialogRow,
 } from "@/lib/receivablesPayablesDialogUi";
+import { LedgerReminderDialog } from "@/components/vouchers/LedgerReminderDialog";
 import { ReceivablesPayablesDialogFooter } from "@/components/reports/ReceivablesPayablesDialogFooter";
 import { ReceivablesPayablesMobileSidePills } from "@/components/reports/ReceivablesPayablesMobileSidePills";
 import {
@@ -87,6 +91,10 @@ export function RpOutstandingDialogHost() {
   const [receivablesDateRange] = useState<DateRange | undefined>(() => getCurrentMonthDateRange(dateSystem));
   const [rpDeadlines, setRpDeadlines] = useState<RpDeadlinesMap>({});
   const [rpDeadlineNarrations, setRpDeadlineNarrations] = useState<RpDeadlineNarrationsMap>({});
+  const [reminderTarget, setReminderTarget] = useState<{
+    side: "receivables" | "payables";
+    row: RpDialogRow;
+  } | null>(null);
   const [autoDeadlineView, setAutoDeadlineView] = useState(false);
   const [allDeadlineView, setAllDeadlineView] = useState(false);
   const [deadlineNarrationDraft, setDeadlineNarrationDraft] = useState<{
@@ -199,7 +207,7 @@ export function RpOutstandingDialogHost() {
   }, [company?.id]);
 
   const handleRpDeadlineChange = useCallback(
-    (side: "receivables" | "payables", row: RpDialogRow, ymd: string | null) => {
+    (side: "receivables" | "payables", row: RpDialogRow, ymd: string | null, narration?: string) => {
       const id = company?.id;
       if (!id) return;
       const key = rpDialogRowSelectionKey(side, row);
@@ -214,6 +222,17 @@ export function RpOutstandingDialogHost() {
         setRpDeadlineNarrations((prev) => {
           const next = { ...prev };
           delete next[key];
+          writeRpDeadlineNarrationsToStorage(id, next);
+          return next;
+        });
+        setDeadlineNarrationDraft((draft) => draft?.key === key ? null : draft);
+        return;
+      }
+      if (narration !== undefined) {
+        // Reminder popup already collected the message: save it directly, skip the narration dialog.
+        const text = narration.trim() || RP_DEADLINE_DEFAULT_NARRATION;
+        setRpDeadlineNarrations((prev) => {
+          const next = { ...prev, [key]: text };
           writeRpDeadlineNarrationsToStorage(id, next);
           return next;
         });
@@ -344,14 +363,22 @@ export function RpOutstandingDialogHost() {
     return dateSystem === "BS" ? formatDateBS(date) : formatDate(date);
   }, [dateSystem, formatDate, formatDateBS]);
 
+  const openRpDeadlineReminder = useCallback(
+    (side: "receivables" | "payables", row: RpDialogRow) => {
+      setReminderTarget({ side, row });
+    },
+    []
+  );
+
   const rpDeadlineRowProps = useMemo(
     () => ({
       deadlines: rpDeadlines,
       deadlineNarrations: rpDeadlineNarrations,
       onDeadlineChange: handleRpDeadlineChange,
+      onOpenDeadlineReminder: openRpDeadlineReminder,
       showDeadlineControls: true,
     }),
-    [rpDeadlines, rpDeadlineNarrations, handleRpDeadlineChange]
+    [rpDeadlines, rpDeadlineNarrations, handleRpDeadlineChange, openRpDeadlineReminder]
   );
 
   const handleSelectTab = useCallback(
@@ -822,6 +849,39 @@ export function RpOutstandingDialogHost() {
           ) : null}
         </DialogContent>
       </Dialog>
+      {reminderTarget ? (
+        <LedgerReminderDialog
+          open
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setReminderTarget(null);
+          }}
+          context={rpDialogKindToReminderContext(reminderTarget.row.kind)}
+          entityId={reminderTarget.row.entityId}
+          title={reminderTarget.row.party}
+          initialTitle={rpDeadlineReminderTitle(reminderTarget.row.party)}
+          initialMessage={
+            rpDeadlineNarrations[rpDialogRowSelectionKey(reminderTarget.side, reminderTarget.row)] ||
+            RP_DEADLINE_DEFAULT_NARRATION
+          }
+          initialDate={(() => {
+            const ymd = rpDeadlines[rpDialogRowSelectionKey(reminderTarget.side, reminderTarget.row)];
+            return ymd ? parseRpDeadlineYmd(ymd) : null;
+          })()}
+          forceBsDatePicker
+          onSaved={(info) => {
+            // Keep Due / Today / All deadline filters + counts working: mirror the reminder date into old deadline storage.
+            if (
+              info.entityId !== reminderTarget.row.entityId ||
+              info.context !== rpDialogKindToReminderContext(reminderTarget.row.kind)
+            ) {
+              return;
+            }
+            const d = new Date(info.date);
+            d.setHours(12, 0, 0, 0);
+            handleRpDeadlineChange(reminderTarget.side, reminderTarget.row, formatRpDeadlineYmd(d), info.message);
+          }}
+        />
+      ) : null}
       {rpLedgerPopup.popup}
     </>
   );

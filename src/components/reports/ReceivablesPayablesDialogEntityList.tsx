@@ -247,6 +247,8 @@ type ReceivablesPayablesDialogEntityListProps = {
   deadlines?: RpDeadlinesMap;
   deadlineNarrations?: RpDeadlineNarrationsMap;
   onDeadlineChange?: (side: "receivables" | "payables", row: RpDialogRow, ymd: string | null) => void;
+  /** Opens the shared "Set New Reminder" popup (LedgerReminderDialog) for this row. */
+  onOpenDeadlineReminder?: (side: "receivables" | "payables", row: RpDialogRow) => void;
   showDeadlineControls?: boolean;
 };
 
@@ -255,45 +257,62 @@ function RpRowDeadlineControl({
   row,
   deadlines,
   onDeadlineChange,
+  onOpenDeadlineReminder,
 }: {
   side: "receivables" | "payables";
   row: RpDialogRow;
   deadlines?: RpDeadlinesMap;
   onDeadlineChange?: (side: "receivables" | "payables", row: RpDialogRow, ymd: string | null) => void;
+  onOpenDeadlineReminder?: (side: "receivables" | "payables", row: RpDialogRow) => void;
 }) {
   const { formatDateBySystem } = useDate();
   const [open, setOpen] = useState(false);
   const rowKey = rpDialogRowSelectionKey(side, row);
   const storedYmd = deadlines?.[rowKey];
   const deadlineDate = storedYmd ? parseRpDeadlineYmd(storedYmd) : null;
-  const hoverTitle = deadlineDate ? `Deadline: ${formatDateBySystem(deadlineDate)}` : "Set collection deadline";
+  const hoverTitle = deadlineDate
+    ? `Deadline: ${formatDateBySystem(deadlineDate)}`
+    : onOpenDeadlineReminder
+      ? "Set collection deadline / reminder"
+      : "Set collection deadline";
 
-  if (!onDeadlineChange) return null;
+  if (!onDeadlineChange && !onOpenDeadlineReminder) return null;
 
+  const triggerButton = (onClick: (e: React.MouseEvent<HTMLButtonElement>) => void) => (
+    <button
+      type="button"
+      data-pl-rp-deadline-btn=""
+      aria-label={hoverTitle}
+      title={hoverTitle}
+      className="inline-flex h-5 w-7 shrink-0 items-center justify-center self-center rounded p-0 text-foreground touch-manipulation hover:bg-muted/60"
+      onClick={onClick}
+      onPointerDown={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      {deadlineDate ? (
+        <CheckCircle2
+          className="h-[17px] w-[17px] text-green-600 dark:text-green-500"
+          strokeWidth={2.5}
+          aria-hidden
+        />
+      ) : (
+        <Plus className="h-[17px] w-[17px]" strokeWidth={3} aria-hidden />
+      )}
+    </button>
+  );
+
+  // New flow: same "Set New Reminder" popup as Account Details (LedgerReminderDialog, hosted in RpOutstandingDialogHost).
+  if (onOpenDeadlineReminder) {
+    return triggerButton((e) => {
+      e.stopPropagation();
+      onOpenDeadlineReminder(side, row);
+    });
+  }
+
+  // Legacy fallback (no reminder host): old "Collection deadline" date-picker popover.
   return (
     <Popover open={open} onOpenChange={setOpen} modal>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          data-pl-rp-deadline-btn=""
-          aria-label={hoverTitle}
-          title={hoverTitle}
-          className="inline-flex h-5 w-7 shrink-0 items-center justify-center self-center rounded p-0 text-foreground touch-manipulation hover:bg-muted/60"
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-          onDoubleClick={(e) => e.stopPropagation()}
-        >
-          {deadlineDate ? (
-            <CheckCircle2
-              className="h-[17px] w-[17px] text-green-600 dark:text-green-500"
-              strokeWidth={2.5}
-              aria-hidden
-            />
-          ) : (
-            <Plus className="h-[17px] w-[17px]" strokeWidth={3} aria-hidden />
-          )}
-        </button>
-      </PopoverTrigger>
+      <PopoverTrigger asChild>{triggerButton((e) => e.stopPropagation())}</PopoverTrigger>
       <PopoverContent
         className="z-[110] w-auto p-2"
         align="end"
@@ -308,7 +327,7 @@ function RpRowDeadlineControl({
           onChangeAD={(d) => {
             if (!d) return;
             d.setHours(12, 0, 0, 0);
-            onDeadlineChange(side, row, formatRpDeadlineYmd(d));
+            onDeadlineChange?.(side, row, formatRpDeadlineYmd(d));
             setOpen(false);
           }}
           isRange={false}
@@ -322,7 +341,7 @@ function RpRowDeadlineControl({
             size="sm"
             className="mt-2 h-8 w-full text-xs"
             onClick={() => {
-              onDeadlineChange(side, row, null);
+              onDeadlineChange?.(side, row, null);
               setOpen(false);
             }}
           >
@@ -354,6 +373,7 @@ function RpDialogEntityRow({
   deadlines,
   deadlineNarrations,
   onDeadlineChange,
+  onOpenDeadlineReminder,
   showDeadlineControls,
 }: {
   row: RpDialogRow;
@@ -374,6 +394,8 @@ function RpDialogEntityRow({
   deadlines?: RpDeadlinesMap;
   deadlineNarrations?: RpDeadlineNarrationsMap;
   onDeadlineChange?: (side: "receivables" | "payables", row: RpDialogRow, ymd: string | null) => void;
+  /** Opens the shared "Set New Reminder" popup (LedgerReminderDialog) for this row. */
+  onOpenDeadlineReminder?: (side: "receivables" | "payables", row: RpDialogRow) => void;
   showDeadlineControls?: boolean;
 }) {
   const amountText = formatAmountText(row.balance);
@@ -428,6 +450,7 @@ function RpDialogEntityRow({
                 row={row}
                 deadlines={deadlines}
                 onDeadlineChange={onDeadlineChange}
+                onOpenDeadlineReminder={onOpenDeadlineReminder}
               />
             ) : null}
             <p
@@ -557,6 +580,7 @@ function RpIcCompanyGroupRow({
   deadlines,
   deadlineNarrations,
   onDeadlineChange,
+  onOpenDeadlineReminder,
   showDeadlineControls,
 }: {
   row: RpDialogRow;
@@ -577,6 +601,8 @@ function RpIcCompanyGroupRow({
   deadlines?: RpDeadlinesMap;
   deadlineNarrations?: RpDeadlineNarrationsMap;
   onDeadlineChange?: (side: "receivables" | "payables", row: RpDialogRow, ymd: string | null) => void;
+  /** Opens the shared "Set New Reminder" popup (LedgerReminderDialog) for this row. */
+  onOpenDeadlineReminder?: (side: "receivables" | "payables", row: RpDialogRow) => void;
   showDeadlineControls?: boolean;
 }) {
   const children = row.icChildren ?? [];
@@ -630,6 +656,7 @@ function RpIcCompanyGroupRow({
                     deadlines={deadlines}
                     deadlineNarrations={deadlineNarrations}
                     onDeadlineChange={onDeadlineChange}
+                    onOpenDeadlineReminder={onOpenDeadlineReminder}
                     showDeadlineControls={showDeadlineControls}
                   />
                 );
@@ -657,6 +684,7 @@ export function ReceivablesPayablesDialogEntityList({
   deadlines,
   deadlineNarrations,
   onDeadlineChange,
+  onOpenDeadlineReminder,
   showDeadlineControls = true,
 }: ReceivablesPayablesDialogEntityListProps) {
   const internalMotion = useMasterListRowMotion();
@@ -867,6 +895,7 @@ export function ReceivablesPayablesDialogEntityList({
                         deadlines={deadlines}
                         deadlineNarrations={deadlineNarrations}
                         onDeadlineChange={onDeadlineChange}
+                        onOpenDeadlineReminder={onOpenDeadlineReminder}
                         showDeadlineControls={showDeadlineControls}
                       />
                     );
@@ -889,6 +918,7 @@ export function ReceivablesPayablesDialogEntityList({
                       deadlines={deadlines}
                       deadlineNarrations={deadlineNarrations}
                       onDeadlineChange={onDeadlineChange}
+                      onOpenDeadlineReminder={onOpenDeadlineReminder}
                       showDeadlineControls={showDeadlineControls}
                     />
                   );

@@ -165,8 +165,14 @@ export function PocketBaseSyncProgressBadge() {
   const files = usePbFilesPullProgress();
   const data = usePbDataPullProgress();
   const [open, setOpen] = useState(false);
+  const [hidden, setHidden] = useState(false);
   const filesBusy = files.phase === "listing" || files.phase === "downloading" || files.phase === "paused" || files.phase === "error";
-  if (!data.active && !filesBusy) return null;
+  const syncActive = data.active || filesBusy;
+  useEffect(() => {
+    // Sync khatam hone par hide reset, taaki agli baar phir dikhe
+    if (!syncActive) setHidden(false);
+  }, [syncActive]);
+  if (!syncActive || hidden) return null;
   const label = data.active
     ? `Data ${data.docs}${data.total != null ? `/${data.total}` : ""}`
     : files.phase === "listing"
@@ -177,20 +183,32 @@ export function PocketBaseSyncProgressBadge() {
           ? `Files ${files.done}/${files.total} (retry)`
           : `Files ${files.done}/${files.total}`;
   return (
-    <div className="fixed bottom-3 left-3 z-[60] flex max-w-[20rem] flex-col items-start gap-1.5 print:hidden">
+    <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[60] flex max-w-[28rem] flex-col items-center gap-2 print:hidden">
       {open ? (
-        <div className="w-72 shadow-lg">
+        <div className="w-96 shadow-lg">
           <PocketBaseFilesPanel />
         </div>
       ) : null}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="rounded-full border border-border bg-background/95 px-3 py-1 text-xs font-medium shadow-md"
+        className="rounded-full border border-border bg-background/95 px-4 py-2 text-sm font-medium shadow-md"
         translate="no"
         aria-label="Server sync progress"
       >
         {label}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(false);
+          setHidden(true);
+        }}
+        className="rounded-full border border-border bg-background/95 px-3 py-1 text-xs text-muted-foreground shadow-md"
+        translate="no"
+        aria-label="Hide server sync progress"
+      >
+        Hide
       </button>
     </div>
   );

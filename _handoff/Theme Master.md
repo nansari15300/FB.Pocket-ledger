@@ -314,3 +314,70 @@ Account list ki dono lines (Pro theme): right edge 2 Nov 3:49 PM aur left edge 3
 - globals.css ~15830-15855: desktop button[data-theme-header="company-selector"] width/min/max 2.5in (was w-auto+shrink+min-w-0 -> collapsed); name span truncate ellipsis, readable color. Mobile popup rule untouched.
 - globals.css ~15857-15883: --pl-raise-shadow fallback on :root/body (+dark), header pills (.pl-chrome-btn-drop), master-list tabs, Reminder tabs/fields/submit get raise + hover translateY(-1px) in all themes; Pro rules/blue borders unchanged.
 - Verified: postcss parse, lightningcss block, tsc --noEmit OK.
+
+## Nov 4 2026 - Mobile header Company selector 2.5in + hold-scroll; Firebase tab hidden; PocketBase -> Online
+- globals.css ~15884-15913: mobile trigger 2.5in, name horizontal scroll (scrollbar hidden), popup scrollbar hidden (still scrollable).
+- CompanySelector.tsx ~3020-3075 mobileHoldScrollHandlers (tap=toggle menu, hold 1s=drag scrollLeft, click suppressed), ~3111 span data-pl-company-name-scroll; visibleStorageTabs filter out "online" (552, 2267) + fallback tab (1432, 2911); dialog label Online (1632).
+- companySelectorGateLabel.ts: pocketbase label Online, hint without Firebase. Firebase data logic untouched.
+- Verified postcss, lightningcss, tsc OK.
+
+## Nov 4 2026 - Dark light-surface fix
+- globals.css block 'Dark light-surface -> dark surface' (after 'Dark all text white'): theme-pl-medium bg-blue/sky/slate/gray-50..200, bg-white, light gradients -> hsl(var(--pl-pill-bg)) (28%, party search/pill fill), text white; buttons, rounded-full tags, badges, bg-primary/destructive, inputs excluded. CSS only, no Account Details tsx edits. postcss+lightningcss+tsc OK.
+
+## Nov 4 2026 - Header debug + desktop header row scroll
+- Dev server (2000 gateway -> 2001 Next, /app) serves all Theme Master blocks (verified in served globals chunk).
+- Tailwind @apply truncate cloned our '> span.truncate' rules into .pl-master-list-row-name (without !important); selectors switched to [data-pl-company-name-scroll].
+- DesktopAppHeader.tsx:2495 data-pl-header-row="desktop"; globals.css ~15915-15940: desktop row nowrap, overflow-x auto, hidden scrollbar, children flex-shrink 0, 6px vertical padding for raise shadow. All themes.
+- postcss, lightningcss full file, tsc OK.
+
+## Nov 4 2026 - ALL header rows scroll (overlap fix)
+- Root cause: headerIsMobile branch; company slot div.min-w-0.flex-1 shrank while button 2.5in -> overlapped BS. DesktopAppHeader.tsx 2454/2462/2463: data-pl-header-row="mobile", data-pl-header-row-inner, data-pl-header-company-slot. globals.css block 'ALL header rows scroll': slot 2.5in, row nowrap overflow-x auto hidden scrollbar, children flex 0 0 auto. Dev restart only via C:\PocketLedger-Sync\start-dev-2000.cmd.
+
+## Nov 4 2026 - header row real scroll + wheel
+- globals.css block 'header row real scroll container': header:has([data-pl-header-row]) + pill contain:inline-size, row 100% width scroller, touch pan-x. DesktopAppHeader.tsx (~2406) window wheel listener (passive:false) -> deltaY to row.scrollLeft only when overflow and can scroll.
+
+## Nov 4 2026 - mobile header drag-scroll unblock
+- Cause: mobile company trigger CSS touch-action:none + setPointerCapture on pointerdown blocked row pan. CompanySelector.tsx (~3043): capture only after 1s hold. globals.css block 'mobile header drag-scroll unblock': header row buttons touch-action pan-x.
+
+## Nov 4 2026 - header mouse drag-scroll
+- DesktopAppHeader.tsx (~2406-2470): window capture pointer listeners: mouse drag >5px on overflowing [data-pl-header-row] -> scrollLeft, next click suppressed; wheel (deltaY/deltaX) same effect. globals.css block 'header mouse drag-scroll cursor' (grab/grabbing).
+
+## Nov 4 2026 - Dark mobile ledger blue -> light black
+- Source: FREEZE Mobile Default (violet) block #bfdbfe (~12492-12520) + pager host rgb(219 234 254/.92) + merged header dark rule only on .dark. Override in block 'Dark mobile ledger blue -> light black' (theme-pl-medium only; FREEZE untouched): page/txn host 20%, header/To Pay 28% pill, FY strips 24%, bottom bar combobox = search (pill bg, border, white).
+
+## Nov 4 2026 - View Card Theme only in Pro
+- TransactionsTable.tsx:4321 wrapper div (label+options+border-t separator) got data-pl-card-theme-section. CSS: body:not(.theme-pro) [data-pl-card-theme-section]{display:none !important}.
+
+## Nov 4 2026 - Dark FY row user color wins
+- Removed body.theme-pl-medium --pl-fy-*-row-bg var overrides (they shadowed html-level chosen vars). Dark 24% gray now only when html lacks data-pl-fy-start/end-row-color and row lacks data-pl-fy-row-color. Chosen pastel -> text #111.
+
+## Nov 4 2026 - Dark opening narration white
+- TransactionsTable.tsx 4560/4688/2758 hardcode text-black on opening narration; dark override p/td[class~=text-black]:has(span.whitespace-pre-wrap) -> #fff.
+
+## Nov 4 2026 - Dark pager disabled Next + footer FAB arrow white
+- [data-pl-mobile-txn-pager] button:disabled color white/.65 opacity 1; .pl-mobile-ledger-footer-fab svg white.
+
+## Nov 4 2026 - Light (theme-pl-light) mobile ledger blue -> #f8fafc
+- Same sources as Dark block; page/txn host/pager/merged header/To Pay/ledger header cards #f8fafc, FY default #f1f5f9 (chosen color wins). Pro untouched, FREEZE untouched.
+
+## Nov 4 2026 - Mobile bottom toolbar search + dropdown white in ALL themes
+- Replaced dark pill rule in 'Dark mobile ledger blue' block with all-theme rule: #fff bg, #111 text, gray-300 border, gray-500 placeholder, gray-600 icons.
+
+## Nov 4 2026 - Correction: toolbar dropdown not white
+- All-theme rule now only Search input white; dark combobox pill restored; other themes original.
+
+## Nov 4 2026 - Master list footer search text dark (all themes)
+- input[data-pl-mlc-search-input] color #111, placeholder gray-500. Total pill untouched.
+
+## Nov 4 2026 - Account list header Pro-style all themes + removed header Test reminder button
+- CSS block overrides #25 pill: full width strip, muted bg (Light #f1f5f9, Dark pill), title visible.
+- DesktopAppHeader.tsx: removed import + 2 renders of HeaderReminderTestButton (file kept).
+
+## Nov 4 2026 - Chevron FAB arrow visible in light themes
+- [data-pl-master-list-chrome-chevron-toggle]/.pl-mobile-ledger-footer-fab arrow rgb(55 65 81) in Light/Gray/Blue/Green/Yellow; Gray circle muted bg + gray-400 border. Dark/Pro untouched.
+
+- 2026-11-04: Light theme (theme-pl-light) mobile txn/spendwise cards [data-pl-mobile-transaction-card]: 1px solid #fff border + soft 3D shadow, hover raise translateY(-2px). globals.css ~16272-16284, block '/* Theme Master: Light theme spendwise card 3D, no dark border */'. Light only.
+- 2026-11-04 (update): spendwise card block widened to Light + Default/Pro (theme-pro): `html :is(body.theme-pl-light, body.theme-pro, html.theme-* body) [data-pl-mobile-transaction-card]` + 4x :not(#id), excludes statement-checked/check-marked. border 1px solid #fff, outline 0, soft shadow, hover raise. Dark/Gray untouched. globals.css ~16272-16292.
+- 2026-11-04: PC desktop header row ([data-pl-header-row="desktop"]) back to wrap, no horizontal scroll (globals.css block 'PC desktop header row = wrap' ~16291-16317, 5x :not(#id); header/.pl-chrome-card contain:none for desktop). Mobile row scroll unchanged. DesktopAppHeader.tsx wheel + drag handlers closest() now '[data-pl-header-row="mobile"]' only.
+- 2026-11-04: APK header broken = stale bundled assets (android/app/src/main/assets/public last synced 2026-10-30; no data-pl-header-row attrs, still has old HeaderReminderTestButton 'Test'). APK uses bundled webDir 'out' unless CAP_USE_REMOTE_WEB=1. Added globals.css block 'mobile header row native touch scroll' (~16319-16343) for [data-pl-header-row="mobile"]: nowrap, overflow-x auto, -webkit-overflow-scrolling touch, pan-x, children no shrink, hidden scrollbar. Needs Build Master rebuild/cap sync to show in APK.
+- 2026-11-04: Pinch zoom on mobile: layout.tsx viewport meta maximum-scale=1,user-scalable=no -> maximum-scale=5,user-scalable=yes; globals.css block 'mobile two-finger pinch zoom' (.scroll-touch pan-x pan-y pinch-zoom; header rows pan-x pinch-zoom; desktop row auto); mobile header native-scroll block pan-x -> pan-x pinch-zoom. GlobalMobilePullRefresh already ignores 2-finger touches. Native: no WebView zoom code in android/; Capacitor WebView normally honors meta - verify after rebuild.

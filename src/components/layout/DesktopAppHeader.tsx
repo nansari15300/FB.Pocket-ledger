@@ -86,7 +86,6 @@ import { isInterCompanyVoucherFeatureDisabled } from "@/lib/interCompany/interCo
 import usePermissions from "@/hooks/usePermissions";
 import { DriveCloudSyncHeaderIndicator } from "@/components/layout/DriveCloudSyncHeaderIndicator";
 import { HeaderSyncButton } from "@/components/layout/HeaderSyncButton";
-import { HeaderReminderTestButton } from "@/components/layout/HeaderReminderTestButton";
 import { HeaderFirebaseToPbButton } from "@/components/layout/HeaderFirebaseToPbButton";
 import { usePendingInterCompanySystemJoinCount } from "@/lib/interCompany/usePendingInterCompanySystemJoinCount";
 import { useMasterDetailHeaderIdSnapshot } from "@/hooks/useMasterDetailHeaderIdSnapshot";
@@ -2403,6 +2402,69 @@ export function DesktopAppHeader() {
   const headerIsMobile = useIsMobile();
   const isApkPhoneFormFactor = useApkPhoneFormFactor();
 
+  /** Mobile header row only ([data-pl-header-row="mobile"]; desktop row wraps, no scroll): mouse wheel (vertical) -> horizontal scroll jab content overflow ho. */
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      const row = (e.target as Element | null)?.closest?.('[data-pl-header-row="mobile"]') as HTMLElement | null;
+      if (!row || row.scrollWidth <= row.clientWidth + 1) return;
+      const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      if (!delta) return;
+      const max = row.scrollWidth - row.clientWidth;
+      if ((delta < 0 && row.scrollLeft <= 0) || (delta > 0 && row.scrollLeft >= max - 1)) return;
+      e.preventDefault();
+      row.scrollLeft += delta;
+    };
+    window.addEventListener("wheel", onWheel, { passive: false });
+    /** Mouse click-drag -> horizontal scroll (5px threshold); drag ke baad agla click suppress. */
+    let drag: { row: HTMLElement; startX: number; startScroll: number; moved: boolean } | null = null;
+    let suppressClick = false;
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse" || e.button !== 0) return;
+      const row = (e.target as Element | null)?.closest?.('[data-pl-header-row="mobile"]') as HTMLElement | null;
+      if (!row || row.scrollWidth <= row.clientWidth + 1) return;
+      drag = { row, startX: e.clientX, startScroll: row.scrollLeft, moved: false };
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.startX;
+      if (!drag.moved && Math.abs(dx) < 5) return;
+      if (!drag.moved) {
+        drag.moved = true;
+        drag.row.setAttribute("data-pl-header-dragging", "");
+      }
+      e.preventDefault();
+      drag.row.scrollLeft = drag.startScroll - dx;
+    };
+    const onUp = () => {
+      if (!drag) return;
+      if (drag.moved) {
+        suppressClick = true;
+        drag.row.removeAttribute("data-pl-header-dragging");
+        window.setTimeout(() => { suppressClick = false; }, 0);
+      }
+      drag = null;
+    };
+    const onClickCapture = (e: MouseEvent) => {
+      if (!suppressClick) return;
+      suppressClick = false;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("pointermove", onMove, { capture: true, passive: false });
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onUp, true);
+    window.addEventListener("click", onClickCapture, true);
+    return () => {
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onUp, true);
+      window.removeEventListener("click", onClickCapture, true);
+    };
+  }, []);
+
   /** Electron `.exe`: pink header ki quick-action strip (Add Sale…) hide/show — localStorage + View menu sync */
   const isElectronDesk = isElectronDesktopApp();
   const [quickActionsCollapsed, setQuickActionsCollapsed] = useState(() => {
@@ -2452,7 +2514,7 @@ export function DesktopAppHeader() {
         )}
       >
         {headerIsMobile ? (
-          <div className="flex w-full min-w-0 items-center">
+          <div data-pl-header-row="mobile" className="flex w-full min-w-0 items-center">
             {/* Sidebar ↔ company: exactly 4px (`mr-1`); outer header se sidebar ~2px. */}
             {/* `data-pl-no-edge-swipe-capture`: document capture `preventDefault` edge strip is touch se header button na mare */}
             {isApkPhoneFormFactor ? null : (
@@ -2460,8 +2522,8 @@ export function DesktopAppHeader() {
                 <SidebarTrigger className="touch-manipulation" />
               </div>
             )}
-            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-              <div className="min-w-0 flex-1">
+            <div data-pl-header-row-inner="" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+              <div data-pl-header-company-slot="" className="min-w-0 flex-1">
                 <HeaderCompanyPickerIsland
                   unfilteredHeaderCompanies={unfilteredHeaderCompanies}
                   contextCompanies={contextCompanies}
@@ -2482,7 +2544,6 @@ export function DesktopAppHeader() {
             </div>
               <div className="ml-2 flex shrink-0 items-center gap-1">
                 <HeaderSyncButton />
-                <HeaderReminderTestButton />
                 <HeaderFirebaseToPbButton />
                 <PlServerCompanyConnectionStatus />
                 <DriveCloudSyncHeaderIndicator />
@@ -2492,7 +2553,7 @@ export function DesktopAppHeader() {
               </div>
           </div>
         ) : (
-          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+          <div data-pl-header-row="desktop" className="flex w-full min-w-0 flex-wrap items-center gap-2">
             {/* `min-w-0` ta company `truncate` narrow window par kaam kare — sidebar↔company 4px (`gap-1`). */}
             <div className="flex min-w-0 items-center gap-1">
               {isApkPhoneFormFactor ? null : <SidebarTrigger />}
@@ -2540,7 +2601,6 @@ export function DesktopAppHeader() {
               {/* Desktop: pehle Add New (mobile pe stripe me profile ke pehle) — purani daen-cluster order */}
               <AddNewButtonOnReportPage />
               <HeaderSyncButton />
-              <HeaderReminderTestButton />
               <HeaderFirebaseToPbButton />
               <DriveCloudSyncHeaderIndicator />
               <PlServerCompanyConnectionStatus />

@@ -32,12 +32,12 @@ export const COMPANY_SELECTOR_TAB_LABELS: Record<CompanyListTab, string> = {
   local: "Local",
   server: "PL Server",
   online: "Firebase",
-  pocketbase: "PocketBase",
+  pocketbase: "Online",
 };
 
 /** Short line under company picker tabs — login method vs which books live where. */
 export const COMPANY_SELECTOR_TAB_HINT =
-  "Local = this device. PL Server = EXE/LAN share. Firebase = Google cloud. PocketBase = Pocket Ledger Server.";
+  "Local = this device. PL Server = EXE/LAN share. Online = Pocket Ledger Server.";
 
 /** Server company row se PL gate — id, stamped URL, ya active local_server gate. */
 export function resolveServerGateForCompany(company: {

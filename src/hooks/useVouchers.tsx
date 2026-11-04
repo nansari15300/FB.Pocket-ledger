@@ -139,6 +139,7 @@ import {
 import { buildPartyLedgerAggregateMap } from "@/lib/partyListLedgerBalance";
 import { filterVouchersForAdminSubscriberPartyLedger } from "@/lib/adminPanelCompany/adminPanelPartyLedger";
 import { isPbOnlySession } from "@/lib/pocketbaseData/userDisplayNameSession";
+import { readPocketBaseAppProfile } from "@/lib/pocketbaseData/pbAppSession";
 
 /** Offline company: vouchers me `userId` aksar owner ka Firebase uid ya `local` — sirf `user.uid` match se shared user ko 0 rows. */
 function localCompanyRoleAllowsViewAll(role: string | undefined): boolean {
@@ -1494,7 +1495,25 @@ export const VoucherProvider = ({
   useEffect(() => {
     if (!user?.uid) return;
     const name = customUser?.displayName || user.displayName || user.email || "You";
-    setUserNames((prev) => (prev[user.uid] === name ? prev : { ...prev, [user.uid]: name }));
+    // Pocket Ledger Server session: vouchers may carry `pb_<id>` or the migrated `appUid` as userId.
+    const extraIds: string[] = [];
+    try {
+      const pbProfile = readPocketBaseAppProfile();
+      if (pbProfile && isPbOnlySession()) {
+        if (pbProfile.id) extraIds.push(`pb_${pbProfile.id}`);
+        if (pbProfile.appUid) extraIds.push(pbProfile.appUid);
+      }
+    } catch {
+      /* no PB profile - only the signed-in uid is mapped */
+    }
+    setUserNames((prev) => {
+      let next: Record<string, string> | null = null;
+      for (const id of [user.uid, ...extraIds]) {
+        if (!id || (next ?? prev)[id] === name) continue;
+        next = { ...(next ?? prev), [id]: name };
+      }
+      return next ?? prev;
+    });
   }, [user?.uid, user?.displayName, user?.email, customUser?.displayName]);
 
   const previousData = useRef<Omit<VoucherContextType, 'loading'>>({

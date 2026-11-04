@@ -126,6 +126,51 @@ import { isDriveFileRef } from "@/lib/legacyDriveFileRef";
 import { resolveAuthoritativeFirestoreCompanyId } from "@/lib/resolveAuthoritativeFirestoreCompanyId";
 import { voucherDeleteDebugLog } from "@/lib/voucherDeletePreCheck";
 import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { readPocketBaseAppProfile } from "@/lib/pocketbaseData/pbAppSession";
+import { getLocalAuthUser } from "@/lib/localApiClient";
+
+/**
+ * Who is saving? `auth.currentUser` is always null now (pbCompat/auth) - fall back to the Pocket Ledger Server
+ * session profile, or the local company login, so `userDisplayName` / `userEmail` / `lastEditedByUserName`
+ * are never blank (ledger User column used to show "N/A").
+ */
+function resolveVoucherActorIdentity(
+  companyId: string,
+  userId: string
+): { displayName: string | null; email: string | null } {
+  const fb = auth.currentUser;
+  const fbName = (fb?.displayName || fb?.email?.split("@")?.[0] || "").trim();
+  if (fbName) return { displayName: fbName, email: fb?.email || null };
+  const uid = String(userId || "").trim();
+  const isLocalUid = uid === "local" || uid === "local_guest_user" || uid.startsWith("local:");
+  const fromLocal = (): { displayName: string | null; email: string | null } | null => {
+    try {
+      const lu = getLocalAuthUser(companyId);
+      const nm = String(lu?.displayName || lu?.username || "").trim();
+      if (!lu || !nm) return null;
+      return { displayName: nm, email: `${lu.username || lu.id}@local.pocket-ledger` };
+    } catch {
+      return null;
+    }
+  };
+  const fromPb = (): { displayName: string | null; email: string | null } | null => {
+    try {
+      const p = readPocketBaseAppProfile();
+      if (!p) return null;
+      const nm = String(p.name || p.email?.split("@")?.[0] || "").trim();
+      if (!nm) return null;
+      return { displayName: nm, email: p.email || null };
+    } catch {
+      return null;
+    }
+  };
+  const ordered = isLocalUid ? [fromLocal, fromPb] : [fromPb, fromLocal];
+  for (const fn of ordered) {
+    const r = fn();
+    if (r) return r;
+  }
+  return { displayName: null, email: null };
+}
 
 /** Edit save: transient `blob:` preview URLs ya khali `fileUrls` se `local:` / Drive refs mat hatao. */
 function persistableVoucherAttachmentUrls(raw: unknown): string[] {
@@ -1255,13 +1300,15 @@ async function saveVoucherOfflineLocalCreate(
   const trimmed = preGeneratedVoucherId && String(preGeneratedVoucherId).trim();
   const newId = trimmed || generateLocalVoucherIdForCreate();
   const authUser = auth.currentUser;
+  const actorIdentity = resolveVoucherActorIdentity(companyId, userId);
   const creatorDisplayName =
     options?.actorDisplayNameOverride ||
     authUser?.displayName ||
     authUser?.email?.split("@")?.[0] ||
     cleanVoucherData.userDisplayName ||
+    actorIdentity.displayName ||
     null;
-  const creatorEmail = authUser?.email || cleanVoucherData.userEmail || null;
+  const creatorEmail = authUser?.email || cleanVoucherData.userEmail || actorIdentity.email || null;
   let historyEnabled = false;
   try {
     const { enabled } = await getEffectiveHistorySettings(companyId);
@@ -1861,7 +1908,7 @@ export async function saveVoucher(
           companyId,
           userId: (existingLocal as any)?.userId ?? userId,
           lastEditedBy: userId,
-          lastEditedByUserName: auth.currentUser?.displayName || auth.currentUser?.email?.split("@")?.[0] || userId,
+          lastEditedByUserName: resolveVoucherActorIdentity(companyId, userId).displayName || userId,
           lastEditedAt: nowTs,
           updatedAt: nowTs,
         }
@@ -1974,13 +2021,15 @@ export async function saveVoucher(
     // Pehle browser SQLite mirror; roz `getDocs` range query sirf mirror khali pure-cloud branch mein (`enforce*` ke andar).
     await enforceDailyMonthlyVoucherQuotaForCreate(companyId, dailyLimit, monthlyLimit, storageIsLocal);
     const authUser = auth.currentUser;
+    const actorIdentity = resolveVoucherActorIdentity(companyId, userId);
     const creatorDisplayName =
       options?.actorDisplayNameOverride ||
       authUser?.displayName ||
       authUser?.email?.split("@")?.[0] ||
       cleanVoucherData.userDisplayName ||
+      actorIdentity.displayName ||
       null;
-    const creatorEmail = authUser?.email || cleanVoucherData.userEmail || null;
+    const creatorEmail = authUser?.email || cleanVoucherData.userEmail || actorIdentity.email || null;
     const isOwnerCreator = companyData?.ownerId === userId;
 
     const { enabled: historyEnabled } = await getEffectiveHistorySettings(companyId);
@@ -2205,7 +2254,7 @@ export async function saveVoucher(
     throw new Error("Voucher history is full. Clear history in History dialog to edit and save changes.");
   }
   const now = new Date();
-  const currentUserName = auth.currentUser?.displayName || auth.currentUser?.email?.split("@")?.[0] || userId;
+  const currentUserName = resolveVoucherActorIdentity(companyId, userId).displayName || userId;
   const previousEditor = (oldData as any)?.lastEditedByUserName || (existingHistory[0] as any)?.changedBy || "N/A";
   changedFields.lastEditedByUserName = { from: previousEditor, to: currentUserName };
   changedFields.lastEditedAt = { from: (oldData as any)?.lastEditedAt ?? (oldData as any)?.updatedAt ?? null, to: now };
@@ -2314,7 +2363,7 @@ export async function updateVoucherSpendWiseLinks(
     // Local-only mode me spend-wise links browser DB me update karke outbox queue karo.
     const oldData = await getCompanyDocFromBrowserDb(companyId, "vouchers", voucherId);
     if (!oldData) throw new Error("Voucher not found");
-    const currentUserName = auth.currentUser?.displayName || auth.currentUser?.email?.split("@")?.[0] || userId;
+    const currentUserName = resolveVoucherActorIdentity(companyId, userId).displayName || userId;
     const now = new Date();
     const existingHistory = Array.isArray((oldData as any)?.history) ? (oldData as any).history : [];
     const { enabled: historyEnabled, limit: historyLimit } = await getEffectiveHistorySettings(companyId);
@@ -2352,7 +2401,7 @@ export async function updateVoucherSpendWiseLinks(
   const fsCompanyId = await resolveAuthoritativeFirestoreCompanyId(companyId);
   const voucherRef = doc(firestore, `companies/${fsCompanyId}/vouchers`, voucherId);
   const authUser = auth.currentUser;
-  const currentUserName = authUser?.displayName || authUser?.email?.split("@")?.[0] || userId;
+  const currentUserName = authUser?.displayName || authUser?.email?.split("@")?.[0] || resolveVoucherActorIdentity(companyId, userId).displayName || userId;
   const now = new Date();
   const oldSnap = await getDoc(voucherRef).catch(() => null);
   let baseRow: Record<string, unknown> | null = oldSnap?.exists()

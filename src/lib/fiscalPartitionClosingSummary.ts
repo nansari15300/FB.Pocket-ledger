@@ -32,6 +32,12 @@ function rowClosingBalance(t: Record<string, unknown>): number | null {
 
 export type FiscalPartitionBooksDrCr = (tx: unknown) => { debit: number; credit: number };
 
+/** Signed opening (Dr positive) -> Dr/Cr side. Ledger FY Total row me opening carry jodne ke liye. */
+export function signedOpeningToDrCr(signed: number): { dr: number; cr: number } {
+  const v = Math.round((Number(signed) || 0) * 100) / 100;
+  return { dr: v > 0.005 ? v : 0, cr: v < -0.005 ? -v : 0 };
+}
+
 /** FY merge divider se pehle wale segment ka Total Dr/Cr + closing balance. */
 export function computeClosingSummaryBeforePartition(
   rowsInDisplayOrder: unknown[],
@@ -57,10 +63,14 @@ export function computeClosingSummaryBeforePartition(
   let totalCr = 0;
   let closingBalance = 0;
   let sawBalance = false;
+  let sawSpendWiseBalance = false;
 
   for (let i = start; i < partitionIndex; i++) {
     const t = rowsInDisplayOrder[i] as Record<string, unknown>;
     if (!isClosingSummaryRow(t)) continue;
+    if (typeof t._spendWiseLedgerRunningBalance === "number" || typeof t._spendWiseRunningBalance === "number") {
+      sawSpendWiseBalance = true;
+    }
     if (booksDrCrForRow) {
       const books = booksDrCrForRow(t);
       totalDr += ledgerAmount(books.debit);
@@ -77,6 +87,14 @@ export function computeClosingSummaryBeforePartition(
   }
 
   if (!sawBalance && totalDr === 0 && totalCr === 0) return null;
+
+  // Opening carry (Dated Opening / FY Opening) list me row nahi hoti: opening = closing - (Dr - Cr).
+  // Spend-wise me group-wise balance restart hota hai, isliye wahan purana behaviour.
+  if (sawBalance && !sawSpendWiseBalance) {
+    const opening = signedOpeningToDrCr(closingBalance - (totalDr - totalCr));
+    totalDr += opening.dr;
+    totalCr += opening.cr;
+  }
 
   return { totalDr, totalCr, closingBalance };
 }

@@ -15838,7 +15838,7 @@ html body [data-pl-reminder-form] :is(input:not([type="checkbox"]):not([type="ra
     flex: 0 0 2.5in !important;
     overflow: hidden !important;
   }
-  html body button[data-theme-header="company-selector"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > span.truncate {
+  html body button[data-theme-header="company-selector"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > [data-pl-company-name-scroll] {
     display: block !important;
     flex: 1 1 auto !important;
     min-width: 0 !important;
@@ -15847,8 +15847,8 @@ html body [data-pl-reminder-form] :is(input:not([type="checkbox"]):not([type="ra
     white-space: nowrap !important;
     color: hsl(var(--foreground)) !important;
   }
-  html body.theme-pro button[data-theme-header="company-selector"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > span.truncate,
-  html body.theme-pl-light button[data-theme-header="company-selector"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > span.truncate {
+  html body.theme-pro button[data-theme-header="company-selector"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > [data-pl-company-name-scroll],
+  html body.theme-pl-light button[data-theme-header="company-selector"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > [data-pl-company-name-scroll] {
     color: rgb(29 78 216) !important; /* blue-700 (original) */
   }
 }
@@ -15881,6 +15881,140 @@ html body [data-pl-reminder-form] button[data-pl-reminder-submit]:not(#pl-theme-
   transform: translateY(-1px) !important;
 }
 /* === end Theme Master: hover 3D raise in ALL themes === */
+/* === Theme Master: mobile header Company selector 2.5in + hold-scroll name (Nov 2026) ===
+   CompanySelector.tsx mobile trigger: tap = open, hold 1s = drag-scroll name (JS scrollLeft). Scrollbars hidden. */
+@media (max-width: 767px), (pointer: coarse) {
+  html body button[data-theme-header="company-selector"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+    width: 2.5in !important;
+    min-width: 2.5in !important;
+    max-width: 2.5in !important;
+    flex: 0 0 2.5in !important;
+    overflow: hidden !important;
+    touch-action: none !important;
+    -webkit-user-select: none !important;
+    user-select: none !important;
+    -webkit-touch-callout: none !important;
+  }
+  html body button[data-theme-header="company-selector"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > [data-pl-company-name-scroll] {
+    display: block !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
+    scrollbar-width: none !important;
+    color: hsl(var(--foreground)) !important;
+  }
+  html body button[data-theme-header="company-selector"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > [data-pl-company-name-scroll]::-webkit-scrollbar { display: none !important; }
+  html body [data-pl-company-selector-popup]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) { scrollbar-width: none !important; }
+  html body [data-pl-company-selector-popup]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3)::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+}
+/* === end Theme Master: mobile header Company selector 2.5in === */
+
+/* === Theme Master: desktop header row horizontal scroll, no overlap (Nov 2026) ===
+   DesktopAppHeader.tsx [data-pl-header-row="desktop"]: nowrap + overflow-x auto (scrollbar hidden), children no shrink
+   (company 2.5in ke baad buttons overlap band). Vertical padding = hover raise shadow clip na ho. All themes. */
+@media (min-width: 768px) and (pointer: fine) {
+  html body [data-pl-header-row="desktop"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+    margin-top: -6px !important;
+    margin-bottom: -6px !important;
+    padding-inline: 4px !important;
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+  html body [data-pl-header-row="desktop"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2)::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+  html body [data-pl-header-row="desktop"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > *,
+  html body [data-pl-header-row="desktop"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > * > * {
+    flex-shrink: 0 !important;
+  }
+  html body [data-pl-header-row="desktop"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > :not(.grow-\[9999\]) {
+    min-width: max-content !important;
+  }
+}
+/* === end Theme Master: desktop header row horizontal scroll === */
+
+/* === Theme Master: ALL header rows scroll, no overlap (Nov 2026) ===
+   Root cause: headerIsMobile branch (useIsMobile) = row > div.flex-1.overflow-hidden > div.min-w-0.flex-1 (company slot).
+   Button 2.5in, slot wrapper shrank -> button overflowed slot and overlapped BS/monitor. Fix: 2.5in on slot, inner
+   wrapper no shrink/no clip, row itself scrolls (hidden scrollbar), all widths/themes. */
+html body [data-pl-header-row]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+  margin-top: -6px !important;
+  margin-bottom: -6px !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+html body [data-pl-header-row]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3)::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+html body [data-pl-header-row]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) > :not(.grow-\[9999\]),
+html body [data-pl-header-row-inner]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) > * {
+  flex: 0 0 auto !important;
+  min-width: max-content !important;
+}
+html body [data-pl-header-row-inner]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  overflow: visible !important;
+}
+html body [data-pl-header-company-slot]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  flex: 0 0 2.5in !important;
+  width: 2.5in !important;
+  min-width: 2.5in !important;
+  max-width: 2.5in !important;
+}
+html body [data-pl-header-company-slot] button[data-theme-header="company-selector"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  flex: 1 1 auto !important;
+}
+/* === end Theme Master: ALL header rows scroll === */
+
+/* === Theme Master: header row real scroll container (Nov 2026) ===
+   Header/pill content-sized ho raha tha (row grow -> ancestor clip, row khud scroll nahi). contain:inline-size = header width
+   parent se aaye, content se nahi; row = 100% width scroller; touch pan-x. */
+html body header:has([data-pl-header-row]):not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body .pl-chrome-card:has(> [data-pl-header-row]):not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  contain: inline-size !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  overflow: hidden !important;
+}
+html body [data-pl-header-row]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4) {
+  display: flex !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  touch-action: pan-x !important;
+  overscroll-behavior-x: contain !important;
+}
+/* === end Theme Master: header row real scroll container === */
+
+/* === Theme Master: mobile header drag-scroll unblock (Nov 2026) ===
+   Mobile company trigger pe touch-action:none tha (2.5in = row ka bada hissa) -> drag se row scroll block. Ab pan-x. */
+html body [data-pl-header-row] button[data-theme-header="company-selector"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3),
+html body [data-pl-header-row] :is(button, a, [role="button"], [data-pl-header-company-slot], [data-pl-header-row-inner]):not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  touch-action: pan-x !important;
+}
+/* === end Theme Master: mobile header drag-scroll unblock === */
+
+/* === Theme Master: header mouse drag-scroll cursor (Nov 2026) === */
+html body [data-pl-header-row]:not(#pl-theme-master-none) { cursor: grab; }
+html body [data-pl-header-row][data-pl-header-dragging]:not(#pl-theme-master-none),
+html body [data-pl-header-row][data-pl-header-dragging]:not(#pl-theme-master-none) * {
+  cursor: grabbing !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+/* === end Theme Master: header mouse drag-scroll cursor === */
 
 /* === Theme Master: Dark (theme-pl-medium) all text white (Nov 2026) ===
    Dark list item = theme-pl-medium (theme-pl-dark is legacy, migrated). Excluded: amount / Dr-Cr colors
@@ -15898,6 +16032,327 @@ html body.theme-pl-medium header button:not(:is([class*="text-green-"], [class*=
   background-color: hsl(var(--accent)) !important;
 }
 /* === end Theme Master: Dark all text white === */
+/* === Theme Master: Dark light-surface -> dark surface (Nov 2026) ===
+   Dark (theme-pl-medium): light-blue/white Tailwind surfaces (Party/Account details header, To Pay strip, list bg, FY strips,
+   modals, PL server ping box) -> same dark fill as party search / pills (--pl-pill-bg = 0 0% 28%), text white.
+   Excluded: colored action buttons, amount/Dr-Cr text, pill tags (rounded-full / badges), bg-primary/destructive. CSS only. */
+html body.theme-pl-medium :is(
+  [class*="bg-blue-50"], [class*="bg-blue-100"], [class*="bg-blue-200"],
+  [class*="bg-sky-50"], [class*="bg-sky-100"], [class*="bg-sky-200"],
+  [class*="bg-indigo-50"], [class*="bg-slate-50"], [class*="bg-slate-100"], [class*="bg-gray-50"], [class*="bg-gray-100"],
+  .bg-white, [class*="bg-white/"],
+  [class*="from-blue-50"], [class*="from-blue-100"], [class*="from-sky-50"], [class*="from-sky-100"], [class*="from-slate-50"], [class*="from-white"],
+  [class*="via-blue-50"], [class*="via-sky-50"], [class*="via-white"],
+  [class*="to-blue-50"], [class*="to-blue-100"], [class*="to-sky-50"], [class*="to-sky-100"], [class*="to-slate-50"], [class*="to-white"]
+):not(button):not([role="button"]):not(.rounded-full):not([data-pl-tag]):not([class*="badge"]):not(.bg-primary):not(.bg-destructive):not(input):not(textarea):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  background-color: hsl(var(--pl-pill-bg, 0 0% 28%)) !important;
+  background-image: none !important;
+  border-color: hsl(var(--border)) !important;
+  color: #fff !important;
+}
+/* Plain text inside those surfaces (not amounts / colored text) -> white */
+html body.theme-pl-medium :is([class*="bg-blue-50"], [class*="bg-blue-100"], [class*="bg-sky-50"], [class*="bg-sky-100"], [class*="bg-slate-50"], [class*="bg-slate-100"], .bg-white, [class*="from-blue-50"], [class*="from-sky-50"], [class*="from-white"]):not(button):not(.rounded-full):not(#pl-theme-master-none) :is([class*="text-slate-"], [class*="text-gray-"], [class*="text-blue-7"], [class*="text-blue-8"], [class*="text-blue-9"], [class*="text-sky-7"], [class*="text-sky-8"], [class*="text-sky-9"], .text-black, .text-foreground, .text-muted-foreground):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  color: #fff !important;
+}
+/* === end Theme Master: Dark light-surface -> dark surface === */
+
+/* === Theme Master: Dark mobile ledger blue -> light black (Nov 2026) ===
+   Source: FREEZE "Mobile Default (violet)" block (~12492-12520, @media max-width:767px): html[data-pl-mobile-card-color="violet"]
+   page/scroll/txn-host/freeze-shell = #bfdbfe !important (dark ko ignore karta tha). Pager host rgb(219 234 254/.92) (~11009/11194),
+   merged header dark rule sirf ".dark" class pe (~11413). FREEZE block untouched; sirf body.theme-pl-medium override. */
+@media (max-width: 767px) {
+  html body.theme-pl-medium [data-pl-mobile-card-page-color]:not(#pl-theme-master-none),
+  html[data-pl-mobile-card-color] body.theme-pl-medium main .scroll-touch:not(#pl-theme-master-none),
+  html[data-pl-mobile-card-color] body.theme-pl-medium main .scroll-touch > div:not(#pl-theme-master-none),
+  html[data-pl-mobile-card-color] body.theme-pl-medium [data-pl-freeze-shell-content]:not(#pl-theme-master-none),
+  html[data-pl-mobile-card-color] body.theme-pl-medium [data-pl-mobile-txn-host]:not(#pl-theme-master-none),
+  html[data-pl-mobile-card-color] body.theme-pl-medium .pl-ledger-detail-empty-fill:not(#pl-theme-master-none),
+  html[data-pl-mobile-card-color] body.theme-pl-medium .pl-ledger-detail-table-shell:not(#pl-theme-master-none) {
+    background-color: hsl(0 0% 20%) !important;
+    background-image: none !important;
+  }
+}
+html body.theme-pl-medium .pl-mobile-txn-pager-host:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pl-medium [data-pl-ledger-txn-page] :is(.pl-mobile-txn-pager, [data-pl-mobile-txn-pager], .pl-ledger-desktop-footer-shell):not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  background-color: hsl(0 0% 20%) !important;
+  background-image: none !important;
+}
+/* Party details merged header + To Pay / date rows */
+html body.theme-pl-medium main [data-pl-mobile-detail-merged-header]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pl-medium main [data-pl-mobile-detail-merged-header] ~ :is([class*="border-blue-300"]):not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pl-medium main :is(.pl-ledger-header-card, .pl-ledger-header-balance-card, .pl-ledger-header-tds-balance-card):not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  background-color: hsl(var(--pl-pill-bg, 0 0% 28%)) !important;
+  background-image: none !important;
+  border-color: hsl(var(--border)) !important;
+}
+html body.theme-pl-medium main [data-pl-mobile-detail-merged-header]:not(#pl-theme-master-none) :is(h1, h2, h3, p, span, div):not([class*="text-green-"]):not([class*="text-red-"]):not([class*="text-emerald-"]):not([class*="text-rose-"]):not([class*="text-amber-"]):not([style*="color"]):not(#pl-theme-master-none-2) {
+  color: #fff;
+}
+/* FY start/end strips: user-chosen FY row color (html[data-pl-fy-*-row-color] / [data-pl-fy-row-color]) wins.
+   Dark gray only when no color chosen (Default). */
+html:not([data-pl-fy-start-row-color]) body.theme-pl-medium [data-row="fiscal-partition-label"]:not([data-pl-fy-row-color]):not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html:not([data-pl-fy-start-row-color]) body.theme-pl-medium [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-label"]:not([data-pl-fy-row-color]) > td:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html:not([data-pl-fy-end-row-color]) body.theme-pl-medium [data-row="fiscal-partition-total"]:not([data-pl-fy-row-color]):not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html:not([data-pl-fy-end-row-color]) body.theme-pl-medium [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-total"]:not([data-pl-fy-row-color]) > td:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  background-color: hsl(0 0% 24%) !important;
+  background-image: none !important;
+  color: #fff;
+}
+/* Chosen (pastel) FY color in Dark: readable dark text */
+html[data-pl-fy-start-row-color] body.theme-pl-medium [data-row="fiscal-partition-label"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html[data-pl-fy-end-row-color] body.theme-pl-medium [data-row="fiscal-partition-total"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pl-medium [data-row^="fiscal-partition"][data-pl-fy-row-color]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  color: #111 !important;
+}
+html[data-pl-fy-start-row-color] body.theme-pl-medium [data-row="fiscal-partition-label"]:not(#pl-theme-master-none) :is(td, span, div, p, button, svg):not([class*="text-green-"]):not([class*="text-red-"]):not([class*="text-emerald-"]):not([class*="text-rose-"]):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3),
+html[data-pl-fy-end-row-color] body.theme-pl-medium [data-row="fiscal-partition-total"]:not(#pl-theme-master-none) :is(td, span, div, p, button, svg):not([class*="text-green-"]):not([class*="text-red-"]):not([class*="text-emerald-"]):not([class*="text-rose-"]):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3),
+html body.theme-pl-medium [data-row^="fiscal-partition"][data-pl-fy-row-color]:not(#pl-theme-master-none) :is(td, span, div, p, button, svg):not([class*="text-green-"]):not([class*="text-red-"]):not([class*="text-emerald-"]):not([class*="text-rose-"]):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  color: #111 !important;
+}
+/* Bottom bar (ALL themes, Nov 4 2026): only Search input white, dark text, gray border/icon. Dropdown left = original styles. */
+html body :is([data-pl-mobile-txn-toolbar-row], [data-pl-mobile-txn-toolbar-below-pager]) :is(input[data-pl-ledger-txn-search], input):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  background-color: #fff !important;
+  background-image: none !important;
+  border-color: rgb(209 213 219) !important;
+  color: #111 !important;
+  -webkit-text-fill-color: #111;
+}
+html body :is([data-pl-mobile-txn-toolbar-row], [data-pl-mobile-txn-toolbar-below-pager]) input:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3)::placeholder {
+  color: rgb(107 114 128) !important;
+  -webkit-text-fill-color: rgb(107 114 128);
+  opacity: 1;
+}
+html body :is([data-pl-mobile-txn-toolbar-row], [data-pl-mobile-txn-toolbar-below-pager]) .relative > svg:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  color: rgb(75 85 99) !important;
+  stroke: rgb(75 85 99) !important;
+  opacity: 1 !important;
+}
+/* Dark: dropdown left of search = pill (restored) */
+html body.theme-pl-medium main :is([data-pl-mobile-txn-toolbar-row], [data-pl-mobile-txn-toolbar-below-pager]) :is(button[role="combobox"], button[data-pl-mobile-txn-filter]):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3),
+html body.theme-pl-medium :is([data-pl-mobile-txn-toolbar-row], [data-pl-mobile-txn-toolbar-below-pager]) button[role="combobox"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  background-color: hsl(var(--pl-pill-bg, 0 0% 28%)) !important;
+  background-image: none !important;
+  border-color: hsl(var(--border)) !important;
+  color: #fff !important;
+}
+/* === end Theme Master: Dark mobile ledger blue -> light black === */
+
+/* === Theme Master: View Card Theme menu section only in Default (Pro) theme === */
+body:not(.theme-pro) [data-pl-card-theme-section] {
+  display: none !important;
+}
+/* === end Theme Master: View Card Theme only in Pro === */
+
+/* === Theme Master: Dark opening-card narration white ===
+   Source: TransactionsTable.tsx 4560 / 4688 (mobile Book/Dated/FY opening card <p class="... text-black">) + 2758 (desktop opening narration td text-black). */
+html body.theme-pl-medium :is(p, td)[class~="text-black"]:has(span.whitespace-pre-wrap):not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pl-medium :is(p, td)[class~="text-black"]:has(span.whitespace-pre-wrap):not(#pl-theme-master-none) span:not([class*="text-red-"]):not([class*="text-green-"]):not(#pl-theme-master-none-2) {
+  color: #fff !important;
+}
+/* === end Theme Master: Dark opening-card narration white === */
+
+/* === Theme Master: Dark mobile pager Next/Prev disabled text + footer chevron FAB white ===
+   Source: MobileTransactionsPager.tsx 114-189 (Prev/Next Button disabled), MobileLedgerFooterChevronFab.tsx (.pl-mobile-ledger-footer-fab). */
+html body.theme-pl-medium [data-pl-mobile-txn-pager] button:is(:disabled, [disabled], [aria-disabled="true"]):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  color: rgb(255 255 255 / 0.65) !important;
+  opacity: 1 !important;
+}
+html body.theme-pl-medium [data-pl-mobile-txn-pager] button:is(:disabled, [disabled], [aria-disabled="true"]):not(#pl-theme-master-none) *:not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  color: inherit !important;
+}
+html body.theme-pl-medium .pl-mobile-ledger-footer-fab:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3),
+html body.theme-pl-medium .pl-mobile-ledger-footer-fab:not(#pl-theme-master-none) :is(svg, path, polyline, line):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  color: #fff !important;
+  stroke: #fff !important;
+}
+/* === end Theme Master: Dark mobile pager disabled + footer FAB === */
+
+/* === Theme Master: Light (theme-pl-light) mobile ledger blue -> light white ===
+   Source same as Dark: FREEZE "Mobile Default (violet)" #bfdbfe (~12492-12520, untouched), pager host rgb(219 234 254/.92) (~11009/11194),
+   MobileTransactionsPager.tsx:100 bg-blue-100/80, merged header / To Pay rows. Pro (Default) untouched. */
+@media (max-width: 767px) {
+  html body.theme-pl-light [data-pl-mobile-card-page-color]:not(#pl-theme-master-none),
+  html[data-pl-mobile-card-color] body.theme-pl-light main .scroll-touch:not(#pl-theme-master-none),
+  html[data-pl-mobile-card-color] body.theme-pl-light main .scroll-touch > div:not(#pl-theme-master-none),
+  html[data-pl-mobile-card-color] body.theme-pl-light [data-pl-freeze-shell-content]:not(#pl-theme-master-none),
+  html[data-pl-mobile-card-color] body.theme-pl-light [data-pl-mobile-txn-host]:not(#pl-theme-master-none),
+  html[data-pl-mobile-card-color] body.theme-pl-light .pl-ledger-detail-empty-fill:not(#pl-theme-master-none),
+  html[data-pl-mobile-card-color] body.theme-pl-light .pl-ledger-detail-table-shell:not(#pl-theme-master-none) {
+    background-color: #f8fafc !important;
+    background-image: none !important;
+  }
+}
+html body.theme-pl-light .pl-mobile-txn-pager-host:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pl-light :is(.pl-mobile-txn-pager, [data-pl-mobile-txn-pager]):not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pl-light main [data-pl-mobile-detail-merged-header]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pl-light main [data-pl-mobile-detail-merged-header] ~ :is([class*="border-blue-300"]):not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pl-light main :is(.pl-ledger-header-card, .pl-ledger-header-balance-card, .pl-ledger-header-tds-balance-card):not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  background-color: #f8fafc !important;
+  background-image: none !important;
+  border-color: rgb(226 232 240) !important;
+}
+/* FY strips: chosen color wins; default -> light white-gray */
+html:not([data-pl-fy-start-row-color]) body.theme-pl-light [data-row="fiscal-partition-label"]:not([data-pl-fy-row-color]):not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html:not([data-pl-fy-start-row-color]) body.theme-pl-light [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-label"]:not([data-pl-fy-row-color]) > td:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html:not([data-pl-fy-end-row-color]) body.theme-pl-light [data-row="fiscal-partition-total"]:not([data-pl-fy-row-color]):not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html:not([data-pl-fy-end-row-color]) body.theme-pl-light [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-total"]:not([data-pl-fy-row-color]) > td:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  background-color: #f1f5f9 !important;
+  background-image: none !important;
+}
+/* === end Theme Master: Light mobile ledger blue -> light white === */
+
+/* === Theme Master: master list footer search (white box) dark text, ALL themes ===
+   Hook: src/components/ui/input.tsx 77/110 data-pl-mlc-search-input (list chrome search, e.g. /bank-cash beside + Add Account). */
+html body input[data-pl-mlc-search-input]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  color: #111 !important;
+  -webkit-text-fill-color: #111;
+  caret-color: #111;
+}
+html body input[data-pl-mlc-search-input]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3)::placeholder {
+  color: rgb(107 114 128) !important;
+  -webkit-text-fill-color: rgb(107 114 128);
+  opacity: 1;
+}
+/* === end Theme Master: master list footer search dark text === */
+
+/* === Theme Master: account list header = Pro (Default) style in all themes ===
+   Overrides our old #25 pill (globals.css ~15113): full-width strip, title left, total right, bottom border. JSX same for all themes (ResponsiveMasterDetail.tsx 280-336, mobileListChrome.ts pageHeader). */
+html body:not(.theme-pro) [data-pl-master-list-chrome] .pl-mlc-page-header:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0.3rem 0.5rem !important;
+  min-height: 2.7rem !important;
+  align-self: stretch !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  border: 0 !important;
+  border-bottom: 1px solid hsl(var(--border)) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background-color: hsl(var(--muted)) !important;
+  background-image: none !important;
+}
+html body:not(.theme-pro) [data-pl-master-list-chrome] .pl-mlc-page-header > div:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  display: flex !important;
+  width: 100% !important;
+  flex: 1 1 auto !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+}
+html body:not(.theme-pro) [data-pl-master-list-chrome] .pl-mlc-page-header h1:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  display: block !important;
+  visibility: visible !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  font-weight: 700 !important;
+  color: hsl(var(--foreground)) !important;
+}
+html body.theme-pl-light [data-pl-master-list-chrome] .pl-mlc-page-header:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) { background-color: #f1f5f9 !important; }
+html body.theme-pl-light [data-pl-master-list-chrome] .pl-mlc-page-header h1:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) { color: #111 !important; }
+html body.theme-pl-medium [data-pl-master-list-chrome] .pl-mlc-page-header:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) { background-color: hsl(var(--pl-pill-bg, 0 0% 28%)) !important; }
+html body.theme-pl-medium [data-pl-master-list-chrome] .pl-mlc-page-header h1:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) { color: #fff !important; }
+/* === end Theme Master: account list header Pro style === */
+
+/* === Theme Master: chevron FAB arrow visible in light themes ===
+   Hook: MasterListChromeChevronToggle.tsx [data-pl-master-list-chrome-chevron-toggle] (+ .pl-mobile-ledger-footer-fab). Dark = white arrow (own block), Pro untouched. */
+html :is(body.theme-pl-light, body.theme-pl-gray, body.theme-soft-green, body.theme-dim-soft-green, body.theme-soft-blue, body.theme-sky-blue, body.theme-soft-yellow) :is([data-pl-master-list-chrome-chevron-toggle], .pl-mobile-ledger-footer-fab):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3),
+html :is(body.theme-pl-light, body.theme-pl-gray, body.theme-soft-green, body.theme-dim-soft-green, body.theme-soft-blue, body.theme-sky-blue, body.theme-soft-yellow) :is([data-pl-master-list-chrome-chevron-toggle], .pl-mobile-ledger-footer-fab):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) :is(svg, path, polyline, line) {
+  color: rgb(55 65 81) !important;
+  stroke: rgb(55 65 81) !important;
+  opacity: 1 !important;
+}
+html body.theme-pl-gray :is([data-pl-master-list-chrome-chevron-toggle], .pl-mobile-ledger-footer-fab):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
+  background-color: hsl(var(--muted)) !important;
+  border-color: rgb(156 163 175) !important;
+}
+/* === end Theme Master: chevron FAB arrow visible in light themes === */
+
+/* Theme Master: Light theme spendwise card 3D, no dark border */
+/* === Theme Master: Light (theme-pl-light) + Default/Pro (theme-pro) mobile txn card = white 1px border + soft 3D shadow (Nov 2026) ===
+   Hook: TransactionsTable.tsx <Card data-pl-mobile-transaction-card> (+ ui/card.tsx pl-card-3d, border-2, palette !border-* classes, inline borderColor/borderWidth).
+   4x :not(#id) beats every other card rule; also kills outline/ring. Dark (theme-pl-medium) + Gray untouched. Statement-checked / check-marked cards keep amber look. */
+html :is(body.theme-pl-light, body.theme-pro, html.theme-pl-light body, html.theme-pro body) [data-pl-mobile-transaction-card]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not([data-pl-statement-checked]):not([data-pl-check-marked]) {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: #fff !important;
+  outline: 0 !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 10px rgba(15,23,42,.10) !important;
+  transition: transform .15s ease, box-shadow .15s ease !important;
+}
+html :is(body.theme-pl-light, body.theme-pro, html.theme-pl-light body, html.theme-pro body) [data-pl-mobile-transaction-card]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not([data-pl-statement-checked]):not([data-pl-check-marked]):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 4px rgba(0,0,0,.08), 0 8px 18px rgba(15,23,42,.16) !important;
+}
+/* === end Theme Master: Light spendwise card 3D === */
+
+/* === Theme Master: PC desktop header row = wrap, NO horizontal scroll (Nov 2026) ===
+   Overrides earlier blocks "desktop header row horizontal scroll", "ALL header rows scroll", "real scroll container",
+   "drag-scroll unblock", "mouse drag-scroll cursor" for [data-pl-header-row="desktop"] only. Mobile row ([data-pl-header-row="mobile"])
+   keeps scrolling unchanged. DesktopAppHeader.tsx wheel/drag handlers now target the mobile row only. Company slot 2.5in kept. */
+html body header:has([data-pl-header-row="desktop"]):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5),
+html body .pl-chrome-card:has(> [data-pl-header-row="desktop"]):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) {
+  contain: none !important;
+  overflow: visible !important;
+}
+html body [data-pl-header-row="desktop"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) {
+  flex-wrap: wrap !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  touch-action: auto !important;
+  overscroll-behavior-x: auto !important;
+  cursor: auto !important;
+}
+html body [data-pl-header-row="desktop"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) > :not(.grow-\[9999\]),
+html body [data-pl-header-row="desktop"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) > * > * {
+  flex-shrink: 1 !important;
+}
+html body [data-pl-header-row="desktop"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) :is(button, a, [role="button"], [data-pl-header-company-slot], [data-pl-header-row-inner]) {
+  touch-action: auto !important;
+}
+/* === end Theme Master: PC desktop header row wrap === */
+
+/* === Theme Master: mobile header row native touch scroll (APK/Capacitor + EXE mobile, Nov 2026) ===
+   Single nowrap row, company slot 2.5in, finger swipe = native horizontal scroll (Android WebView). JS wheel/drag = mouse only. */
+html body [data-pl-header-row="mobile"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) {
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x pinch-zoom !important;
+  overscroll-behavior-x: contain !important;
+  scrollbar-width: none !important;
+}
+html body [data-pl-header-row="mobile"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5)::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+html body [data-pl-header-row="mobile"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) > *,
+html body [data-pl-header-row="mobile"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) [data-pl-header-row-inner] > * {
+  flex-shrink: 0 !important;
+}
+html body [data-pl-header-row="mobile"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) [data-pl-header-row-inner] {
+  flex: 0 0 auto !important;
+  overflow: visible !important;
+}
+/* === end Theme Master: mobile header row native touch scroll === */
+
+/* === Theme Master: mobile two-finger pinch zoom allowed (APK + mobile browsers, Nov 2026) ===
+   layout.tsx viewport meta now maximum-scale=5, user-scalable=yes. touch-action pan-only values blocked pinch -> add pinch-zoom.
+   Header row/buttons keep horizontal swipe (pan-x) + pinch. Gallery zoom (inAppGalleryImageZoom) untouched. */
+html body .scroll-touch:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) {
+  touch-action: pan-x pan-y pinch-zoom !important;
+}
+html body [data-pl-header-row]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5),
+html body [data-pl-header-row] :is(button, a, [role="button"], [data-pl-header-company-slot], [data-pl-header-row-inner]):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) {
+  touch-action: pan-x pinch-zoom !important;
+}
+html body [data-pl-header-row="desktop"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5),
+html body [data-pl-header-row="desktop"] :is(button, a, [role="button"], [data-pl-header-company-slot], [data-pl-header-row-inner]):not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) {
+  touch-action: auto !important;
+}
+/* === end Theme Master: mobile pinch zoom === */
 
 
 /* Reuse company attachment — list rows match green dialog theme border */

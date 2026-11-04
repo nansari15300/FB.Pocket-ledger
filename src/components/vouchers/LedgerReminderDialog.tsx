@@ -65,6 +65,23 @@ type LedgerReminderDialogProps = {
   title?: string | null;
   /** AlarmPopup "Extend date & time": is reminder ko EDIT mode me prefill karke kholo. */
   editAlarm?: ReminderAlarm | null;
+  /** Optional: form ka starting Title (default = title). Link label / account naam par asar nahi. */
+  initialTitle?: string | null;
+  /** Optional: form ka starting Message. */
+  initialMessage?: string | null;
+  /** Optional: form ka starting Date (default = aaj). */
+  initialDate?: Date | null;
+  /** Optional: AD mode me bhi BS (Nepali) date picker + Date Converter dikhao. */
+  forceBsDatePicker?: boolean;
+  /** Optional: create/update successful hone ke baad (e.g. R/P deadline storage sync). */
+  onSaved?: (info: {
+    mode: "create" | "update";
+    date: Date;
+    title: string;
+    message: string;
+    context?: string;
+    entityId?: string;
+  }) => void;
 };
 
 const NO_ACCOUNT = "__no_account__";
@@ -81,7 +98,19 @@ const FIELD_LABEL = "text-xs font-medium text-muted-foreground";
  * Right: selected account ke reminders: Upcoming / History / Deleted (soft delete + restore).
  * Save path Messages -> Reminder tab (AlarmsTab) ke exported helpers hi hain.
  */
-export function LedgerReminderDialog({ open, onOpenChange, context, entityId, title, editAlarm }: LedgerReminderDialogProps) {
+export function LedgerReminderDialog({
+  open,
+  onOpenChange,
+  context,
+  entityId,
+  title,
+  editAlarm,
+  initialTitle,
+  initialMessage,
+  initialDate,
+  forceBsDatePicker,
+  onSaved,
+}: LedgerReminderDialogProps) {
   const [isProcessing, setIsProcessing] = React.useState(false);
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!isProcessing) onOpenChange(next); }}>
@@ -92,6 +121,11 @@ export function LedgerReminderDialog({ open, onOpenChange, context, entityId, ti
           entityId={entityId}
           title={title}
           editAlarm={editAlarm}
+          initialTitle={initialTitle}
+          initialMessage={initialMessage}
+          initialDate={initialDate}
+          forceBsDatePicker={forceBsDatePicker}
+          onSaved={onSaved}
           isProcessing={isProcessing}
           setIsProcessing={setIsProcessing}
           onClose={() => onOpenChange(false)}
@@ -111,6 +145,11 @@ function LedgerReminderPanel({
   entityId,
   title,
   editAlarm,
+  initialTitle,
+  initialMessage,
+  initialDate,
+  forceBsDatePicker,
+  onSaved,
   isProcessing,
   setIsProcessing,
   onClose,
@@ -127,16 +166,16 @@ function LedgerReminderPanel({
 
   const initialKey = reminderEntityKey(context, entityId) || NO_ACCOUNT;
   const [accountKey, setAccountKey] = React.useState<string>(initialKey);
-  const autoTitleRef = React.useRef<string>(String(title ?? "").trim());
+  const autoTitleRef = React.useRef<string>(String(initialTitle ?? title ?? "").trim());
 
   const [editing, setEditing] = React.useState<ReminderAlarm | null>(null);
-  const [reminderTitle, setReminderTitle] = React.useState(() => String(title ?? "").trim());
-  const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(() => new Date());
+  const [reminderTitle, setReminderTitle] = React.useState(() => String(initialTitle ?? title ?? "").trim());
+  const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(() => (initialDate ? new Date(initialDate) : new Date()));
   const [selectedHour, setSelectedHour] = React.useState("10");
   const [selectedMinute, setSelectedMinute] = React.useState("00");
   const [selectedPeriod, setSelectedPeriod] = React.useState("AM");
   const [remindBefore, setRemindBefore] = React.useState("0");
-  const [message, setMessage] = React.useState("");
+  const [message, setMessage] = React.useState(() => String(initialMessage ?? ""));
   const [selectedUsers, setSelectedUsers] = React.useState<string[]>(defaultUsers);
   const usersTouchedRef = React.useRef(false);
 
@@ -286,9 +325,11 @@ function LedgerReminderPanel({
       if (editing) {
         await updateReminderAlarm(companyId, editing.id, alarmData);
         toast.success("Reminder Updated", { description: `Your reminder for "${cleanTitle}" has been updated.` });
+        onSaved?.({ mode: "update", date: new Date(selectedDate), title: cleanTitle, message: message.trim(), context: selected?.context, entityId: selected?.entityId });
       } else {
         await createReminderAlarm(companyId, alarmData, user?.uid ?? null);
         toast.success("Reminder Set", { description: `A reminder for "${cleanTitle}" has been scheduled.` });
+        onSaved?.({ mode: "create", date: new Date(selectedDate), title: cleanTitle, message: message.trim(), context: selected?.context, entityId: selected?.entityId });
       }
       resetForm();
       setListTab("upcoming");
@@ -477,7 +518,7 @@ function LedgerReminderPanel({
           <div className={FIELD}>
             <label className={FIELD_LABEL}>Date</label>
             <div className="flex flex-wrap items-center gap-2">
-            {(dateSystem === "BS" || dateSystem === "Both") && (
+            {(dateSystem === "BS" || dateSystem === "Both" || forceBsDatePicker) && (
               <div className="min-w-0 max-w-[2.5in]">
                 <BsDatePicker
                   valueAD={selectedDate}

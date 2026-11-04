@@ -70,6 +70,8 @@ const MobileViewContext = React.createContext<{
   hidePcIcon: boolean;
   forcedViewMode: 'mobile' | 'pc' | null;
   setForcedMode: (mode: 'mobile' | 'pc' | null) => void;
+  /** Provider ne pehla real `checkIsMobile` chala diya - tabhi `useIsMobileLayoutResolved` boolean de */
+  layoutResolved?: boolean;
 } | null>(null);
 
 // Provider component
@@ -85,6 +87,7 @@ export function MobileViewProvider({
   const [isPortrait, setIsPortrait] = React.useState(false)
   const [forcedViewMode, setForcedViewModeState] = React.useState<'mobile' | 'pc' | null>(null)
   const [isClient, setIsClient] = React.useState(false)
+  const [layoutResolved, setLayoutResolved] = React.useState(false)
 
   React.useEffect(() => {
     setIsClient(true);
@@ -194,6 +197,7 @@ export function MobileViewProvider({
     };
 
     checkIsMobile(); // run once on mount / when deps change
+    setLayoutResolved(true);
     window.addEventListener("resize", scheduleCheck);
     window.addEventListener("orientationchange", scheduleCheck);
 
@@ -258,8 +262,9 @@ export function MobileViewProvider({
     isPortrait,
     hidePcIcon: false,
     forcedViewMode,
-    setForcedMode
-  }), [isMobile, isPortrait, forcedViewMode, setForcedMode, isClient]);
+    setForcedMode,
+    layoutResolved
+  }), [isMobile, isPortrait, forcedViewMode, setForcedMode, isClient, layoutResolved]);
 
   return (
     <MobileViewContext.Provider value={value}>
@@ -381,12 +386,13 @@ export function useAdminPanelIsMobile(): boolean {
  * mount ke baad `true` = mobile layout, `false` = desktop — tabhi desktop auto-select chale.
  */
 export function useIsMobileLayoutResolved(): boolean | null {
-  const { isMobile } = useMobileDetection();
+  const { isMobile, layoutResolved } = useMobileDetection();
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => {
     setMounted(true);
   }, []);
-  if (!mounted) return null;
+  // Provider ka pehla check na hua ho to `false` (desktop) mat batao - mobile par galat auto-select
+  if (!mounted || layoutResolved === false) return null;
   return isMobile;
 }
 

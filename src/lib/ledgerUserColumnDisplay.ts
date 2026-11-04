@@ -92,6 +92,39 @@ export function shouldShowAutoRecurringSwitchInLedgerUserCell(
   return isActiveRecurringTriggerVoucherForLedgerSwitch(t);
 }
 
+function isLocalLedgerUserId(uid: string): boolean {
+  return uid === "local" || uid === "local_guest_user" || uid.startsWith("local:");
+}
+
+/** Raw ids (uid / pb_xxx / local:xxx / long random tokens) are not human names. */
+function looksLikeRawLedgerUserId(label: string, uid: string): boolean {
+  const t = label.trim();
+  if (!t) return true;
+  if (uid && t === uid) return true;
+  if (/^(pb_|local:)/i.test(t) || t === "local" || t === "local_guest_user") return true;
+  return t.length > 15 && /^[a-zA-Z0-9_-]+$/.test(t) && !t.includes(" ");
+}
+
+function ledgerUserEmailPrefix(email: unknown): string {
+  const e = String(email ?? "").trim();
+  const at = e.indexOf("@");
+  return at > 0 ? e.slice(0, at).trim() : "";
+}
+
+/** `userNames` lookup tolerant of id shapes: uid, pb_<id>, <id>, local:<id>. */
+function lookupLedgerUserNameInMap(uid: string, userNames?: Record<string, string> | null): string {
+  if (!uid || !userNames) return "";
+  const keys = [uid];
+  if (uid.startsWith("pb_")) keys.push(uid.slice(3));
+  else keys.push(`pb_${uid}`);
+  if (uid.startsWith("local:")) keys.push(uid.slice(6));
+  for (const k of keys) {
+    const v = userNames[k] ? String(userNames[k]).trim() : "";
+    if (isMeaningfulLedgerUserListLabel(v)) return v;
+  }
+  return "";
+}
+
 /** Ledger / mobile card User column — stable naam, "Auto" sirf recurring BS-month par. */
 export function resolveLedgerTransactionUserDisplayName(
   transaction: Record<string, unknown> | null | undefined,
@@ -103,7 +136,7 @@ export function resolveLedgerTransactionUserDisplayName(
   if (isRecurringBsMonthlyAutoVoucherForLedgerUserDisplay(transaction)) return "Auto";
 
   const uid = String(transaction.userId || "").trim();
-  const fromMap = uid && userNames?.[uid] ? String(userNames[uid]).trim() : "";
+  const fromMap = lookupLedgerUserNameInMap(uid, userNames);
   if (isMeaningfulLedgerUserListLabel(fromMap)) return fromMap;
 
   const fromDoc = String(transaction.userDisplayName || transaction.userName || "").trim();
@@ -113,6 +146,27 @@ export function resolveLedgerTransactionUserDisplayName(
   const curName = String(opts?.currentUserDisplayName || "").trim();
   if (uid && curUid && uid === curUid) {
     return curName || "You";
+  }
+
+  // Lazy repair for rows saved without `userDisplayName` (older save path): other name-ish fields on the doc.
+  const fromCreatedByName = String(transaction.createdByName || "").trim();
+  if (isMeaningfulLedgerUserListLabel(fromCreatedByName) && !looksLikeRawLedgerUserId(fromCreatedByName, uid)) {
+    return fromCreatedByName;
+  }
+  const emailPrefix = ledgerUserEmailPrefix(transaction.userEmail);
+  if (isMeaningfulLedgerUserListLabel(emailPrefix) && !looksLikeRawLedgerUserId(emailPrefix, uid)) {
+    return emailPrefix;
+  }
+  const fromLastEditor = String(transaction.lastEditedByUserName || "").trim();
+  if (isMeaningfulLedgerUserListLabel(fromLastEditor) && !looksLikeRawLedgerUserId(fromLastEditor, uid)) {
+    return fromLastEditor;
+  }
+
+  // Local-company ids ("local", "local_guest_user", "local:<id>"): any local user entry in the names map.
+  if (isLocalLedgerUserId(uid)) {
+    const localHit =
+      lookupLedgerUserNameInMap("local", userNames) || lookupLedgerUserNameInMap("local_guest_user", userNames);
+    if (isMeaningfulLedgerUserListLabel(localHit)) return localHit;
   }
   return "N/A";
 }

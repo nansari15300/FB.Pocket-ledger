@@ -29,12 +29,12 @@ import { notifyQuotaErrorForAdmin, quotaErrorKind } from '@/lib/quotaAdminNotice
 export { isFirestoreWatchTeardownAssertionMessage } from '@/lib/firestoreWatchAssertionGuard';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAtHvZ3PY50rwF5oqHjtRMjbec6NzMl6dM",
-  authDomain: "studio-5452513410-a3f5b.firebaseapp.com",
-  projectId: "studio-5452513410-a3f5b",
-  storageBucket: "studio-5452513410-a3f5b.firebasestorage.app",
-  messagingSenderId: "469450068553",
-  appId: "1:469450068553:web:168952ea08dc78e2396598"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ?? "",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ?? "",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? "",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID ?? ""
 };
 
 /** Google OAuth "Web client" ID (google-services.json → oauth_client client_type 3). Capacitor `GoogleAuth.initialize` needs this; static APK build often omits NEXT_PUBLIC_* — same-project fallback keeps native Google login working. */

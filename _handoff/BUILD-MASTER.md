@@ -35,9 +35,9 @@
 ## मौजूदा versions (2026-11-03 को repo से पढ़े)
 | चीज़ | जगह | मान |
 |---|---|---|
-| Tauri EXE | `src-tauri\tauri.conf.json`, `src-tauri\Cargo.toml` | 1.1.74 |
-| App release version | `src\config\releaseVersion.ts` | `DESKTOP_APP_VERSION` = 1.1.76, `ANDROID_APP_VERSION` = 1.1.76 (⚠️ Tauri 1.1.74 से मेल नहीं — Tauri Master से पूछें) |
-| Android | `android\app\build.gradle` | versionName `1.1.76`, versionCode `88` |
+| Tauri EXE | `src-tauri\tauri.conf.json`, `src-tauri\Cargo.toml` | 1.1.77 (2026-11-04) |
+| App release version | `src\config\releaseVersion.ts` | `DESKTOP_APP_VERSION` = 1.1.77, `ANDROID_APP_VERSION` = 1.1.77 (अब Tauri से मेल) |
+| Android | `android\app\build.gradle` | versionName `1.1.77`, versionCode `89` (APK अभी build नहीं हुआ) |
 | root `package.json` | — | 0.1.0 (app version नहीं है) |
 | Android SDK | `android\variables.gradle` | min 22, compile/target 34; applicationId `com.pocketledger.app` |
 
@@ -58,7 +58,7 @@
 - `android\app\build.gradle` का `signingConfigs.release` सिर्फ़ `android\keystore.properties` पढ़ता है (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`)। वह file न हो तो release **debug key** से sign होता है। Env vars नहीं पढ़ता।
 - `android\keystore.properties` अभी laptop पर मौजूद नहीं; सिर्फ़ `android\keystore.properties.example` (tracked, placeholders) है।
 - `.gitignore` (root): `android/keystore.properties`, `*.jks`, `*.keystore`, `*.pem`, `*.key`, `.env*` (`!.env.example`), `google-services.json`, `*.apk`, `*.aab`, `*.exe`। (`*.p12`, `*.pfx` अभी नहीं — Key Manager जोड़ सकती है।)
-- Laptop पर अभी JDK (java/keytool) और Android SDK (apksigner) नहीं मिले; `android\local.properties` का `sdk.dir` ServerWin10 user (`newpa`) का path है। Laptop पर APK build से पहले JDK + Android SDK चाहिए (APK Master से पूछें)।
+- **Laptop पर JDK + Android SDK लग गए (2026-11-04):** JDK Temurin 17.0.21+9 → `C:\Users\ASUS\AppData\Local\Programs\Java\jdk-17.0.21+9` (user `JAVA_HOME`; PATH में नहीं, gradlew JAVA_HOME से चलता है)। SDK → `C:\Users\ASUS\AppData\Local\Android\Sdk` (user `ANDROID_HOME`, `ANDROID_SDK_ROOT`): cmdline-tools 23.0.0, platform-tools 37.0.1, `platforms;android-34`, `build-tools;34.0.0` (apksigner/aapt2 यहीं)। `android\local.properties` (gitignored) का `sdk.dir` अब laptop SDK। Gradle wrapper 8.7 download हो गया। ⚠️ नए sdkmanager.bat में PowerShell से `;` वाले package नाम टूटते हैं — `cmd /c` में quote करके चलाएँ।
 
 ## Signing script: `scripts\build-android-signed.ps1`
 Flow:
@@ -99,6 +99,10 @@ Parameters (default नहीं, ज़रूरी): `-EncryptedKeystorePath`,
 |---|---|---|---|
 | 2026-11-03 ~22:55 | repo docs/scripts/signing पढ़े; script और यह handoff नई files के रूप में बनाईं; कोई build नहीं चलाया | नई: `scripts\build-android-signed.ps1`, `_handoff\BUILD-MASTER.md` (कोई मौजूदा file नहीं बदली) | — (सिर्फ़ नई files) |
 | 2026-11-03 ~23:05 | Key Manager के कहने पर: decryption password ≠ store/key password; `-KeystoreCredsFile`/`-KeyAlias`/`-Cipher`/`-EncryptedKeystorePath` बिना default, ज़रूरी; openssl hardcode हटाया (`gpg-aes256` विकल्प जोड़ा); pending अपडेट | `scripts\build-android-signed.ps1`, `_handoff\BUILD-MASTER.md` | `C:\PocketLedger-Backups\build-master-20261103-230204\` |
+| 2026-11-04 ~19:00 | key-check PASS (AIza files working tree से हटे; firebaseAdmin.ts में सिर्फ़ error text); tsc PASS; bump 1.1.76→1.1.77 (Tauri 1.1.74→1.1.77, versionCode 88→89); `tauri:build` OK → `Pocket Ledger Tauri_1.1.77_x64-setup.exe` (16.0 MB); static `out\` बना; APK skip (laptop पर JDK/SDK नहीं); np.pocket-ledger.com पर EXE + latest.json (android पुरानी 1.1.75 entry रखी) ServerWin10 pb_public\releases\2026-11-04 में; `_bot-data\Build Master\2026-11-04` में copy। ⚠️ electron\package.json मौजूद होने से stage script Tauri EXE नहीं उठाती (RELEASE_TAURI=1 चाहिए) और पुराना debug APK नए version नाम से stage कर देती है | `src\config\releaseVersion.ts`, `android\app\build.gradle`, `src-tauri\Cargo.toml`, `src-tauri\tauri.conf.json`, `_handoff\BUILD-MASTER.md` | — (Git) |
+| 2026-11-04 ~19:55 | ServerWin10 पर debug APK 1.1.77 की कोशिश: दोनों PC HEAD `a3d1945` एक ही; laptop से 12 files का patch (bump + Firebase key हटाना) बना, पर server पर `git apply --check` fail (`src-tauri/Cargo.toml`, `src/lib/firebase.ts`) — line endings अलग (server CRLF, laptop working copy LF/mixed, दोनों autocrlf=true)। नियम के अनुसार रुकी; server पर कुछ नहीं बदला, APK नहीं बना, upload नहीं हुआ | `_handoff\BUILD-MASTER.md` | — (Git) |
+| 2026-11-04 ~20:05 | ServerWin10 पर patch दोबारा (`git diff --output`, ascii encoding की गड़बड़ी ठीक) — `git apply` clean; server key-check PASS; `build:static` + `cap sync android` + `assembleDebug` OK; aapt2: versionCode 89, versionName 1.1.77 (DEBUG-signed); upload `pb_public\releases\2026-11-04\app-release-1.1.77.apk` (38.0 MB), latest.json android → 1.1.77, windows 1.1.77, history intact; `_bot-data\Build Master\2026-11-04` में copy; temp patch सब जगह से हटाया | server (uncommitted): `android\app\build.gradle`, `android\build.gradle`, `src-tauri\Cargo.toml`, `Cargo.lock`, `tauri.conf.json`, `src\config\releaseVersion.ts`, `src\firebase\config.ts`, `src\lib\firebase.ts`; deleted: दोनों `google-services.json`, दोनों `firebase-config.js`; laptop: `_handoff\BUILD-MASTER.md` | — (Git) |
+| 2026-11-04 ~20:50 | Laptop पर Android build tools: JDK 17 (Temurin zip), Android SDK cmdline-tools + platform-tools + android-34 + build-tools 34.0.0, user env vars, `local.properties` sdk.dir; `java -version`, `gradlew --version` (Gradle 8.7, JVM 17) OK; कोई build नहीं, repo code नहीं छुआ | `android\local.properties` (gitignored), `_handoff\BUILD-MASTER.md` | — |
 
 ## अगला कदम
 - Key Manager से encrypted keystore path + cipher; keystore alias/store/key password का source; Firebase key files पर user का फ़ैसला।

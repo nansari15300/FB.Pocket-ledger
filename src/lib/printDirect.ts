@@ -12,6 +12,7 @@ import { formatBsFromAD } from "@/lib/bs-date";
 import type { TDocumentDefinitions, Content, TableCell } from "pdfmake/interfaces";
 import type { Item } from "@/components/items/types";
 import { getAllocationTotal, OPENING_BALANCE_VOUCHER_ID } from "@/lib/payment-allocation-utils";
+import { getPartyLedgerTransactionAmounts } from "@/lib/partyListLedgerBalance";
 import { shouldUseInAppPdfPreviewOverlay } from "@/lib/shouldUseInAppPdfPreview";
 import { showInAppPdfPreview } from "@/lib/inAppPdfPreview";
 import {
@@ -1506,19 +1507,11 @@ function getTransactionAmounts(t: any, context: Context, entityOrId?: any, stock
           } else if (t.type === 'payment_in' || t.type === 'direct_income') {
               debit += amount; // Payment In = Debit (money coming in)
           }
-      } 
-      else if (entityOrId && t.partyId === entityId) {
-          if (["sale", "payment_out", "direct_income"].includes(t.type)) debit += amount;
-          if (["purchase", "payment_in", "direct_expense"].includes(t.type)) credit += amount;
-      }
-      
-      if (t.type === 'journal' && t.entries) {
-        t.entries.forEach((entry: any) => {
-          if (isIdMatch(entry.accountId, entityId)) {
-            debit += parseFloat(String(entry.debit || 0));
-            credit += parseFloat(String(entry.credit || 0));
-          }
-        });
+      } else if (entityOrId && entityId) {
+          // Ledger (use-transactions) jaisa party rule: payment_out/direct_expense me party ko sirf payee amount
+          // (total - otherChargeAmount); charge sirf otherChargeAccountId wale ledger ko. Journal/contra/inter_company bhi isi me.
+          const partyLedgerAmounts = getPartyLedgerTransactionAmounts(t, String(entityId));
+          return { debit: partyLedgerAmounts.debit, credit: partyLedgerAmounts.credit };
       }
       break;
 
