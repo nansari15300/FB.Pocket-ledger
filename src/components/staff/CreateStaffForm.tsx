@@ -94,6 +94,13 @@ import {
 import { useNavigatorOnline } from "@/hooks/useNavigatorOnline";
 import { upsertCompanyDocInBrowserDb, listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { enqueueCompanyDocOutbox, isLikelyOfflineFirestoreError } from "@/lib/localVoucherOutbox";
+import {
+  StaffHrDetailsSection,
+  staffHrDraftFrom,
+  staffHrPatchFromDraft,
+  useStaffHrSection,
+  type StaffHrDraft,
+} from "@/modules/hr/components/StaffHrDetailsSection";
 
 function createLocalEntityId(prefix: string): string {
   const rand =
@@ -222,6 +229,9 @@ export function CreateStaffForm({
   const openingBalanceDateMissing = useMasterOpeningBalanceDateRequired(form.control);
 
   const accountType = form.watch("accountType");
+  /** HR details (staff.hr) — only with HR plan + Account Type = Staff. */
+  const hrSection = useStaffHrSection(accountType);
+  const [hrDraft, setHrDraft] = useState<StaffHrDraft>(() => staffHrDraftFrom(undefined));
 
   // ---------------------------
   // Load groups from Firestore
@@ -478,6 +488,10 @@ export function CreateStaffForm({
 
     const toastId = sonnerToast.loading("Saving staff member...");
     setIsLoading(true);
+    const hrCreate =
+      hrSection.show && hrSection.canEdit && values.accountType === STAFF_SYSTEM_GROUP_ID
+        ? { hr: staffHrPatchFromDraft(hrDraft, undefined) }
+        : {};
 
     try {
       if (apkEntityWriteUsesLocalSqliteMirror(company)) {
@@ -512,6 +526,7 @@ export function CreateStaffForm({
           id: localId,
           ...staffValues,
           ...persisted,
+          ...hrCreate,
           openingBalanceNarration: values.openingBalanceNarration?.trim() || null,
           ownerId: user.uid,
           companyId,
@@ -537,6 +552,7 @@ export function CreateStaffForm({
         });
         if (saveAndNew) {
           form.reset(staffFormResetDefaults());
+          setHrDraft(staffHrDraftFrom(undefined));
           clearUploads();
         }
         onStaffCreated?.(saveAndNew, localId);
@@ -602,6 +618,7 @@ export function CreateStaffForm({
       await setDoc(staffRef, {
         ...staffValues,
         ...persisted,
+        ...hrCreate,
         openingBalance: values.openingBalance || 0,
         openingBalanceDate: values.openingBalanceDate || null,
         openingBalanceNarration: values.openingBalanceNarration?.trim() || null,
@@ -635,6 +652,7 @@ export function CreateStaffForm({
 
       if (saveAndNew) {
         form.reset(staffFormResetDefaults());
+        setHrDraft(staffHrDraftFrom(undefined));
         clearUploads();
       }
 
@@ -670,6 +688,7 @@ export function CreateStaffForm({
             id: localId,
             ...catchStaffValues,
             ...catchPersisted,
+            ...hrCreate,
             openingBalanceNarration: values.openingBalanceNarration?.trim() || null,
             ownerId: user.uid,
             companyId,
@@ -691,6 +710,7 @@ export function CreateStaffForm({
           onStaffCreated?.(saveAndNew, localId);
           if (saveAndNew) {
             form.reset(staffFormResetDefaults());
+            setHrDraft(staffHrDraftFrom(undefined));
             clearUploads();
           }
         } catch {
@@ -929,6 +949,14 @@ export function CreateStaffForm({
                 </FormItem>
               )}
             />
+
+            {hrSection.show ? (
+              <StaffHrDetailsSection
+                value={hrDraft}
+                onChange={setHrDraft}
+                disabled={!hrSection.canEdit}
+              />
+            ) : null}
 
             {/* Opening Balance + Date */}
             <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">

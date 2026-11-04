@@ -54,7 +54,7 @@ function syncAndroidZoomViewportCompensation(scale: number): void {
   root.style.setProperty("--pl-screen-w", `calc(100vw / ${scale})`);
 }
 
-/** Capacitor APK / iOS shell: poori UI zoom — Android `zoom`, iOS base `font-size` (rem scale). */
+/** All platforms (web / EXE / APK / iOS shell): poori UI zoom — Android `zoom`, iOS base `font-size` (rem scale). */
 export function applyAppUiZoom(scale: number): number {
   const clamped = clampAppUiZoom(scale);
   if (typeof document === "undefined") return clamped;
@@ -68,14 +68,11 @@ export function applyAppUiZoom(scale: number): number {
     root.removeAttribute("data-pl-app-ui-zoom-shell");
     root.style.fontSize = `${16 * clamped}px`;
     syncAndroidZoomViewportCompensation(1);
-  } else if (isCapacitorNativeApp()) {
+  } else {
+    // Android APK, web browser and desktop EXE (Electron/Tauri): zoom #app-container only.
     root.style.fontSize = "";
     root.style.zoom = "";
     syncAndroidZoomViewportCompensation(clamped);
-  } else {
-    root.style.fontSize = "";
-    root.style.zoom = "";
-    syncAndroidZoomViewportCompensation(1);
   }
 
   try {
@@ -107,6 +104,7 @@ export function bootstrapAppUiZoomFromStorage(): number {
   return applyAppUiZoom(readStoredAppUiZoom());
 }
 
+/** UI zoom is available on every platform (web, desktop EXE, APK / iOS shell). */
 export function isAppUiZoomAvailable(): boolean {
-  return isCapacitorNativeApp();
+  return typeof window !== "undefined";
 }

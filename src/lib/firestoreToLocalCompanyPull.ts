@@ -676,6 +676,10 @@ export const COMPANY_LOCAL_MIRROR_SUBCOLLECTIONS = [
   "loan_audit_logs",
   "loan_settings",
   "loan_documents",
+  /** HR module (pl_docs, keyed by company + coll + app_id). */
+  "hr_attendance",
+  "hr_leaves",
+  "hr_payroll",
   /** Per-ledger statement checked marks (per user + context). */
   "ledger_statement_checks",
 ] as const;

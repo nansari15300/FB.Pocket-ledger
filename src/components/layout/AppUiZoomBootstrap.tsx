@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import {
   bootstrapAppUiZoomFromStorage,
   isAppUiZoomAvailable,
@@ -8,11 +9,13 @@ import {
   applyAppUiZoom,
 } from "@/lib/appUiZoom";
 
-/** Capacitor native: saved zoom restore on cold start; orientation/resize par viewport dubara sync. */
+/** Saved zoom restore on cold start (all platforms); Capacitor native: orientation/resize par viewport dubara sync. */
 export function AppUiZoomBootstrap() {
   useEffect(() => {
     if (!isAppUiZoomAvailable()) return;
     bootstrapAppUiZoomFromStorage();
+    // Web / EXE: zoom uses CSS vw/dvh calc, so no resize re-apply is needed.
+    if (!isCapacitorNativeApp()) return;
 
     const reapply = () => {
       applyAppUiZoom(readStoredAppUiZoom());

@@ -32,6 +32,8 @@ import {
   Table,
   Cloud,
   CalendarDays,
+  Briefcase,
+  ZoomIn,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -91,7 +93,7 @@ import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
 import { disarmDashboardRedirectGuard } from "@/lib/protectFromUnwantedDashboardRedirect";
-import { AppSidebarZoomControls } from "@/components/layout/AppSidebarZoomControls";
+import { AdjustScreenDialog } from "@/components/layout/AdjustScreenDialog";
 import { DateConverterDialog } from "@/components/layout/DateConverterDialog";
 import { chromeProPillCn } from "@/lib/chromePillButton";
 import {
@@ -109,7 +111,7 @@ type MenuItem = {
   permission?: Permission;
   permissionAny?: Permission[];
   /** Sidebar button opens a dialog instead of navigating. */
-  sidebarAction?: "date-converter";
+  sidebarAction?: "date-converter" | "adjust-screen";
 };
 
 /** Sidebar primary nav — menu items yahan; EXE tab titles: `getDashboardDocumentTitle` */
@@ -118,6 +120,7 @@ const allMenuItems: MenuItem[] = [
   { id: 'party', href: "/party", label: "Parties", icon: Users },
   { id: 'bank-cash', href: "/bank-cash", label: "Bank/Cash", icon: Landmark },
   { id: 'staff', href: "/staff", label: STAFF_ENTITY_LABEL, icon: StaffEntityNavIcon },
+  { id: 'hr', href: "/hr", label: "HR", icon: Briefcase, permission: "hr_view" },
   { id: 'tax', href: "/tax", label: "Tax", icon: Banknote },
   { id: 'incomes', href: "/incomes", label: "Income & Expense", icon: DollarSign },
   { id: 'items', href: "/items", label: "Items & Service", icon: BookText },
@@ -130,6 +133,15 @@ const allMenuItems: MenuItem[] = [
   { id: 'purchase-note', href: "/purchase-note", label: "Purchase Note", icon: FileText },
   { id: 'quotations', href: "/quotations", label: "Quotations", icon: FilePenLine },
 ];
+
+/** Adjust Screen — all platforms; opens the live UI-zoom popup (not in ALL_FEATURES / feature toggles). */
+const adjustScreenMenuItem: MenuItem = {
+  id: 'adjust-screen',
+  href: "#adjust-screen",
+  label: "Adjust Screen",
+  icon: ZoomIn,
+  sidebarAction: "adjust-screen",
+};
 
 const bottomMenuItems: MenuItem[] = [
     { id: 'messages', href: "/messages", label: "Messages", icon: Mail },
@@ -199,6 +211,14 @@ export function AppSidebar() {
   } = useVouchers();
   const { isOpen, isMobile, setIsOpen } = useSidebar();
   const [dateConverterOpen, setDateConverterOpen] = useState(false);
+  const [adjustScreenOpen, setAdjustScreenOpen] = useState(false);
+  const adjustScreenTimerRef = React.useRef<number | null>(null);
+  React.useEffect(
+    () => () => {
+      if (adjustScreenTimerRef.current != null) window.clearTimeout(adjustScreenTimerRef.current);
+    },
+    []
+  );
   /** Date Converter — BS calendar; sirf Nepal company (header date menu jaisa). */
   const isNepalCompany = !company?.country || company.country === "Nepal";
   /**
@@ -207,7 +227,6 @@ export function AppSidebar() {
    */
   const useEmbeddedClientNav =
     isStaticAppBuild() || isCapacitorNativeApp() || isElectronDesktopApp();
-  const showNativeZoomControls = isCapacitorNativeApp();
   const navigateSidebarHref = useCallback(
     (href: string) => {
       // Voucher save / online-resume guard warna intentional /dashboard click ko wapas undo kar deta tha.
@@ -571,14 +590,14 @@ export function AppSidebar() {
   const combinedDashboardNavItems = React.useMemo(() => {
     const core = visibleMenuItems.filter((i) => CORE_NAV_IDS.has(i.id));
     const catalog = visibleMenuItems.filter((i) => !CORE_NAV_IDS.has(i.id));
-    return [...core, ...catalog];
+    // Adjust Screen: Gallery ke baad (Gallery/Gate ke beech); Gallery hidden ho to Gate se pehle, warna end me.
+    let at = catalog.findIndex((i) => i.id === "gallery");
+    if (at >= 0) at += 1;
+    else at = catalog.findIndex((i) => i.id === "gate");
+    if (at < 0) at = catalog.length;
+    const withAdjust = [...catalog.slice(0, at), adjustScreenMenuItem, ...catalog.slice(at)];
+    return [...core, ...withAdjust];
   }, [visibleMenuItems]);
-
-  const zoomControlsAfterNavId = React.useMemo(() => {
-    if (combinedDashboardNavItems.some((i) => i.id === "gallery")) return "gallery";
-    if (combinedDashboardNavItems.some((i) => i.id === "items")) return "items";
-    return combinedDashboardNavItems[combinedDashboardNavItems.length - 1]?.id ?? null;
-  }, [combinedDashboardNavItems]);
 
   const visibleBottomMenuItems = React.useMemo(() => {
     const byFeature = (!featureConfig ? bottomMenuItems : bottomMenuItems.filter((item) => {
@@ -597,12 +616,30 @@ export function AppSidebar() {
     if (isMobile) setIsOpen(false);
   }, [isMobile, setIsOpen]);
 
+  const openAdjustScreen = useCallback(() => {
+    if (adjustScreenTimerRef.current != null) {
+      window.clearTimeout(adjustScreenTimerRef.current);
+      adjustScreenTimerRef.current = null;
+    }
+    if (isMobile) {
+      // Mobile: pehle drawer band, uske baad popup (drawer exit animation + focus return ke baad).
+      setIsOpen(false);
+      adjustScreenTimerRef.current = window.setTimeout(() => {
+        adjustScreenTimerRef.current = null;
+        setAdjustScreenOpen(true);
+      }, 350);
+    } else {
+      setAdjustScreenOpen(true);
+    }
+  }, [isMobile, setIsOpen]);
+
   /** Ek nav row — merged primary list + pehle jaisa pending badge / Reports pill */
   function renderMainNavRow(item: MenuItem) {
-    if (item.sidebarAction === "date-converter") {
+    if (item.sidebarAction) {
+      const isAdjustScreen = item.sidebarAction === "adjust-screen";
       const button = (
         <SidebarMenuButton
-          isActive={dateConverterOpen}
+          isActive={isAdjustScreen ? adjustScreenOpen : dateConverterOpen}
           tooltip={item.label}
           data-theme-nav={item.id}
         >
@@ -617,7 +654,7 @@ export function AppSidebar() {
           <button
             type="button"
             className="w-full text-left appearance-none bg-transparent p-0 border-0 cursor-pointer"
-            onClick={openDateConverter}
+            onClick={isAdjustScreen ? openAdjustScreen : openDateConverter}
           >
             {button}
           </button>
@@ -787,6 +824,7 @@ export function AppSidebar() {
   );
 
   return (
+    <>
     <Sidebar>
       <DateConverterDialog open={dateConverterOpen} onOpenChange={setDateConverterOpen} />
       <SidebarHeader className="shrink-0">
@@ -874,11 +912,6 @@ export function AppSidebar() {
                     {combinedDashboardNavItems.map((item) => (
                       <React.Fragment key={item.href}>
                         {renderMainNavRow(item)}
-                        {showNativeZoomControls && zoomControlsAfterNavId === item.id ? (
-                          <SidebarMenuItem className="list-none">
-                            <AppSidebarZoomControls sidebarOpen={isOpen} />
-                          </SidebarMenuItem>
-                        ) : null}
                       </React.Fragment>
                     ))}
                   </SidebarMenu>
@@ -910,6 +943,9 @@ export function AppSidebar() {
         )}
       </SidebarContent>
     </Sidebar>
+    {/* Outside <Sidebar>: mobile drawer band hone par bhi popup unmount na ho. */}
+    <AdjustScreenDialog open={adjustScreenOpen} onOpenChange={setAdjustScreenOpen} />
+    </>
   );
 }
 

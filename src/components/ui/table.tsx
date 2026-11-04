@@ -25,7 +25,7 @@ const TableHeader = React.forwardRef<
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
   // Global header separators: extra-thick pure black so transaction divider is easily visible.
-  <thead ref={ref} className={cn("[&_tr]:border-b-[3px] [&_tr]:border-black", className)} {...props} />
+  <thead ref={ref} className={cn("[&_tr]:border-b [&_tr]:border-border", className)} {...props} />
 ))
 TableHeader.displayName = "TableHeader"
 
@@ -64,7 +64,7 @@ const TableRow = React.forwardRef<
     ref={ref}
     className={cn(
       // Global row separator: extra-thick pure-black horizontal line for stronger visual separation.
-      "border-b-[3px] border-black transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+      "border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
       className
     )}
     {...props}

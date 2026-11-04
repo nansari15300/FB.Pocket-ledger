@@ -124,7 +124,9 @@ export type EntitlementKey =
   /** Plan-wise: freeze party / bank / staff / tax master accounts. */
   | "masterAccountFreezeEnabled"
   /** Plan-wise: local OCR voucher autofill (Add Voucher). Missing/undefined = enabled. */
-  | "ocrVoucherAutofillEnabled";
+  | "ocrVoucherAutofillEnabled"
+  /** Plan-wise: HR module (employees / attendance / leaves / payroll). Missing/undefined = disabled. */
+  | "hrModuleEnabled";
 
 export type Entitlements = Record<EntitlementKey, number | boolean>;
 
@@ -305,6 +307,7 @@ export const DEFAULT_PLANS: Record<PlanId, Plan> = {
       allowLocalAppServer: false,
       masterAccountFreezeEnabled: false,
       ocrVoucherAutofillEnabled: true,
+      hrModuleEnabled: false,
     },
     features: [
       "Unlimited local (offline) companies",
@@ -371,6 +374,7 @@ export const DEFAULT_PLANS: Record<PlanId, Plan> = {
       allowLocalAppServer: true,
       masterAccountFreezeEnabled: true,
       ocrVoucherAutofillEnabled: true,
+      hrModuleEnabled: true,
     },
     features: [
       "1 online company + unlimited offline",
@@ -438,6 +442,7 @@ export const DEFAULT_PLANS: Record<PlanId, Plan> = {
       allowLocalAppServer: true,
       masterAccountFreezeEnabled: true,
       ocrVoucherAutofillEnabled: true,
+      hrModuleEnabled: true,
     },
     features: [
       "3 online companies + unlimited offline",
@@ -504,6 +509,7 @@ export const DEFAULT_PLANS: Record<PlanId, Plan> = {
       allowLocalAppServer: true,
       masterAccountFreezeEnabled: true,
       ocrVoucherAutofillEnabled: true,
+      hrModuleEnabled: true,
     },
     features: [
       "10 online companies + unlimited offline",

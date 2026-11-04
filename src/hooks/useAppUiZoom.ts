@@ -7,6 +7,7 @@ import {
   APP_UI_ZOOM_MIN,
   appUiZoomIn,
   appUiZoomOut,
+  applyAppUiZoom,
   readStoredAppUiZoom,
 } from "@/lib/appUiZoom";
 
@@ -37,8 +38,13 @@ export function useAppUiZoom() {
     setScale(appUiZoomOut());
   }, []);
 
+  /** Slider: apply + persist an exact scale (clamped) — same path as − / +. */
+  const setZoom = useCallback((next: number) => {
+    setScale(applyAppUiZoom(next));
+  }, []);
+
   const canZoomIn = scale < APP_UI_ZOOM_MAX - 0.001;
   const canZoomOut = scale > APP_UI_ZOOM_MIN + 0.001;
 
-  return { scale, zoomIn, zoomOut, canZoomIn, canZoomOut };
+  return { scale, zoomIn, zoomOut, setZoom, canZoomIn, canZoomOut };
 }

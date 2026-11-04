@@ -23,6 +23,10 @@ export const COLLECTIONS_TO_BACKUP = [
   "loan_audit_logs",
   "loan_settings",
   "loan_documents",
+  /** HR module (pl_docs, keyed by company + coll + app_id). */
+  "hr_attendance",
+  "hr_leaves",
+  "hr_payroll",
 ] as const;
 
 export type CompanyBackupCollection = (typeof COLLECTIONS_TO_BACKUP)[number];
