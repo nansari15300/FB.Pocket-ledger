@@ -15753,3 +15753,22 @@ body.theme-pro [data-pl-main-sidebar] > [role="separator"]:not(:hover):not(:acti
   background-color: transparent !important;
 }
 /* === end Theme Master: Pro sidebar handle line === */
+
+
+/* Reuse company attachment — list rows match green dialog theme border */
+[data-pl-reuse-row],
+body.theme-pro [data-pl-reuse-row],
+body[class*="theme-"] [data-pl-reuse-row] {
+  border-color: rgb(110 231 183 / 0.85) !important;
+  border-width: 2px !important;
+}
+
+body.theme-pro [data-pl-reuse-row]:hover,
+[data-pl-reuse-row]:hover {
+  border-color: rgb(52 211 153 / 0.95) !important;
+}
+
+.dark body.theme-pro [data-pl-reuse-row],
+.dark [data-pl-reuse-row] {
+  border-color: rgb(52 211 153 / 0.7) !important;
+}

@@ -31,6 +31,7 @@ import {
   loadCompanyVoucherAttachmentSources,
   matchesCompanyAttachmentCatalogSearch,
 } from "@/lib/companyAttachmentCatalog";
+import { highlightQueryInText } from "@/lib/highlightQueryInText";
 import { FilePreview } from "@/components/vouchers/FilePreview";
 import { tryGetStoragePathFromFirebaseDownloadUrl } from "@/lib/firebaseStorageDownloadUrl";
 import { copyCloudAttachmentRefToCompany } from "@/lib/companyAttachmentRegistry";
@@ -395,9 +396,10 @@ export function CompanyAttachmentReuseDialog({
                 return (
                   <li
                     key={entry.url}
+                    data-pl-reuse-row=""
                     className={cn(
                       "grid w-full grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border-2 px-2 py-1.5 sm:gap-2.5 sm:rounded-lg",
-                      "border-emerald-600/55 pl-dashboard-ribbon-emerald shadow-sm",
+                      "!border-emerald-500/75 pl-dashboard-ribbon-emerald shadow-sm",
                       remaining <= 0 && "opacity-60",
                       linking === entry.url && "opacity-80"
                     )}
@@ -409,13 +411,13 @@ export function CompanyAttachmentReuseDialog({
                     />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium leading-snug" title={entry.label}>
-                        {entry.label}
+                        {search.trim() ? highlightQueryInText(entry.label, search) : entry.label}
                       </p>
                       <p
                         className="truncate text-[11px] leading-snug text-muted-foreground sm:text-xs"
                         title={`Used on: ${usedOnFull}`}
                       >
-                        Used on: {usedOn}
+                        Used on: {search.trim() ? highlightQueryInText(usedOn, search) : usedOn}
                         {entry.voucherCount > 1 ? (
                           <span className="text-foreground/70"> · {entry.voucherCount}</span>
                         ) : null}
