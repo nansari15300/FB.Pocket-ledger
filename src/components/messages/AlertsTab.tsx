@@ -72,7 +72,7 @@ export function AlertsTab({
   onOpenHistory,
   kindFilter = "all",
   headerTitle = "Alerts & Notifications",
-  headerDescription = "Important system alerts and scheduled alarms will appear here.",
+  headerDescription = "Important system alerts and scheduled reminders will appear here.",
 }: {
   onStartChat?: (userId: string) => void;
   /** When provided, "Open Voucher" opens voucher in edit (same page or navigate). */
@@ -563,7 +563,7 @@ export function AlertsTab({
                         right: <span className="text-sm">{formatTs(alarmCreatedAt)}</span>,
                       }] : []),
                       ...(isAlarm && alarmDateDisplay !== "—" ? [{
-                        label: "Alarm date",
+                        label: "Reminder date",
                         right: <span className="text-sm">{alarmDateDisplay}</span>,
                       }] : []),
                       ...(!isSecurityAlert && !isAlarm && (isRecycleBinAlert || isIcReverseAlert || isIcInviteAlert || voucherNo || amountStr || (n as any).entityName) ? [{

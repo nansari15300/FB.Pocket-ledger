@@ -67,9 +67,9 @@ export function AlarmPopup() {
       const notifRef = doc(firestore, "admin_notifications", alarmNotification.id);
       await updateDoc(notifRef, { isRead: true });
       setAlarmNotification(null);
-      toast.success("Alarm marked as done.");
+      toast.success("Reminder marked as done.");
     } catch (e) {
-      toast.error("Failed to mark alarm as done.");
+      toast.error("Failed to mark reminder as done.");
     } finally {
       setIsProcessing(false);
     }
@@ -99,9 +99,9 @@ export function AlarmPopup() {
       const notifRef = doc(firestore, "admin_notifications", alarmNotification.id);
       await updateDoc(notifRef, { isRead: true });
       setAlarmNotification(null);
-      toast.success(`Alarm snoozed by ${SNOOZE_MINUTES} minutes.`);
+      toast.success(`Reminder snoozed by ${SNOOZE_MINUTES} minutes.`);
     } catch (e) {
-      toast.error("Failed to snooze alarm.");
+      toast.error("Failed to snooze reminder.");
     } finally {
       setIsProcessing(false);
     }
@@ -115,7 +115,7 @@ export function AlarmPopup() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlarmPlus className="h-5 w-5 text-primary" />
-            {alarmNotification.alarmTitle || "Alarm"}
+            {alarmNotification.alarmTitle || "Reminder"}
           </DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">

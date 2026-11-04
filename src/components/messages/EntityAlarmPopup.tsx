@@ -31,15 +31,50 @@ type AlarmDoc = {
 
 const SNOOZE_MINUTES = 10;
 const NOTIFY_BEFORE_MINUTES = 5;
+/** How often to re-check whether a not-yet-due reminder has come due. */
+const DUE_RECHECK_MS = 30 * 1000;
+
+function reminderTimeMs(value: any): number {
+  if (value == null) return NaN;
+  if (typeof value?.toDate === "function") return value.toDate().getTime();
+  if (typeof value?.seconds === "number") return value.seconds * 1000;
+  if (value instanceof Date) return value.getTime();
+  return new Date(value).getTime();
+}
+
+/** Due when `(notifyAt ?? datetime) <= now`. */
+function reminderDueMs(a: AlarmDoc): number {
+  const notifyMs = reminderTimeMs(a.notifyAt);
+  return Number.isFinite(notifyMs) ? notifyMs : reminderTimeMs(a.datetime);
+}
 
 export function EntityAlarmPopup({ context, entityId }: { context: string; entityId: string }) {
   const { user } = useAuth();
   const { company, companyId } = useCompany();
   const [alarm, setAlarm] = React.useState<AlarmDoc | null>(null);
+  const [candidates, setCandidates] = React.useState<AlarmDoc[]>([]);
+  const [nowMs, setNowMs] = React.useState(() => Date.now());
   const [isProcessing, setIsProcessing] = React.useState(false);
 
   React.useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), DUE_RECHECK_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Only show a reminder once it is due; future ones appear on a later re-check.
+  React.useEffect(() => {
+    const due = candidates
+      .filter((a) => {
+        const dueMs = reminderDueMs(a);
+        return Number.isFinite(dueMs) && dueMs <= nowMs;
+      })
+      .sort((a, b) => reminderDueMs(a) - reminderDueMs(b));
+    setAlarm(due[0] ?? null);
+  }, [candidates, nowMs]);
+
+  React.useEffect(() => {
     if (!companyId || !context || !entityId || !user) {
+      setCandidates([]);
       setAlarm(null);
       return;
     }
@@ -56,7 +91,8 @@ export function EntityAlarmPopup({ context, entityId }: { context: string; entit
         if (a.users?.length && user.email && a.users.includes(user.email)) return true;
         return false;
       });
-      setAlarm(forUser[0] ?? null);
+      setCandidates(forUser);
+      setNowMs(Date.now());
     });
     return () => unsub();
   }, [companyId, context, entityId, user?.uid, user?.email, company?.ownerId]);
@@ -68,9 +104,9 @@ export function EntityAlarmPopup({ context, entityId }: { context: string; entit
       const alarmRef = doc(firestore, `companies/${companyId}/alarms`, alarm.id);
       await updateDoc(alarmRef, { notified: true });
       setAlarm(null);
-      toast.success("Alarm marked as done.");
+      toast.success("Reminder marked as done.");
     } catch (e) {
-      toast.error("Failed to mark alarm as done.");
+      toast.error("Failed to mark reminder as done.");
     } finally {
       setIsProcessing(false);
     }
@@ -97,9 +133,9 @@ export function EntityAlarmPopup({ context, entityId }: { context: string; entit
         notified: false,
       });
       setAlarm(null);
-      toast.success(`Alarm snoozed by ${SNOOZE_MINUTES} minutes.`);
+      toast.success(`Reminder snoozed by ${SNOOZE_MINUTES} minutes.`);
     } catch (e) {
-      toast.error("Failed to snooze alarm.");
+      toast.error("Failed to snooze reminder.");
     } finally {
       setIsProcessing(false);
     }

@@ -147,6 +147,7 @@ import {
   type LedgerDetailViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
+import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 
 
@@ -858,6 +859,13 @@ export function ExpenseAccountDetails({
             </div>
             <div className={LEDGER_HEADER_PILL_ROW_CN}>
               <LedgerHeaderPrintButton variant="outline" onClick={handlePrint} />
+              <LedgerHeaderReminderButton
+                variant="outline"
+                disabled={account.id === "all"}
+                onClick={() =>
+                  router.push(buildLedgerReminderHref({ context: "Income/Expense", entityId: account.id, title: account.name }))
+                }
+              />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
               {(dateSystem === "BS" || dateSystem === "Both") && (
                 <BsDatePicker

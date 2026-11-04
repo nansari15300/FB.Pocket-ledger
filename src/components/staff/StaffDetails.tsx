@@ -165,6 +165,7 @@ import {
   type LedgerDetailViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
+import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 import {
   sortTransactionsWithFiscalMergeForCompany,
@@ -2102,6 +2103,13 @@ export function StaffDetails({
           <div className={LEDGER_HEADER_PILL_ROW_CN}>
                 <ReconciliationAccountButton accountId={staff.id} />
               <LedgerHeaderPrintButton variant="outline" onClick={balanceMode === "bill_wise" ? handlePrintBillWise : handlePrintStatement} />
+              <LedgerHeaderReminderButton
+                variant="outline"
+                disabled={staff.id === "all"}
+                onClick={() =>
+                  router.push(buildLedgerReminderHref({ context: "Staff", entityId: staff.id, title: staff.name }))
+                }
+              />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
             {(dateSystem === 'BS' || dateSystem === 'Both') && (
               <BsDatePicker

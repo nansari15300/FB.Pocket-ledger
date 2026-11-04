@@ -83,6 +83,7 @@ import {
   type LedgerDetailViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
+import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 import { LedgerViewModePills, LedgerViewModeToggleButton } from "@/components/ui/LedgerViewModePills";
 
@@ -2128,6 +2129,13 @@ export function AccountDetails({
             <div className={LEDGER_HEADER_PILL_ROW_CN}>
               <ReconciliationAccountButton accountId={account.id} />
               <LedgerHeaderPrintButton variant="outline" onClick={handlePrintStatement} />
+              <LedgerHeaderReminderButton
+                variant="outline"
+                disabled={account.id === "all"}
+                onClick={() =>
+                  router.push(buildLedgerReminderHref({ context: "Bank/Cash", entityId: account.id, title: account.accountName }))
+                }
+              />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
               {(dateSystem === "BS" || dateSystem === "Both") && (
                 <BsDatePicker

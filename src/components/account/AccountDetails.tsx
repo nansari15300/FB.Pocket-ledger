@@ -62,6 +62,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { useDate } from "@/hooks/useDate";
 import { useLedgerUnapprovedOnlyFilter } from "@/hooks/useLedgerUnapprovedOnlyFilter";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
+import { LedgerHeaderReminderButton, buildLedgerReminderHref, type LedgerReminderContext } from "@/components/vouchers/LedgerHeaderReminderButton";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 
 import { ScrollArea, ScrollBar } from "../ui/scroll-area";
@@ -217,6 +218,17 @@ export function AccountDetails({
     if (!allAccounts) return initialAccount;
     return allAccounts.find(p => p.id === initialAccount.id) || initialAccount;
   }, [allAccounts, initialAccount]);
+
+  /** Reminder button: map Journal/Contra row accountType to Messages → Reminder "Link to" option. */
+  const accountReminderContext: LedgerReminderContext | null = (() => {
+    const t = String((account as any)?.accountType ?? "");
+    if (t === "journal_view") return null;
+    if (t === "Party") return "Party";
+    if (t === "Staff") return "Staff";
+    if (t === "Tax") return "Tax";
+    if (t === "Expense" || t === "Income") return "Income/Expense";
+    return "Bank/Cash";
+  })();
 
   const ledgerSessionKey = React.useMemo(
     () =>
@@ -1065,6 +1077,13 @@ export function AccountDetails({
             </div>
             <div className={LEDGER_HEADER_PILL_ROW_CN}>
               <LedgerHeaderPrintButton variant="outline" onClick={handlePrintStatement} />
+              <LedgerHeaderReminderButton
+                variant="outline"
+                disabled={account.id === "all"}
+                onClick={() =>
+                  router.push(buildLedgerReminderHref({ context: accountReminderContext, entityId: account.id, title: account.accountName }))
+                }
+              />
               {(dateSystem === "BS" || dateSystem === "Both") && (
                 <BsDatePicker
                   isRange

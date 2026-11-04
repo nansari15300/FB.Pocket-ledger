@@ -117,6 +117,13 @@ export default function MessagesPage() {
   const skipInitialTabPersist = useRef(true);
 
   useEffect(() => {
+    // `?tab=alarms` (e.g. ledger Reminder button) wins over the stored tab.
+    const fromUrl = new URLSearchParams(window.location.search).get("tab");
+    if (fromUrl && (MESSAGES_TAB_VALUES as readonly string[]).includes(fromUrl)) {
+      activeTabRef.current = fromUrl as MessagesTabValue;
+      setActiveTab(fromUrl as MessagesTabValue);
+      return;
+    }
     const raw = localStorage.getItem(MESSAGES_TAB_STORAGE_KEY);
     if (raw && (MESSAGES_TAB_VALUES as readonly string[]).includes(raw)) {
       setActiveTab(raw as MessagesTabValue);
@@ -190,7 +197,7 @@ export default function MessagesPage() {
                     recipientUserId: userId,
                     type: "alarm",
                     alarmId: alarm.alarmId,
-                    message: alarm.message || alarm.title || `ALARM: ${alarm.title}`,
+                    message: alarm.message || alarm.title || `REMINDER: ${alarm.title}`,
                     alarmTitle: alarm.title,
                     timestamp: serverTimestamp(),
                     isRead: false,
@@ -209,7 +216,7 @@ export default function MessagesPage() {
         
         await batch.commit();
         const totalAlarms = snapshot.size;
-        toast.info(`${totalAlarms} alarm(s) went off! Check your alerts.`);
+        toast.info(`${totalAlarms} reminder(s) are due! Check your alerts.`);
     });
     return () => unsub();
   }, [companyId, user, allAppUsers, company]);
@@ -814,7 +821,7 @@ export default function MessagesPage() {
                         </TabsTrigger>
                         <TabsTrigger value="alarms" className={messagesTabTriggerClassName}>
                             <AlarmPlus className="h-4 w-4 shrink-0" />
-                            <span className="truncate">Alarms</span>
+                            <span className="truncate">Reminder</span>
                         </TabsTrigger>
                     </TabsList>
                     </div>

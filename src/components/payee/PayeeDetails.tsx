@@ -114,6 +114,7 @@ import {
   type LedgerDetailViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
+import { LedgerHeaderReminderButton, buildLedgerReminderHref, type LedgerReminderContext } from "@/components/vouchers/LedgerHeaderReminderButton";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 import { useRowsPerPageSelectControl } from "@/hooks/useRowsPerPageSelect";
 import { ROWS_PER_PAGE_OPTIONS_DEFAULT } from "@/lib/rowsPerPageSelect";
@@ -204,6 +205,14 @@ export function PayeeDetails({
       if (type === 'Other') return 'other';
       return 'party'; 
   }, [party]);
+
+  /** Reminder button: payee type → Messages → Reminder "Link to" option ('Other' → title only). */
+  const payeeReminderContext: LedgerReminderContext | null =
+    entityType === 'party' ? 'Party'
+    : entityType === 'staff' ? 'Staff'
+    : entityType === 'tax' ? 'Tax'
+    : entityType === 'expense' ? 'Income/Expense'
+    : null;
 
   const transactionDates = useMemo(() => {
     if (!party || !passedTransactions) return [];
@@ -471,6 +480,13 @@ export function PayeeDetails({
             </div>
             <div className={LEDGER_HEADER_PILL_ROW_CN}>
               <LedgerHeaderPrintButton variant="outline" onClick={handlePrint} />
+              <LedgerHeaderReminderButton
+                variant="outline"
+                disabled={party.id === "all"}
+                onClick={() =>
+                  router.push(buildLedgerReminderHref({ context: payeeReminderContext, entityId: party.id, title: party.name }))
+                }
+              />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
               {(dateSystem === 'BS' || dateSystem === 'Both') && (
                 <BsDatePicker

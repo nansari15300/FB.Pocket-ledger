@@ -21,6 +21,7 @@ import {
   type LedgerDetailViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
+import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 import {
   sortTransactionsWithFiscalMergeForCompany,
@@ -1194,6 +1195,13 @@ export default function ItemDetails({
           </div>
           <div className={LEDGER_HEADER_PILL_ROW_CN}>
             <LedgerHeaderPrintButton variant="outline" onClick={handlePrint} />
+            <LedgerHeaderReminderButton
+              variant="outline"
+              disabled={!currentItem?.id || currentItem.id === "all"}
+              onClick={() =>
+                router.push(buildLedgerReminderHref({ context: "Items", entityId: currentItem?.id, title: currentItem?.name }))
+              }
+            />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
             {(dateSystem === 'BS' || dateSystem === 'Both') && (
               <BsDatePicker

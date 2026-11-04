@@ -23,6 +23,7 @@ import {
   type LedgerDetailViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
+import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 import { type TransactionSortBy, type TransactionSortOrder } from "@/components/vouchers/TransactionTableSortDropdown";
 import { LedgerDesktopFooter } from "@/components/vouchers/LedgerDesktopFooter";
@@ -1068,6 +1069,12 @@ export function StaffGroupDetails({
             </div>
             <div className={LEDGER_HEADER_PILL_ROW_CN}>
               <LedgerHeaderPrintButton variant="chromePill" onClick={handlePrint} />
+              <LedgerHeaderReminderButton
+                variant="chromePill"
+                onClick={() =>
+                  router.push(buildLedgerReminderHref({ context: "Staff", title: group.name }))
+                }
+              />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
               {(dateSystem === "BS" || dateSystem === "Both") && (
                 <BsDatePicker

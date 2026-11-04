@@ -75,9 +75,9 @@ export function AlarmsTab() {
   const [alarmToEdit, setAlarmToEdit] = React.useState<Alarm | null>(null);
   const [newAlarmTitle, setNewAlarmTitle] = React.useState("");
   const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(new Date());
-  const [selectedHour, setSelectedHour] = React.useState("12");
+  const [selectedHour, setSelectedHour] = React.useState("10");
   const [selectedMinute, setSelectedMinute] = React.useState("00");
-  const [selectedPeriod, setSelectedPeriod] = React.useState("PM");
+  const [selectedPeriod, setSelectedPeriod] = React.useState("AM");
   const [selectedContext, setSelectedContext] = React.useState("");
   const [selectedEntityId, setSelectedEntityId] = React.useState("");
   const [newAlarmMessage, setNewAlarmMessage] = React.useState("");
@@ -87,6 +87,8 @@ export function AlarmsTab() {
   const [selectedUsers, setSelectedUsers] = React.useState<string[]>([]);
   const [selectedAlarms, setSelectedAlarms] = React.useState<Set<string>>(new Set());
   const [currentTime, setCurrentTime] = React.useState(new Date());
+  const reminderFormRef = React.useRef<HTMLDivElement>(null);
+  const reminderPrefillDoneRef = React.useRef(false);
 
   const contextOptions = [
     { value: 'Party', label: 'Party' },
@@ -108,6 +110,36 @@ export function AlarmsTab() {
       default: return [];
     }
   }, [selectedContext, processedPartiesForSelection, processedStaff, processedAccounts, processedTaxes, processedItems, expenseAccounts]);
+
+  // Ledger header Reminder button: /messages?tab=alarms&reminderContext=..&reminderEntityId=..&reminderTitle=..
+  // Read once on mount, prefill the form, then strip the reminder* params so a reload does not re-prefill.
+  React.useEffect(() => {
+    if (reminderPrefillDoneRef.current || typeof window === "undefined") return;
+    reminderPrefillDoneRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const ctx = params.get("reminderContext") ?? "";
+    const entityId = params.get("reminderEntityId") ?? "";
+    const title = (params.get("reminderTitle") ?? "").trim();
+    if (!ctx && !entityId && !title) return;
+    const validContexts = ["Party", "Staff", "Bank/Cash", "Tax", "Items", "Income/Expense"];
+    const validCtx = validContexts.includes(ctx) ? ctx : "";
+    setAlarmToEdit(null);
+    setSelectedContext(validCtx);
+    setSelectedEntityId(validCtx && entityId ? entityId : "");
+    if (title) setNewAlarmTitle(title);
+    params.delete("reminderContext");
+    params.delete("reminderEntityId");
+    params.delete("reminderTitle");
+    const qs = params.toString();
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
+    const focusTimer = window.setTimeout(() => {
+      const formEl = reminderFormRef.current;
+      if (!formEl) return;
+      formEl.scrollIntoView({ block: "start", behavior: "smooth" });
+      formEl.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
+    }, 150);
+    return () => window.clearTimeout(focusTimer);
+  }, []);
 
   React.useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -139,7 +171,7 @@ export function AlarmsTab() {
 
   const handleSetOrUpdateAlarm = async () => {
     if (!newAlarmTitle || !selectedDate || !companyId) {
-       toast.error("Missing Information", { description: "Please provide a title and date/time for the alarm."});
+       toast.error("Missing Information", { description: "Please provide a title and date/time for the reminder."});
        return;
     };
     
@@ -166,14 +198,14 @@ export function AlarmsTab() {
         
         if (alarmToEdit) {
             await updateDoc(doc(firestore, `companies/${companyId}/alarms`, alarmToEdit.id), alarmData);
-            toast.success("Alarm Updated", { description: `Your alarm for "${newAlarmTitle}" has been updated.`});
+            toast.success("Reminder Updated", { description: `Your reminder for "${newAlarmTitle}" has been updated.`});
         } else {
              await addDoc(collection(firestore, `companies/${companyId}/alarms`), {
                 ...alarmData,
                 createdAt: serverTimestamp(),
                 createdBy: user?.uid ?? null,
             });
-            toast.success("Alarm Set", { description: `An alarm for "${newAlarmTitle}" has been scheduled.`})
+            toast.success("Reminder Set", { description: `A reminder for "${newAlarmTitle}" has been scheduled.`})
         }
         
         // Reset form
@@ -185,7 +217,7 @@ export function AlarmsTab() {
         setSelectedContext('');
         setSelectedEntityId('');
     } catch (e) {
-        toast.error("Failed to set/update alarm.");
+        toast.error("Failed to set/update reminder.");
     } finally {
         setIsProcessing(false);
     }
@@ -225,10 +257,10 @@ export function AlarmsTab() {
     });
     try {
         await batch.commit();
-        toast.success(`${selectedAlarms.size} alarm(s) deleted.`);
+        toast.success(`${selectedAlarms.size} reminder(s) deleted.`);
         setSelectedAlarms(new Set());
     } catch (e) {
-        toast.error("Failed to delete selected alarms.");
+        toast.error("Failed to delete selected reminders.");
     } finally {
         setIsProcessing(false);
     }
@@ -239,9 +271,9 @@ export function AlarmsTab() {
     setIsProcessing(true);
     try {
       await deleteDoc(doc(firestore, `companies/${companyId}/alarms`, item.id));
-      toast.success("Alarm deleted.");
+      toast.success("Reminder deleted.");
     } catch(err) {
-      toast.error("Failed to delete alarm.");
+      toast.error("Failed to delete reminder.");
     } finally {
       setIsProcessing(false);
       setItemToDelete(null);
@@ -292,7 +324,7 @@ export function AlarmsTab() {
               <ScrollArea className="h-full">
                 <div className="space-y-3">
                   {list.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center pt-8">No alarms in this category.</p>
+                    <p className="text-sm text-muted-foreground text-center pt-8">No reminders in this category.</p>
                   ) : (
                     list.map((alarm) => {
                         const alarmDate = alarm.datetime?.toDate ? alarm.datetime.toDate() : new Date(alarm.datetime);
@@ -329,11 +361,11 @@ export function AlarmsTab() {
   return (
     <Card className="h-full flex flex-col">
     <div className="grid grid-cols-1 md:grid-cols-[400px_1fr] gap-6 p-6 flex-1 min-h-0">
-      <div className="flex flex-col gap-4">
-        <h3 className="text-lg font-semibold">{alarmToEdit ? 'Edit Alarm' : 'Set New Alarm'}</h3>
+      <div ref={reminderFormRef} className="flex flex-col gap-4">
+        <h3 className="text-lg font-semibold">{alarmToEdit ? 'Edit Reminder' : 'Set New Reminder'}</h3>
         <div className="space-y-4">
           <Input
-            placeholder="Alarm Title..."
+            placeholder="Reminder Title..."
             value={newAlarmTitle}
             onChange={(e) => setNewAlarmTitle(e.target.value)}
           />
@@ -367,9 +399,10 @@ export function AlarmsTab() {
               )}
             </div>
              <div className="flex items-center justify-center gap-2">
-                <Input type="number" value={selectedHour} onChange={e => setSelectedHour(e.target.value)} className="w-20 text-center" placeholder="HH" maxLength={2} />
+                <label className="text-sm font-medium text-foreground">Time</label>
+                <Input type="number" aria-label="Hour" value={selectedHour} onChange={e => setSelectedHour(e.target.value)} onBlur={() => { if (selectedHour.trim() === "") setSelectedHour("10"); }} className="w-20 text-center" placeholder="HH" maxLength={2} />
                 <span>:</span>
-                <Input type="number" value={selectedMinute} onChange={e => setSelectedMinute(e.target.value)} className="w-20 text-center" placeholder="MM" maxLength={2} />
+                <Input type="number" aria-label="Minute" value={selectedMinute} onChange={e => setSelectedMinute(e.target.value)} onBlur={() => { if (selectedMinute.trim() === "") setSelectedMinute("00"); }} className="w-20 text-center" placeholder="MM" maxLength={2} />
                  <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
                     <SelectTrigger className="w-24"><SelectValue/></SelectTrigger>
                     <SelectContent><SelectItem value="AM">AM</SelectItem><SelectItem value="PM">PM</SelectItem></SelectContent>
@@ -389,7 +422,7 @@ export function AlarmsTab() {
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">Message (optional)</label>
             <Textarea
-              placeholder="Add a message for the alarm notification..."
+              placeholder="Add a message for the reminder notification..."
               value={newAlarmMessage}
               onChange={(e) => setNewAlarmMessage(e.target.value)}
               className="min-h-[80px] resize-none"
@@ -398,7 +431,7 @@ export function AlarmsTab() {
           </div>
           <Button className="w-full" onClick={handleSetOrUpdateAlarm} disabled={isProcessing}>
             {isProcessing ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <AlarmPlus className="mr-2 h-4 w-4" />} 
-            {alarmToEdit ? 'Update Alarm' : 'Set Alarm'}
+            {alarmToEdit ? 'Update Reminder' : 'Set Reminder'}
           </Button>
            {alarmToEdit && <Button variant="outline" size="sm" onClick={() => setAlarmToEdit(null)}>Cancel Edit</Button>}
         </div>
@@ -406,7 +439,7 @@ export function AlarmsTab() {
       
         <div className="flex flex-col gap-4 min-h-0">
              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold">Manage Alarms</h3>
+                <h3 className="text-lg font-semibold">Manage Reminders</h3>
                 <Button variant="destructive" size="sm" onClick={handleDeleteSelected} disabled={selectedAlarms.size === 0 || isProcessing}>
                      {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                     <Trash2 className="mr-2 h-4 w-4"/> Delete Selected ({selectedAlarms.size})
@@ -418,7 +451,7 @@ export function AlarmsTab() {
                     <TabsTrigger value="expired" className="flex-1">Expired ({expiredAlarms.length})</TabsTrigger>
                 </TabsList>
                 <TabsContent value="upcoming" className="mt-4 flex-1">
-                   <AlarmList list={upcomingAlarms} title="Upcoming Alarms" onSelectAll={(checked) => {
+                   <AlarmList list={upcomingAlarms} title="Upcoming Reminders" onSelectAll={(checked) => {
                         const upcomingIds = upcomingAlarms.map(a => a.id);
                         setSelectedAlarms(prev => {
                             const newSet = new Set(prev);
@@ -432,7 +465,7 @@ export function AlarmsTab() {
                    }} />
                 </TabsContent>
                 <TabsContent value="expired" className="mt-4 flex-1">
-                   <AlarmList list={expiredAlarms} title="Expired Alarms" isExpiredList onSelectAll={(checked) => {
+                   <AlarmList list={expiredAlarms} title="Expired Reminders" isExpiredList onSelectAll={(checked) => {
                         const expiredIds = expiredAlarms.map(a => a.id);
                         setSelectedAlarms(prev => {
                             const newSet = new Set(prev);
@@ -451,8 +484,8 @@ export function AlarmsTab() {
      <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Alarm?</AlertDialogTitle>
-            <AlertDialogDescription>This alarm will be permanently deleted.</AlertDialogDescription>
+            <AlertDialogTitle>Delete Reminder?</AlertDialogTitle>
+            <AlertDialogDescription>This reminder will be permanently deleted.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

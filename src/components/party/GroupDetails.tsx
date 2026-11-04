@@ -63,6 +63,7 @@ import {
   type LedgerDetailViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
+import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 import {
   sortTransactionsWithFiscalMergeForCompany,
@@ -1752,6 +1753,12 @@ export function GroupDetails({
           </div>
           <div className={LEDGER_HEADER_PILL_ROW_CN}>
               <LedgerHeaderPrintButton variant="chromePill" onClick={handlePrint} />
+              <LedgerHeaderReminderButton
+                variant="chromePill"
+                onClick={() =>
+                  router.push(buildLedgerReminderHref({ context: "Party", title: group.name }))
+                }
+              />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
             {(dateSystem === "BS" || dateSystem === "Both") && (
               <div className="flex items-center gap-1 flex-shrink-0">

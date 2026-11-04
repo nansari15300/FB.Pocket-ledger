@@ -31,6 +31,7 @@ import {
   type LedgerDetailViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
+import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 
 
@@ -1020,6 +1021,12 @@ export function TaxGroupDetails({
             </div>
             <div className={LEDGER_HEADER_PILL_ROW_CN}>
               <LedgerHeaderPrintButton variant="outline" onClick={handlePrint} />
+              <LedgerHeaderReminderButton
+                variant="outline"
+                onClick={() =>
+                  router.push(buildLedgerReminderHref({ context: "Tax", title: group.name }))
+                }
+              />
               <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
               {(dateSystem === 'BS' || dateSystem === 'Both') && (
                 <BsDatePicker

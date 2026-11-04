@@ -179,6 +179,7 @@ import {
   type PartyTdsLedgerViewMode,
 } from "@/lib/ledgerDetailSessionMemory";
 import { LedgerHeaderPrintButton } from "@/components/vouchers/LedgerHeaderPrintButton";
+import { LedgerHeaderReminderButton, buildLedgerReminderHref } from "@/components/vouchers/LedgerHeaderReminderButton";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 import {
   computeAccountConfirmationSummary,
@@ -2510,6 +2511,13 @@ export function PartyDetails({
                 <ReconciliationAccountButton accountId={headerIdentityParty.id} />
               ) : null}
               <LedgerHeaderPrintButton variant="outline" onClick={handlePrint} />
+              <LedgerHeaderReminderButton
+                variant="outline"
+                disabled={party.id === "all" || (isIcCompanyGroupView && !icGroupFilteredMember)}
+                onClick={() =>
+                  router.push(buildLedgerReminderHref({ context: "Party", entityId: headerIdentityParty.id, title: headerIdentityParty.name }))
+                }
+              />
               <LedgerUnapprovedFilterButton
                 active={unapprovedOnly}
                 onClick={toggleUnapprovedOnly}
