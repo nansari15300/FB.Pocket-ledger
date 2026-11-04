@@ -16,8 +16,9 @@ const { spawn } = require("child_process");
 const projectRoot = process.cwd();
 const websiteRoot = path.join(projectRoot, "website");
 const releasesRoot = path.join(projectRoot, "releases");
-const publicPort = String(process.env.PORT || "3000");
-const nextPort = String(process.env.NEXT_INTERNAL_PORT || "3001");
+const argPort = process.argv.slice(2).find((a) => /^\d{4,5}$/.test(a));
+const publicPort = String(argPort || process.env.PORT || "3000");
+const nextPort = String(process.env.NEXT_INTERNAL_PORT || (Number(publicPort) + 1));
 
 function listLanIPv4Addresses() {
   const out = [];

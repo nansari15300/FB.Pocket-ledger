@@ -52,7 +52,8 @@
     "release:publish": "node scripts/release-publish.cjs",
     "release:publish:fast": "node scripts/release-publish.cjs --skip-static",
     "release:publish:tauri": "node scripts/release-publish.cjs --tauri",
-    "release:upload:np": "node scripts/upload-releases-to-pl-server.cjs"
+    "release:upload:np": "node scripts/upload-releases-to-pl-server.cjs",
+    "dev:2000": "node scripts/dev-web-gateway.cjs 2000"
   },
   "dependencies": {
     "@capacitor-community/admob": "^6.2.0",
