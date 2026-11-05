@@ -2015,6 +2015,7 @@ export function PartyDetails({
               isDateChange={isDateChange}
               scrollOnlyTransactions
               closingBalanceRowActions={tdsLedgerOnly ? undefined : partyClosingBalanceRowActions}
+              shortClosingLabelOnMobile
               closingBalanceActions={tdsLedgerOnly ? undefined : partyClosingBalanceActions}
               highlightPendingApproval
               statusFilter={statusFilter}
@@ -2746,6 +2747,7 @@ export function PartyDetails({
               isDateChange={isDateChange}
               scrollOnlyTransactions
               closingBalanceRowActions={tdsLedgerOnly ? undefined : partyClosingBalanceRowActions}
+              shortClosingLabelOnMobile
               closingBalanceActions={tdsLedgerOnly ? undefined : partyClosingBalanceActions}
               highlightPendingApproval
               statusFilter={statusFilter}

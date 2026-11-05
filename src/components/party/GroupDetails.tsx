@@ -1524,6 +1524,7 @@ export function GroupDetails({
             isDateChange={false}
             scrollOnlyTransactions
             closingBalanceRowActions={tableClosingBalanceRowActions}
+            shortClosingLabelOnMobile={groupType === "party"}
             closingBalanceActions={tableClosingBalanceActions}
             statusFilter={statusFilter}
             statusFilterAllChecked={statusFilterAllChecked}
@@ -1955,6 +1956,7 @@ export function GroupDetails({
             closingBalance={desktopPaginationMeta.closingForPage}
             scrollOnlyTransactions
             closingBalanceRowActions={tableClosingBalanceRowActions}
+            shortClosingLabelOnMobile={groupType === "party"}
             closingBalanceActions={tableClosingBalanceActions}
             statusFilter={statusFilter}
             statusFilterAllChecked={statusFilterAllChecked}

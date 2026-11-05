@@ -22,7 +22,6 @@ import type { DateRange } from "@/components/ui/ad-calendar";
 import { approveVoucherWithHistory } from "@/lib/voucherActionsClient";
 import { isLedgerTransactionUnapproved } from "@/lib/ledgerPendingApproval";
 import { useAuth } from "@/hooks/useAuth";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { openPrintDirect } from "@/lib/printDirect";
 import { applyLedgerPageToPrintPayload } from "@/lib/ledgerPagePrint";
 import {
@@ -1113,7 +1112,7 @@ export const LoanTransactions = forwardRef(function LoanTransactions(
                       {loanClosingBalanceActions}
                     </div>
                   ) : null}
-                  <LoanClosingBalanceLabel />
+                  <span className="shrink-0 whitespace-nowrap text-right">Closing Balance</span>
                 </div>
               </div>
             </TableCell>
@@ -1277,13 +1276,3 @@ export const LoanAccounting = forwardRef<
     />
   );
 });
-
-/** Mobile only: "Cls Blc"; PC keeps the full (translatable) "Closing Balance". */
-function LoanClosingBalanceLabel() {
-  const isMobile = useIsMobile();
-  return (
-    <span className="shrink-0 whitespace-nowrap text-right" {...(isMobile ? { "data-pl-no-translate": "" } : {})}>
-      {isMobile ? "Cls Blc" : "Closing Balance"}
-    </span>
-  );
-}
