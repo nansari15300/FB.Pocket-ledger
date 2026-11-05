@@ -76,6 +76,7 @@ import {
 } from "./transactionTableShared";
 import { Badge } from "@/components/ui/badge";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { AdaptiveClosingScope } from "@/components/vouchers/AdaptiveClosingScope";
 import { Card } from "@/components/ui/card";
 import { differenceInDays, format, startOfDay } from "date-fns";
 import {
@@ -385,8 +386,8 @@ interface TransactionsTableProps {
   closingBalanceActions?: React.ReactNode;
   /** Footer closing label (default "Closing Balance"; party TDS details uses "TDS Closing Balance"). */
   closingBalanceLabel?: string;
-  /** Opt-in (party pages only): on mobile show "Cls Blc" instead of "Closing Balance". */
-  shortClosingLabelOnMobile?: boolean;
+  /** Opt-in (Account/Group detail pages): no closing label text; the yellow Adjust Balance pill adapts ("Adjust Closing Balance" -> "Ajt Cls Blc"); amount never splits. */
+  adaptiveClosingLabel?: boolean;
   onDeleteVoucher?: (transaction: any) => void;
   /** Row menu: recycle bin (corrupt / master-missing vouchers — sirf id se). */
   onMoveVoucherToRecycleBin?: (transaction: any) => void;
@@ -506,7 +507,7 @@ export function TransactionsTable({
   closingBalanceRowActions,
   closingBalanceActions,
   closingBalanceLabel = "Closing Balance",
-  shortClosingLabelOnMobile = false,
+  adaptiveClosingLabel = false,
   onDeleteVoucher,
   onMoveVoucherToRecycleBin,
   onHistoryVoucher,
@@ -2820,10 +2821,6 @@ export function TransactionsTable({
     ) : null;
 
   const isMobile = useIsMobile();
-  /** Mobile + party pages only (shortClosingLabelOnMobile): "Closing Balance" -> "Cls Blc". */
-  const closingBalanceLabelShown = isMobile && shortClosingLabelOnMobile
-    ? closingBalanceLabel.replace("Closing Balance", "Cls Blc")
-    : closingBalanceLabel;
   const names = useMemo(() => ({ ...(journalAccountNames || {}), ...(userNames || {}), ...(accountNames || {}) }), [journalAccountNames, userNames, accountNames]);
 
   // On mobile, party/group use same card UI for both Statement and Bill wise (not PC table).
@@ -4800,11 +4797,17 @@ export function TransactionsTable({
                       onClick={(e) => e.stopPropagation()}
                       onKeyDown={(e) => e.stopPropagation()}
                     >
-                      {closingBalanceRowActions}
+                      <AdaptiveClosingScope enabled={adaptiveClosingLabel} label={closingBalanceLabel}>{closingBalanceRowActions}</AdaptiveClosingScope>
                     </div>
                   ) : null}
-                  <span className="shrink-0 whitespace-nowrap text-xs font-semibold text-muted-foreground" {...(isMobile && shortClosingLabelOnMobile ? { "data-pl-no-translate": "" } : {})}>{closingBalanceLabelShown}</span>
-                  <span className="shrink-0 text-sm font-semibold">{formatFooterBalance(footerClosingBalance)}</span>
+                  {adaptiveClosingLabel ? (
+                    <span data-pl-closing-amount="" className="shrink-0 whitespace-nowrap text-sm font-semibold">{formatFooterBalance(footerClosingBalance)}</span>
+                  ) : (
+                    <>
+                      <span className="shrink-0 text-xs font-semibold text-muted-foreground">{closingBalanceLabel}</span>
+                      <span className="shrink-0 text-sm font-semibold">{formatFooterBalance(footerClosingBalance)}</span>
+                    </>
+                  )}
                 </div>
               ) : null}
               {closingBalanceActions ? (
@@ -4814,7 +4817,7 @@ export function TransactionsTable({
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={(e) => e.stopPropagation()}
                 >
-                  {closingBalanceActions}
+                  <AdaptiveClosingScope enabled={adaptiveClosingLabel} label={closingBalanceLabel}>{closingBalanceActions}</AdaptiveClosingScope>
                 </div>
               ) : null}
             </div>
@@ -5256,7 +5259,7 @@ export function TransactionsTable({
                     onClick={(e) => e.stopPropagation()}
                     onKeyDown={(e) => e.stopPropagation()}
                   >
-                    {closingBalanceActions}
+                    <AdaptiveClosingScope enabled={adaptiveClosingLabel} label={closingBalanceLabel}>{closingBalanceActions}</AdaptiveClosingScope>
                   </div>
                 ) : null}
                 {closingBalanceRowActions ? (
@@ -5266,10 +5269,12 @@ export function TransactionsTable({
                     onClick={(e) => e.stopPropagation()}
                     onKeyDown={(e) => e.stopPropagation()}
                   >
-                    {closingBalanceRowActions}
+                    <AdaptiveClosingScope enabled={adaptiveClosingLabel} label={closingBalanceLabel}>{closingBalanceRowActions}</AdaptiveClosingScope>
                   </div>
                 ) : null}
-                <span className="shrink-0 whitespace-nowrap text-right" {...(isMobile && shortClosingLabelOnMobile ? { "data-pl-no-translate": "" } : {})}>{closingBalanceLabelShown}</span>
+                {adaptiveClosingLabel ? null : (
+                  <span className="shrink-0 text-right">{closingBalanceLabel}</span>
+                )}
               </div>
             </div>
           </TableCell>

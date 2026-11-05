@@ -1611,7 +1611,7 @@ export function StaffDetails({
           className="min-h-[8rem]"
           overlay={staffFreezeOverlay}
         >
-        <TransactionsTable
+        <TransactionsTable adaptiveClosingLabel
           key={`staff-mobile-${staff.id}-${ledgerSplitMode}-${currentPage}-${rowsPerPage}`}
           transactions={mobileTransactionsToShow}
           context="staff"
@@ -2262,7 +2262,7 @@ export function StaffDetails({
                 <MasterAccountFreezeTxnShell
                   overlay={staffFreezeOverlay}
                 >
-                <TransactionsTable
+                <TransactionsTable adaptiveClosingLabel
                   key={`staff-${staff.id}-${ledgerSplitMode}-${currentPage}-${rowsPerPage}`}
                   transactions={paginatedTransactions}
                   context="staff"

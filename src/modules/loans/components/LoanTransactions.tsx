@@ -22,6 +22,7 @@ import type { DateRange } from "@/components/ui/ad-calendar";
 import { approveVoucherWithHistory } from "@/lib/voucherActionsClient";
 import { isLedgerTransactionUnapproved } from "@/lib/ledgerPendingApproval";
 import { useAuth } from "@/hooks/useAuth";
+import { AdaptiveClosingScope } from "@/components/vouchers/AdaptiveClosingScope";
 import { openPrintDirect } from "@/lib/printDirect";
 import { applyLedgerPageToPrintPayload } from "@/lib/ledgerPagePrint";
 import {
@@ -1109,10 +1110,9 @@ export const LoanTransactions = forwardRef(function LoanTransactions(
                       onClick={(e) => e.stopPropagation()}
                       onKeyDown={(e) => e.stopPropagation()}
                     >
-                      {loanClosingBalanceActions}
+                      <AdaptiveClosingScope enabled>{loanClosingBalanceActions}</AdaptiveClosingScope>
                     </div>
                   ) : null}
-                  <span className="shrink-0 whitespace-nowrap text-right">Closing Balance</span>
                 </div>
               </div>
             </TableCell>

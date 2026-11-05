@@ -1877,7 +1877,7 @@ export function AccountDetails({
           <MasterAccountFreezeTxnShell
             overlay={accountFreezeOverlay}
           >
-          <TransactionsTable
+          <TransactionsTable adaptiveClosingLabel
             transactions={displayMobileTransactionsToShow}
             context="account"
             contextId={account.id}
@@ -2261,7 +2261,7 @@ export function AccountDetails({
               overlay={accountFreezeOverlay}
               className={cn(hasDayStepper && "relative", spendWiseView && "p-[2px]")}
             >
-            <TransactionsTable
+            <TransactionsTable adaptiveClosingLabel
               transactions={displayPaginatedTransactions}
               context="account"
               contextId={account.id}

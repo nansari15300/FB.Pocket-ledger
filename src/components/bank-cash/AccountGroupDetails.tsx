@@ -1462,7 +1462,7 @@ export function AccountGroupDetails({
             <div className="pb-2">
             {/* Bank/Cash group pages use their own Statement/Spend-wise toggle, so shared bill-wise preference must stay off here. */}
             <MasterAccountFreezeTxnShell className="min-h-[8rem]" overlay={memberFreezeOverlay}>
-            <TransactionsTable
+            <TransactionsTable adaptiveClosingLabel
               transactions={mobileTransactionsToShow}
               context="group"
               contextId={group.id}
@@ -1908,7 +1908,7 @@ export function AccountGroupDetails({
               className={cn("min-h-[8rem]", spendWiseView && "p-[2px]")}
               overlay={memberFreezeOverlay}
             >
-            <TransactionsTable
+            <TransactionsTable adaptiveClosingLabel
               transactions={paginatedTransactions}
               context="group"
               contextId={group.id}

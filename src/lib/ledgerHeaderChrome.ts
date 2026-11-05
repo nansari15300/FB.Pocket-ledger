@@ -17,7 +17,7 @@ export const LEDGER_CLOSING_BALANCE_ACTION_PILL_CN =
  */
 export const LEDGER_CLOSING_BALANCE_ADJUST_PILL_CN = cn(
   LEDGER_CLOSING_BALANCE_ACTION_PILL_CN,
-  "box-border justify-center min-w-[calc(14px+0.375rem+18ch+1.25rem+4px)] w-[calc(14px+0.375rem+18ch+1.25rem+4px)]"
+  "box-border justify-center min-w-[calc(14px+0.375rem+18ch+1.25rem+4px)]"
 );
 /** Date-range trigger — bold blue + glow via globals `.pl-ledger-header-pill-row button[data-theme-detail="date-range"]`. */
 export const LEDGER_DATE_RANGE_PILL_CN = cn(

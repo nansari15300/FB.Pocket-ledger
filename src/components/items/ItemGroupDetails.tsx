@@ -821,7 +821,7 @@ export function ItemGroupDetails({
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="flex-1 min-h-0 overflow-auto scroll-touch">
               <div className="pb-2">
-                <TransactionsTable {...itemGroupTransactionsTableProps} scrollOnlyTransactions />
+                <TransactionsTable adaptiveClosingLabel {...itemGroupTransactionsTableProps} scrollOnlyTransactions />
               </div>
             </div>
             <MobileTransactionsPager
@@ -1181,7 +1181,7 @@ export function ItemGroupDetails({
           table={
           <>
           
-            <TransactionsTable
+            <TransactionsTable adaptiveClosingLabel
               transactions={paginatedTransactions}
               context="group"
               // Mark this group table as item-group so Party column/header can render.

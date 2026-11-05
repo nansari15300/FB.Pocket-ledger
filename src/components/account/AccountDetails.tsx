@@ -854,7 +854,7 @@ export function AccountDetails({
                   openingBalance={openingBalanceForPeriod}
                 />
               ) : (
-              <TransactionsTable
+              <TransactionsTable adaptiveClosingLabel
                 transactions={mobileReportPaginatedTransactions}
                 context="account"
                 contextId={account.id}
@@ -1168,7 +1168,7 @@ export function AccountDetails({
         {/* TABLE: page1=oldest block (1–10); Book OB; p2+ Dated w/ date=prev page last txn */}
         <ScrollArea txnChrome className="flex-1">
           <div className="p-4">
-            <TransactionsTable
+            <TransactionsTable adaptiveClosingLabel
               transactions={paginatedTransactions}
               context="account"
               contextId={account.id}

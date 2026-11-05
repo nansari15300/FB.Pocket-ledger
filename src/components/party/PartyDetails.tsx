@@ -1969,7 +1969,7 @@ export function PartyDetails({
               className="min-h-[8rem]"
               overlay={partyFreezeOverlay}
             >
-            <TransactionsTable
+            <TransactionsTable adaptiveClosingLabel
               transactions={paginatedTransactions}
               ledgerTransactionsForFyOpening={ledgerListForPaging}
               fyLedgerScopeOpeningBalance={ledgerOpeningForPaging}
@@ -2015,7 +2015,6 @@ export function PartyDetails({
               isDateChange={isDateChange}
               scrollOnlyTransactions
               closingBalanceRowActions={tdsLedgerOnly ? undefined : partyClosingBalanceRowActions}
-              shortClosingLabelOnMobile
               closingBalanceActions={tdsLedgerOnly ? undefined : partyClosingBalanceActions}
               highlightPendingApproval
               statusFilter={statusFilter}
@@ -2686,7 +2685,7 @@ export function PartyDetails({
             {isOpeningBalanceLedger ? (
               openingBalanceLedgerTable
             ) : (
-            <TransactionsTable
+            <TransactionsTable adaptiveClosingLabel
               transactions={paginatedTransactions}
               ledgerTransactionsForFyOpening={ledgerListForPaging}
               fyLedgerScopeOpeningBalance={ledgerOpeningForPaging}
@@ -2747,7 +2746,6 @@ export function PartyDetails({
               isDateChange={isDateChange}
               scrollOnlyTransactions
               closingBalanceRowActions={tdsLedgerOnly ? undefined : partyClosingBalanceRowActions}
-              shortClosingLabelOnMobile
               closingBalanceActions={tdsLedgerOnly ? undefined : partyClosingBalanceActions}
               highlightPendingApproval
               statusFilter={statusFilter}

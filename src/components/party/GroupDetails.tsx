@@ -1484,7 +1484,7 @@ export function GroupDetails({
           <div className="pb-2">
           <MasterAccountFreezeTxnShell className="min-h-[8rem]" overlay={memberFreezeOverlay}>
           {/* Unapproved: pink row â€” default `highlightPendingApproval` */}
-          <TransactionsTable
+          <TransactionsTable adaptiveClosingLabel
             transactions={mobileTransactionsToShow}
             context="group"
             // Mark this as party-group context so bill-wise table keeps running-balance behavior.
@@ -1524,7 +1524,6 @@ export function GroupDetails({
             isDateChange={false}
             scrollOnlyTransactions
             closingBalanceRowActions={tableClosingBalanceRowActions}
-            shortClosingLabelOnMobile={groupType === "party"}
             closingBalanceActions={tableClosingBalanceActions}
             statusFilter={statusFilter}
             statusFilterAllChecked={statusFilterAllChecked}
@@ -1906,7 +1905,7 @@ export function GroupDetails({
           table={
           <>
           <MasterAccountFreezeTxnShell className="min-h-[8rem]" overlay={memberFreezeOverlay}>
-          <TransactionsTable
+          <TransactionsTable adaptiveClosingLabel
             transactions={paginatedTransactions}
             ledgerTransactionsForFyOpening={ledgerListForPaging}
             fyLedgerScopeOpeningBalance={openingBalanceForPeriod}
@@ -1956,7 +1955,6 @@ export function GroupDetails({
             closingBalance={desktopPaginationMeta.closingForPage}
             scrollOnlyTransactions
             closingBalanceRowActions={tableClosingBalanceRowActions}
-            shortClosingLabelOnMobile={groupType === "party"}
             closingBalanceActions={tableClosingBalanceActions}
             statusFilter={statusFilter}
             statusFilterAllChecked={statusFilterAllChecked}

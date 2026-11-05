@@ -731,7 +731,7 @@ export function TaxGroupDetails({
             >
             <div className="pb-2">
             <MasterAccountFreezeTxnShell className="min-h-[8rem]" overlay={memberFreezeOverlay}>
-            <TransactionsTable
+            <TransactionsTable adaptiveClosingLabel
               transactions={mobileTransactionsToShow}
               context="group"
               contextId={group.id}
@@ -1110,7 +1110,7 @@ export function TaxGroupDetails({
           <>
           
             <MasterAccountFreezeTxnShell className="min-h-[8rem]" overlay={memberFreezeOverlay}>
-            <TransactionsTable
+            <TransactionsTable adaptiveClosingLabel
               transactions={paginatedTransactions}
               context="group"
               contextId={group.id}

@@ -974,7 +974,7 @@ export function ExpenseAccountDetails({
             <MasterAccountFreezeTxnShell
               overlay={expenseFreezeOverlay}
             >
-            <TransactionsTable
+            <TransactionsTable adaptiveClosingLabel
               transactions={paginatedTransactions}
               context="expense"
               contextId={account.id}
@@ -1232,7 +1232,7 @@ export function ExpenseAccountDetails({
                 <MasterAccountFreezeTxnShell
                   overlay={expenseFreezeOverlay}
                 >
-                <TransactionsTable
+                <TransactionsTable adaptiveClosingLabel
                   transactions={mobileTransactions}
                   context="expense"
                   contextId={account.id}
@@ -1293,7 +1293,7 @@ export function ExpenseAccountDetails({
                 <MasterAccountFreezeTxnShell
                   overlay={expenseFreezeOverlay}
                 >
-                <TransactionsTable
+                <TransactionsTable adaptiveClosingLabel
                   transactions={mobileTransactions}
                   context="expense"
                   contextId={account.id}

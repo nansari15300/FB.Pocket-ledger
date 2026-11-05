@@ -1008,7 +1008,7 @@ export default function ItemDetails({
         className="flex-1 min-h-0 overflow-auto scroll-touch"
       >
         <div className="pb-2">
-          <TransactionsTable {...itemTransactionsTableProps} scrollOnlyTransactions />
+          <TransactionsTable adaptiveClosingLabel {...itemTransactionsTableProps} scrollOnlyTransactions />
         </div>
       </div>
     <MobileTransactionsPager
@@ -1306,7 +1306,7 @@ export default function ItemDetails({
         </div>
       </div>
           }
-          table={<TransactionsTable {...itemTransactionsTableProps} />}
+          table={<TransactionsTable adaptiveClosingLabel {...itemTransactionsTableProps} />}
         footer={
          <LedgerDesktopFooter
            left={

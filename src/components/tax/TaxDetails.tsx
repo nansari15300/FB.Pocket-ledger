@@ -1223,7 +1223,7 @@ export function TaxDetails({
             <MasterAccountFreezeTxnShell
               overlay={taxFreezeOverlay}
             >
-            <TransactionsTable
+            <TransactionsTable adaptiveClosingLabel
               transactions={mobileTransactions}
               context="tax"
               contextId={tax.id}
@@ -1832,7 +1832,7 @@ export function TaxDetails({
                 <MasterAccountFreezeTxnShell
                   overlay={taxFreezeOverlay}
                 >
-                <TransactionsTable
+                <TransactionsTable adaptiveClosingLabel
                   transactions={paginatedTransactions}
                   context="tax"
                   contextId={tax.id}
