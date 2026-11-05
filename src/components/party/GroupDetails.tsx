@@ -158,6 +158,7 @@ import { CreateNoteForm } from "../vouchers/CreateNoteForm";
 import { Checkbox } from "../ui/checkbox";
 import { AddVoucherDialog } from "../vouchers/AddVoucherDialog";
 import { AdjustBalancePillLabel } from "../vouchers/AdjustBalancePillLabel";
+import { ShareForReconcilingDetailButtons } from "../reconciliation/ShareForReconcilingDetailButtons";
 import { HistoryDialog } from "../vouchers/HistoryDialog";
 import { LinkAdvancesToVoucherDialog } from "../vouchers/LinkAdvancesToVoucherDialog";
 import { LinkPaymentToTxnsDialog } from "../vouchers/LinkPaymentToTxnsDialog";
@@ -712,6 +713,8 @@ export function GroupDetails({
       }
     : undefined;
   const adjustBalanceClosingActions = canShowAdjustBalance ? (
+    <>
+    <ShareForReconcilingDetailButtons accountId={icHeaderMemberAccount ? "" : adjustBalanceTarget?.id ?? ""} />
     <AddVoucherDialog
       defaultTab="adjustment"
       allowedTabs={["adjustment"]}
@@ -729,6 +732,7 @@ export function GroupDetails({
         <AdjustBalancePillLabel />
       </Button>
     </AddVoucherDialog>
+    </>
   ) : null;
 
   const liveFreezeTargetParty = useMemo(() => {
@@ -747,6 +751,8 @@ export function GroupDetails({
 
   const memberAdjustBalanceActions =
     liveFreezeTargetParty && adjustBalanceTarget ? (
+      <>
+      <ShareForReconcilingDetailButtons accountId={icHeaderMemberAccount ? "" : adjustBalanceTarget.id} />
       <AddVoucherDialog
         defaultTab="adjustment"
         allowedTabs={["adjustment"]}
@@ -765,6 +771,7 @@ export function GroupDetails({
           <AdjustBalancePillLabel />
         </Button>
       </AddVoucherDialog>
+      </>
     ) : null;
 
   const {

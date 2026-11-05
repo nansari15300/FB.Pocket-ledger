@@ -8,12 +8,20 @@ import {
   LEDGER_CLOSING_BALANCE_ADJUST_PILL_CN,
 } from "@/lib/ledgerHeaderChrome";
 import { publicAssetUrl } from "@/lib/webAppBasePath";
+import { useIsMobile } from "@/hooks/use-mobile";
 
-/** Adjust Balance pill — pointing-hand pic (Closing Balance ki taraf). */
+/** Adjust Balance pill — pointing-hand pic (Closing Balance ki taraf). Mobile label: "Ajt Blc". */
 export function AdjustBalancePillLabel() {
+  const isMobile = useIsMobile();
   return (
     <>
-      Adjust Balance
+      {isMobile ? (
+        <span className="whitespace-nowrap" data-pl-no-translate="">
+          Ajt Blc
+        </span>
+      ) : (
+        "Adjust Balance"
+      )}
       <img
         src={publicAssetUrl("/adjust-balance-point.png")}
         alt=""

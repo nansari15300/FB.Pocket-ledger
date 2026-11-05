@@ -2817,6 +2817,10 @@ export function TransactionsTable({
     ) : null;
 
   const isMobile = useIsMobile();
+  /** Mobile only: "Closing Balance" -> "Cls Blc" (PC keeps the full, translatable label). */
+  const closingBalanceLabelShown = isMobile
+    ? closingBalanceLabel.replace("Closing Balance", "Cls Blc")
+    : closingBalanceLabel;
   const names = useMemo(() => ({ ...(journalAccountNames || {}), ...(userNames || {}), ...(accountNames || {}) }), [journalAccountNames, userNames, accountNames]);
 
   // On mobile, party/group use same card UI for both Statement and Bill wise (not PC table).
@@ -4796,7 +4800,7 @@ export function TransactionsTable({
                       {closingBalanceRowActions}
                     </div>
                   ) : null}
-                  <span className="shrink-0 text-xs font-semibold text-muted-foreground">{closingBalanceLabel}</span>
+                  <span className="shrink-0 whitespace-nowrap text-xs font-semibold text-muted-foreground" {...(isMobile ? { "data-pl-no-translate": "" } : {})}>{closingBalanceLabelShown}</span>
                   <span className="shrink-0 text-sm font-semibold">{formatFooterBalance(footerClosingBalance)}</span>
                 </div>
               ) : null}
@@ -5262,7 +5266,7 @@ export function TransactionsTable({
                     {closingBalanceRowActions}
                   </div>
                 ) : null}
-                <span className="shrink-0 text-right">{closingBalanceLabel}</span>
+                <span className="shrink-0 whitespace-nowrap text-right" {...(isMobile ? { "data-pl-no-translate": "" } : {})}>{closingBalanceLabelShown}</span>
               </div>
             </div>
           </TableCell>

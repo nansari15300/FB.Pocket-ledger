@@ -2538,7 +2538,6 @@ export function DesktopAppHeader() {
               <div className="flex shrink-0 items-center gap-2">
                 <DateSystemSwitcher />
                 {isApkPhoneFormFactor ? null : <HeaderViewModeToggle />}
-                <MobileReportButtonsOnly />
                 <AddNewButtonOnReportPage />
               </div>
             </div>

@@ -130,6 +130,7 @@ import { applyPaymentBillWiseLinkAllocations } from "@/lib/voucherActionsClient"
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { useInterCompanyLedgerChangeDetectDialog } from "@/hooks/useInterCompanyLedgerChangeDetectDialog";
 import { AdjustBalancePillLabel } from "@/components/vouchers/AdjustBalancePillLabel";
+import { ShareForReconcilingDetailButtons } from "@/components/reconciliation/ShareForReconcilingDetailButtons";
 import { HistoryDialog } from "@/components/vouchers/HistoryDialog";
 import { LinkAdvancesToVoucherDialog } from "@/components/vouchers/LinkAdvancesToVoucherDialog";
 import { EntityAlarmPopup } from "@/components/messages/EntityAlarmPopup";
@@ -719,6 +720,8 @@ export function PartyDetails({
   const partyClosingBalanceRowActions = useMemo(
     () =>
       canShowAdjustBalance ? (
+        <>
+        <ShareForReconcilingDetailButtons accountId={icGroupFilteredMember ? "" : adjustBalanceTarget?.id ?? ""} />
         <AddVoucherDialog
           defaultTab="adjustment"
           allowedTabs={["adjustment"]}
@@ -737,8 +740,9 @@ export function PartyDetails({
             <AdjustBalancePillLabel />
           </Button>
         </AddVoucherDialog>
+        </>
       ) : null,
-    [canShowAdjustBalance, adjustBalanceTarget, blockPartyNewTransactions]
+    [canShowAdjustBalance, adjustBalanceTarget, blockPartyNewTransactions, icGroupFilteredMember]
   );
 
   const partyClosingBalanceActions = useMemo(() => {
