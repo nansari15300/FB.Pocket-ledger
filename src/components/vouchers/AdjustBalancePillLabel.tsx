@@ -42,6 +42,21 @@ function innerWidth(el: HTMLElement): number {
   return el.getBoundingClientRect().width - num(cs.paddingLeft) - num(cs.paddingRight) - num(cs.borderLeftWidth) - num(cs.borderRightWidth);
 }
 
+/** Auto margin (ml-auto / mr-auto / mx-auto) = free space, not occupied width. */
+function isAutoMargin(el: HTMLElement, side: "left" | "right"): boolean {
+  const map = (el as HTMLElement & { computedStyleMap?: () => { get(p: string): unknown } }).computedStyleMap?.();
+  if (map) {
+    try {
+      const v = map.get(`margin-${side}`);
+      if (v != null) return String(v) === "auto";
+    } catch {
+      /* fall back to classes */
+    }
+  }
+  const cls = el.classList;
+  return cls.contains("mx-auto") || cls.contains(side === "left" ? "ml-auto" : "mr-auto");
+}
+
 /**
  * Width available to the actions box when it is NOT sharing a line with the amount
  * (desktop footer / loan / amount already on its own line): card width minus the other items on its row.
@@ -53,7 +68,7 @@ function availableForBox(box: HTMLElement): number {
   let cur: HTMLElement = box;
   while (cur !== card && cur.parentElement) {
     const cs = getComputedStyle(cur);
-    avail -= num(cs.marginLeft) + num(cs.marginRight);
+    avail -= (isAutoMargin(cur, "left") ? 0 : num(cs.marginLeft)) + (isAutoMargin(cur, "right") ? 0 : num(cs.marginRight));
     const parent = cur.parentElement;
     if (parent !== card) avail -= num(getComputedStyle(parent).paddingLeft) + num(getComputedStyle(parent).paddingRight);
     const pcs = getComputedStyle(parent);

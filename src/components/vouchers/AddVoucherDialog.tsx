@@ -5054,18 +5054,15 @@ export function AddVoucherDialog(props: any) {
           onFocusOutside={(e) => e.preventDefault()}
           className={cn(
             "z-[81] flex min-h-0 flex-col overflow-hidden p-0 !gap-0",
-            isAdjustmentOnlyDialog
-              ? "left-1/2 top-1/2 h-[80dvh] max-h-[80dvh] w-[80vw] max-w-[80vw] -translate-x-1/2 -translate-y-1/2 rounded-lg border shadow-lg"
-              : "box-border h-[100dvh] max-h-[100dvh] w-full max-w-none !left-0 !top-0 !translate-x-0 !translate-y-0 rounded-none border-0 shadow-lg",
-            !isAdjustmentOnlyDialog &&
-              "pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]"
+            "box-border h-[100dvh] max-h-[100dvh] w-full max-w-none !left-0 !top-0 !translate-x-0 !translate-y-0 rounded-none border-0 shadow-lg",
+            "pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]"
           )}
         >
           <div
             ref={dialogFrameRef}
             className={cn(
               "relative flex min-h-0 flex-col",
-              isAdjustmentOnlyDialog ? "h-full max-h-full" : "flex-1"
+              "flex-1"
             )}
           >
             {headerBlock}

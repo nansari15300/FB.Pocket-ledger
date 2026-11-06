@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ShareForReconciliationDialog } from "@/components/reconciliation/ShareForReconciliationDialog";
 import { useReconciliationFeature } from "@/hooks/useReconciliationFeature";
 import { usePlI18nOptional } from "@/contexts/PlI18nContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { pickReconIntro } from "@/lib/reconciliation/reconIntroCopy";
 import { LEDGER_HEADER_PILL_CN } from "@/lib/ledgerHeaderChrome";
 import { cn } from "@/lib/utils";
@@ -32,6 +33,7 @@ export function ShareForReconcilingDetailButtons({ accountId, disabled }: Props)
   const { enabled, canShare, canLink, canView, canViewSharedList, canViewUnlinkedList } =
     useReconciliationFeature();
   const i18n = usePlI18nOptional();
+  const isMobile = useIsMobile();
   const [open, setOpen] = React.useState(false);
   const [mounted, setMounted] = React.useState(false);
 
@@ -63,7 +65,7 @@ export function ShareForReconcilingDetailButtons({ accountId, disabled }: Props)
           }}
         >
           <Scale className="h-3.5 w-3.5 shrink-0" />
-          Share
+          {isMobile ? "Share" : "Share for Reconciling"}
         </button>
         <span aria-hidden className="h-3.5 w-px shrink-0 bg-current opacity-30" />
         <Popover>
