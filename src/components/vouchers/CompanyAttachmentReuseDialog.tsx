@@ -316,6 +316,8 @@ export function CompanyAttachmentReuseDialog({
         // Portal DOM body pe hai, lekin React bubble Add File tile tak jata hai → file picker.
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
+        // Search paste must stay in this dialog - do not bubble to Add File hold-paste.
+        onPaste={(e) => e.stopPropagation()}
       >
         <DialogHeader className="shrink-0 space-y-1">
           <div className="flex items-center gap-1.5 pr-8">

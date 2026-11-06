@@ -776,6 +776,10 @@ export type PbOutboxRow = {
  * Push one `sync_outbox` row (payload = full merged doc, outbox JSON encoding).
  * Conflict: when another device saved a newer copy, the server keeps it ("rejected") and
  * this device's local copy is replaced with the server copy.
+ *
+ * File-replace-on-edit (vouchers): a rejected SET must not silently throw away the user's
+ * new `fileUrls`. Retry once with a fresh `at`. The post-upload rewrite also uses a fresh
+ * `at` so it is not rejected as older than the JSON write that just succeeded.
  */
 export async function pushOutboxRowToPocketBase(row: PbOutboxRow): Promise<PbOpResult | null> {
   let payload: Record<string, unknown> = {};
@@ -791,25 +795,39 @@ export async function pushOutboxRowToPocketBase(row: PbOutboxRow): Promise<PbOpR
   // was newer, so PocketBase never logged the delete and the other device kept the voucher.
   const mode: PbWriteMode = row.op === "delete" ? "delete" : isTombstone ? "merge" : "set";
   const at = Number(row.created_at);
-  const writeOnce = async (data: Record<string, unknown>) => {
+  const writeOnce = async (data: Record<string, unknown>, atOverrideMs?: number) => {
+    const useAt =
+      Number.isFinite(atOverrideMs) && (atOverrideMs as number) > 0
+        ? Math.trunc(atOverrideMs as number)
+        : Number.isFinite(at) && at > 0
+          ? at
+          : undefined;
     const [result] = await pbBatchWrite(row.company_id, [
       {
         coll: row.collection_name,
         id: row.doc_id,
         mode,
         data,
-        at: Number.isFinite(at) && at > 0 ? at : undefined,
+        at: useAt,
       },
     ]);
     return result || null;
   };
-  // JSON first — voucher attachment upload used to occupy the HTTP/1.1 slot so the
-  // other device only saw the edit after the writer refreshed (SSE dropped, POST ran).
-  let r = await writeOnce(payload);
-  let conversion: import("@/lib/pocketbaseData/pbAttachments").PbAttachmentConversion | null = null;
-  if (mode !== "delete" && r?.status !== "rejected" && JSON.stringify(payload).includes('"local:')) {
+  const payloadHasLocalRef = (data: Record<string, unknown>) => JSON.stringify(data).includes('"local:"');
+  const fileUrlsFingerprint = (raw: unknown): string => {
+    if (!Array.isArray(raw)) return "";
+    return raw
+      .filter((u): u is string => typeof u === "string")
+      .map((u) => u.trim())
+      .filter(Boolean)
+      .join("\n");
+  };
+  const convertPendingLocals = async (
+    data: Record<string, unknown>
+  ): Promise<import("@/lib/pocketbaseData/pbAttachments").PbAttachmentConversion | null> => {
+    if (mode === "delete" || !payloadHasLocalRef(data)) return null;
     const ac = typeof AbortController !== "undefined" ? new AbortController() : null;
-    // JSON is already on the server. Give the file upload time — 4s aborted `local:` and left it on the voucher.
+    // Give the file upload time - a short abort left `local:` on the voucher.
     const timer = ac ? setTimeout(() => ac.abort(), 60_000) : null;
     try {
       const [{ convertLocalRefsForPocketBase }, { getPendingPayloadForLocalRef }] = await Promise.all([
@@ -820,25 +838,64 @@ export async function pushOutboxRowToPocketBase(row: PbOutboxRow): Promise<PbOpR
         createIfMissing: true,
         info: await companyInfoFromLocalRegistry(row.company_id),
       });
-      conversion = await convertLocalRefsForPocketBase({
+      return await convertLocalRefsForPocketBase({
         pbCompanyId,
         coll: row.collection_name,
         docId: row.doc_id,
-        data: payload,
+        data,
         deviceId: pbDeviceId(),
         getPending: getPendingPayloadForLocalRef,
         signal: ac?.signal,
       });
-      if (conversion.converted.size) {
-        payload = conversion.data;
-        r = await writeOnce(payload);
-      }
     } catch {
-      conversion = null;
+      return null;
     } finally {
       if (timer) clearTimeout(timer);
     }
+  };
+
+  // JSON first - voucher attachment upload used to occupy the HTTP/1.1 slot so the
+  // other device only saw the edit after the writer refreshed (SSE dropped, POST ran).
+  let r = await writeOnce(payload);
+  let conversion: import("@/lib/pocketbaseData/pbAttachments").PbAttachmentConversion | null = null;
+
+  if (mode !== "delete" && r?.status !== "rejected" && payloadHasLocalRef(payload)) {
+    conversion = await convertPendingLocals(payload);
+    if (conversion?.converted.size) {
+      payload = conversion.data;
+      // Fresh at: same outbox `created_at` would look older than the JSON write above.
+      r = await writeOnce(payload, Date.now());
+    }
   }
+
+  // Approved rule: edit + replace file on PocketBase - do not let a rejected SET restore the
+  // old fileUrls. One fresh-at retry (after uploading any pending local: bytes).
+  if (
+    r?.status === "rejected" &&
+    mode === "set" &&
+    row.collection_name === "vouchers" &&
+    Object.prototype.hasOwnProperty.call(payload, "fileUrls") &&
+    fileUrlsFingerprint(payload.fileUrls) !== fileUrlsFingerprint(r.data?.fileUrls)
+  ) {
+    let retryPayload = payload;
+    let retryConversion = conversion;
+    if (payloadHasLocalRef(retryPayload)) {
+      const uploaded = await convertPendingLocals(retryPayload);
+      if (uploaded?.converted.size) {
+        retryPayload = uploaded.data;
+        retryConversion = uploaded;
+      }
+    }
+    const retry = await writeOnce(retryPayload, Date.now());
+    if (retry && retry.status !== "rejected") {
+      payload = retryPayload;
+      conversion = retryConversion;
+      r = retry;
+    } else if (retry) {
+      r = retry;
+    }
+  }
+
   if (conversion && conversion.converted.size && r && r.status !== "rejected") {
     await applyAttachmentLinksLocally(row, conversion);
   }

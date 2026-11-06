@@ -347,6 +347,11 @@ export function AttachmentHoldPasteSurface({
       onContextMenu={(e) => e.preventDefault()}
       onPaste={(e) => {
         if (!slotEnabled) return;
+        // Reuse dialog search box: portal paste bubbles here in React. Do not steal it
+        // (preventDefault would block typing the voucher no., and session backup would
+        // attach the wrong last-copied file then close the dialog).
+        if (reuseDialogOpenRef.current) return;
+        if ((e.target as HTMLElement | null)?.closest?.("[data-pl-reuse-dialog]")) return;
         const text = e.clipboardData.getData("text/plain");
         if (!text?.trim()) return;
         e.preventDefault();
