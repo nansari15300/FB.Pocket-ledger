@@ -1807,7 +1807,8 @@ export async function saveVoucher(
     deleteUndefinedTopLevelFields(cleanVoucherData as Record<string, unknown>);
   }
 
-  // Edit: form/outbox se `date` key missing ho to purani voucher date merge — static/APK offline me pehla `getDoc` hang/slow kar sakta tha (“Saving…” chipka)
+  // Edit: form/outbox se `date` key missing ho to purani voucher date merge - static/APK offline me pehla `getDoc` hang/slow kar sakta tha ("Saving." chipka)
+  let editOldCalendarDateForClock: Date | null = null;
   if (voucherId) {
     try {
       let oldRow: Record<string, unknown> | null = null;
@@ -1840,16 +1841,26 @@ export async function saveVoucher(
       if ((dMissing || dInvalidButPresent) && oldRow?.date != null) {
         cleanVoucherData.date = oldRow.date as any;
       }
+      editOldCalendarDateForClock = toJsDateFromVoucherField(oldRow?.date);
     } catch {
-      /* offline / permission: merge skip — niche coerce fallback */
+      /* offline / permission: merge skip - niche coerce fallback */
     }
   }
 
-  // Naya voucher: user-picked calendar day + abhi ka local clock — `createdAt` pending ho to bhi list me 12:00 AM na dikhe.
-  if (!voucherId) {
+  // Naya voucher, ya edit jahan calendar day badli: user-picked day + abhi ka local clock.
+  // createdAt rewrite nahi - sirf `date` pe save clock; list display moved-day pe isi clock / lastEditedAt use karegi.
+  {
     const calendarDate = toJsDateFromVoucherField(cleanVoucherData.date);
     if (calendarDate) {
-      cleanVoucherData.date = mergeVoucherCalendarDateWithSaveClock(calendarDate);
+      if (!voucherId) {
+        cleanVoucherData.date = mergeVoucherCalendarDateWithSaveClock(calendarDate);
+      } else if (editOldCalendarDateForClock) {
+        const oldDay = startOfDay(editOldCalendarDateForClock).getTime();
+        const newDay = startOfDay(calendarDate).getTime();
+        if (oldDay !== newDay) {
+          cleanVoucherData.date = mergeVoucherCalendarDateWithSaveClock(calendarDate);
+        }
+      }
     }
   }
 

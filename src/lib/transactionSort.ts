@@ -9,13 +9,16 @@ import {
   getFiscalMergePartitionsFromCompany,
   FISCAL_YEAR_PARTITION_ROW_TYPE,
 } from "@/lib/fiscalPartitionRows";
-import { parseFirestoreDateFieldToJsDate } from "@/lib/voucherDateNormalize";
+import { getVoucherEntryTimeSourceDate, parseFirestoreDateFieldToJsDate } from "@/lib/voucherDateNormalize";
 
 /** Party/Bank/Staff/… statement footer: default `sortBy === "date"` ke saath ascending = purani date upar, nayi neeche. */
 export const DEFAULT_TRANSACTION_SORT_ORDER: TransactionSortOrder = "asc";
 
 function getDate(t: any): number {
-  return parseFirestoreDateFieldToJsDate(t?.date)?.getTime() ?? 0;
+  const d = parseFirestoreDateFieldToJsDate(t?.date);
+  if (!d) return 0;
+  // Calendar day only - time of day is compared via getEntryTimeMs (same clock the row shows).
+  return startOfDay(d).getTime();
 }
 
 function getAmount(t: any): number {
@@ -50,6 +53,11 @@ function getCreatedAtTime(t: any): number {
   return parseFirestoreDateFieldToJsDate(t?.createdAt)?.getTime() ?? 0;
 }
 
+/** Same clock the Details row shows (`formatVoucherEntryTimeLocal`) - same-date secondary sort. */
+function getEntryTimeMs(t: any): number {
+  return getVoucherEntryTimeSourceDate(t as Record<string, unknown>)?.getTime() ?? 0;
+}
+
 /** Optional: Recent / daybook jahan same date par naya voucher upar chahiye. */
 export type SortTransactionsOptions = {
   tieBreakCreatedAtDesc?: boolean;
@@ -73,6 +81,12 @@ export function sortTransactions<T = any>(
         const da = getDate(ta);
         const db = getDate(tb);
         primary = mult * (da - db);
+        // Same calendar day: order by the same entry clock the row displays (asc = earlier first).
+        if (primary === 0) {
+          const ea = getEntryTimeMs(ta);
+          const eb = getEntryTimeMs(tb);
+          primary = mult * (ea - eb);
+        }
         break;
       }
       case "amount": {

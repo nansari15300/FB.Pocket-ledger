@@ -148,33 +148,53 @@ export function parseOpeningBalanceDateToLocalNoon(raw: unknown): Date | null {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
 }
 
+/** True when `date` carries a real local clock (not picker midnight-only). */
+function voucherDateHasRealEntryClock(d: Date): boolean {
+  return !(
+    d.getHours() === 0 &&
+    d.getMinutes() === 0 &&
+    d.getSeconds() === 0 &&
+    d.getMilliseconds() === 0
+  );
+}
+
 /**
- * List / mobile card ke "• time" line ke liye: pehle `createdAt`, phir `lastEditedAt` / `updatedAt`, ant mein voucher `date`.
+ * List / mobile card ke time line ke liye.
+ * Default: pehle `createdAt`, phir `lastEditedAt` / `updatedAt`, ant mein voucher `date`.
+ * Jab voucher calendar day `createdAt` se alag ho (edit pe date change), purana create clock
+ * mat dikhao — pehle `date` ka stamped clock, warna `lastEditedAt` / `updatedAt`.
  * `Date` + `date-fns/format` device ki **local** timezone mein dikhte hain.
  */
 export function getVoucherEntryTimeSourceDate(transaction: Record<string, unknown> | null | undefined): Date | null {
   if (transaction == null || typeof transaction !== "object") return null;
   const fromCreated = parseFirestoreDateFieldToJsDate(transaction["createdAt"]);
-  if (fromCreated) return fromCreated;
   const fromEdited = parseFirestoreDateFieldToJsDate(transaction["lastEditedAt"]);
-  if (fromEdited) return fromEdited;
   const fromUpdated = parseFirestoreDateFieldToJsDate(transaction["updatedAt"]);
-  if (fromUpdated) return fromUpdated;
   const offlineMs = transaction[PL_CLIENT_OFFLINE_FIRST_PERSIST_MS];
-  if (typeof offlineMs === "number" && Number.isFinite(offlineMs)) {
-    return new Date(offlineMs);
-  }
+  const fromOffline =
+    typeof offlineMs === "number" && Number.isFinite(offlineMs) ? new Date(offlineMs) : null;
   const fallbackDate = parseFirestoreDateFieldToJsDate(transaction["date"]);
-  if (!fallbackDate) return null;
-  // Sirf calendar date (picker midnight) — asli entry clock nahi; "12:00 AM" misleading hide karo.
-  if (
-    fallbackDate.getHours() === 0 &&
-    fallbackDate.getMinutes() === 0 &&
-    fallbackDate.getSeconds() === 0 &&
-    fallbackDate.getMilliseconds() === 0
-  ) {
-    return null;
+
+  if (fromCreated && fallbackDate) {
+    const createdDay = startOfDay(fromCreated).getTime();
+    const voucherDay = startOfDay(fallbackDate).getTime();
+    if (createdDay !== voucherDay) {
+      // Date move: createdAt purane din ka clock; list pe save/edit clock chahiye.
+      if (voucherDateHasRealEntryClock(fallbackDate)) return fallbackDate;
+      if (fromEdited) return fromEdited;
+      if (fromUpdated) return fromUpdated;
+      if (fromOffline) return fromOffline;
+      return null;
+    }
   }
+
+  if (fromCreated) return fromCreated;
+  if (fromEdited) return fromEdited;
+  if (fromUpdated) return fromUpdated;
+  if (fromOffline) return fromOffline;
+  if (!fallbackDate) return null;
+  // Sirf calendar date (picker midnight) - asli entry clock nahi; "12:00 AM" misleading hide karo.
+  if (!voucherDateHasRealEntryClock(fallbackDate)) return null;
   return fallbackDate;
 }
 
