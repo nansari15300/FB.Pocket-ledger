@@ -24,6 +24,7 @@ export function isRemoteAttachmentUrl(u: string): boolean {
     s.startsWith("https://") ||
     s.startsWith("blob:") ||
     s.startsWith("data:") ||
+    isPbAttachmentRef(s) ||
     isDriveFileRef(s)
   );
 }
@@ -126,56 +127,6 @@ async function readVoucherFileUrlsForStaleLocalResolve(
   return { fileUrls: [], source: "none" };
 }
 
-/** Current server voucher `fileUrls` (the `pbatt:` rewrite the other device skipped). */
-async function readPocketBaseVoucherFileUrls(companyId: string, voucherId: string): Promise<string[]> {
-  if (!getValidPocketBaseAuth()) return [];
-  try {
-    const [{ ensurePocketBaseCompany, pbRecordToAppDoc }, { pbFirst, pbQuote }] = await Promise.all([
-      import("@/lib/pocketbaseData/pbSync"),
-      import("@/lib/pocketbaseData/pbClient"),
-    ]);
-    const companyRec = await ensurePocketBaseCompany(companyId, { createIfMissing: false });
-    const rec = await pbFirst<Record<string, unknown>>(
-      "pl_vouchers",
-      `company = ${pbQuote(companyRec)} && app_id = ${pbQuote(voucherId)}`
-    );
-    if (!rec) return [];
-    return normalizeFileUrlsField(pbRecordToAppDoc(rec).fileUrls);
-  } catch {
-    return [];
-  }
-}
-
-/** Keep the server file link locally without bumping edit time (so a later real edit still wins). */
-async function rememberServerAttachmentRefs(
-  companyId: string,
-  voucherId: string,
-  serverUrls: string[]
-): Promise<void> {
-  try {
-    const existing = (await getCompanyDocFromBrowserDb(companyId, "vouchers", voucherId)) as Record<
-      string,
-      unknown
-    > | null;
-    if (!existing) return;
-    const { adoptServerAttachmentRefsOverLocal } = await import("@/lib/mirrorAttachmentRefAdopt");
-    const adopted = adoptServerAttachmentRefsOverLocal(existing, { ...existing, fileUrls: serverUrls });
-    if (!adopted) return;
-    const { upsertCompanyDocInBrowserDb, notifyBrowserDbCollectionUpdated } = await import(
-      "@/lib/localCompanyDocMirror"
-    );
-    await upsertCompanyDocInBrowserDb(companyId, "vouchers", voucherId, adopted, {
-      force: true,
-      notify: false,
-      skipPlanMutationGate: true,
-      skipCloudSyncEnqueue: true,
-    });
-    notifyBrowserDbCollectionUpdated(companyId, "vouchers", { immediate: true });
-  } catch {
-    /* preview can still use the resolved url */
-  }
-}
-
 /**
  * IndexedDB pending blob cleared / APK cache wipe — voucher row may still hold `local:` in UI
  * while Firestore (or SQLite mirror) already has the uploaded download URL.
@@ -249,21 +200,32 @@ export async function tryResolveRemoteUrlForStaleLocalAttachment(
       break;
     }
   }
-  // Other device kept `local:` because the file rewrite used the same updatedAtMs.
-  // Server row already has `pbatt:` in that same slot — take it even when the file name has no local id.
+  // PocketBase: resolve ONLY the pl_attachments row for this local id (app_id = att_<id>).
+  // Same-slot voucher fileUrls resurrected the previous pbatt after replace (same count), and
+  // rememberServerAttachmentRefs wrote that whole old list back into SQLite.
   if (!resolved && localId && getValidPocketBaseAuth()) {
-    const serverUrls = await readPocketBaseVoucherFileUrls(cid, vid);
-    const slotIndex = idx >= 0 ? idx : fileUrls.findIndex((u) => u === staleUrl);
-    const slot = slotIndex >= 0 ? String(serverUrls[slotIndex] || "").trim() : "";
-    if (
-      slot &&
-      slot !== staleUrl &&
-      serverUrls.length === Math.max(fileUrls.length, client.length) &&
-      (isPbAttachmentRef(slot) || isRemoteAttachmentUrl(slot))
-    ) {
-      fallbackPath = "pocketbase_same_slot";
-      resolved = slot;
-      await rememberServerAttachmentRefs(cid, vid, serverUrls);
+    try {
+      const [{ ensurePocketBaseCompany }, { pbFirst, pbQuote }, { PB_ATTACHMENT_PREFIX }] = await Promise.all([
+        import("@/lib/pocketbaseData/pbSync"),
+        import("@/lib/pocketbaseData/pbClient"),
+        import("@/lib/pocketbaseData/pbAttachments"),
+      ]);
+      const appId = `att_${localId}`.slice(0, 200);
+      const companyRec = await ensurePocketBaseCompany(cid, { createIfMissing: false });
+      const rec = await pbFirst<Record<string, unknown>>(
+        "pl_attachments",
+        `company = ${pbQuote(companyRec)} && app_id = ${pbQuote(appId)}`
+      );
+      if (rec) {
+        const rid = String(rec.id || "").trim();
+        const file = String(rec.file || "").trim();
+        if (rid && file) {
+          fallbackPath = "pocketbase_att_app_id";
+          resolved = `${PB_ATTACHMENT_PREFIX}${rid}/${file}`;
+        }
+      }
+    } catch {
+      /* keep unresolved - pending upload / outbox flush will rewrite */
     }
   }
   // Same local: still present on the row (not yet upgraded) — nothing to resolve.
@@ -360,6 +322,13 @@ export function mergeVoucherMirrorPullAttachments(
     return merged;
   }
   if (incomingUrls.length > 0) {
+    const existingHasPendingLocal = existingUrls.some((u) => isLocalFileRef(u));
+    // Replace-in-one-save: local already has local:NEW while server still has pbatt:OLD (same length).
+    // Prefer newer/equal local list until outbox flush upgrades it.
+    if (existingHasPendingLocal && existingMs >= incomingMs) {
+      merged.fileUrls = mergeVoucherFileUrlsForEditDialog(existingUrls, incomingUrls);
+      return merged;
+    }
     merged.fileUrls = mergeVoucherFileUrlsForEditDialog(incomingUrls, existingUrls);
   }
   return merged;
