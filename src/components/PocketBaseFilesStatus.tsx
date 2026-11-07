@@ -1,12 +1,13 @@
-﻿"use client";
+"use client";
 
 /**
  * Pocket Ledger Server: progress + storage controls for the data / file pull.
- * - `PocketBaseSyncProgressBadge`: small floating pill while a pull is running (click for details).
+ * - `PocketBaseSyncProgressBadge`: prominent popup while a pull is running with thick progress bars and integrated Hide button.
  * - `PocketBaseFilesPanel`: details (X / N), storage warning, "Download all files", "Clear files cache".
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { Loader2, X, HardDrive, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePbDataPullProgress, usePbFilesPullProgress } from "@/lib/pocketbaseData/pbSyncProgress";
 
@@ -18,12 +19,19 @@ function fmtBytes(n: number): string {
 
 type Usage = { count: number; bytes: number; free: number | null; quota: number | null };
 
-export function PocketBaseFilesPanel() {
+export function PocketBaseFilesPanel({
+  onHide,
+  isPopup,
+}: {
+  onHide?: () => void;
+  isPopup?: boolean;
+} = {}) {
   const files = usePbFilesPullProgress();
   const data = usePbDataPullProgress();
   const [usage, setUsage] = useState<Usage | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [showTools, setShowTools] = useState(false);
 
   const refreshUsage = useCallback(async () => {
     try {
@@ -39,14 +47,16 @@ export function PocketBaseFilesPanel() {
   }, [refreshUsage, files.phase]);
 
   const running = files.phase === "listing" || files.phase === "downloading";
-  const pct = files.total > 0 ? Math.min(100, Math.round((files.done / files.total) * 100)) : 0;
+  const filePct = files.total > 0 ? Math.min(100, Math.round((files.done / files.total) * 100)) : 0;
+  const dataPct = data.total && data.total > 0 ? Math.min(100, Math.round((data.docs / data.total) * 100)) : 0;
+
   const lowStorage =
     usage?.quota != null && usage.free != null && usage.quota > 0 && usage.free / usage.quota < 0.1;
 
   const onClear = async () => {
     if (
       !window.confirm(
-        "Remove the downloaded server files from this device?\n\nVouchers and data stay. Files are fetched again when you open them, or press \"Download all files\"."
+        'Remove the downloaded server files from this device?\n\nVouchers and data stay. Files are fetched again when you open them, or press "Download all files".'
       )
     )
       return;
@@ -64,99 +74,181 @@ export function PocketBaseFilesPanel() {
   };
 
   return (
-    <div className="space-y-1.5 rounded-md border border-border bg-background p-2 text-xs">
-      {data.active ? (
-        <div>
-          <div className="flex justify-between">
-            <span className="font-medium">Data</span>
-            <span translate="no">
-              {data.docs}
-              {data.total != null ? ` / ${data.total}` : ""}
-            </span>
+    <div
+      className={`space-y-3 rounded-2xl border-2 border-emerald-500/75 bg-card/95 text-xs shadow-2xl backdrop-blur-md ${
+        isPopup ? "p-3.5 sm:p-4" : "p-3"
+      }`}
+    >
+      {/* Header if popup */}
+      {isPopup ? (
+        <div className="flex items-center justify-between border-b border-border/70 pb-2.5">
+          <div className="flex items-center gap-2 font-medium text-foreground text-sm">
+            <Loader2 className="h-4 w-4 animate-spin text-emerald-600 dark:text-emerald-400" />
+            <span>Server Data Syncing</span>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded bg-muted">
-            <div
-              className="h-full bg-primary transition-all"
-              style={{ width: `${data.total ? Math.min(100, Math.round((data.docs / data.total) * 100)) : 15}%` }}
-            />
-          </div>
-        </div>
-      ) : null}
-      <div>
-        <div className="flex justify-between">
-          <span className="font-medium">
-            Files{" "}
-            {files.phase === "listing"
-              ? "(checking...)"
-              : files.phase === "downloading"
-                ? "(downloading)"
-                : files.phase === "paused"
-                  ? "(paused)"
-                  : files.phase === "error"
-                    ? "(retrying later)"
-                    : files.phase === "done"
-                      ? "(all on this device)"
-                      : files.autoOff
-                        ? "(automatic download is off)"
-                        : ""}
-          </span>
-          {files.total > 0 ? (
-            <span translate="no">
-              {files.done} / {files.total}
-            </span>
+          {onHide ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onHide}
+              className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground rounded-lg"
+              aria-label="Hide sync progress popup"
+            >
+              <span>Hide</span>
+              <X className="h-3.5 w-3.5" />
+            </Button>
           ) : null}
         </div>
+      ) : null}
+
+      {/* Data Progress */}
+      {data.active ? (
+        <div className="space-y-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-2.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-semibold text-foreground flex items-center gap-1.5">
+              <span>Data (Vouchers & Masters)</span>
+            </span>
+            <div className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400" translate="no">
+              <span>{data.docs}{data.total != null ? ` / ${data.total}` : ""}</span>
+              {data.total ? (
+                <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                  {dataPct}%
+                </span>
+              ) : null}
+            </div>
+          </div>
+          {/* Thick progress bar */}
+          <div className="h-3.5 w-full overflow-hidden rounded-full bg-muted/80 p-0.5 shadow-inner">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+              style={{ width: `${data.total ? Math.max(3, dataPct) : 15}%` }}
+            />
+          </div>
+          {data.collection ? (
+            <p className="text-[11px] text-muted-foreground truncate" translate="no">
+              Syncing: {data.collection}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Files Progress */}
+      <div className="space-y-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-2.5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-semibold text-foreground">
+            Files{" "}
+            <span className="font-normal text-muted-foreground text-[11px]">
+              {files.phase === "listing"
+                ? "(checking...)"
+                : files.phase === "downloading"
+                  ? "(downloading)"
+                  : files.phase === "paused"
+                    ? "(paused)"
+                    : files.phase === "error"
+                      ? "(retrying later)"
+                      : files.phase === "done"
+                        ? "(all on this device)"
+                        : files.autoOff
+                          ? "(automatic download is off)"
+                          : ""}
+            </span>
+          </span>
+          {files.total > 0 ? (
+            <div className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400" translate="no">
+              <span>{files.done} / {files.total}</span>
+              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                {filePct}%
+              </span>
+            </div>
+          ) : null}
+        </div>
+        {/* Thick progress bar */}
         {files.total > 0 ? (
-          <div className="h-1.5 w-full overflow-hidden rounded bg-muted">
-            <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+          <div className="h-3.5 w-full overflow-hidden rounded-full bg-muted/80 p-0.5 shadow-inner">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+              style={{ width: `${Math.max(3, filePct)}%` }}
+            />
           </div>
         ) : null}
         {files.failed > 0 || files.missing > 0 ? (
-          <p className="text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground">
             {files.failed > 0 ? `${files.failed} failed. ` : ""}
             {files.missing > 0 ? `${files.missing} no longer on the server.` : ""}
           </p>
         ) : null}
-        {files.message ? <p className="text-amber-600 dark:text-amber-400">{files.message}</p> : null}
+        {files.message ? <p className="text-[11px] text-amber-600 dark:text-amber-400">{files.message}</p> : null}
       </div>
-      <div className="text-muted-foreground">
-        {usage
-          ? `Server files on this device: ${usage.count} (${fmtBytes(usage.bytes)})${
-              usage.free != null ? ` - free space about ${fmtBytes(usage.free)}` : ""
-            }`
-          : "Checking storage..."}
+
+      {/* Storage info */}
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
+        <span className="flex items-center gap-1">
+          <HardDrive className="h-3.5 w-3.5" />
+          {usage
+            ? `Device: ${usage.count} files (${fmtBytes(usage.bytes)})`
+            : "Checking storage..."}
+        </span>
+        <button
+          type="button"
+          onClick={() => setShowTools((v) => !v)}
+          className="flex items-center gap-0.5 text-muted-foreground hover:text-foreground text-[11px] font-medium"
+        >
+          <span>Tools</span>
+          {showTools ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </button>
       </div>
+
       {lowStorage ? (
-        <p className="text-amber-600 dark:text-amber-400">
+        <p className="text-amber-600 dark:text-amber-400 text-[11px]">
           Storage is almost full. Free some space or press "Clear files cache".
         </p>
       ) : null}
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs"
-          disabled={running || busy}
-          onClick={() => {
-            setNote("");
-            void import("@/lib/pocketbaseData/pbFilesPull").then((m) => m.startPbFilesSyncManual());
-          }}
-        >
-          Download all files
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs"
-          disabled={running || busy || !usage || usage.count === 0}
-          onClick={() => void onClear()}
-        >
-          Clear files cache
-        </Button>
-        {note ? <span className="text-muted-foreground">{note}</span> : null}
-      </div>
+
+      {/* Advanced / Tools Drawer */}
+      {showTools ? (
+        <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-border/50">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs rounded-lg"
+            disabled={running || busy}
+            onClick={() => {
+              setNote("");
+              void import("@/lib/pocketbaseData/pbFilesPull").then((m) => m.startPbFilesSyncManual());
+            }}
+          >
+            Download all files
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs rounded-lg"
+            disabled={running || busy || !usage || usage.count === 0}
+            onClick={() => void onClear()}
+          >
+            Clear files cache
+          </Button>
+          {note ? <span className="text-muted-foreground text-[11px]">{note}</span> : null}
+        </div>
+      ) : null}
+
+      {/* Footer Hide button if popup */}
+      {isPopup && onHide ? (
+        <div className="pt-1 flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onHide}
+            className="h-7 w-full text-xs text-muted-foreground hover:text-foreground rounded-xl border-border/70"
+          >
+            Hide in background
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -164,52 +256,20 @@ export function PocketBaseFilesPanel() {
 export function PocketBaseSyncProgressBadge() {
   const files = usePbFilesPullProgress();
   const data = usePbDataPullProgress();
-  const [open, setOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
   const filesBusy = files.phase === "listing" || files.phase === "downloading" || files.phase === "paused" || files.phase === "error";
   const syncActive = data.active || filesBusy;
+
   useEffect(() => {
     // Sync khatam hone par hide reset, taaki agli baar phir dikhe
     if (!syncActive) setHidden(false);
   }, [syncActive]);
+
   if (!syncActive || hidden) return null;
-  const label = data.active
-    ? `Data ${data.docs}${data.total != null ? `/${data.total}` : ""}`
-    : files.phase === "listing"
-      ? "Files: checking..."
-      : files.phase === "paused"
-        ? `Files paused ${files.done}/${files.total}`
-        : files.phase === "error"
-          ? `Files ${files.done}/${files.total} (retry)`
-          : `Files ${files.done}/${files.total}`;
+
   return (
-    <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[60] flex max-w-[28rem] flex-col items-center gap-2 print:hidden">
-      {open ? (
-        <div className="w-96 shadow-lg">
-          <PocketBaseFilesPanel />
-        </div>
-      ) : null}
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="rounded-full border border-border bg-background/95 px-4 py-2 text-sm font-medium shadow-md"
-        translate="no"
-        aria-label="Server sync progress"
-      >
-        {label}
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          setOpen(false);
-          setHidden(true);
-        }}
-        className="rounded-full border border-border bg-background/95 px-3 py-1 text-xs text-muted-foreground shadow-md"
-        translate="no"
-        aria-label="Hide server sync progress"
-      >
-        Hide
-      </button>
+    <div className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-[60] w-[min(94vw,24rem)] print:hidden animate-in fade-in slide-in-from-bottom-2 duration-200">
+      <PocketBaseFilesPanel isPopup onHide={() => setHidden(true)} />
     </div>
   );
 }
