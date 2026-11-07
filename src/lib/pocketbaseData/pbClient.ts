@@ -364,7 +364,9 @@ export async function pocketBaseGoogleSignIn(url?: string): Promise<PocketBaseAu
     });
     waiting.catch(() => undefined);
     await rawRequest(base, "/api/realtime", { method: "POST", body: { clientId, subscriptions: ["@oauth2"] } });
-    const redirectURL = base + "/api/oauth2-redirect";
+    // Google Web OAuth does not permit IP addresses like 127.0.0.1; normalize loopback to localhost.
+    const redirectBase = base.replace(/:\/\/127\.0\.0\.1(?=[:/]|$)/i, "://localhost");
+    const redirectURL = redirectBase + "/api/oauth2-redirect";
     const authUrl = new URL(provider.authURL + encodeURIComponent(redirectURL));
     authUrl.searchParams.set("state", clientId);
     const href = authUrl.toString();
