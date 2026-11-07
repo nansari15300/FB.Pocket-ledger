@@ -3224,7 +3224,17 @@ export function TransactionsTable({
           host.scrollLeft,
           ledgerUnifiedScrollLeftRef.current
         );
-        const hostW = Math.ceil(host.getBoundingClientRect().width || host.clientWidth || 0);
+        const zoom =
+          typeof document !== "undefined"
+            ? parseFloat(
+                document.documentElement.style.getPropertyValue("--pl-app-ui-zoom") ||
+                  document.documentElement.dataset?.plAppUiZoom ||
+                  "1"
+              ) || 1
+            : 1;
+        const hostW = Math.ceil(
+          host.clientWidth || ((host.getBoundingClientRect().width || 0) / zoom) || 0
+        );
 
         const bodyEl = tableContainerRef.current;
         const isDaybookUnifiedHost = host.hasAttribute("data-pl-daybook-unified-scroll");
@@ -3452,7 +3462,15 @@ export function TransactionsTable({
         const measureRecentTxnCellPx = (el: HTMLElement) => {
           const range = document.createRange();
           range.selectNodeContents(el);
-          const contentW = range.getBoundingClientRect().width;
+          const zoom =
+            typeof document !== "undefined"
+              ? parseFloat(
+                  document.documentElement.style.getPropertyValue("--pl-app-ui-zoom") ||
+                    document.documentElement.dataset?.plAppUiZoom ||
+                    "1"
+                ) || 1
+              : 1;
+          const contentW = range.getBoundingClientRect().width / zoom;
           range.detach();
           const style = window.getComputedStyle(el);
           const pl = parseFloat(style.paddingLeft) || 0;

@@ -6,6 +6,17 @@
 
 export const LEDGER_UNIFIED_WIDTH_STABLE_EPS_PX = 2;
 
+export function getAppUiZoomFactor(): number {
+  if (typeof document === "undefined") return 1;
+  const root = document.documentElement;
+  const raw =
+    root.style.getPropertyValue("--pl-app-ui-zoom") ||
+    root.dataset?.plAppUiZoom ||
+    "1";
+  const z = parseFloat(raw);
+  return Number.isFinite(z) && z > 0 ? z : 1;
+}
+
 export function stabilizeLedgerUnifiedPx(px: number, prev: number, eps = LEDGER_UNIFIED_WIDTH_STABLE_EPS_PX): number {
   const rounded = Math.max(0, Math.round(px));
   if (prev > 0 && Math.abs(rounded - prev) <= eps) return prev;
@@ -14,9 +25,11 @@ export function stabilizeLedgerUnifiedPx(px: number, prev: number, eps = LEDGER_
 
 export function measureLedgerUnifiedBandPx(el: Element | null | undefined): number {
   if (!(el instanceof HTMLElement)) return 0;
+  const zoom = getAppUiZoomFactor();
   const scroll = Math.ceil(el.scrollWidth || 0);
-  const rect = Math.ceil(el.getBoundingClientRect().width || 0);
-  return Math.max(scroll, rect, 0);
+  const offset = Math.ceil(el.offsetWidth || 0);
+  const rect = Math.ceil((el.getBoundingClientRect().width || 0) / zoom);
+  return Math.max(scroll, offset, rect, 0);
 }
 
 /** Flex row jahan min-w-full / host stretch ho — bachon ka sum + gap (natural footer width). */
@@ -39,7 +52,10 @@ export function measureFlexRowChildrenNaturalPx(row: Element | null | undefined)
   for (let i = 0; i < children.length; i++) {
     const child = children[i];
     if (!(child instanceof HTMLElement)) continue;
-    sum += Math.ceil(child.getBoundingClientRect().width || 0);
+    const zoom = getAppUiZoomFactor();
+    const childRect = Math.ceil((child.getBoundingClientRect().width || 0) / zoom);
+    const childOffset = Math.ceil(child.offsetWidth || 0);
+    sum += Math.max(childRect, childOffset);
   }
   const gaps = Math.max(0, children.length - 1) * gap;
   return Math.ceil(sum + gaps + pad);
