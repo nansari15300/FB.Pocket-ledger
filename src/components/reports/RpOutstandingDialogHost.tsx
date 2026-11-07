@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { Printer } from "lucide-react";
+import { Printer, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { chromeProPillCn } from "@/lib/chromePillButton";
 import { LEDGER_HEADER_PILL_CN, LEDGER_HEADER_PILL_ICON_SIZE_CN } from "@/lib/ledgerHeaderChrome";
@@ -61,7 +61,16 @@ import { useMasterListRowMotion } from "@/hooks/useMasterListRowMotion";
 import { RP_DIALOG_SCROLL_CN } from "@/lib/receivablesPayablesEntityKeys";
 import { useServerReceivablesPayablesSummary } from "@/hooks/useServerReceivablesPayablesSummary";
 import { useRpOutstandingDialog } from "@/contexts/RpOutstandingDialogContext";
+import { usePersistedResizableDialogSize } from "@/lib/usePersistedResizableDialogSize";
+import { ResizableDialogEdgeHandles } from "@/components/ui/ResizableDialogEdgeHandles";
 import type { ReceivablesPayablesSideTab } from "@/components/reports/ReceivablesPayablesMobileSidePills";
+
+const RP_DIALOG_RESIZABLE_OPTIONS = {
+  minW: 640,
+  minH: 420,
+  defaultW: (vw: number) => Math.min(1152, Math.floor(vw * 0.92)),
+  defaultH: (vh: number) => Math.floor(vh * 0.90),
+};
 
 export function RpOutstandingDialogHost() {
   const { can } = usePermissions();
@@ -109,6 +118,14 @@ export function RpOutstandingDialogHost() {
   const rpListMotion = useMasterListRowMotion();
   const rpListScrollHandlers = rpDialogListScrollHandlers(rpListMotion);
   const rpLedgerPopup = useReceivablesPayablesLedgerPopup();
+
+  const {
+    size: dialogSize,
+    position: dialogPosition,
+    handleResizeStart,
+    handleDragStart,
+    resizable: dialogResizable,
+  } = usePersistedResizableDialogSize(open, !isMobile, "pl-rp-dialog-bounds-v6", RP_DIALOG_RESIZABLE_OPTIONS);
 
   const {
     summary: serverRpSummary,
@@ -567,13 +584,49 @@ export function RpOutstandingDialogHost() {
                                     }
                                 }}>
                                     <DialogContent
+                                        hideCloseButton
                                         overlayClassName="bg-black/45 backdrop-blur-none"
-                                        className="dashboard-financial-popup max-w-6xl gap-0 p-0 h-[90vh] rounded-lg flex flex-col overflow-hidden"
+                                        className={cn(
+                                            "z-50 p-0",
+                                            dialogResizable
+                                                ? "md:!left-0 md:!top-0 md:!translate-x-0 md:!translate-y-0 md:w-full md:h-full md:max-w-none md:max-h-none md:border-0 md:bg-transparent md:shadow-none md:rounded-none overflow-visible pointer-events-none"
+                                                : "dashboard-financial-popup max-w-6xl h-[90vh] rounded-lg overflow-hidden flex flex-col"
+                                        )}
                                         onPointerDownOutside={rpDialogPreventDismissForNestedPopover}
                                         onInteractOutside={rpDialogPreventDismissForNestedPopover}
                                         {...RP_DIALOG_SHELL_ATTR}
                                     >
-                                        <DialogHeader className={cn("shrink-0 flex flex-col border-0", isMobile ? "space-y-0 px-3 pb-1.5 pt-1.5" : "space-y-2 p-4 pb-3")}>
+                                        <div
+                                            className={cn(
+                                                "dashboard-financial-popup rounded-lg border bg-background shadow-2xl flex flex-col overflow-hidden relative pointer-events-auto",
+                                                dialogResizable ? "" : "w-full h-full"
+                                            )}
+                                            style={
+                                                dialogResizable
+                                                    ? {
+                                                          position: "fixed",
+                                                          left: dialogPosition.x,
+                                                          top: dialogPosition.y,
+                                                          width: dialogSize.w,
+                                                          height: dialogSize.h,
+                                                          maxWidth: "98vw",
+                                                          maxHeight: "95vh",
+                                                      }
+                                                    : undefined
+                                            }
+                                        >
+                                            <DialogClose className="absolute right-3.5 top-3.5 z-30 inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white/80 text-gray-600 shadow-sm transition-colors hover:bg-white hover:text-red-600 focus:outline-none dark:border-slate-700 dark:bg-slate-800/80 dark:text-gray-300 dark:hover:bg-slate-800 dark:hover:text-red-400">
+                                                <X className="h-4 w-4" />
+                                                <span className="sr-only">Close</span>
+                                            </DialogClose>
+                                            <DialogHeader
+                                                className={cn(
+                                                    "shrink-0 flex flex-col border-0 select-none pr-12",
+                                                    !isMobile && "cursor-grab active:cursor-grabbing",
+                                                    isMobile ? "space-y-0 px-3 pb-1.5 pt-1.5" : "space-y-2 p-4 pb-3"
+                                                )}
+                                                onMouseDown={!isMobile ? handleDragStart : undefined}
+                                            >
                                             <DialogTitle className={cn("whitespace-nowrap text-base md:text-lg", isMobile && "sr-only")}>
                                                 Receivables & Payables Details
                                             </DialogTitle>
@@ -803,6 +856,10 @@ export function RpOutstandingDialogHost() {
                                                 formatCurrency(amount, { noSuffix: true, context: "transaction" })
                                             }
                                         />
+                                        {dialogResizable ? (
+                                            <ResizableDialogEdgeHandles onResizeStart={handleResizeStart} allSides />
+                                        ) : null}
+                                        </div>
                                     </DialogContent>
       </Dialog>
       <Dialog

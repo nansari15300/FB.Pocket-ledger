@@ -418,7 +418,7 @@ function RpDialogEntityRow({
         selected={selected}
         className={cn(
           masterListRowUnselectedCn(selected),
-          "cursor-pointer select-none !border-[1px]"
+          "cursor-pointer select-none !border-[1px] !shadow-none"
         )}
         {...(icAccountRow ? icCompanyRowProps : {})}
         onClick={onSelect}
@@ -523,7 +523,7 @@ function RpIcCompanyHeaderRow({
       selected={selected}
       className={cn(
         masterListRowUnselectedCn(selected),
-        "cursor-pointer select-none !border-[1px]"
+        "cursor-pointer select-none !border-[1px] !shadow-none"
       )}
       {...icCompanyRowProps}
       onClick={onSelect}

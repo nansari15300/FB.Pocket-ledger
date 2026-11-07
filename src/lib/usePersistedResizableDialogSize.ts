@@ -16,17 +16,44 @@ type DialogSize = { w: number; h: number };
 export type ResizeHandle = "e" | "s" | "se" | "w" | "n" | "nw" | "ne" | "sw";
 type DialogPosition = { x: number; y: number };
 
-function clampSize(w: number, h: number, vw: number, vh: number): DialogSize {
+export type ResizableDialogOptions = {
+  minW?: number;
+  minH?: number;
+  defaultW?: (vw: number) => number;
+  defaultH?: (vh: number) => number;
+  maxWPercent?: number;
+  maxHPercent?: number;
+};
+
+function clampSize(
+  w: number,
+  h: number,
+  vw: number,
+  vh: number,
+  minW = MIN_W,
+  minH = MIN_H,
+  maxWP = 0.98,
+  maxHP = 0.95
+): DialogSize {
   return {
-    w: Math.max(MIN_W, Math.min(w, Math.floor(vw * 0.98))),
-    h: Math.max(MIN_H, Math.min(h, Math.floor(vh * 0.92))),
+    w: Math.max(minW, Math.min(w, Math.floor(vw * maxWP))),
+    h: Math.max(minH, Math.min(h, Math.floor(vh * maxHP))),
   };
 }
 
-function defaultSizeForViewport(vw: number, vh: number): DialogSize {
-  const w = Math.floor(vw * 0.9);
-  const h = Math.floor(vh * 0.8);
-  return clampSize(w, h, vw, vh);
+function defaultSizeForViewport(
+  vw: number,
+  vh: number,
+  defaultW?: (vw: number) => number,
+  defaultH?: (vh: number) => number,
+  minW = MIN_W,
+  minH = MIN_H,
+  maxWP = 0.98,
+  maxHP = 0.95
+): DialogSize {
+  const w = defaultW ? defaultW(vw) : Math.floor(vw * 0.9);
+  const h = defaultH ? defaultH(vh) : Math.floor(vh * 0.90);
+  return clampSize(w, h, vw, vh, minW, minH, maxWP, maxHP);
 }
 
 type SavedDialogLayout = { w?: number; h?: number; x?: number; y?: number };
@@ -34,14 +61,18 @@ type SavedDialogLayout = { w?: number; h?: number; x?: number; y?: number };
 function readSavedLayout(
   storageKey: string,
   vw: number,
-  vh: number
+  vh: number,
+  minW = MIN_W,
+  minH = MIN_H,
+  maxWP = 0.98,
+  maxHP = 0.95
 ): { size: DialogSize; position: DialogPosition | null } | null {
   try {
     const raw = localStorage.getItem(storageKey);
     if (!raw) return null;
     const saved = JSON.parse(raw) as SavedDialogLayout;
     if (typeof saved.w !== "number" || typeof saved.h !== "number") return null;
-    const size = clampSize(saved.w, saved.h, vw, vh);
+    const size = clampSize(saved.w, saved.h, vw, vh, minW, minH, maxWP, maxHP);
     const hasPos = typeof saved.x === "number" && typeof saved.y === "number";
     const position = hasPos
       ? clampPosition(saved.x!, saved.y!, size.w, size.h, vw, vh)
@@ -72,10 +103,21 @@ function clampPosition(x: number, y: number, w: number, h: number, vw: number, v
 export function usePersistedResizableDialogSize(
   isOpen: boolean,
   enabled: boolean,
-  storageKey: string = ITEM_MASTER_DIALOG_SIZE_STORAGE_KEY
+  storageKey: string = ITEM_MASTER_DIALOG_SIZE_STORAGE_KEY,
+  options?: ResizableDialogOptions
 ) {
-  const [size, setSize] = useState<DialogSize>(ITEM_MASTER_DIALOG_DEFAULT_SIZE);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+
+  const [size, setSize] = useState<DialogSize>(() => ({
+    w: options?.defaultW ? options.defaultW(1200) : ITEM_MASTER_DIALOG_DEFAULT_SIZE.w,
+    h: options?.defaultH ? options.defaultH(800) : ITEM_MASTER_DIALOG_DEFAULT_SIZE.h,
+  }));
   const [position, setPosition] = useState<DialogPosition>({ x: 0, y: 0 });
+
+  const latestBoundsRef = useRef({ size, position });
+  latestBoundsRef.current = { size, position };
+
   const dragRef = useRef<{
     startX: number;
     startY: number;
@@ -91,31 +133,64 @@ export function usePersistedResizableDialogSize(
     startLeft: number;
     startTop: number;
   } | null>(null);
-  const prevOpenRef = useRef(false);
+
+  const prevIsOpenRef = useRef(false);
 
   useEffect(() => {
-    if (!isOpen || !enabled || typeof window === "undefined") return;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const saved = readSavedLayout(storageKey, vw, vh);
-    const nextSize = saved?.size ?? defaultSizeForViewport(vw, vh);
-    setSize(nextSize);
-    setPosition(saved?.position ?? centerPosition(nextSize.w, nextSize.h, vw, vh));
-  }, [isOpen, enabled, storageKey]);
+    if (!enabled || typeof window === "undefined") return;
+    // Only initialize layout once when the dialog transitions to open
+    if (isOpen && !prevIsOpenRef.current) {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const opts = optionsRef.current;
+      const oMinW = opts?.minW ?? MIN_W;
+      const oMinH = opts?.minH ?? MIN_H;
+      const oMaxWP = opts?.maxWPercent ?? 0.98;
+      const oMaxHP = opts?.maxHPercent ?? 0.95;
 
-  useEffect(() => {
-    if (prevOpenRef.current && !isOpen && enabled && typeof window !== "undefined") {
+      const saved = readSavedLayout(storageKey, vw, vh, oMinW, oMinH, oMaxWP, oMaxHP);
+      const nextSize =
+        saved?.size ??
+        defaultSizeForViewport(vw, vh, opts?.defaultW, opts?.defaultH, oMinW, oMinH, oMaxWP, oMaxHP);
+      setSize(nextSize);
+      const nextPos = saved?.position ?? centerPosition(nextSize.w, nextSize.h, vw, vh);
+      setPosition(nextPos);
+      latestBoundsRef.current = { size: nextSize, position: nextPos };
+    } else if (prevIsOpenRef.current && !isOpen) {
+      // Save on close
       try {
         localStorage.setItem(
           storageKey,
-          JSON.stringify({ w: size.w, h: size.h, x: position.x, y: position.y })
+          JSON.stringify({
+            w: latestBoundsRef.current.size.w,
+            h: latestBoundsRef.current.size.h,
+            x: latestBoundsRef.current.position.x,
+            y: latestBoundsRef.current.position.y,
+          })
         );
       } catch {
         /* ignore */
       }
     }
-    prevOpenRef.current = isOpen;
-  }, [isOpen, enabled, size.w, size.h, position.x, position.y, storageKey]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen, enabled, storageKey]);
+
+  const saveLiveBounds = useCallback(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          w: latestBoundsRef.current.size.w,
+          h: latestBoundsRef.current.size.h,
+          x: latestBoundsRef.current.position.x,
+          y: latestBoundsRef.current.position.y,
+        })
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [storageKey]);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -132,8 +207,8 @@ export function usePersistedResizableDialogSize(
       dragRef.current = {
         startX: e.clientX,
         startY: e.clientY,
-        startLeft: position.x,
-        startTop: position.y,
+        startLeft: latestBoundsRef.current.position.x,
+        startTop: latestBoundsRef.current.position.y,
       };
       const onMove = (ev: MouseEvent) => {
         if (!dragRef.current) return;
@@ -141,17 +216,20 @@ export function usePersistedResizableDialogSize(
         const vh = window.innerHeight;
         const rawX = dragRef.current.startLeft + ev.clientX - dragRef.current.startX;
         const rawY = dragRef.current.startTop + ev.clientY - dragRef.current.startY;
-        setPosition(clampPosition(rawX, rawY, size.w, size.h, vw, vh));
+        const nextPos = clampPosition(rawX, rawY, latestBoundsRef.current.size.w, latestBoundsRef.current.size.h, vw, vh);
+        setPosition(nextPos);
+        latestBoundsRef.current.position = nextPos;
       };
       const onUp = () => {
         dragRef.current = null;
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
+        saveLiveBounds();
       };
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [enabled, position.x, position.y, size.w, size.h]
+    [enabled, saveLiveBounds]
   );
 
   const handleResizeStart = useCallback(
@@ -159,14 +237,20 @@ export function usePersistedResizableDialogSize(
       if (!enabled) return;
       e.preventDefault();
       e.stopPropagation();
+      const opts = optionsRef.current;
+      const oMinW = opts?.minW ?? MIN_W;
+      const oMinH = opts?.minH ?? MIN_H;
+      const oMaxWP = opts?.maxWPercent ?? 0.98;
+      const oMaxHP = opts?.maxHPercent ?? 0.95;
+
       resizeRef.current = {
         handle,
         startX: e.clientX,
         startY: e.clientY,
-        startW: size.w,
-        startH: size.h,
-        startLeft: position.x,
-        startTop: position.y,
+        startW: latestBoundsRef.current.size.w,
+        startH: latestBoundsRef.current.size.h,
+        startLeft: latestBoundsRef.current.position.x,
+        startTop: latestBoundsRef.current.position.y,
       };
       const onMove = (ev: MouseEvent) => {
         if (!resizeRef.current) return;
@@ -181,23 +265,30 @@ export function usePersistedResizableDialogSize(
         if (h === "w" || h === "sw" || h === "nw") w = startW - dx;
         if (h === "s" || h === "se" || h === "sw") hh = startH + dy;
         if (h === "n" || h === "nw" || h === "ne") hh = startH - dy;
-        const next = clampSize(w, hh, vw, vh);
+        const next = clampSize(w, hh, vw, vh, oMinW, oMinH, oMaxWP, oMaxHP);
         let nx = startLeft;
         let ny = startTop;
         if (h === "w" || h === "sw" || h === "nw") nx = startLeft + (startW - next.w);
         if (h === "n" || h === "nw" || h === "ne") ny = startTop + (startH - next.h);
         setSize(next);
-        if (nx !== startLeft || ny !== startTop) setPosition(clampPosition(nx, ny, next.w, next.h, vw, vh));
+        if (nx !== startLeft || ny !== startTop) {
+          const nextPos = clampPosition(nx, ny, next.w, next.h, vw, vh);
+          setPosition(nextPos);
+          latestBoundsRef.current = { size: next, position: nextPos };
+        } else {
+          latestBoundsRef.current = { size: next, position: { ...latestBoundsRef.current.position } };
+        }
       };
       const onUp = () => {
         resizeRef.current = null;
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
+        saveLiveBounds();
       };
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [enabled, size.w, size.h, position.x, position.y]
+    [enabled, saveLiveBounds]
   );
 
   return { size, position, handleResizeStart, handleDragStart, resizable: enabled };
