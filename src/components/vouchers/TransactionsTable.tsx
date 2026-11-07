@@ -3424,18 +3424,6 @@ export function TransactionsTable({
     unifiedLedgerWidthApplyRef.current?.();
   }, [splitScrollColProportionalGate, ledgerHostClientWidth]);
 
-  useLayoutEffect(() => {
-    if (!splitScrollColProportionalGate) return;
-    ledgerMeasuredColWidthsRef.current = [];
-    lastUnifiedTableMinRef.current = 0;
-    lastUnifiedScaleTargetRef.current = 0;
-    unifiedLedgerWidthApplyRef.current?.();
-    const id = requestAnimationFrame(() => {
-      unifiedLedgerWidthApplyRef.current?.();
-    });
-    return () => cancelAnimationFrame(id);
-  }, [splitScrollColProportionalGate, ledgerStatementChecked.checkedIds]);
-
   /**
    * Row count change (daybook date / Show–Hide linked trxn): remasure width and
    * re-apply preserved H-scroll so scrollLeft does not jump left.
