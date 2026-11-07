@@ -8976,50 +8976,9 @@ body.dark [data-pl-ledger-txn-unified-scroll] [data-pl-ledger-txn-header],
   overflow: hidden;
 }
 /* Row H-lines: first-cell anchor + measured table width (last-cell 10000px cap missed Date col). */
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"]:not([data-pl-spend-wise-opening]) > td:last-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"]:not([data-pl-spend-wise-opening]) > td:last-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance"]:not([data-pl-spend-wise-opening]) > td:last-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:not([data-pl-spend-wise-opening]):not(:has(+ tr[data-row="opening-balance-narration"])):not(:has(+ tr[data-row="opening-balance-linked"])):not(:has(+ tr[data-row="opening-balance-gap"])) > td:last-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:not([data-pl-spend-wise-opening]):has(+ tr[data-row="opening-balance-gap"]) > td:last-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"]:not([data-pl-spend-wise-opening]):has(+ tr[data-row="opening-balance-gap"]) > td:last-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr.transaction-main-row:not(:has(+ .narration-row)):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:last-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr.transaction-main-row + tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:last-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"]:has(tfoot[data-pl-txn-split-scroll-footer]) tbody > tr:last-child > td:last-child::after {
+[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr > td:first-child::after {
   content: none !important;
   display: none !important;
-}
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"]:not([data-pl-spend-wise-opening]) > td:first-child,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"]:not([data-pl-spend-wise-opening]) > td:first-child,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance"]:not([data-pl-spend-wise-opening]) > td:first-child,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:not([data-pl-spend-wise-opening]):not(:has(+ tr[data-row="opening-balance-narration"])):not(:has(+ tr[data-row="opening-balance-linked"])):not(:has(+ tr[data-row="opening-balance-gap"])) > td:first-child,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:not([data-pl-spend-wise-opening]):has(+ tr[data-row="opening-balance-gap"]) > td:first-child,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"]:not([data-pl-spend-wise-opening]):has(+ tr[data-row="opening-balance-gap"]) > td:first-child,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr.transaction-main-row:not(:has(+ .narration-row)):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:first-child,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr.transaction-main-row + tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:first-child,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"]:has(tfoot[data-pl-txn-split-scroll-footer]) tbody > tr:last-child > td:first-child {
-  position: relative;
-  overflow: visible !important;
-}
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"]:not([data-pl-spend-wise-opening]) > td:first-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"]:not([data-pl-spend-wise-opening]) > td:first-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance"]:not([data-pl-spend-wise-opening]) > td:first-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:not([data-pl-spend-wise-opening]):not(:has(+ tr[data-row="opening-balance-narration"])):not(:has(+ tr[data-row="opening-balance-linked"])):not(:has(+ tr[data-row="opening-balance-gap"])) > td:first-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:not([data-pl-spend-wise-opening]):has(+ tr[data-row="opening-balance-gap"]) > td:first-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"]:not([data-pl-spend-wise-opening]):has(+ tr[data-row="opening-balance-gap"]) > td:first-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr.transaction-main-row:not(:has(+ .narration-row)):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:first-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr.transaction-main-row + tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:first-child::after,
-[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"]:has(tfoot[data-pl-txn-split-scroll-footer]) tbody > tr:last-child > td:first-child::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  height: 0;
-  border-bottom: 1px solid #000; /* border never rounds to 0 device px at fractional zoom */
-  width: calc(var(--pl-ledger-txn-table-min-px, 0) * 1px);
-  transform: none;
-  background: transparent;
-  z-index: 1;
-  pointer-events: none;
 }
 /* Layout animation: 1px H-lines on both top and bottom of the moving row.
    Main+narration pair = top on main, bottom on narration. Fill-based 1px + tr border-b stacked to a thick bar. */
@@ -16332,4 +16291,64 @@ body.theme-pro [data-pl-reuse-row]:hover,
   border-style: solid !important;
   box-shadow: none !important;
   outline: none !important;
+}
+
+
+/* ==========================================================================
+   Ledger Transaction Table: Rock-solid 1px horizontal line on ALL zoom levels
+   - Table uses border-collapse: collapse so horizontal borders are unified row gridlines.
+   - Eliminates stepping ("niche uper"), subpixel gaps, or vanishing lines at 115%, 116%, 118%, 125%, etc.
+   - High specificity with :not(#pl-theme-master-none) ensures it overrides all theme-level card/transparent rules.
+   ========================================================================== */
+html body [data-theme-table="transactions"] table,
+html body table[data-theme-table="transactions"] {
+  border-collapse: collapse !important;
+}
+
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr > td:not(#pl-theme-master-none)::after,
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr > td:not(#pl-theme-master-none)::before,
+:is(body[class*="theme-"], html body) [data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr > td:not(#pl-theme-master-none)::after,
+:is(body[class*="theme-"], html body) [data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr > td:not(#pl-theme-master-none)::before {
+  content: none !important;
+  display: none !important;
+}
+
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr > td:not(#pl-theme-master-none) {
+  border-top-width: 0 !important;
+  border-top-style: none !important;
+  border-top-color: transparent !important;
+}
+
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row:not(:has(+ .narration-row)):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row + tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"] > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance"] > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"] > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"] > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-book"] > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody > tr:not(.spend-wise-group-card-row tr):not(.spend-wise-group-card-row):not(.spend-wise-gap-row):not(.spend-wise-inner-txn-sep):not([aria-hidden="true"]):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]):not([data-pl-spend-wise-opening]):last-child > td:not(#pl-theme-master-none) {
+  border-bottom: 1px solid #000 !important;
+  border-bottom-color: #000 !important;
+  box-shadow: none !important;
+}
+
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row:has(+ .narration-row) > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:has(+ tr[data-row="opening-balance-narration"]) > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:has(+ tr[data-row="opening-balance-linked"]) > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance"]:has(+ tr[data-row="opening-balance-linked"]) > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-book"]:has(+ tr[data-row="opening-balance-narration"]) > td:not(#pl-theme-master-none) {
+  border-bottom: none !important;
+  border-bottom-color: transparent !important;
+  box-shadow: none !important;
+}
+
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] thead > tr > th:not(#pl-theme-master-none) {
+  border-bottom: 1px solid #000 !important;
+  border-bottom-color: #000 !important;
+}
+
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tfoot > tr > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-pl-ledger-txn-fixed-summary] td:not(#pl-theme-master-none) {
+  border-top: 1px solid #000 !important;
+  border-top-color: #000 !important;
 }
