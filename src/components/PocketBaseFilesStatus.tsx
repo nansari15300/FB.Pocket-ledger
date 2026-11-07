@@ -2,7 +2,8 @@
 
 /**
  * Pocket Ledger Server: progress + storage controls for the data / file pull.
- * - `PocketBaseSyncProgressBadge`: prominent popup while a pull is running with thick progress bars and integrated Hide button.
+ * - `PocketBaseSyncProgressBadge`: centered popup modal while main data is syncing (1st time full download).
+ *   Does NOT popup for minor background file syncing.
  * - `PocketBaseFilesPanel`: details (X / N), storage warning, "Download all files", "Clear files cache".
  */
 
@@ -75,14 +76,14 @@ export function PocketBaseFilesPanel({
 
   return (
     <div
-      className={`space-y-3 rounded-2xl border-2 border-emerald-500/75 bg-card/95 text-xs shadow-2xl backdrop-blur-md ${
-        isPopup ? "p-3.5 sm:p-4" : "p-3"
+      className={`space-y-3 rounded-2xl border-2 border-emerald-500/80 bg-background/95 text-xs shadow-2xl backdrop-blur-md ${
+        isPopup ? "p-4 sm:p-5" : "p-3"
       }`}
     >
       {/* Header if popup */}
       {isPopup ? (
         <div className="flex items-center justify-between border-b border-border/70 pb-2.5">
-          <div className="flex items-center gap-2 font-medium text-foreground text-sm">
+          <div className="flex items-center gap-2 font-semibold text-foreground text-sm">
             <Loader2 className="h-4 w-4 animate-spin text-emerald-600 dark:text-emerald-400" />
             <span>Server Data Syncing</span>
           </div>
@@ -104,7 +105,7 @@ export function PocketBaseFilesPanel({
 
       {/* Data Progress */}
       {data.active ? (
-        <div className="space-y-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-2.5">
+        <div className="space-y-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-foreground flex items-center gap-1.5">
               <span>Data (Vouchers & Masters)</span>
@@ -133,53 +134,55 @@ export function PocketBaseFilesPanel({
         </div>
       ) : null}
 
-      {/* Files Progress */}
-      <div className="space-y-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-2.5">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-semibold text-foreground">
-            Files{" "}
-            <span className="font-normal text-muted-foreground text-[11px]">
-              {files.phase === "listing"
-                ? "(checking...)"
-                : files.phase === "downloading"
-                  ? "(downloading)"
-                  : files.phase === "paused"
-                    ? "(paused)"
-                    : files.phase === "error"
-                      ? "(retrying later)"
-                      : files.phase === "done"
-                        ? "(all on this device)"
-                        : files.autoOff
-                          ? "(automatic download is off)"
-                          : ""}
-            </span>
-          </span>
-          {files.total > 0 ? (
-            <div className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400" translate="no">
-              <span>{files.done} / {files.total}</span>
-              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                {filePct}%
+      {/* Files Progress (only if files are active during sync) */}
+      {files.total > 0 || running ? (
+        <div className="space-y-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-semibold text-foreground">
+              Files{" "}
+              <span className="font-normal text-muted-foreground text-[11px]">
+                {files.phase === "listing"
+                  ? "(checking...)"
+                  : files.phase === "downloading"
+                    ? "(downloading)"
+                    : files.phase === "paused"
+                      ? "(paused)"
+                      : files.phase === "error"
+                        ? "(retrying later)"
+                        : files.phase === "done"
+                          ? "(all on this device)"
+                          : files.autoOff
+                            ? "(automatic download is off)"
+                            : ""}
               </span>
+            </span>
+            {files.total > 0 ? (
+              <div className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400" translate="no">
+                <span>{files.done} / {files.total}</span>
+                <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                  {filePct}%
+                </span>
+              </div>
+            ) : null}
+          </div>
+          {/* Thick progress bar */}
+          {files.total > 0 ? (
+            <div className="h-3.5 w-full overflow-hidden rounded-full bg-muted/80 p-0.5 shadow-inner">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                style={{ width: `${Math.max(3, filePct)}%` }}
+              />
             </div>
           ) : null}
+          {files.failed > 0 || files.missing > 0 ? (
+            <p className="text-[11px] text-muted-foreground">
+              {files.failed > 0 ? `${files.failed} failed. ` : ""}
+              {files.missing > 0 ? `${files.missing} no longer on the server.` : ""}
+            </p>
+          ) : null}
+          {files.message ? <p className="text-[11px] text-amber-600 dark:text-amber-400">{files.message}</p> : null}
         </div>
-        {/* Thick progress bar */}
-        {files.total > 0 ? (
-          <div className="h-3.5 w-full overflow-hidden rounded-full bg-muted/80 p-0.5 shadow-inner">
-            <div
-              className="h-full rounded-full bg-emerald-500 transition-all duration-300"
-              style={{ width: `${Math.max(3, filePct)}%` }}
-            />
-          </div>
-        ) : null}
-        {files.failed > 0 || files.missing > 0 ? (
-          <p className="text-[11px] text-muted-foreground">
-            {files.failed > 0 ? `${files.failed} failed. ` : ""}
-            {files.missing > 0 ? `${files.missing} no longer on the server.` : ""}
-          </p>
-        ) : null}
-        {files.message ? <p className="text-[11px] text-amber-600 dark:text-amber-400">{files.message}</p> : null}
-      </div>
+      ) : null}
 
       {/* Storage info */}
       <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
@@ -243,7 +246,7 @@ export function PocketBaseFilesPanel({
             variant="outline"
             size="sm"
             onClick={onHide}
-            className="h-7 w-full text-xs text-muted-foreground hover:text-foreground rounded-xl border-border/70"
+            className="h-8 w-full text-xs text-muted-foreground hover:text-foreground rounded-xl border-border/70"
           >
             Hide in background
           </Button>
@@ -254,22 +257,25 @@ export function PocketBaseFilesPanel({
 }
 
 export function PocketBaseSyncProgressBadge() {
-  const files = usePbFilesPullProgress();
   const data = usePbDataPullProgress();
   const [hidden, setHidden] = useState(false);
-  const filesBusy = files.phase === "listing" || files.phase === "downloading" || files.phase === "paused" || files.phase === "error";
-  const syncActive = data.active || filesBusy;
+
+  // User requirement: Only show popup during main data download (1st time full download).
+  // Minor background file downloading will NOT trigger this popup.
+  const syncActive = data.active;
 
   useEffect(() => {
-    // Sync khatam hone par hide reset, taaki agli baar phir dikhe
-    if (!syncActive) setHidden(false);
-  }, [syncActive]);
+    // When a new main data pull starts, reset hidden so user sees progress
+    if (data.active) setHidden(false);
+  }, [data.active]);
 
   if (!syncActive || hidden) return null;
 
   return (
-    <div className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-[60] w-[min(94vw,24rem)] print:hidden animate-in fade-in slide-in-from-bottom-2 duration-200">
-      <PocketBaseFilesPanel isPopup onHide={() => setHidden(true)} />
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px] print:hidden animate-in fade-in duration-200">
+      <div className="w-[min(92vw,26rem)] animate-in zoom-in-95 duration-200">
+        <PocketBaseFilesPanel isPopup onHide={() => setHidden(true)} />
+      </div>
     </div>
   );
 }
