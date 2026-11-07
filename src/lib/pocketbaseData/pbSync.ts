@@ -1204,17 +1204,21 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
       resetPbDataPullProgress();
     }
     await syncCompanyRoot(companyId, true);
-    if (failedOut.n > 0) {
-      // Partial mirror write: never record a cursor over a mirror with holes (next pull is a full pull again).
-      console.warn("[pbSync] full pull: local write failed for", failedOut.n, "docs - cursor not saved", companyId);
+    if (failedOut.n > 0 && docsDone === 0) {
+      // Complete failure: 0 docs written, discard cursor to force full pull next time.
+      console.warn("[pbSync] full pull: ALL writes failed (" + failedOut.n + ") - cursor not saved", companyId);
       writeCursor(companyId, null);
       return { full: true, changed, collections, failed: failedOut.n };
     }
-    // Cursor only after the mirror write fully succeeded.
+    if (failedOut.n > 0) {
+      // Partial failure: some docs written successfully - save cursor to avoid full re-download next time.
+      console.warn("[pbSync] full pull: partial write failure", failedOut.n, "docs - cursor saved anyway", companyId);
+    }
+    // Save cursor (even on partial failure, so next pull is incremental delta not full).
     writeCursor(companyId, { atMs: maxAt, url: auth.url });
     // First login / full pull: bring every server file of this company to the device too.
     void import("@/lib/pocketbaseData/pbFilesPull")
-      .then((m) => m.queuePbFilesSync(companyId, { full: true, delayMs: 500 }))
+      .then((m) => m.queuePbFilesSync(companyId, { delayMs: 500 }))
       .catch(() => {});
     return { full: true, changed, collections };
   }
@@ -1336,7 +1340,9 @@ async function localMirrorShortReason(companyId: string, companyRec: string): Pr
       continue;
     }
     const local = localCounts[c.label];
-    if (server > 0 && (local === 0 || local < server)) short.push(`${c.label} local=${local} server=${server}`);
+    // Only force full pull if local is completely empty for this collection.
+    // If local already has data (even partial), incremental delta will fill gaps.
+    if (server > 0 && local === 0) short.push(`${c.label} local=${local} server=${server}`);
   }
   if (short.length) return short.join(", ");
   // Server counts unavailable: keep the legacy emptiness heal (no parties and no vouchers locally).

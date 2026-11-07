@@ -47,7 +47,15 @@ export function PocketBaseSignInBox({ url }: { url?: string }) {
   if (auth) {
     return (
       <div className="space-y-1.5">
-      <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl p-2 text-xs
+        bg-white dark:bg-zinc-900
+        border border-border/30
+        shadow-[0_4px_16px_0_rgba(0,0,0,0.10),0_1px_4px_0_rgba(0,0,0,0.06)]
+        dark:shadow-[0_4px_16px_0_rgba(0,0,0,0.40),0_1px_4px_0_rgba(0,0,0,0.25)]
+        hover:shadow-[0_12px_32px_0_rgba(0,0,0,0.18),0_4px_12px_0_rgba(0,0,0,0.10)]
+        dark:hover:shadow-[0_12px_32px_0_rgba(0,0,0,0.60),0_4px_12px_0_rgba(0,0,0,0.35)]
+        hover:-translate-y-1
+        transition-all duration-200 ease-out">
         <span className="text-muted-foreground">Pocket Ledger Server:</span>
         <span className="font-medium text-foreground" translate="no">
           {auth.email}

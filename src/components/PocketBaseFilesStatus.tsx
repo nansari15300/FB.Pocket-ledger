@@ -50,6 +50,7 @@ export function PocketBaseFilesPanel({
   const running = files.phase === "listing" || files.phase === "downloading";
   const filePct = files.total > 0 ? Math.min(100, Math.round((files.done / files.total) * 100)) : 0;
   const dataPct = data.total && data.total > 0 ? Math.min(100, Math.round((data.docs / data.total) * 100)) : 0;
+  const filesComplete = files.phase === "done" && files.total > 0 && files.done >= files.total;
 
   const lowStorage =
     usage?.quota != null && usage.free != null && usage.quota > 0 && usage.free / usage.quota < 0.1;
@@ -76,9 +77,11 @@ export function PocketBaseFilesPanel({
 
   return (
     <div
-      className={`space-y-3 rounded-2xl border-2 border-emerald-500/80 bg-background/95 text-xs shadow-2xl backdrop-blur-md ${
-        isPopup ? "p-4 sm:p-5" : "p-3"
-      }`}
+      className={`space-y-3 rounded-2xl bg-background/98 text-xs backdrop-blur-md
+        border border-emerald-500/20
+        shadow-[0_2px_8px_0_rgba(0,0,0,0.06),0_8px_32px_0_rgba(16,185,129,0.08)]
+        dark:shadow-[0_2px_8px_0_rgba(0,0,0,0.3),0_8px_32px_0_rgba(16,185,129,0.12)]
+        ${isPopup ? "p-4 sm:p-5" : "p-3"}`}
     >
       {/* Header if popup */}
       {isPopup ? (
@@ -105,7 +108,15 @@ export function PocketBaseFilesPanel({
 
       {/* Data Progress */}
       {data.active ? (
-        <div className="space-y-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
+        <div className="space-y-1.5 rounded-xl p-3
+          bg-white dark:bg-zinc-900
+          border border-emerald-400/25
+          shadow-[0_4px_16px_0_rgba(16,185,129,0.15),0_1px_4px_0_rgba(0,0,0,0.08)]
+          dark:shadow-[0_4px_16px_0_rgba(16,185,129,0.20),0_1px_4px_0_rgba(0,0,0,0.30)]
+          hover:shadow-[0_12px_32px_0_rgba(16,185,129,0.28),0_4px_12px_0_rgba(0,0,0,0.12)]
+          dark:hover:shadow-[0_12px_32px_0_rgba(16,185,129,0.35),0_4px_12px_0_rgba(0,0,0,0.40)]
+          hover:-translate-y-1
+          transition-all duration-200 ease-out">
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-foreground flex items-center gap-1.5">
               <span>Data (Vouchers & Masters)</span>
@@ -136,7 +147,15 @@ export function PocketBaseFilesPanel({
 
       {/* Files Progress (only if files are active during sync) */}
       {files.total > 0 || running ? (
-        <div className="space-y-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
+        <div className="space-y-1.5 rounded-xl p-3
+          bg-white dark:bg-zinc-900
+          border border-emerald-400/25
+          shadow-[0_4px_16px_0_rgba(16,185,129,0.15),0_1px_4px_0_rgba(0,0,0,0.08)]
+          dark:shadow-[0_4px_16px_0_rgba(16,185,129,0.20),0_1px_4px_0_rgba(0,0,0,0.30)]
+          hover:shadow-[0_12px_32px_0_rgba(16,185,129,0.28),0_4px_12px_0_rgba(0,0,0,0.12)]
+          dark:hover:shadow-[0_12px_32px_0_rgba(16,185,129,0.35),0_4px_12px_0_rgba(0,0,0,0.40)]
+          hover:-translate-y-1
+          transition-all duration-200 ease-out">
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-foreground">
               Files{" "}
@@ -156,22 +175,29 @@ export function PocketBaseFilesPanel({
                             : ""}
               </span>
             </span>
-            {files.total > 0 ? (
+            {/* Show count only when: actively running OR done with meaningful file count (>5) */}
+            {files.total > 0 && (running || files.total > 5) ? (
               <div className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400" translate="no">
                 <span>{files.done} / {files.total}</span>
                 <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
                   {filePct}%
                 </span>
               </div>
+            ) : files.phase === "done" && !running ? (
+              <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">✓ 100%</span>
             ) : null}
           </div>
-          {/* Thick progress bar */}
-          {files.total > 0 ? (
+          {/* Thick progress bar — show when running OR when done with meaningful file count */}
+          {files.total > 0 && (running || files.total > 5) ? (
             <div className="h-3.5 w-full overflow-hidden rounded-full bg-muted/80 p-0.5 shadow-inner">
               <div
                 className="h-full rounded-full bg-emerald-500 transition-all duration-300"
                 style={{ width: `${Math.max(3, filePct)}%` }}
               />
+            </div>
+          ) : files.phase === "done" ? (
+            <div className="h-3.5 w-full overflow-hidden rounded-full bg-muted/80 p-0.5 shadow-inner">
+              <div className="h-full rounded-full bg-emerald-500 w-full" />
             </div>
           ) : null}
           {files.failed > 0 || files.missing > 0 ? (
@@ -189,7 +215,7 @@ export function PocketBaseFilesPanel({
         <span className="flex items-center gap-1">
           <HardDrive className="h-3.5 w-3.5" />
           {usage
-            ? `Device: ${usage.count} files (${fmtBytes(usage.bytes)})`
+            ? `Device: ${usage.count} files (all companies, ${fmtBytes(usage.bytes)})`
             : "Checking storage..."}
         </span>
         <button
@@ -215,14 +241,15 @@ export function PocketBaseFilesPanel({
             type="button"
             size="sm"
             variant="outline"
-            className="h-7 text-xs rounded-lg"
+            className={`h-7 text-xs rounded-lg ${filesComplete ? "border-emerald-500 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 cursor-default" : ""}`}
             disabled={running || busy}
             onClick={() => {
+              if (filesComplete) return;
               setNote("");
               void import("@/lib/pocketbaseData/pbFilesPull").then((m) => m.startPbFilesSyncManual());
             }}
           >
-            Download all files
+            {filesComplete ? "✓ Download Complete" : "Download all files"}
           </Button>
           <Button
             type="button"
