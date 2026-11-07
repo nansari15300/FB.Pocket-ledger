@@ -22,7 +22,7 @@ import type { PocketBaseRealtimeMode } from "@/lib/pocketbaseData/pbRealtime";
 
 const RECHECK_MS = 30_000;
 /** Server login: re-read the admin's Live/Delta mode from the server this often (and on focus / online). */
-const SYNC_MODE_REFRESH_MS = 60_000;
+const SYNC_MODE_REFRESH_MS = 600_000;
 
 function currentMode(): PocketBaseRealtimeMode {
   return readCachedGlobalSyncModeSettings().mode === "full_online" ? "live" : "delta";

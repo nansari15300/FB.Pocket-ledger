@@ -193,7 +193,7 @@ export function useDeviceLimit() {
       if (!inList) runCheck();
     });
 
-    const interval = setInterval(() => { if (!document.hidden) runCheck(); }, 10 * 1000);
+    const interval = setInterval(() => { if (!document.hidden) runCheck(); }, 10 * 60 * 1000);
     return () => {
       cancelled = true;
       unsubDevices();

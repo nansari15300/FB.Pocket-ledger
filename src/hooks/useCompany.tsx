@@ -3099,10 +3099,10 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
       const onRootUpdated = () => void refreshFromServer();
       window.addEventListener("pl-pb-company-root-updated", onRootUpdated);
       for (const name of PB_APP_SESSION_EVENTS) window.addEventListener(name, onRootUpdated);
-      // Company list (pl_companies): light 5 min poll, visible tab only; also on focus / tab visible (max 1 per 60s).
+      // Company list (pl_companies): light 10 min poll, visible tab only; also on focus / tab visible (max 1 per 60s).
       const poll = window.setInterval(() => {
         if (document.visibilityState === "visible") void refreshFromServer();
-      }, 300_000);
+      }, 600_000);
       const onRegistryVisible = () => {
         if (document.visibilityState === "visible" && Date.now() - lastPbRegistryRefreshAt >= 60_000) void refreshFromServer();
       };

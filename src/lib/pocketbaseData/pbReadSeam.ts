@@ -869,10 +869,10 @@ async function adminGetQuerySnapshot(
   return { snap: makeQuerySnapshot(query, docs, prev), sig };
 }
 
-const ADMIN_POLL_MS = 30_000;
-/** SSE down: poll udoc every 10s. SSE up: skip ticks until this fallback. */
-const USER_POLL_MS = 10_000;
-const USER_POLL_WHEN_LIVE_MS = 90_000;
+const ADMIN_POLL_MS = 600_000;
+/** SSE down: poll udoc every 60s. SSE up: skip ticks until this 10m fallback. */
+const USER_POLL_MS = 60_000;
+const USER_POLL_WHEN_LIVE_MS = 600_000;
 
 const userPollers = new Set<() => void>();
 let userPollTicker: ReturnType<typeof setInterval> | null = null;
@@ -966,6 +966,8 @@ function onAdminSnapshot(args: unknown[], t: AdminTarget): () => void {
     window.addEventListener("pl-pb-company-root-updated", schedule);
   }
   const pollTick = () => {
+    if (isPocketBaseRealtimeLive()) return;
+    if (typeof document !== "undefined" && document.hidden) return;
     clearAdminCaches();
     void emit();
   };
@@ -1182,7 +1184,11 @@ function onRootSnapshotServerOnly(args: unknown[], t: Extract<PbTarget, { kind: 
     void emit();
   };
   window.addEventListener("pl-pb-company-root-updated", onRoot);
-  const poll = setInterval(() => void emit(), 60_000);
+  const poll = setInterval(() => {
+    if (isPocketBaseRealtimeLive()) return;
+    if (typeof document !== "undefined" && document.hidden) return;
+    void emit();
+  }, 600_000);
   void emit();
   return () => {
     closed = true;
