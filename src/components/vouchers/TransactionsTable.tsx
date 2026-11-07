@@ -3134,17 +3134,11 @@ export function TransactionsTable({
   const unifiedWidthApplyingRef = useRef(false);
   /** Survives width remount (Show/Hide linked, row count) — cleanup must not lose H position. */
   const ledgerUnifiedScrollLeftRef = useRef(0);
-  /** Plan A: measured natural col px (entity ledger desktop split tables) - floors only, constants stay minimums. */
-  const [ledgerMeasuredColWidths, setLedgerMeasuredColWidths] = useState<number[]>([]);
-  const ledgerMeasuredColWidthsRef = useRef<number[]>([]);
 
   const effectiveSplitScrollColWidths = useMemo((): (number | string)[] => {
     if (!splitScrollColProportionalGate || splitScrollColWidths.length === 0) return splitScrollColWidths;
     if (!splitScrollColWidths.every((w) => typeof w === "number")) return splitScrollColWidths;
-    const nums = mergeLedgerMeasuredColWidths(
-      splitScrollColWidths as number[],
-      ledgerDesktopSplitScrollGate ? ledgerMeasuredColWidths : []
-    );
+    const nums = splitScrollColWidths as number[];
     const keys = ledgerEntityColKeys;
     if (intrinsicDateTypeColPx && intrinsicDateTypeCols && keys.length === nums.length) {
       let fixedSum = 0;
@@ -3181,7 +3175,6 @@ export function TransactionsTable({
     return nums.map((w) => Math.round(w * scale));
   }, [
     splitScrollColWidths,
-    ledgerMeasuredColWidths,
     ledgerDesktopSplitScrollGate,
     ledgerHostClientWidth,
     splitScrollColProportionalGate,
@@ -3279,31 +3272,8 @@ export function TransactionsTable({
           }
         }
 
-        // Plan A: content-measured col widths (header th / body rows <=200 / footer totals), floor = constants.
-        // Sum + V-scroll gutter feeds the min-px var so narrow hosts scroll instead of overlapping cells.
-        if (ledgerDesktopSplitScrollGate && !isDaybookUnifiedHost && bodyEl && baseColSum > 0) {
-          const baseNums = splitScrollColWidths as number[];
-          const shellEl = bodyEl.closest(".pl-ledger-detail-table-shell");
-          const measureTables = shellEl
-            ? Array.from(
-                shellEl.querySelectorAll<HTMLTableElement>(
-                  "[data-pl-ledger-txn-header] table, [data-pl-ledger-txn] table, [data-pl-ledger-txn-fixed-summary] table"
-                )
-              )
-            : [];
-          const measured = measureLedgerNaturalColWidths(measureTables, baseNums.length);
-          if (measured) {
-            const prevMeasured = ledgerMeasuredColWidthsRef.current;
-            const measuredChanged =
-              prevMeasured.length !== measured.length ||
-              measured.some((w, i) => Math.abs(w - prevMeasured[i]) > LEDGER_UNIFIED_WIDTH_STABLE_EPS_PX);
-            if (measuredChanged) {
-              ledgerMeasuredColWidthsRef.current = measured;
-              setLedgerMeasuredColWidths(measured);
-            }
-          }
-          const mergedNums = mergeLedgerMeasuredColWidths(baseNums, ledgerMeasuredColWidthsRef.current);
-          baseColSum = mergedNums.reduce((a, b) => a + b, 0) + ledgerVScrollGutterPx;
+        if (baseColSum > 0) {
+          baseColSum += ledgerVScrollGutterPx;
         }
 
         const { tableMinPx: rawTableMinPx, scaleTargetPx: rawScaleTargetPx } = computeLedgerUnifiedTableMinPx({

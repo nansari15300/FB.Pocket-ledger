@@ -9206,110 +9206,27 @@ body.dark [data-pl-ledger-txn-unified-scroll] [data-pl-ledger-txn-header],
   pointer-events: none;
 }
 
-/* Table-cell pseudo bands are unreliable in Chromium table layout.
-   Use a crisp inset 1px line; it does not add layout width or stack borders. */
-html body
-  [data-pl-ledger-txn-page]
-  [data-theme-table="transactions"]
-  tbody
-  tr.transaction-main-row:not(:has(+ .narration-row)):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card])
-  > td,
-html body
-  [data-pl-ledger-txn-page]
-  [data-theme-table="transactions"]
-  tbody
-  tr.transaction-main-row
-  + tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card])
-  > td {
-  border-bottom-width: 0 !important;
-  box-shadow: inset 0 -1px 0 #000 !important;
-}
-/* Row-menu (3-dot) cell: box-shadow + ::after dono milkar double line banate the.
-   Suppress both so only the ::after-based H-line (from generic rule) shows once. */
-html body
-  [data-pl-ledger-txn-page]
-  [data-theme-table="transactions"]
-  tbody
-  tr.transaction-main-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card])
-  > td[data-pl-txn-row-menu],
-html body
-  [data-pl-ledger-txn-page]
-  [data-theme-table="transactions"]
-  tbody
-  tr.transaction-main-row
-  + tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card])
-  > td[data-pl-txn-row-menu] {
-  box-shadow: none !important;
-  border-top-width: 0 !important;
-  border-bottom-width: 0 !important;
-}
-html body
-  [data-pl-ledger-txn-page]
-  [data-theme-table="transactions"]
-  tbody
-  tr.transaction-main-row:has(+ .narration-row)
-  > td {
-  box-shadow: none !important;
-}
-html body
-  [data-pl-ledger-txn-page]
-  [data-theme-table="transactions"]
-  tbody
-  tr.transaction-main-row:not(:has(+ .narration-row))
-  > td:first-child::after,
-html body
-  [data-pl-ledger-txn-page]
-  [data-theme-table="transactions"]
-  tbody
-  tr.transaction-main-row
-  + tr.narration-row
-  > td:first-child::after {
+/* Entity ledger transaction page: rock-solid 1px horizontal line on ALL zoom levels.
+   Disable all buggy ::after pseudo elements and inset shadows that jitter/disappear under subpixel zoom.
+   Use native border-bottom on td directly so lines never hide, shift, or step at 115%, 116%, 125%, etc. */
+html body [data-pl-ledger-txn-page] [data-theme-table="transactions"] tbody tr > td::after {
   content: none !important;
   display: none !important;
 }
 
-/* Prior/current FY parity: opaque 1px line in every cell (inset shadow tinted on old-FY stripes). */
-html body
-  [data-pl-ledger-txn-page]
-  [data-theme-table="transactions"]
-  tbody
-  tr.transaction-main-row:not(:has(+ .narration-row)):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card])
-  > td,
-html body
-  [data-pl-ledger-txn-page]
-  [data-theme-table="transactions"]
-  tbody
-  tr.transaction-main-row
-  + tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card])
-  > td {
-  position: relative;
-  border-bottom-width: 0 !important;
+html body [data-pl-ledger-txn-page] [data-theme-table="transactions"] tbody tr.transaction-main-row:not(:has(+ .narration-row)):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td,
+html body [data-pl-ledger-txn-page] [data-theme-table="transactions"] tbody tr.transaction-main-row + tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td,
+html body [data-pl-ledger-txn-page] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"] > td,
+html body [data-pl-ledger-txn-page] [data-theme-table="transactions"] tbody tr[data-row="opening-balance"] > td,
+html body [data-pl-ledger-txn-page] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"] > td,
+html body [data-pl-ledger-txn-page] [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"] > td {
+  border-bottom: 1px solid #000 !important;
   box-shadow: none !important;
 }
-html body
-  [data-pl-ledger-txn-page]
-  [data-theme-table="transactions"]
-  tbody
-  tr.transaction-main-row:not(:has(+ .narration-row)):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card])
-  > td::after,
-html body
-  [data-pl-ledger-txn-page]
-  [data-theme-table="transactions"]
-  tbody
-  tr.transaction-main-row
-  + tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card])
-  > td::after {
-  content: "" !important;
-  display: block !important;
-  position: absolute;
-  z-index: 5;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: auto !important;
-  height: 1px !important;
-  background-color: #000 !important;
-  pointer-events: none;
+
+html body [data-pl-ledger-txn-page] [data-theme-table="transactions"] tbody tr.transaction-main-row:has(+ .narration-row) > td {
+  border-bottom: none !important;
+  box-shadow: none !important;
 }
 
 /* Overdue keeps its own data/filter logic; visually match the shared Bill Wise ledger table. */
@@ -9358,21 +9275,7 @@ html body
 }
 
 /* Continue each transaction separator through the compact ⋮ cell. */
-html body
-  [data-pl-ledger-txn-page]
-  [data-theme-table="transactions"]
-  tbody
-  tr.transaction-main-row:not(:has(+ .narration-row)):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card])
-  > td:last-child,
-html body
-  [data-pl-ledger-txn-page]
-  [data-theme-table="transactions"]
-  tbody
-  tr.transaction-main-row
-  + tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card])
-  > td:last-child {
-  box-shadow: inset 0 -1px 0 #000 !important;
-}
+
 [data-pl-ledger-txn-page] [data-pl-ledger-txn] {
   border-bottom-width: 0 !important;
   border-bottom: none !important;
