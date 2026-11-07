@@ -127,7 +127,7 @@ export function proDashboardRibbonClass(index: number): string {
     PRO_DASHBOARD_RIBBON_CYCLE.length;
   return cn(
     PL_DASHBOARD_TONE_CARD,
-    "border-2",
+    "border",
     PRO_DASHBOARD_RIBBON_BORDER_CYCLE[i],
     PRO_DASHBOARD_RIBBON_CYCLE[i],
     `pl-dashboard-tone-${PRO_DASHBOARD_TONE_KEYS[i]}`,

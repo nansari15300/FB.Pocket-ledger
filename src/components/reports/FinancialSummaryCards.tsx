@@ -4393,7 +4393,7 @@ export function FinancialSummaryCards({
             )}
 
             {can("view_entity_counts_summary") && !compact && (
-                <div className={cn("w-full min-w-0 overflow-hidden", dashboardEntityRowClass)}>
+                <div className={cn("w-full min-w-0 pt-1 -mt-1", dashboardEntityRowClass)}>
                     {/* Entity cards: count + Chart tab par master add-by-day (Vouchers card sirf number). */}
                     {[
                         {
@@ -4456,7 +4456,7 @@ export function FinancialSummaryCards({
                     ].map((item, idx) => {
                         const cardScopeHint = formatScopeHintForCard(item.scopeKey);
                         return (
-                        <Card key={item.title} className={`min-w-0 flex-1 overflow-hidden ${dashboardCardRibbonClass} ${ribbonTone(idx + 2)}`}>
+                        <Card key={item.title} className={`min-w-0 flex-1 ${dashboardCardRibbonClass} ${ribbonTone(idx + 2)}`}>
                             <CardHeader className="space-y-1 p-3 pb-1">
                                 <div className="flex min-w-0 items-center justify-between gap-1">
                                     <CardTitle className="min-w-0 shrink truncate text-sm">{item.title}</CardTitle>
