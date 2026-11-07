@@ -16319,26 +16319,64 @@ html body table[data-theme-table="transactions"] {
   border-top-color: transparent !important;
 }
 
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row:not(:has(+ .narration-row)):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:not(#pl-theme-master-none),
+/* 1px solid black separator under standalone transaction rows, narration rows, and opening balance */
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row:not([data-has-narration="true"]):not(:has(+ .narration-row)):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:not(#pl-theme-master-none),
 :is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row + tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"] > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance"] > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:not(:has(+ tr[data-row="opening-balance-narration"])):not(:has(+ tr[data-row="opening-balance-linked"])) > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance"]:not(:has(+ tr[data-row="opening-balance-linked"])) > td:not(#pl-theme-master-none),
 :is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"] > td:not(#pl-theme-master-none),
 :is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"] > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-book"] > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-book"]:not(:has(+ tr[data-row="opening-balance-narration"])) > td:not(#pl-theme-master-none),
 :is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody > tr:not(.spend-wise-group-card-row tr):not(.spend-wise-group-card-row):not(.spend-wise-gap-row):not(.spend-wise-inner-txn-sep):not([aria-hidden="true"]):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]):not([data-pl-spend-wise-opening]):last-child > td:not(#pl-theme-master-none) {
   border-bottom: 1px solid #000 !important;
   border-bottom-color: #000 !important;
   box-shadow: none !important;
 }
 
+/* Main row with narration: ZERO line between main row and narration row (single combined card) */
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row[data-has-narration="true"],
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row:has(+ .narration-row),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:has(+ tr[data-row="opening-balance-narration"]),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:has(+ tr[data-row="opening-balance-linked"]),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance"]:has(+ tr[data-row="opening-balance-linked"]),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-book"]:has(+ tr[data-row="opening-balance-narration"]) {
+  border-bottom: none !important;
+  border-bottom-width: 0 !important;
+  border-bottom-color: transparent !important;
+  box-shadow: none !important;
+}
+
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row[data-has-narration="true"] > td,
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row:has(+ .narration-row) > td,
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row[data-has-narration="true"] > td:not(#pl-theme-master-none),
 :is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row:has(+ .narration-row) > td:not(#pl-theme-master-none),
 :is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:has(+ tr[data-row="opening-balance-narration"]) > td:not(#pl-theme-master-none),
 :is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:has(+ tr[data-row="opening-balance-linked"]) > td:not(#pl-theme-master-none),
 :is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance"]:has(+ tr[data-row="opening-balance-linked"]) > td:not(#pl-theme-master-none),
 :is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-book"]:has(+ tr[data-row="opening-balance-narration"]) > td:not(#pl-theme-master-none) {
   border-bottom: none !important;
+  border-bottom-width: 0 !important;
   border-bottom-color: transparent !important;
+  box-shadow: none !important;
+}
+
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.narration-row,
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"],
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"] {
+  border-top: none !important;
+  border-top-width: 0 !important;
+  border-top-color: transparent !important;
+  box-shadow: none !important;
+}
+
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.narration-row > td,
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.narration-row > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"] > td:not(#pl-theme-master-none),
+:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"] > td:not(#pl-theme-master-none) {
+  border-top: none !important;
+  border-top-width: 0 !important;
+  border-top-color: transparent !important;
   box-shadow: none !important;
 }
 

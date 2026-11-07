@@ -2938,6 +2938,7 @@ export const TransactionRow = React.memo(
         data-pl-spend-wise-outflow={
           isSpendWiseOutflowRow || spendWiseGroupStandaloneOutflow ? "" : undefined
         }
+        data-has-narration={showNarrationRow ? "true" : undefined}
         className={cn(
           "transaction-main-row min-h-[28px] cursor-pointer text-foreground",
           txnStripeBgClass,
@@ -2973,14 +2974,12 @@ export const TransactionRow = React.memo(
           showNarrationRow && "[&>td]:pt-0.5 [&>td]:pb-0",
           /* No narration: bottom padding so separator stays visible (not covered by next row chrome) */
           !showNarrationRow && "[&>td]:pb-1",
-          showNarration &&
-            (narrationText || (!hideStatusColumn && getStatusDetail(transaction, { billWiseOnly: statusBillWiseOnly })))
-            ? "border-b-0"
+          showNarrationRow
+            ? "border-b-0 [&>td]:!border-b-0 [&>td]:!border-b-transparent"
             : (isSpendWiseGroupFirst || isSpendWiseChild || isSpendWiseGroupLast)
               ? "border-b-0"
               : "border-b",
-          // Spend-wise pill: main↔narration ke beech line mat; statement rows par black divider.
-          !inSpendWiseGroup && "border-black",
+          !showNarrationRow && !inSpendWiseGroup && "border-black",
           inSpendWiseGroup && showNarrationRow && "[&>td]:border-b-0"
         )}
       >
@@ -3030,7 +3029,7 @@ export const TransactionRow = React.memo(
           !spendWiseInGroupCard && "border-b",
           txnStripeBgClass,
           /* Sirf neeche horizontal line — left/right vertical border mat ([&>td]:border-black se side line aa jati thi) */
-          !inSpendWiseGroup && "border-b border-black [&>td]:border-x-0 [&>td]:border-t-0 [&>td]:border-b-0",
+          !inSpendWiseGroup && "border-b border-black [&>td]:border-x-0 [&>td]:!border-t-0 [&>td]:!border-t-transparent [&>td]:border-b-0",
           isBillWise && "-mt-1.5",
           spendWiseNarrInset,
           /* Group card: narration par upar ki line mat (txn + narration ek block) */
