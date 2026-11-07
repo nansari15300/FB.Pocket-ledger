@@ -1339,6 +1339,12 @@ body.theme-colorfull [data-theme-table="transactions"] table tfoot td {
   display: none !important;
 }
 
+/* Row-menu (3-dot) cell: ::after pseudo se double H-line ban rahi thi — suppress karo. */
+[data-theme-table="transactions"] tbody tr > td[data-pl-txn-row-menu]::after {
+  content: none !important;
+  display: none !important;
+}
+
 /* FY merge divider — sirf 1px lines (double stack = 2px dikhta tha). */
 [data-theme-table="transactions"] tbody tr.transaction-main-row:has(+ tr[data-row="fiscal-partition-total"]) > td:last-child::after,
 [data-theme-table="transactions"] tbody tr.transaction-main-row:has(+ tr.narration-row + tr[data-row="fiscal-partition-total"]) > td:last-child::after,
