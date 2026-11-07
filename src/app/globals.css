@@ -9224,6 +9224,25 @@ html body
   border-bottom-width: 0 !important;
   box-shadow: inset 0 -1px 0 #000 !important;
 }
+/* Row-menu (3-dot) cell: box-shadow + ::after dono milkar double line banate the.
+   Suppress both so only the ::after-based H-line (from generic rule) shows once. */
+html body
+  [data-pl-ledger-txn-page]
+  [data-theme-table="transactions"]
+  tbody
+  tr.transaction-main-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card])
+  > td[data-pl-txn-row-menu],
+html body
+  [data-pl-ledger-txn-page]
+  [data-theme-table="transactions"]
+  tbody
+  tr.transaction-main-row
+  + tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card])
+  > td[data-pl-txn-row-menu] {
+  box-shadow: none !important;
+  border-top-width: 0 !important;
+  border-bottom-width: 0 !important;
+}
 html body
   [data-pl-ledger-txn-page]
   [data-theme-table="transactions"]
