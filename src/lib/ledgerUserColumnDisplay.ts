@@ -111,6 +111,15 @@ function ledgerUserEmailPrefix(email: unknown): string {
   return at > 0 ? e.slice(0, at).trim() : "";
 }
 
+function cleanLedgerUserLabel(label: string): string {
+  const t = label.trim();
+  if (t.includes("@")) {
+    const at = t.indexOf("@");
+    return at > 0 ? t.slice(0, at).trim() : t;
+  }
+  return t;
+}
+
 /** `userNames` lookup tolerant of id shapes: uid, pb_<id>, <id>, local:<id>. */
 function lookupLedgerUserNameInMap(uid: string, userNames?: Record<string, string> | null): string {
   if (!uid || !userNames) return "";
@@ -136,37 +145,55 @@ export function resolveLedgerTransactionUserDisplayName(
   if (isRecurringBsMonthlyAutoVoucherForLedgerUserDisplay(transaction)) return "Auto";
 
   const uid = String(transaction.userId || "").trim();
-  const fromMap = lookupLedgerUserNameInMap(uid, userNames);
-  if (isMeaningfulLedgerUserListLabel(fromMap)) return fromMap;
 
+  // 1. Voucher ka apna saved userDisplayName / userName (e.g. "New parsa ENG") - primary source of truth,
+  // taaki background stale Firestore/admin fetch isko overwrite na kare.
   const fromDoc = String(transaction.userDisplayName || transaction.userName || "").trim();
-  if (isMeaningfulLedgerUserListLabel(fromDoc)) return fromDoc;
-
-  const curUid = String(opts?.currentUserUid || "").trim();
-  const curName = String(opts?.currentUserDisplayName || "").trim();
-  if (uid && curUid && uid === curUid) {
-    return curName || "You";
+  if (isMeaningfulLedgerUserListLabel(fromDoc) && !looksLikeRawLedgerUserId(fromDoc, uid)) {
+    return cleanLedgerUserLabel(fromDoc);
   }
 
-  // Lazy repair for rows saved without `userDisplayName` (older save path): other name-ish fields on the doc.
+  // 2. Voucher pe saved createdByName
   const fromCreatedByName = String(transaction.createdByName || "").trim();
   if (isMeaningfulLedgerUserListLabel(fromCreatedByName) && !looksLikeRawLedgerUserId(fromCreatedByName, uid)) {
-    return fromCreatedByName;
+    return cleanLedgerUserLabel(fromCreatedByName);
   }
-  const emailPrefix = ledgerUserEmailPrefix(transaction.userEmail);
+
+  // 3. Current active user match
+  const curUid = String(opts?.currentUserUid || "").trim();
+  const curName = String(opts?.currentUserDisplayName || "").trim();
+  if (uid && curUid && uid === curUid && curName && !looksLikeRawLedgerUserId(curName, uid)) {
+    return cleanLedgerUserLabel(curName);
+  }
+
+  // 4. userNames map lookup
+  const fromMap = lookupLedgerUserNameInMap(uid, userNames);
+  if (isMeaningfulLedgerUserListLabel(fromMap) && !looksLikeRawLedgerUserId(fromMap, uid)) {
+    return cleanLedgerUserLabel(fromMap);
+  }
+
+  // 5. Name system me na ho to email before @
+  const emailPrefix = ledgerUserEmailPrefix(
+    transaction.userEmail ||
+    transaction.email ||
+    transaction.createdByEmail ||
+    (transaction.user as any)?.email
+  );
   if (isMeaningfulLedgerUserListLabel(emailPrefix) && !looksLikeRawLedgerUserId(emailPrefix, uid)) {
     return emailPrefix;
   }
+
+  // 6. Last edited by user name
   const fromLastEditor = String(transaction.lastEditedByUserName || "").trim();
   if (isMeaningfulLedgerUserListLabel(fromLastEditor) && !looksLikeRawLedgerUserId(fromLastEditor, uid)) {
-    return fromLastEditor;
+    return cleanLedgerUserLabel(fromLastEditor);
   }
 
-  // Local-company ids ("local", "local_guest_user", "local:<id>"): any local user entry in the names map.
+  // 7. Local-company ids ("local", "local_guest_user", "local:<id>"): any local user entry in the names map.
   if (isLocalLedgerUserId(uid)) {
     const localHit =
       lookupLedgerUserNameInMap("local", userNames) || lookupLedgerUserNameInMap("local_guest_user", userNames);
-    if (isMeaningfulLedgerUserListLabel(localHit)) return localHit;
+    if (isMeaningfulLedgerUserListLabel(localHit)) return cleanLedgerUserLabel(localHit);
   }
   return "N/A";
 }

@@ -11,6 +11,7 @@ import { doc } from "@/lib/pbCompat/firestore";
 import { firestore } from '@/lib/firebase';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";
+import { mergeLedgerUserDisplayNameMaps } from "@/lib/ledgerUserColumnDisplay";
 
 function BankAccountDetailsPageContent() {
   const params = useParams();
@@ -62,7 +63,7 @@ function BankAccountDetailsPageContent() {
     });
   }, [vouchers, userNames, fetchUserName]);
 
-  const displayUserNames = { ...vouchersUserNames, ...userNames };
+  const displayUserNames = mergeLedgerUserDisplayNameMaps(vouchersUserNames || {}, userNames);
 
   if (loading) {
     return <LoadingSpinner />;
