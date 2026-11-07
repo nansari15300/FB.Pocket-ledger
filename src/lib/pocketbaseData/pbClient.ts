@@ -282,7 +282,9 @@ export async function pocketBaseGoogleSignIn(url?: string): Promise<PocketBaseAu
   if (typeof window === "undefined" || typeof EventSource === "undefined") {
     throw new PocketBaseGoogleLoginError("unsupported", "Google sign-in is not available here");
   }
-  const base = normalizePocketBaseUrl(url || getPocketBaseServerUrl());
+  let base = normalizePocketBaseUrl(url || getPocketBaseServerUrl());
+  // Google Web OAuth requires localhost instead of 127.0.0.1 loopback IP so SSE matches redirect:
+  base = base.replace(/:\/\/127\.0\.0\.1(?=[:/]|$)/i, "://localhost");
   const opener = googleLoginOpener();
   // Web: open the popup first, inside the click gesture.
   const popup = opener === "popup" ? window.open("about:blank", "pl_pb_google_login", "width=520,height=720") : null;
