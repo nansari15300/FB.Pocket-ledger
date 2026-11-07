@@ -9,7 +9,7 @@ export const STATEMENT_CHECKED_ROW_INFO_TEXT =
 
 /** 3 blinks within 1s (globals.css `pl-statement-checked-blink-continuous`). */
 export const STATEMENT_CHECKED_ROW_MESSAGE_CLASS =
-  "pl-statement-checked-msg text-sm font-semibold italic leading-snug text-emerald-900 dark:text-emerald-200";
+  "pl-statement-checked-msg text-sm font-semibold italic leading-snug text-emerald-900 dark:text-emerald-200 whitespace-nowrap shrink-0";
 
 export function statementCheckedMessageColumn(
   debit: number,

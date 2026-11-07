@@ -1471,11 +1471,11 @@ export function TransactionsTable({
             variant="ghost"
             size="icon"
             data-pl-txn-icon-btn=""
-            className={cn(txnTableIconBtnCn, "relative h-8 w-3 min-w-[12px] shrink-0 p-0")}
+            className={cn(txnTableIconBtnCn, "relative h-8 w-[18px] min-w-[18px] shrink-0 p-0 flex items-center justify-center")}
           >
             <span
               aria-hidden="true"
-              className="absolute right-[4px] top-1/2 -translate-y-1/2 text-base leading-none text-muted-foreground"
+              className="text-base leading-none text-muted-foreground select-none"
             >
               ⋮
             </span>
@@ -2791,7 +2791,7 @@ export function TransactionsTable({
             )}
           </>
         )}
-        <TableCell className={ensureMinGaps ? LEDGER_TXN_ROW_MENU_CELL_CN : "w-10 p-0"} />
+        <TableCell className={cn(ensureMinGaps ? LEDGER_TXN_ROW_MENU_CELL_CN : "w-10 p-0", "!bg-white dark:!bg-card")} />
       </tr>
     ) : null;
 
@@ -2816,7 +2816,7 @@ export function TransactionsTable({
           hideBalanceColumn={hideBalanceColumn}
           ensureMinGaps={ensureMinGaps}
         />
-        <TableCell className={ensureMinGaps ? LEDGER_TXN_ROW_MENU_CELL_CN : "w-10 p-0"} />
+        <TableCell className={cn(ensureMinGaps ? LEDGER_TXN_ROW_MENU_CELL_CN : "w-10 p-0", "!bg-white dark:!bg-card")} />
       </tr>
     ) : null;
 
@@ -2916,6 +2916,22 @@ export function TransactionsTable({
     billWiseLinkPreviewEnabled && billWiseLinkPreview != null && displayLedgerRows.some((r) => r?._billWiseLinkPreviewGroupId);
   const useLedgerGroupCardLayout = hasSpendWiseGroups || hasBillWiseLinkPreviewGroups;
 
+  const statementCheckedCols = useMemo(() => {
+    let hasDr = false;
+    let hasCr = false;
+    if (!ledgerStatementChecked || ledgerStatementChecked.checkedIds.size === 0) return { hasDr, hasCr };
+    for (const r of displayLedgerRows || []) {
+      if (ledgerStatementChecked.isChecked(r)) {
+        const debit = Number((r as any)?.debit) || 0;
+        const credit = Number((r as any)?.credit) || 0;
+        const col = statementCheckedMessageColumn(debit, credit);
+        if (col === "debit") hasDr = true;
+        if (col === "credit") hasCr = true;
+      }
+    }
+    return { hasDr, hasCr };
+  }, [displayLedgerRows, ledgerStatementChecked]);
+
   const spendWiseColWidths = useMemo((): number[] => {
     if (!useLedgerGroupCardLayout) return [];
     const w: number[] = [];
@@ -2933,8 +2949,8 @@ export function TransactionsTable({
     if (isItemPartyContext && showItemPartyColumn) w.push(90);
     if (showCol("user") && context !== "note") w.push(148);
     if (showFileBySelection) w.push(44);
-    if (showCol("dr") && !hideDebitColumn) w.push(100);
-    if (showCol("cr") && !hideCreditColumn) w.push(100);
+    if (showCol("dr") && !hideDebitColumn) w.push(statementCheckedCols.hasDr ? Math.max(185, LEDGER_TDS_DR_CR_COL_PX) : 100);
+    if (showCol("cr") && !hideCreditColumn) w.push(statementCheckedCols.hasCr ? Math.max(185, LEDGER_TDS_DR_CR_COL_PX) : 100);
     if (showCol("status") && !hideStatusColumn) w.push(95);
     if (showCol("runningBalance") && !hideBalanceColumn) w.push(115);
     w.push(LEDGER_TXN_ROW_MENU_COL_PX);
@@ -2952,6 +2968,7 @@ export function TransactionsTable({
     showItemPartyColumn,
     isItemPartyContext,
     visibleColumns,
+    statementCheckedCols,
   ]);
 
   const ledgerVoucherNoColPx = useMemo(() => {
@@ -3024,10 +3041,12 @@ export function TransactionsTable({
     if (showCol("tdsAmount")) w.push(LEDGER_TDS_AMOUNT_COL_PX);
     // TDS details: Dr/Cr race = badge/amount content width (not bare 100px).
     if (showCol("dr") && !hideDebitColumn) {
-      w.push(hasTdsLedgerCols ? LEDGER_TDS_DR_CR_COL_PX : LEDGER_TXN_DR_CR_COL_PX);
+      const minDr = statementCheckedCols.hasDr ? Math.max(185, LEDGER_TDS_DR_CR_COL_PX) : hasTdsLedgerCols ? LEDGER_TDS_DR_CR_COL_PX : LEDGER_TXN_DR_CR_COL_PX;
+      w.push(minDr);
     }
     if (showCol("cr") && !hideCreditColumn) {
-      w.push(hasTdsLedgerCols ? LEDGER_TDS_DR_CR_COL_PX : LEDGER_TXN_DR_CR_COL_PX);
+      const minCr = statementCheckedCols.hasCr ? Math.max(185, LEDGER_TDS_DR_CR_COL_PX) : hasTdsLedgerCols ? LEDGER_TDS_DR_CR_COL_PX : LEDGER_TXN_DR_CR_COL_PX;
+      w.push(minCr);
     }
     if (showCol("status") && !hideStatusColumn) w.push(95);
     if (showCol("runningBalance") && !hideBalanceColumn) w.push(LEDGER_ENTITY_BALANCE_COL_PX);
@@ -3047,6 +3066,7 @@ export function TransactionsTable({
     showItemPartyColumn,
     isItemPartyContext,
     visibleColumns,
+    statementCheckedCols,
     ledgerVoucherNoColPx,
   ]);
 
@@ -3093,6 +3113,7 @@ export function TransactionsTable({
     showItemPartyColumn,
     isItemPartyContext,
     visibleColumns,
+    statementCheckedCols,
   ]);
 
   const intrinsicDateTypeCols = Boolean(
@@ -3391,6 +3412,7 @@ export function TransactionsTable({
     syncDashboardRecentHorizontalScroll,
     transactions.length,
     visibleColumns,
+    statementCheckedCols,
     splitScrollColWidths,
     ledgerEntityColKeys,
     intrinsicDateTypeColPx,
@@ -3401,6 +3423,18 @@ export function TransactionsTable({
     if (!splitScrollColProportionalGate || ledgerHostClientWidth <= 0) return;
     unifiedLedgerWidthApplyRef.current?.();
   }, [splitScrollColProportionalGate, ledgerHostClientWidth]);
+
+  useLayoutEffect(() => {
+    if (!splitScrollColProportionalGate) return;
+    ledgerMeasuredColWidthsRef.current = [];
+    lastUnifiedTableMinRef.current = 0;
+    lastUnifiedScaleTargetRef.current = 0;
+    unifiedLedgerWidthApplyRef.current?.();
+    const id = requestAnimationFrame(() => {
+      unifiedLedgerWidthApplyRef.current?.();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [splitScrollColProportionalGate, ledgerStatementChecked.checkedIds]);
 
   /**
    * Row count change (daybook date / Show–Hide linked trxn): remasure width and
@@ -3534,6 +3568,7 @@ export function TransactionsTable({
     dashboardRecentFyAttachmentGate,
     transactions.length,
     visibleColumns,
+    statementCheckedCols,
     dateSystem,
     showNarration,
     ledgerEntityColWidths,
@@ -5237,7 +5272,7 @@ export function TransactionsTable({
               -
             </TableCell>
           )}
-          <TableCell className={ensureMinGaps ? LEDGER_TXN_ROW_MENU_CELL_CN : "w-10 p-0"} />
+          <TableCell className={cn(ensureMinGaps ? LEDGER_TXN_ROW_MENU_CELL_CN : "w-10 p-0", "!bg-white dark:!bg-card")} />
         </TableRow>
         <TableRow
           data-pl-txn-footer-closing-row=""
@@ -5290,7 +5325,7 @@ export function TransactionsTable({
               {formatFooterBalance(footerClosingBalance)}
             </TableCell>
           )}
-          <TableCell className={ensureMinGaps ? LEDGER_TXN_ROW_MENU_CELL_CN : "w-10 p-0"} />
+          <TableCell className={cn(ensureMinGaps ? LEDGER_TXN_ROW_MENU_CELL_CN : "w-10 p-0", "!bg-white dark:!bg-card")} />
         </TableRow>
       </TableFooter>
     ) : null;

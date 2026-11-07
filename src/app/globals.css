@@ -13427,9 +13427,18 @@ html body
   [data-pl-ledger-txn-fixed-summary]
   [data-theme-table="transactions"]
   tfoot[data-pl-txn-split-scroll-footer]
-  tr[data-pl-txn-footer-closing-row]
+  :is(tr[data-pl-txn-footer-closing-row], tr[data-pl-txn-footer-total-row])
   > td:last-child {
-  background-color: rgb(219 234 254 / 0.8) !important;
+  background-color: #ffffff !important;
+}
+.dark html body
+  [data-pl-ledger-txn-page]
+  [data-pl-ledger-txn-fixed-summary]
+  [data-theme-table="transactions"]
+  tfoot[data-pl-txn-split-scroll-footer]
+  :is(tr[data-pl-txn-footer-closing-row], tr[data-pl-txn-footer-total-row])
+  > td:last-child {
+  background-color: hsl(var(--card)) !important;
 }
 
 /* Overdue: exactly one full-width 1px separator, anchored only to the first cell. */

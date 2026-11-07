@@ -111,9 +111,9 @@ export const LEDGER_BOTH_DATE_BS_AD_GAP_PX = 10;
 export const LEDGER_ENTITY_DATE_BS_COL_PX = 95;
 export const LEDGER_BOTH_DATE_BS_CELL_PAD_CN = LEDGER_TXN_COL_MAX_GAP_PAD_CN;
 /** Compact visual strip after Balance; the visible ⋮ sits 4px from the right edge. */
-export const LEDGER_TXN_ROW_MENU_COL_PX = 12;
+export const LEDGER_TXN_ROW_MENU_COL_PX = 18;
 export const LEDGER_TXN_ROW_MENU_CELL_CN =
-  "relative box-border w-3 min-w-[12px] max-w-[12px] p-0 align-middle";
+  "relative box-border w-[18px] min-w-[18px] max-w-[18px] p-0 align-middle text-center";
 /** Header stays aligned at the Balance column's right boundary. */
 export const LEDGER_TXN_BALANCE_HEADER_PAD_CN = "pl-[5px] pr-0";
 /** Body Balance: max text gap from Cr; keep small strip before ⋮. */

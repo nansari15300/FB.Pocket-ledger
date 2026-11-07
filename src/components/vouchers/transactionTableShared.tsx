@@ -1898,7 +1898,7 @@ export const TransactionRow = React.memo(
       </span>
     ) : null;
     const tdsVerifyDrCrMinPx =
-      tdsLedgerRowLayout || salePurchaseTdsVerifyLabel != null
+      isStatementChecked || tdsLedgerRowLayout || salePurchaseTdsVerifyLabel != null
         ? LEDGER_TDS_DR_CR_COL_PX
         : LEDGER_TXN_DR_CR_COL_PX;
 
@@ -2461,7 +2461,7 @@ export const TransactionRow = React.memo(
                 ? cn(taxTdsAmountWeightCn, "text-green-700")
                 : ledgerTdsAmountToneCn ?? "font-semibold text-green-700",
               ensureMinGaps &&
-                (tdsLedgerRowLayout || salePurchaseTdsVerifyLabel != null
+                (isStatementChecked || tdsLedgerRowLayout || salePurchaseTdsVerifyLabel != null
                   ? LEDGER_TDS_DR_CR_AMOUNT_CELL_CN
                   : LEDGER_TXN_DR_CR_AMOUNT_CELL_CN),
               tdsLedgerRowLayout && "text-left"
@@ -2488,7 +2488,7 @@ export const TransactionRow = React.memo(
                 ? cn(taxTdsAmountWeightCn, "text-red-700")
                 : ledgerTdsAmountToneCn ?? "font-semibold text-red-700",
               ensureMinGaps &&
-                (tdsLedgerRowLayout || salePurchaseTdsVerifyLabel != null
+                (isStatementChecked || tdsLedgerRowLayout || salePurchaseTdsVerifyLabel != null
                   ? LEDGER_TDS_DR_CR_AMOUNT_CELL_CN
                   : LEDGER_TXN_DR_CR_AMOUNT_CELL_CN),
               tdsLedgerRowLayout && "text-left"
@@ -2683,11 +2683,11 @@ export const TransactionRow = React.memo(
                 size="icon"
                 data-pl-txn-icon-btn=""
                 data-pl-txn-row-menu-trigger=""
-                className={cn(txnTableIconBtnCn, "relative h-8 w-3 min-w-[12px] shrink-0 p-0")}
+                className={cn(txnTableIconBtnCn, "relative h-8 w-[18px] min-w-[18px] shrink-0 p-0 flex items-center justify-center")}
               >
                 <span
                   aria-hidden="true"
-                  className="absolute right-[4px] top-1/2 -translate-y-1/2 text-base leading-none text-muted-foreground"
+                  className="text-base leading-none text-muted-foreground select-none"
                 >
                   ⋮
                 </span>
