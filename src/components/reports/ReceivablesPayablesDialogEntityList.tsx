@@ -5,7 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { highlightQueryInText } from "@/lib/highlightQueryInText";
 import { useDate } from "@/hooks/useDate";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, ChevronDown, Plus, X } from "lucide-react";
+import { AlarmClock, CheckCircle2, ChevronDown, Plus, X } from "lucide-react";
 import { MasterListChromeChevronToggle } from "@/components/layout/MasterListChromeChevronToggle";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -296,7 +296,7 @@ function RpRowDeadlineControl({
           aria-hidden
         />
       ) : (
-        <Plus className="h-[17px] w-[17px]" strokeWidth={3} aria-hidden />
+        <AlarmClock className="h-[15px] w-[15px]" strokeWidth={2} aria-hidden />
       )}
     </button>
   );
@@ -781,7 +781,7 @@ export function ReceivablesPayablesDialogEntityList({
           compact
             ? cn(
                 RP_RIBBON_HEIGHT_CN,
-                "w-full rounded-md border-blue-300 bg-white text-xs font-normal normal-case tracking-normal text-foreground shadow-none placeholder:text-muted-foreground dark:bg-white/95"
+                "w-full rounded-md border-blue-300 bg-white text-xs font-normal normal-case tracking-normal text-gray-900 dark:text-gray-900 shadow-none placeholder:text-gray-500 dark:placeholder:text-gray-500 dark:bg-white/95"
               )
             : "h-9 min-w-0 w-full text-sm shadow-sm",
           listFilter && (compact ? "pr-8" : "pr-9")
