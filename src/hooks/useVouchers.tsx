@@ -1841,7 +1841,6 @@ export const VoucherProvider = ({
     if (!keepWarmUi) setLoadingIfChanged(true);
       // Tier-1: masters only — `vouchers` SQLite read (JSON parse) hazaar+ rows par EXE me 30–90s lagata; spinner tab tak band na ho.
       // Vouchers secondary chunk me: parties list pehle paint, totals snapshot/listeners ke baad refresh.
-      const CRITICAL_SQLITE_PATHS = new Set(["parties", "groups", "bank_accounts", "expense_accounts"]);
       const loadSqliteChunk = (items: typeof collectionsToPrefetch): Promise<void> =>
         Promise.all(
           items.map(({ path, setter, orderByField }) =>
@@ -1856,8 +1855,9 @@ export const VoucherProvider = ({
                   .catch(() => {}))
           )
         ).then(() => undefined);
-      const critical = collectionsToPrefetch.filter((c) => CRITICAL_SQLITE_PATHS.has(c.path));
-      const secondary = collectionsToPrefetch.filter((c) => !CRITICAL_SQLITE_PATHS.has(c.path));
+      // Masters first (parties, staff, bank, items, taxes, groups) so the current page paints instantly; vouchers in secondary.
+      const critical = collectionsToPrefetch.filter((c) => c.path !== "vouchers");
+      const secondary = collectionsToPrefetch.filter((c) => c.path === "vouchers");
       runSqlitePrefetchSplit(loadSqliteChunk, critical, secondary);
       return () => {
         cancelled = true;
@@ -1869,14 +1869,6 @@ export const VoucherProvider = ({
     if (!keepWarmUi) setLoadingIfChanged(true);
       // EXE/static: `vouchers` mirror = sabse bada table — ise critical me mat rakho warna Promise.all yahi pe minute leta hai.
       // Pehle parties/groups/staff/taxes/banks + expense_accounts; vouchers + items baaki secondary chunk (loading tab tak band).
-      const CRITICAL_SQLITE_PATHS = new Set([
-        "parties",
-        "groups",
-        "bank_accounts",
-        "staff",
-        "taxes",
-        "expense_accounts",
-      ]);
       const loadSqliteChunk = (items: typeof collectionsToPrefetch): Promise<void> =>
         Promise.all(
           items.map(({ path, setter, orderByField }) =>
@@ -1891,8 +1883,8 @@ export const VoucherProvider = ({
                   .catch(() => {}))
           )
         ).then(() => undefined);
-      const critical = collectionsToPrefetch.filter((c) => CRITICAL_SQLITE_PATHS.has(c.path));
-      const secondary = collectionsToPrefetch.filter((c) => !CRITICAL_SQLITE_PATHS.has(c.path));
+      const critical = collectionsToPrefetch.filter((c) => c.path !== "vouchers");
+      const secondary = collectionsToPrefetch.filter((c) => c.path === "vouchers");
       runSqlitePrefetchSplit(loadSqliteChunk, critical, secondary);
     }
 

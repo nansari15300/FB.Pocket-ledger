@@ -2,6 +2,7 @@ import {
   dashboardMasterCollectionPathsForTab,
   readDashboardActiveTabForBootstrap,
 } from "@/lib/dashboardTabPanels";
+import { withoutWebAppBasePath } from "@/lib/webAppBasePath";
 
 /** Voucher forms + cross-device master live sync — shared route → collection scope. */
 
@@ -26,7 +27,8 @@ export function activeMasterCollectionPathsForRoute(
   voucherFormMasterScope = false
 ): Set<string> {
   if (voucherFormMasterScope) return VOUCHER_FORM_MASTER_COLLECTION_PATHS;
-  const route = String(pathname || "").trim().toLowerCase();
+  const cleanPath = withoutWebAppBasePath(pathname);
+  const route = String(cleanPath || "").trim().toLowerCase();
   if (route.startsWith("/bank-cash")) return new Set(["vouchers", "bank_accounts", "account_groups"]);
   if (route.startsWith("/party")) return new Set(["vouchers", "parties", "groups", "expense_accounts"]);
   if (route.startsWith("/staff")) return new Set(["vouchers", "staff", "staff_groups"]);

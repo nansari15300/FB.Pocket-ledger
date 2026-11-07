@@ -2,6 +2,7 @@
 
 import { COLLECTIONS_TO_BACKUP, type CompanyBackupCollection } from "@/lib/companyBackupCollections";
 import { activeMasterCollectionPathsForRoute } from "@/lib/ledgerActiveMasterCollections";
+import { withoutWebAppBasePath } from "@/lib/webAppBasePath";
 
 export const MOBILE_ROUTE_PULL_REFRESH_EVENT = "pl-mobile-route-pull-refresh";
 
@@ -16,7 +17,8 @@ export type MobileRoutePullRefreshDetail = {
 const BACKUP_COLLECTION_SET = new Set<string>(COLLECTIONS_TO_BACKUP);
 
 function normalizeRoutePath(pathname: string): string {
-  const raw = String(pathname || "").split("?")[0].trim() || "/";
+  const clean = withoutWebAppBasePath(pathname);
+  const raw = String(clean || "").split("?")[0].trim() || "/";
   if (raw.length > 1 && raw.endsWith("/")) return raw.slice(0, -1);
   return raw;
 }

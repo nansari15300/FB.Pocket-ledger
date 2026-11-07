@@ -1,5 +1,7 @@
 "use client";
 
+import { withoutWebAppBasePath } from "@/lib/webAppBasePath";
+
 export type LedgerBalanceViewMode = "statement" | "bill_wise";
 
 export type LedgerBalanceSection = "party" | "staff" | "tax";
@@ -23,7 +25,7 @@ function bankSpendWiseStorageKey(companyId: string): string {
 export function resolveLedgerBalanceSection(
   pathname: string | null | undefined
 ): LedgerBalanceSection | null {
-  const path = String(pathname || "").trim();
+  const path = String(withoutWebAppBasePath(pathname || "")).trim();
   if (!path) return null;
   if (path.startsWith("/party")) return "party";
   if (path.startsWith("/staff")) return "staff";

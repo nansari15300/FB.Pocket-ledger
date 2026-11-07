@@ -429,10 +429,11 @@ function StaffPageContent() {
   );
   // ==================================
 
-  // Clear search when company changes (prevent email/other data from carrying over)
+  // Clear search and selected staff when company changes
   useEffect(() => {
     setSearchTerm("");
-  }, [companyId]);
+    setSelected(null);
+  }, [companyId, setSelected]);
   useEffect(() => {
     setShowOnlyStaffWithPendingApproval(false);
     setShowOnlyStaffGroupsWithPendingApproval(false);

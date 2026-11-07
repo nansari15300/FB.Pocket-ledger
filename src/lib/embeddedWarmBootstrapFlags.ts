@@ -1,5 +1,6 @@
 "use client";
 
+import { withoutWebAppBasePath } from "@/lib/webAppBasePath";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
 import { VOUCHER_FORM_MASTER_COLLECTION_PATHS } from "@/lib/ledgerActiveMasterCollections";
@@ -13,7 +14,7 @@ export function embeddedClientPrefersQuietBackgroundSync(): boolean {
 
 /** APK/EXE ledger screens — background SQLite bump sirf in collections se merge (staff/items par page shake kam). */
 export function sqliteBumpCollectionNeededOnLedgerRoute(pathname: string, collection: string): boolean {
-  const route = String(pathname || "").toLowerCase();
+  const route = withoutWebAppBasePath(String(pathname || "")).toLowerCase();
   const coll = String(collection || "").trim();
   if (route.startsWith("/party")) {
     return coll === "parties" || coll === "groups" || coll === "vouchers" || coll === "expense_accounts";
@@ -50,7 +51,7 @@ export function sqliteBumpCollectionNeededOnLedgerRoute(pathname: string, collec
 /** Party / bank detail — background merge thoda debounce (scroll shake kam). */
 export function embeddedSqliteBumpDebounceMs(pathname: string): number {
   if (!embeddedClientPrefersQuietBackgroundSync()) return 1_500;
-  const route = String(pathname || "").toLowerCase();
+  const route = withoutWebAppBasePath(String(pathname || "")).toLowerCase();
   if (route.startsWith("/party") || route.startsWith("/bank-cash")) return 2_500;
   return 1_500;
 }
