@@ -99,6 +99,21 @@ export function ReconciledPointGuardProvider({ children }: { children: React.Rea
       const byUser = user?.displayName || user?.email || "User";
       const action = params.isDelete ? "delete" : params.isEdit ? "edit" : "new";
 
+      // Extract voucher no from params
+      const voucherNo: string | null =
+        conflict.voucherNo ||
+        (params.newVoucherData as any)?.voucherNo ||
+        (params.newVoucherData as any)?.voucherNumber ||
+        (params.newVoucherData as any)?.number ||
+        (params.existingVoucher as any)?.voucherNo ||
+        (params.existingVoucher as any)?.voucherNumber ||
+        (params.existingVoucher as any)?.number ||
+        null;
+
+      const balanceDelta = typeof conflict.balanceDelta === "number" ? conflict.balanceDelta : null;
+      const balanceBefore = typeof conflict.balanceBefore === "number" ? conflict.balanceBefore : null;
+      const balanceAfter = typeof conflict.balanceAfter === "number" ? conflict.balanceAfter : null;
+
       for (const ctxId of contextIds) {
         void persistConflictHistoryEntry(params.companyId, ctxId, {
           at: new Date().toISOString(),
@@ -107,10 +122,10 @@ export function ReconciledPointGuardProvider({ children }: { children: React.Rea
           voucherDate: dialogState.voucherDate,
           accountName: conflict.accountName || dialogState.accountName,
           action,
-          balanceBefore: null,
-          balanceDelta: null,
-          balanceAfter: null,
-          voucherNo: null,
+          balanceBefore,
+          balanceDelta,
+          balanceAfter,
+          voucherNo,
         });
       }
     }

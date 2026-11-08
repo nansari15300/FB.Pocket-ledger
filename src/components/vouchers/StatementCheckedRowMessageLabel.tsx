@@ -28,6 +28,23 @@ import {
   type ConflictHistoryEntry,
 } from "@/lib/ledgerStatementCheckPersist";
 
+function formatHistoryDrCr(val?: number | null): string {
+  if (val == null || Number.isNaN(val)) return "—";
+  const abs = Math.abs(val);
+  const formatted = abs.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (abs < 0.001) return "Rs. 0.00";
+  return val > 0 ? `Rs. ${formatted} Dr` : `Rs. ${formatted} Cr`;
+}
+
+function formatHistoryDelta(val?: number | null): string {
+  if (val == null || Number.isNaN(val)) return "—";
+  const abs = Math.abs(val);
+  const formatted = abs.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (abs < 0.001) return "Rs. 0.00";
+  const sign = val > 0 ? "+" : "-";
+  return `${sign}Rs. ${formatted} ${val > 0 ? "Dr" : "Cr"}`;
+}
+
 type Props = {
   className?: string;
   align?: "start" | "center" | "end";
@@ -140,7 +157,10 @@ export function StatementCheckedRowMessageLabel({
           align={align}
           {...DIALOG_SHELL_ATTR}
           translate="no"
-          className="notranslate w-[390px] max-w-[92vw] text-sm leading-relaxed p-4 shadow-xl bg-card border-emerald-300/85 dark:border-emerald-700/60 rounded-xl"
+          className={cn(
+            "notranslate text-sm leading-relaxed p-4 shadow-xl bg-card border-emerald-300/85 dark:border-emerald-700/60 rounded-xl transition-[width] duration-200",
+            activeTab === "history" ? "w-[660px] max-w-[96vw]" : "w-[390px] max-w-[92vw]"
+          )}
           onClick={(e) => e.stopPropagation()}
         >
           {/* ── Tab Bar ── */}
@@ -328,7 +348,7 @@ export function StatementCheckedRowMessageLabel({
           {/* ── HISTORY TAB ── */}
           {activeTab === "history" ? (
             <div translate="no" className="notranslate text-xs">
-              <div className="flex items-center gap-1.5 mb-2.5 text-amber-700 dark:text-amber-300 font-semibold">
+              <div className="flex items-center gap-1.5 mb-2 text-amber-700 dark:text-amber-300 font-semibold">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                 Backdated Entry History
                 <span className="ml-auto text-[10px] text-muted-foreground font-normal">Last 5 events</span>
@@ -346,69 +366,107 @@ export function StatementCheckedRowMessageLabel({
                   <p className="text-[10px] opacity-70">History is logged when a user clicks &quot;Continue&quot; on the Reconciled Point warning.</p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {history.map((h, i) => (
-                    <div
-                      key={i}
-                      className={cn(
-                        "rounded-lg border p-2.5 space-y-1.5",
-                        i === 0
-                          ? "border-amber-300/70 bg-amber-50/60 dark:bg-amber-950/20 dark:border-amber-700/50"
-                          : "border-border/60 bg-muted/20"
-                      )}
-                    >
-                      {/* Row 1: Date + Action badge */}
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[10px] text-muted-foreground tabular-nums">
-                          {(() => {
-                            try {
-                              return new Date(h.at).toLocaleString();
-                            } catch {
-                              return h.at;
-                            }
-                          })()}
-                        </span>
-                        <span className={cn(
-                          "text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-full border",
-                          h.action === "delete"
-                            ? "bg-red-100 text-red-700 border-red-300/60 dark:bg-red-950/40 dark:text-red-300"
-                            : h.action === "edit"
-                            ? "bg-blue-100 text-blue-700 border-blue-300/60 dark:bg-blue-950/40 dark:text-blue-300"
-                            : "bg-amber-100 text-amber-700 border-amber-300/60 dark:bg-amber-950/40 dark:text-amber-300"
-                        )}>
-                          {h.action === "delete" ? "Delete" : h.action === "edit" ? "Edit" : "New"}
-                        </span>
-                      </div>
+                <div className="overflow-x-auto rounded-lg border border-border/70 max-h-[360px] shadow-sm">
+                  <table className="w-full text-[11px] text-left border-collapse">
+                    <thead className="bg-muted/70 text-muted-foreground uppercase text-[10px] tracking-wider font-semibold sticky top-0 backdrop-blur-sm z-10 border-b border-border/70">
+                      <tr>
+                        <th className="py-2 px-2.5">Voucher / Action</th>
+                        <th className="py-2 px-2.5">User</th>
+                        <th className="py-2 px-2.5">Dates</th>
+                        <th className="py-2 px-2 text-right">Point Bal. (Before)</th>
+                        <th className="py-2 px-2 text-right">Diff. (Voucher)</th>
+                        <th className="py-2 px-2.5 text-right">Point Bal. (After)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/50 bg-background/50">
+                      {history.map((h, i) => (
+                        <tr
+                          key={i}
+                          className={cn(
+                            "transition-colors hover:bg-muted/40",
+                            i === 0 && "bg-amber-50/40 dark:bg-amber-950/10"
+                          )}
+                        >
+                          {/* Voucher / Action */}
+                          <td className="py-2 px-2.5 align-top whitespace-nowrap">
+                            <div className="font-semibold text-foreground font-mono text-[11px]">
+                              {h.voucherNo || "—"}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span
+                                className={cn(
+                                  "text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded-full border",
+                                  h.action === "delete"
+                                    ? "bg-red-100 text-red-700 border-red-300/60 dark:bg-red-950/40 dark:text-red-300"
+                                    : h.action === "edit"
+                                    ? "bg-blue-100 text-blue-700 border-blue-300/60 dark:bg-blue-950/40 dark:text-blue-300"
+                                    : "bg-amber-100 text-amber-700 border-amber-300/60 dark:bg-amber-950/40 dark:text-amber-300"
+                                )}
+                              >
+                                {h.action === "delete" ? "Delete" : h.action === "edit" ? "Edit" : "New"}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground tabular-nums">
+                                {(() => {
+                                  try {
+                                    return new Date(h.at).toLocaleDateString();
+                                  } catch {
+                                    return "";
+                                  }
+                                })()}
+                              </span>
+                            </div>
+                          </td>
 
-                      {/* Row 2: Key info grid */}
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
-                        <div>
-                          <span className="text-muted-foreground">By</span>
-                          <span className="ml-1 font-medium text-foreground">{h.byUser || "—"}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Recon. Date</span>
-                          <span className="ml-1 font-medium text-foreground">{h.reconciledDate || "—"}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Voucher Date</span>
-                          <span className="ml-1 font-semibold text-amber-700 dark:text-amber-300">{h.voucherDate || "—"}</span>
-                        </div>
-                        {h.accountName ? (
-                          <div>
-                            <span className="text-muted-foreground">Account</span>
-                            <span className="ml-1 font-medium text-foreground truncate">{h.accountName}</span>
-                          </div>
-                        ) : null}
-                        {h.voucherNo ? (
-                          <div>
-                            <span className="text-muted-foreground">Voucher No.</span>
-                            <span className="ml-1 font-mono text-foreground">{h.voucherNo}</span>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
+                          {/* User */}
+                          <td className="py-2 px-2.5 align-top whitespace-nowrap">
+                            <div className="font-medium text-foreground">{h.byUser || "—"}</div>
+                            {h.accountName && (
+                              <div className="text-[10px] text-muted-foreground truncate max-w-[90px]" title={h.accountName}>
+                                {h.accountName}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Dates */}
+                          <td className="py-2 px-2.5 align-top whitespace-nowrap">
+                            <div className="text-amber-700 dark:text-amber-300 font-semibold">
+                              <span className="text-muted-foreground text-[10px] font-normal">Voucher: </span>
+                              {h.voucherDate || "—"}
+                            </div>
+                            <div className="text-muted-foreground text-[10px]">
+                              <span>Point: </span>
+                              <span className="text-foreground">{h.reconciledDate || "—"}</span>
+                            </div>
+                          </td>
+
+                          {/* Recon Balance Before */}
+                          <td className="py-2 px-2 align-top text-right whitespace-nowrap font-mono tabular-nums text-foreground">
+                            {formatHistoryDrCr(h.balanceBefore)}
+                          </td>
+
+                          {/* Difference / Balance Delta */}
+                          <td className="py-2 px-2 align-top text-right whitespace-nowrap font-mono tabular-nums font-semibold">
+                            <span
+                              className={
+                                h.balanceDelta == null
+                                  ? "text-muted-foreground"
+                                  : h.balanceDelta > 0
+                                  ? "text-emerald-700 dark:text-emerald-400"
+                                  : "text-red-700 dark:text-red-400"
+                              }
+                            >
+                              {formatHistoryDelta(h.balanceDelta)}
+                            </span>
+                          </td>
+
+                          {/* Recon Balance After */}
+                          <td className="py-2 px-2.5 align-top text-right whitespace-nowrap font-mono tabular-nums font-semibold text-foreground">
+                            {formatHistoryDrCr(h.balanceAfter)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>

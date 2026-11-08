@@ -13,6 +13,14 @@ export type ReconciledPointConflict = {
   voucherDateFormatted?: string;
   reconciledDate?: Date;
   voucherDate?: Date;
+  /** Net signed balance effect of this action on the entity at the reconciled point */
+  balanceDelta?: number;
+  /** Balance at reconciled point before this backdate action */
+  balanceBefore?: number | null;
+  /** Balance at reconciled point after this backdate action */
+  balanceAfter?: number | null;
+  /** Voucher number extracted from newVoucherData or existingVoucher */
+  voucherNo?: string | null;
 };
 
 export type ReconciledPointCheckParams = {
@@ -325,6 +333,66 @@ export async function checkReconciledPointConflict(
         /* fallback */
       }
 
+      // Compute net balance delta for this entity from the action
+      let balanceDelta = 0;
+      if (params.isDelete && params.existingVoucher) {
+        // Deleting removes the effect
+        balanceDelta = -getEntityNetEffect(params.existingVoucher, cand.id);
+      } else if (params.isEdit && params.existingVoucher) {
+        const origNet = getEntityNetEffect(params.existingVoucher, cand.id);
+        const newNet = getEntityNetEffect(newVoucher, cand.id);
+        balanceDelta = newNet - origNet;
+      } else {
+        balanceDelta = getEntityNetEffect(newVoucher, cand.id);
+      }
+
+      // Compute balance at reconciled point BEFORE this action
+      let balanceBefore: number | null = null;
+      let balanceAfter: number | null = null;
+
+      if (Array.isArray(params.allVouchers) && params.allVouchers.length > 0) {
+        let sum = 0;
+        try {
+          const party = await getCompanyDocFromBrowserDb(companyId, "parties", cand.id);
+          if (party) {
+            const ob = Number(party.openingBalance ?? (party as any).opening_balance ?? 0) || 0;
+            const obType = String(party.openingBalanceType ?? (party as any).opening_balance_type ?? "cr").toLowerCase();
+            sum += (obType === "dr" ? ob : -ob);
+          } else {
+            const acc =
+              (await getCompanyDocFromBrowserDb(companyId, "accounts", cand.id)) ||
+              (await getCompanyDocFromBrowserDb(companyId, "bank_accounts", cand.id));
+            if (acc) {
+              const ob = Number(acc.openingBalance ?? (acc as any).opening_balance ?? 0) || 0;
+              const obType = String(acc.openingBalanceType ?? (acc as any).opening_balance_type ?? "dr").toLowerCase();
+              sum += (obType === "dr" ? ob : -ob);
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+
+        for (const v of params.allVouchers) {
+          const vd = parseFirestoreDateFieldToJsDate(v?.date);
+          if (!vd) continue;
+          if (startOfDay(vd).getTime() <= reconStart) {
+            sum += getEntityNetEffect(v, cand.id);
+          }
+        }
+        balanceBefore = sum;
+        balanceAfter = sum + balanceDelta;
+      }
+
+      // Extract voucher number
+      const voucherNo: string | null =
+        params.newVoucherData?.voucherNo ||
+        params.newVoucherData?.voucherNumber ||
+        params.newVoucherData?.number ||
+        params.existingVoucher?.voucherNo ||
+        params.existingVoucher?.voucherNumber ||
+        params.existingVoucher?.number ||
+        null;
+
       return {
         hasConflict: true,
         accountName: entityName,
@@ -332,6 +400,10 @@ export async function checkReconciledPointConflict(
         voucherDateFormatted: formatDateNice(vDate),
         reconciledDate: latestReconDate,
         voucherDate: vDate,
+        balanceDelta,
+        balanceBefore,
+        balanceAfter,
+        voucherNo: voucherNo ? String(voucherNo) : null,
       };
     }
   }

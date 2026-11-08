@@ -31,7 +31,7 @@ export type ConflictHistoryEntry = {
   balanceBefore?: number | null;
   /** Net balance change caused by this backdated voucher (amount / effect) */
   balanceDelta?: number | null;
-  /** Balance AFTER the backdated action */
+  /** Balance AFTER the backdated action (balanceBefore + balanceDelta) */
   balanceAfter?: number | null;
   /** The voucher date that was backdated */
   voucherDate: string;
