@@ -60,6 +60,8 @@ import {
   ChevronUp,
   Eye,
   EyeOff,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import type { DateRange } from "@/components/ui/ad-calendar";
 import { useVouchers } from "@/hooks/useVouchers";
@@ -83,6 +85,7 @@ import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { toast } from "sonner";
 import { compressImageForCompany, attachmentImageStillTooLargeToastFields } from "@/lib/attachmentCompressionUi";
 import { uploadFileClient, deleteFileFromStorageClient } from "@/lib/storageClient";
+import { hardDeleteUnassignedDoc, hardDeleteUnassignedDocsBatch } from "@/lib/unassignedDocHardDelete";
 import { checkStorageLimit, incrementCompanyStorage, decrementCompanyStorage } from "@/lib/storageUsageClient";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -1291,7 +1294,9 @@ type UnassignedFile = {
     size: number;
     uploadedAt: Timestamp;
     uploadedBy: string;
-    status: 'FREE' | 'LOCKED';
+    status: 'FREE' | 'LOCKED' | 'ASSIGNED';
+    isDeleted?: boolean;
+    deleted?: boolean;
 }
 
 type UploadingFile = {
@@ -1405,6 +1410,9 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [fileToDelete, setFileToDelete] = useState<UnassignedFile | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false);
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [fileToRename, setFileToRename] = useState<UnassignedFile | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
@@ -1508,7 +1516,9 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
     const fsId = firestoreCompanyIdForGallery(companyId, company);
     const q = query(collection(firestore, `companies/${fsId}/unassigned_documents`), orderBy('uploadedAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-        const filesData = snapshot.docs.map(d => ({id: d.id, ...d.data()}) as UnassignedFile);
+        const filesData = snapshot.docs
+          .map(d => ({id: d.id, ...d.data()}) as UnassignedFile)
+          .filter(f => !f.isDeleted && !f.deleted && (f.status as any) !== 'ASSIGNED');
         setUnassignedFiles(filesData);
     });
     return () => unsubscribe();
@@ -1776,27 +1786,63 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
     }
   };
 
+  const toggleSelectFile = useCallback((fileId: string) => {
+    setSelectedFileIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(fileId)) {
+        next.delete(fileId);
+      } else {
+        next.add(fileId);
+      }
+      return next;
+    });
+  }, []);
+
   const handleDeleteFile = async () => {
-    if (!fileToDelete || !companyId) return;
+    // `AlertDialogAction` closes the dialog on click (`onOpenChange` -> setFileToDelete(null)),
+    // so keep the target in local state for the whole async delete.
+    const target = fileToDelete;
+    if (!target || !companyId) return;
     setIsDeleting(true);
     try {
         const deviceOnly =
           isLocalOnlyMode() && !(await canSyncCompanyToServer(companyId));
         if (deviceOnly) {
-          const next = readLocalUnassignedDocs().filter((f) => f.id !== fileToDelete.id);
+          const next = readLocalUnassignedDocs().filter((f) => f.id !== target.id);
           writeLocalUnassignedDocs(next);
           setUnassignedFiles(next);
+          setSelectedFileIds((prev) => {
+            const copy = new Set(prev);
+            copy.delete(target.id);
+            return copy;
+          });
           toast.success("File deleted successfully");
           return;
         }
-        await deleteFileFromStorageClient(fileToDelete.path);
+
+        const deleted = await hardDeleteUnassignedDoc(companyId, target, company);
+        if (!deleted) {
+          toast.error("Failed to delete file", {
+            description: "The file could not be removed from the server. Refresh and try again.",
+          });
+          return;
+        }
+
         const fsId = firestoreCompanyIdForGallery(companyId, company);
-        await decrementCompanyStorage(fsId, {
-          attachmentsBytes: fileToDelete.size,
-          storageBytes: fileToDelete.size,
+        if (target.size) {
+          await decrementCompanyStorage(fsId, {
+            attachmentsBytes: target.size,
+            storageBytes: target.size,
+          }).catch(() => {});
+        }
+
+        setUnassignedFiles((prev) => prev.filter((f) => f.id !== target.id));
+        setSelectedFileIds((prev) => {
+          const copy = new Set(prev);
+          copy.delete(target.id);
+          return copy;
         });
-        await deleteDoc(doc(firestore, `companies/${fsId}/unassigned_documents`, fileToDelete.id));
-        toast.success("File deleted successfully");
+        toast.success("File deleted permanently");
     } catch (error) {
         console.error("Error deleting file:", error);
         toast.error("Failed to delete file");
@@ -1831,6 +1877,68 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
     () => filteredFiles.slice(unassignedSliceStart, unassignedSliceStart + unassignedFilesPerPage),
     [filteredFiles, unassignedSliceStart, unassignedFilesPerPage]
   );
+
+  const handleSelectAll = useCallback(() => {
+    if (filteredFiles.length === 0) return;
+    setSelectedFileIds((prev) => {
+      const allFilteredSelected = filteredFiles.every((f) => prev.has(f.id));
+      if (allFilteredSelected) {
+        // Deselect all
+        return new Set();
+      } else {
+        // Select all filtered
+        return new Set(filteredFiles.map((f) => f.id));
+      }
+    });
+  }, [filteredFiles]);
+
+  const handleBatchDelete = async () => {
+    if (selectedFileIds.size === 0 || !companyId) return;
+    setIsBatchDeleting(true);
+    const toDeleteDocs = unassignedFiles.filter((f) => selectedFileIds.has(f.id));
+    try {
+      const deviceOnly =
+        isLocalOnlyMode() && !(await canSyncCompanyToServer(companyId));
+      if (deviceOnly) {
+        const next = readLocalUnassignedDocs().filter((f) => !selectedFileIds.has(f.id));
+        writeLocalUnassignedDocs(next);
+        setUnassignedFiles(next);
+        setSelectedFileIds(new Set());
+        toast.success(`${toDeleteDocs.length} file(s) deleted successfully`);
+        return;
+      }
+
+      const { successCount, failCount } = await hardDeleteUnassignedDocsBatch(
+        companyId,
+        toDeleteDocs,
+        company
+      );
+
+      const fsId = firestoreCompanyIdForGallery(companyId, company);
+      const totalBytes = toDeleteDocs.reduce((acc, f) => acc + (f.size || 0), 0);
+      if (totalBytes > 0) {
+        await decrementCompanyStorage(fsId, {
+          attachmentsBytes: totalBytes,
+          storageBytes: totalBytes,
+        }).catch(() => {});
+      }
+
+      setUnassignedFiles((prev) => prev.filter((f) => !selectedFileIds.has(f.id)));
+      setSelectedFileIds(new Set());
+
+      if (failCount > 0) {
+        toast.warning(`Deleted ${successCount} file(s), ${failCount} failed`);
+      } else {
+        toast.success(`${successCount} file(s) permanently deleted`);
+      }
+    } catch (error) {
+      console.error("Batch delete error:", error);
+      toast.error("Failed to delete selected files");
+    } finally {
+      setIsBatchDeleting(false);
+      setBatchDeleteOpen(false);
+    }
+  };
 
   const unassignedPdfPrewarmKey = useMemo(
     () => paginatedUnassignedFiles.map((f) => f.url).join("\0"),
@@ -1971,10 +2079,17 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
                 void openAttachmentInApp(file.url, { title: cleanFileName, kind });
               };
 
+              const isSelected = selectedFileIds.has(file.id);
+
               const tileEl = (
                 <div className="relative group w-full flex flex-col gap-2">
                   <div
-                    className="relative w-full aspect-square border-2 border-transparent group-hover:border-primary group-hover:shadow-lg transition-all rounded-lg overflow-hidden bg-muted/30 cursor-pointer"
+                    className={cn(
+                      "relative w-full aspect-square border-2 transition-all rounded-lg overflow-hidden bg-muted/30 cursor-pointer",
+                      isSelected
+                        ? "border-primary ring-2 ring-primary/40 shadow-md"
+                        : "border-transparent group-hover:border-primary group-hover:shadow-lg"
+                    )}
                     style={{ width: `${previewSize}px`, height: `${previewSize}px` }}
                     onClick={openAtt}
                   >
@@ -1989,14 +2104,42 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
                       enableHoverFullPreview={false}
                       holdAttachmentClipboard={false}
                     />
-                    <div className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button variant="destructive" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setFileToDelete(file); }}>
+                    <div
+                      className={cn(
+                        "absolute top-1.5 left-1.5 z-20 flex items-center justify-center rounded bg-white/90 dark:bg-zinc-900/90 p-0.5 shadow-sm transition-opacity",
+                        isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSelectFile(file.id);
+                      }}
+                      title={isSelected ? "Deselect" : "Select"}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {}}
+                        className="h-4 w-4 rounded border-gray-300 text-primary cursor-pointer accent-primary"
+                        aria-label={`Select ${cleanFileName}`}
+                      />
+                    </div>
+                    <div className="absolute top-1 left-8 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="h-7 w-7 shadow-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFileToDelete(file);
+                        }}
+                        title="Delete file"
+                      >
                         <Trash2 className="h-4 w-4"/>
                       </Button>
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="icon" className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
+                        <Button variant="outline" size="icon" className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 z-20" onClick={(e) => e.stopPropagation()}>
                           <MoreVertical className="h-4 w-4"/>
                         </Button>
                       </DropdownMenuTrigger>
@@ -2247,6 +2390,41 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
               <Skeleton className="h-9 w-[100px] shrink-0 rounded-md" />
             )}
 
+            {filteredFiles.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleSelectAll}
+                className="h-9 px-2.5 text-xs font-medium"
+              >
+                {selectedFileIds.size > 0 && selectedFileIds.size === filteredFiles.length ? (
+                  <>
+                    <CheckSquare className="mr-1.5 h-3.5 w-3.5 text-primary" />
+                    Deselect All
+                  </>
+                ) : (
+                  <>
+                    <Square className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                    Select All
+                  </>
+                )}
+              </Button>
+            )}
+
+            {selectedFileIds.size > 0 && (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => setBatchDeleteOpen(true)}
+                className="h-9 px-3 text-xs font-semibold shadow-sm animate-in fade-in"
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                Delete Selected ({selectedFileIds.size})
+              </Button>
+            )}
+
             <div className="ml-auto flex h-9 items-center gap-2 rounded-md border-2 border-primary/20 bg-background px-2 shadow-sm">
               <Ruler className="h-3.5 w-3.5 text-primary" />
               <div className="flex items-center">
@@ -2286,6 +2464,24 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
                     <AlertDialogAction onClick={handleDeleteFile} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
                         {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4"/>}
                         Delete
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={batchDeleteOpen} onOpenChange={(open) => !isBatchDeleting && setBatchDeleteOpen(open)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Delete {selectedFileIds.size} Selected Files?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This will permanently delete <span className="font-bold">{selectedFileIds.size} selected file(s)</span> from storage and PocketBase. This action cannot be undone.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isBatchDeleting}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleBatchDelete} disabled={isBatchDeleting} className="bg-destructive hover:bg-destructive/90">
+                        {isBatchDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4"/>}
+                        Delete {selectedFileIds.size} File(s)
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>

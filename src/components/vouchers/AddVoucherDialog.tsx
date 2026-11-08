@@ -3837,34 +3837,10 @@ export function AddVoucherDialog(props: any) {
 
     // १–२. Storage / unassigned cleanup — dialog band hone ke baad background (Save pe turant close).
     const pathsToDeleteCopy = [...pathsToDelete];
+    const unassignedFile = defaultVoucherData?.unassignedFile;
     const unassignedFileId =
-      status === "saved" ? String(defaultVoucherData?.unassignedFile?.id || "").trim() : "";
+      status === "saved" ? String(unassignedFile?.id || "").trim() : "";
     const cleanupCompanyId = companyId;
-    let unassignedCleanupAlreadyDurable = false;
-    if (
-      status === "saved" &&
-      unassignedFileId &&
-      cleanupCompanyId &&
-      apkEntityWriteUsesLocalSqliteMirror(company)
-    ) {
-      await upsertCompanyDocInBrowserDb(
-        cleanupCompanyId,
-        "unassigned_documents",
-        unassignedFileId,
-        {
-          ...((defaultVoucherData?.unassignedFile || {}) as Record<string, unknown>),
-          id: unassignedFileId,
-          isDeleted: true,
-          deleted: true,
-          deletedAt: Timestamp.now(),
-          status: "FREE",
-        },
-        { force: true, skipPlanMutationGate: true }
-      );
-      const { scheduleBrowserDbPersistAfterWrite } = await import("@/lib/localSqlite");
-      scheduleBrowserDbPersistAfterWrite();
-      unassignedCleanupAlreadyDurable = true;
-    }
 
     // ३. Propagate action — pehle parent ko saved batao + dialog band (static/offline par niche recurring `getDoc` await se form mat chipke)
     let keepDialogAsNew = Boolean(isSaveAndNew);
@@ -3926,33 +3902,29 @@ export function AddVoucherDialog(props: any) {
             }
           }
         }
-        if (unassignedFileId && cleanupCompanyId && !unassignedCleanupAlreadyDurable) {
+        if (unassignedFileId && cleanupCompanyId) {
           try {
-            const laneForFirestoreCleanup = company;
-            if (apkEntityWriteUsesLocalSqliteMirror(laneForFirestoreCleanup)) {
-              await upsertCompanyDocInBrowserDb(
-                cleanupCompanyId,
-                "unassigned_documents",
-                unassignedFileId,
-                {
-                  ...((defaultVoucherData?.unassignedFile || {}) as Record<string, unknown>),
-                  id: unassignedFileId,
-                  isDeleted: true,
-                  deleted: true,
-                  deletedAt: Timestamp.now(),
-                  status: "FREE",
-                },
-                { force: true, skipPlanMutationGate: true }
-              );
-              await flushPendingBrowserDbSave();
-            } else {
-              const fileDocRef = doc(
-                firestore,
-                `companies/${cleanupCompanyId}/unassigned_documents`,
-                unassignedFileId
-              );
-              await deleteDoc(fileDocRef);
+            const { deleteCompanyDocFromBrowserDb } = await import("@/lib/localCompanyDocMirror");
+            await deleteCompanyDocFromBrowserDb(cleanupCompanyId, "unassigned_documents", unassignedFileId, { force: true, notify: true });
+            const [{ ensurePocketBaseCompany }, { pbRequest, pbQuote }] = await Promise.all([
+              import("@/lib/pocketbaseData/pbSync"),
+              import("@/lib/pocketbaseData/pbClient"),
+            ]);
+            const companyRec = await ensurePocketBaseCompany(cleanupCompanyId);
+            if (companyRec) {
+              const filter = "company = " + pbQuote(companyRec) + " && app_id = " + pbQuote(unassignedFileId);
+              const res = (await pbRequest(
+                "/api/collections/pl_unassigned_documents/records?perPage=50&filter=" + encodeURIComponent(filter),
+                { method: "GET", timeoutMs: 15000 }
+              )) as { items?: Array<{ id: string }> };
+              if (Array.isArray(res?.items)) {
+                for (const it of res.items) {
+                  await pbRequest("/api/collections/pl_unassigned_documents/records/" + it.id, { method: "DELETE", timeoutMs: 15000 });
+                }
+              }
             }
+            const fileDocRef = doc(firestore, "companies/" + cleanupCompanyId + "/unassigned_documents", unassignedFileId);
+            await deleteDoc(fileDocRef);
           } catch (error) {
             console.error("Failed to delete unassigned document:", error);
           }
