@@ -166,9 +166,13 @@ export function MobileFloatingButton() {
     return null;
   }
 
+  /** Gallery pages have their own camera (Unassigned tab) — the page-level one would duplicate it. */
+  const isGalleryPath = normalizedPathname === "/gallery";
+
   return (
     <>
       {/* Camera scan FAB — dashboard entry point; saves into Unassigned Documents. */}
+      {!isGalleryPath && (
       <UnassignedCameraCapture
         onCapture={handleScanPhoto}
         bottomClass={cn(
@@ -179,6 +183,7 @@ export function MobileFloatingButton() {
               : "bottom-[calc(8rem+env(safe-area-inset-bottom,0px))]"
         )}
       />
+      )}
       <div
         className={cn(
           "fixed left-1/2 -translate-x-1/2 z-50",

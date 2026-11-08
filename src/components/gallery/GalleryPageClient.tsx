@@ -240,7 +240,7 @@ function GalleryPagerInCard({
 }) {
   if (totalPages <= 1) return null;
   return (
-    <div className="mt-0.5 flex w-full flex-col gap-1 border-t border-border/40 pt-1 sm:w-auto sm:items-end">
+    <div className="mt-0.5 flex w-full flex-col gap-1 sm:w-auto sm:items-end">
       <div className="flex items-center justify-end gap-1">
         <Button
           type="button"
@@ -891,7 +891,7 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
               const tileEl = (
                        <div className="relative group w-full flex flex-col gap-2 no-underline">
                          <div
-                            className="relative w-full aspect-square border-2 border-transparent group-hover:border-primary group-hover:shadow-lg transition-all rounded-lg overflow-hidden bg-muted/30 cursor-pointer"
+                            className="relative w-full aspect-square border border-transparent group-hover:border-primary group-hover:shadow-lg transition-all rounded-lg overflow-hidden bg-muted/30 cursor-pointer"
                             style={{ width: `${previewSize}px`, height: `${previewSize}px` }}
                             onClick={() => {
                               void openAttachmentInApp(url, {
@@ -1054,115 +1054,114 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
 
       {companyFooterExpanded ? (
       <Card
+        data-pl-gallery-company-footer
+        // Inline border: theme rules in globals.css force `border-color` with
+        // !important on .pl-card-3d.border, so only an inline style wins.
+        // Mobile: 4px side inset taaki blue border viewport edge se kat na jaye.
+        style={{ borderWidth: 1, borderStyle: "solid", borderColor: "#93c5fd" }}
         className={cn(
           // Halka neela footer + clear card border (charon taraf)
-          "shrink-0 rounded-b-none border-2 border-blue-300/90 bg-blue-100/90 shadow-[0_-4px_12px_-4px_rgba(30,58,138,0.12)] sm:rounded-b-lg dark:border-blue-800/70 dark:bg-blue-950/45",
-          isMobile && "w-full"
+          "shrink-0 rounded-b-none border border-blue-300 bg-blue-100/90 shadow-[0_-4px_12px_-4px_rgba(30,58,138,0.12)] sm:rounded-b-lg dark:border-blue-800/70 dark:bg-blue-950/45",
+          isMobile && "mx-1 w-[calc(100%-0.5rem)]"
         )}
       >
         <CardHeader
           className={cn(
             // Default CardHeader p-6 hatake ~40% kam vertical: p-3 + chhota gap
             "flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 !p-3 bg-transparent sm:gap-2",
-            isMobile && "flex-col items-stretch gap-2 px-0.5"
+            isMobile && "flex-col items-stretch gap-2 px-0"
           )}
         >
-          <div className="flex w-full items-center justify-between gap-2">
-            <div className="flex min-w-0 flex-1 items-start gap-1.5">
-              {/* Poora panel band: sirf niche center arrow up dikhega — yahan ChevronDown = hide */}
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="mt-0.5 h-8 w-8 shrink-0 border-blue-400/70 bg-background/90 dark:border-blue-600/70"
-                aria-expanded
-                aria-label="Hide gallery panel"
-                onClick={() => setCompanyFooterExpanded(false)}
-              >
-                <ChevronDown className="h-4 w-4" aria-hidden />
-              </Button>
-              <div className="min-w-0">
+          {/* Ek hi column: row 1 = title + badge + chevron, row 2 = [Page][20][‹][1/2][›] */}
+          <div className="flex w-full min-w-0 flex-col gap-2">
+          <div className="flex w-full items-start justify-between gap-2">
+            {/* Left: title + subtitle (full width, no squeeze). Chevron sits on the right. */}
+            <div className="min-w-0 flex-1">
               <CardTitle className="text-base font-semibold leading-tight">
                 {showAvatarsOnly ? "Account Avatars" : "Company File Gallery"}
               </CardTitle>
               <CardDescription className="text-[11px] leading-snug">
                 {showAvatarsOnly ? "Profile pictures for parties, staff, etc." : "All transaction documents."}
               </CardDescription>
-              </div>
-              {!showAvatarsOnly && (
-                <div className="relative w-28 shrink-0 sm:w-32">
-                  <Search
-                    className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-                    aria-hidden
-                  />
-                  <Input
-                    type="search"
-                    value={voucherNumberSearch}
-                    onChange={(e) => setVoucherNumberSearch(e.target.value)}
-                    placeholder="Voucher no…"
-                    className="h-8 border-blue-300/70 bg-background/95 pl-8 text-xs dark:border-blue-700/60"
-                    aria-label="Search by voucher number"
-                  />
-                </div>
+            </div>
+            {/* Poora panel band: yahan ChevronDown = hide (right edge). */}
+            <Badge
+              variant="secondary"
+              className="mt-1 max-w-[min(100%,280px)] shrink-0 whitespace-nowrap px-2 py-0 text-[10px]"
+            >
+              {companyFlatRows.length === 0
+                ? `Showing 0 of ${allFilesCount} files`
+                : `Showing ${companySliceStart + 1}–${Math.min(companySliceStart + companyFilesPerPage, companyFlatRows.length)} of ${filteredFilesCount} files (${allFilesCount} in company)`}
+            </Badge>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="mt-0.5 h-8 w-8 shrink-0 border-blue-400/70 bg-background/90 dark:border-blue-600/70"
+              aria-expanded
+              aria-label="Hide gallery panel"
+              onClick={() => setCompanyFooterExpanded(false)}
+            >
+              <ChevronDown className="h-4 w-4" aria-hidden />
+            </Button>
+          </div>
+          {/* Per page + pager ek hi line: [Per page][20] [‹][1/2][›] */}
+          <div className="flex w-full flex-nowrap items-center justify-end gap-1.5 sm:w-auto">
+            <div className="flex shrink-0 items-center gap-1">
+              <span className="whitespace-nowrap text-[10px] text-muted-foreground">
+                <span className="sm:hidden">Page</span>
+                <span className="hidden sm:inline">Per page</span>
+              </span>
+              {/* Radix Select SSR par random aria-controls; mount ke baad hi render = hydration mismatch avoid */}
+              {mounted ? (
+                <Select
+                  value={String(companyFilesPerPage)}
+                  onValueChange={(v) => {
+                    setCompanyFilesPerPage(Number(v));
+                    setCompanyFilesPage(1);
+                  }}
+                >
+                  <SelectTrigger
+                    data-pl-gallery-page-select
+                    className="pl-chrome-btn-drop h-9 w-[76px] rounded-md border border-blue-300 bg-white text-xs text-blue-900 focus:border-blue-500 focus-visible:border-blue-500"
+                    aria-label="Files per page"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GALLERY_FILES_PER_PAGE_OPTIONS.map((n) => (
+                      <SelectItem key={n} value={String(n)}>
+                        {n}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Skeleton className="h-9 w-[76px] rounded-md" />
               )}
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-start sm:gap-2">
-              <Badge
-                variant="secondary"
-                className="max-w-[min(100%,280px)] px-2 py-0 text-center text-[10px] sm:max-w-none sm:text-right"
-              >
-                {companyFlatRows.length === 0
-                  ? `Showing 0 of ${allFilesCount} files`
-                  : `Showing ${companySliceStart + 1}–${Math.min(companySliceStart + companyFilesPerPage, companyFlatRows.length)} of ${filteredFilesCount} files (${allFilesCount} in company)`}
-              </Badge>
-              {/* Per page ke niche page prev/next — same card */}
-              <div className="flex flex-col items-end gap-0.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="whitespace-nowrap text-[10px] text-muted-foreground">Per page</span>
-                  {/* Radix Select SSR par random aria-controls; mount ke baad hi render = hydration mismatch avoid */}
-                  {mounted ? (
-                    <Select
-                      value={String(companyFilesPerPage)}
-                      onValueChange={(v) => {
-                        setCompanyFilesPerPage(Number(v));
-                        setCompanyFilesPage(1);
-                      }}
-                    >
-                      <SelectTrigger className="h-9 w-[76px] text-xs" aria-label="Files per page">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {GALLERY_FILES_PER_PAGE_OPTIONS.map((n) => (
-                          <SelectItem key={n} value={String(n)}>
-                            {n}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Skeleton className="h-9 w-[76px] rounded-md" />
-                  )}
-                </div>
-                <GalleryPagerInCard
-                  page={companyPageClamped}
-                  totalPages={companyTotalPages}
-                  onPageChange={setCompanyFilesPage}
-                />
-              </div>
-            </div>
-          </div>
-          <div className={cn("flex flex-wrap items-center gap-1.5", isMobile && "flex min-w-0 w-full flex-row flex-nowrap gap-1.5")}>
-            <div className={cn("flex h-9 shrink-0 items-center gap-0.5 rounded-md border bg-background", isMobile ? "w-16 px-1" : "px-2")}>
-              {!isMobile && <Ruler className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-              <Input
+            {/* 160 px pill — beech me (Page ke baad, pager se pehle) */}
+            <div className="mx-auto flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-blue-300 bg-blue-100/80 px-3">
+              <Ruler className="h-3.5 w-3.5 text-blue-900" />
+              <input
                 type="text"
+                data-pl-gallery-preview-size
                 value={previewSize}
                 onChange={(e) => onSizeChange(e.target.value.replace(/[^0-9]/g, ""))}
-                className={cn("h-9 border-0 p-0 text-xs focus-visible:ring-0", isMobile ? "w-9 text-center" : "w-20")}
-                placeholder="Size"
+                className="h-6 w-9 border-0 bg-transparent p-0 text-center text-xs font-bold text-blue-900 outline-none ring-0"
               />
-              <span className="shrink-0 text-xs text-muted-foreground">px</span>
+              <span className="text-[11px] font-bold text-blue-900/70">px</span>
             </div>
+            <div className="shrink-0">
+              <GalleryPagerInCard
+                page={companyPageClamped}
+                totalPages={companyTotalPages}
+                onPageChange={setCompanyFilesPage}
+              />
+            </div>
+          </div>
+          </div>
+          <div className={cn("flex flex-wrap items-center gap-1.5", isMobile && "flex w-full min-w-0 flex-row flex-nowrap items-center gap-1.5 px-1")}>
             <Button
               variant={showAvatarsOnly ? "secondary" : "outline"}
               onClick={() => setShowAvatarsOnly(!showAvatarsOnly)}
@@ -1184,6 +1183,23 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
                 <BsDatePicker valueAD={dateRange} onChangeAD={setDateRange as any} className="h-9 min-h-9 px-2 text-xs" />
               ))}
             {!mounted && <Skeleton className="h-9 w-[180px] shrink-0 rounded-md" />}
+            {!showAvatarsOnly && mounted && (
+              <div className="relative ml-auto w-32 shrink-0 sm:w-40">
+                <Search
+                  className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-blue-900/70"
+                  aria-hidden
+                />
+                <Input
+                  type="search"
+                  value={voucherNumberSearch}
+                  onChange={(e) => setVoucherNumberSearch(e.target.value)}
+                  placeholder="Voucher no…"
+                  data-pl-gallery-search-pill
+                  className="h-9 rounded-md border border-blue-300 bg-white pl-7 text-xs text-blue-900 placeholder:text-blue-900/50 focus:border-blue-500 focus-visible:border-blue-500 focus-visible:ring-0 dark:bg-white dark:text-blue-900"
+                  aria-label="Search by voucher number"
+                />
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent className={cn("bg-transparent px-3 pb-2.5 pt-0", isMobile && "px-0.5")}>
@@ -2074,14 +2090,6 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {/* Mobile / APK: floating camera — rear lens, scan look, Retry/Save. Saves into this
-          list under the signed-in user (so the "All Users" filter can pick it). */}
-      {isMobile && (
-        <UnassignedCameraCapture
-          onCapture={(file) => onDrop([file])}
-          bottomClass="bottom-[calc(6.5rem+env(safe-area-inset-bottom,0px))]"
-        />
-      )}
       {/* Upload + tiles scroll; filters/title footer me fix (company tab jaisa) */}
       <div
         {...getRootProps({
@@ -2149,7 +2157,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
                 <div className="relative group w-full flex flex-col gap-2">
                   <div
                     className={cn(
-                      "relative w-full aspect-square border-2 transition-all rounded-lg overflow-hidden bg-muted/30 cursor-pointer",
+                      "relative w-full aspect-square border transition-all rounded-lg overflow-hidden bg-muted/30 cursor-pointer",
                       isSelected
                         ? "border-primary ring-2 ring-primary/40 shadow-md"
                         : "border-transparent group-hover:border-primary group-hover:shadow-lg"
@@ -2314,7 +2322,19 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
       </div>
 
       {unassignedFooterExpanded ? (
-      <Card data-pl-gallery-unassigned-footer className="shrink-0 rounded-b-none border border-blue-300 border-b-0 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.08)] sm:rounded-b-lg sm:border-b">
+      <div className="relative shrink-0">
+        {/* Mobile / APK: camera FAB outside the card, 5px above its top edge (not clipped). */}
+        {isMobile && (
+          <UnassignedCameraCapture
+            onCapture={(file) => onDrop([file])}
+            className="absolute right-3 top-0 z-[59] h-12 w-12 -translate-y-[calc(100%+5px)] rounded-full border border-blue-400/80 bg-blue-100 text-blue-900 shadow-lg hover:bg-blue-200"
+          />
+        )}
+      <Card
+        data-pl-gallery-unassigned-footer
+        style={{ borderWidth: 1, borderStyle: "solid", borderColor: "#93c5fd" }}
+        className="shrink-0 rounded-b-none border border-blue-300 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.08)] sm:rounded-b-lg"
+      >
         <CardHeader className="space-y-0 !p-3 pb-2 [&>*+*]:!mt-[5px]">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-[5px]">
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -2506,6 +2526,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
           </div>
         </CardHeader>
       </Card>
+      </div>
       ) : (
         <GalleryCollapsedFooterBar
           page={unassignedPageClamped}

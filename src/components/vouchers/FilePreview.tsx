@@ -3484,7 +3484,7 @@ export function FilePreview({
   const borderedPreview = (
     <div
       className={cn(
-        "relative w-full h-full rounded-lg overflow-hidden bg-background shadow-sm flex items-center justify-center touch-manipulation border-2 border-border",
+        "relative w-full h-full rounded-lg overflow-hidden bg-background shadow-sm flex items-center justify-center touch-manipulation border border-border",
         disabled && !allowPreviewWhenDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
         disabled && allowPreviewWhenDisabled && "opacity-90"
       )}

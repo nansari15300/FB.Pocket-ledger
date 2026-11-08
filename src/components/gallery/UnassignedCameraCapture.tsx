@@ -183,32 +183,7 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className }: U
 
   return (
     <>
-      {/* Floating trigger — right edge, above the Add New FAB. */}
-      <Button
-        type="button"
-        size="icon"
-        aria-label="Scan with camera"
-        onClick={() => void startCamera()}
-        className={
-          className ??
-          cn(
-            "fixed right-3 z-[59] h-12 w-12 rounded-full border border-blue-400/80 bg-blue-100 text-blue-900 shadow-lg hover:bg-blue-200",
-            bottomClass ?? "bottom-[calc(9.5rem+env(safe-area-inset-bottom,0px))]"
-          )
-        }
-      >
-        <Camera className="h-5 w-5" />
-      </Button>
-
-      <input
-        ref={nativeInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={onNativePicked}
-      />
-
+      {/* Camera viewfinder / review overlay — fullscreen, fixed. */}
       {stage !== "idle" && (
         <div className="fixed inset-0 z-[80] flex flex-col bg-black">
           <div className="flex items-center justify-between px-3 py-2 text-white">
@@ -234,11 +209,7 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className }: U
               playsInline
               muted
               autoPlay
-              className={
-                stage === "live"
-                  ? "h-full w-full object-contain"
-                  : "hidden"
-              }
+              className={stage === "live" ? "h-full w-full object-contain" : "hidden"}
             />
             {stage === "review" && previewUrl && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -281,6 +252,33 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className }: U
           </div>
         </div>
       )}
+
+      <input
+        ref={nativeInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={onNativePicked}
+      />
+
+      {/* Floating trigger. `className` lets a host pin it to its own container
+          (e.g. 5px above the footer card); without it, it floats on the page. */}
+      <Button
+        type="button"
+        size="icon"
+        aria-label="Scan with camera"
+        onClick={() => void startCamera()}
+        className={
+          className ??
+          cn(
+            "fixed right-3 z-[59] h-12 w-12 rounded-full border border-blue-400/80 bg-blue-100 text-blue-900 shadow-lg hover:bg-blue-200",
+            bottomClass ?? "bottom-[calc(9.5rem+env(safe-area-inset-bottom,0px))]"
+          )
+        }
+      >
+        <Camera className="h-5 w-5" />
+      </Button>
     </>
   );
 }
