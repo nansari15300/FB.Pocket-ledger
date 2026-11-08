@@ -3,7 +3,7 @@ import { deleteCompanyDocFromBrowserDb, upsertCompanyDocInBrowserDb } from "@/li
 import { deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { doc } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/firebase";
-import { isPocketBaseCompany } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { isPocketBaseCompany, isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 
 export type UnassignedDocToDelete = {
   id: string;
@@ -20,10 +20,48 @@ export type UnassignedDocToDelete = {
  */
 const HARD_DELETED_FLAG = "_pbHardDeleted";
 
+/** True when the row is really gone from the Pocket Ledger Server (or never answers). */
+async function serverRowStillExists(companyId: string, docId: string): Promise<boolean> {
+  try {
+    const { pbReadAppDoc } = await import("@/lib/pocketbaseData/pbSync");
+    const r = await pbReadAppDoc(companyId, "unassigned_documents", docId);
+    return r.exists === true;
+  } catch {
+    // Server unreachable: do not claim a failure the caller cannot fix.
+    return false;
+  }
+}
+
+/**
+ * Delete the row straight through the server's data API (`delete` op). This is the same endpoint
+ * the write gateway uses for a PocketBase company, so it works even when the id is not registered
+ * as a PocketBase company id on this device (the gateway would otherwise fall through to a closed
+ * Firestore project and silently do nothing).
+ */
+async function deleteUnassignedRowOnServer(companyId: string, docId: string): Promise<boolean> {
+  try {
+    const { pbBatchWrite } = await import("@/lib/pocketbaseData/pbSync");
+    const [result] = await pbBatchWrite(companyId, [
+      { coll: "unassigned_documents", id: docId, mode: "delete", data: {} },
+    ]);
+    if (!result) return !(await serverRowStillExists(companyId, docId));
+    if (result.status === "rejected") {
+      // Another device saved a newer copy of the row (server keeps `prevAt > at`). Retry with the
+      // server's own timestamp so the delete is not older than the stored row.
+      const at = Math.max(Number(result.updatedAtMs) || 0, Date.now()) + 1;
+      await pbBatchWrite(companyId, [{ coll: "unassigned_documents", id: docId, mode: "delete", data: {}, at }]);
+    }
+    return !(await serverRowStillExists(companyId, docId));
+  } catch (e) {
+    console.warn("[hardDeleteUnassignedDoc] server delete error:", e);
+    return false;
+  }
+}
+
 /**
  * Hard deletes an unassigned document:
  * 1. Removes the stored binary file from storage (`pl_stored_files`)
- * 2. Deletes the server row (PocketBase = `delete` op; Firestore = plain delete)
+ * 2. Deletes the server row (`delete` op -> `_pbHardDeleted` tombstone)
  * 3. Removes the SQLite mirror row and leaves a hard-deleted tombstone so a pull cannot
  *    bring the file back
  *
@@ -38,7 +76,16 @@ export async function hardDeleteUnassignedDoc(
   const docId = String(docItem.id || "").trim();
   if (!companyId || !docId) return false;
 
-  const fsId = String(company?.authoritativeCompanyId || companyId).trim() || companyId;
+  // The Gallery list reads `companies/{fsId}/unassigned_documents`, and the server row id is the
+  // same doc id. Delete against the company this device knows as PocketBase; fall back to
+  // `authoritativeCompanyId` only when that one is the registered server company.
+  const isPb = isPocketBaseCompany(companyId, company);
+  const authId = String(company?.authoritativeCompanyId || "").trim();
+  const serverCompanyId = isPb
+    ? companyId
+    : authId && isPocketBaseCompanyId(authId)
+      ? authId
+      : companyId;
 
   // 1. Delete physical file from storage
   const filePath = docItem.path || docItem.url;
@@ -50,31 +97,37 @@ export async function hardDeleteUnassignedDoc(
     }
   }
 
-  // 2. Delete the document. For a Pocket Ledger Server company the write gateway sends the
-  //    server's `delete` op (row tombstoned with `_pbHardDeleted`); a raw collection DELETE was
-  //    silently rejected because collection writes only go through `/api/pl/data/batch`.
-  try {
-    await deleteDoc(doc(firestore, `companies/${fsId}/unassigned_documents`, docId));
-  } catch (serverErr) {
-    console.warn("[hardDeleteUnassignedDoc] server delete error:", serverErr);
+  // 2. Delete the server row.
+  const serverDeleted = isPb || isPocketBaseCompanyId(serverCompanyId)
+    ? await deleteUnassignedRowOnServer(serverCompanyId, docId)
+    : await (async () => {
+        try {
+          // Firebase company: plain document delete.
+          await deleteDoc(doc(firestore, `companies/${serverCompanyId}/unassigned_documents`, docId));
+          return true;
+        } catch (gatewayErr) {
+          console.warn("[hardDeleteUnassignedDoc] Gateway delete error:", gatewayErr);
+          return false;
+        }
+      })();
+  if (!serverDeleted) {
+    console.warn("[hardDeleteUnassignedDoc] server still has the row", { companyId, serverCompanyId, docId });
     return false;
   }
 
   // 3. Mirror row gone + local hard-deleted tombstone (keeps the next pull from re-inserting it).
   try {
-    await deleteCompanyDocFromBrowserDb(companyId, "unassigned_documents", docId, {
+    await deleteCompanyDocFromBrowserDb(serverCompanyId, "unassigned_documents", docId, {
       force: true,
       notify: true,
     });
-    if (isPocketBaseCompany(companyId, company)) {
-      await upsertCompanyDocInBrowserDb(
-        companyId,
-        "unassigned_documents",
-        docId,
-        { id: docId, isDeleted: true, [HARD_DELETED_FLAG]: true, deletedAtMs: Date.now() },
-        { force: true, notify: false, skipPlanMutationGate: true, skipCloudSyncEnqueue: true }
-      );
-    }
+    await upsertCompanyDocInBrowserDb(
+      serverCompanyId,
+      "unassigned_documents",
+      docId,
+      { id: docId, isDeleted: true, [HARD_DELETED_FLAG]: true, deletedAtMs: Date.now() },
+      { force: true, notify: false, skipPlanMutationGate: true, skipCloudSyncEnqueue: true }
+    );
   } catch (sqliteErr) {
     console.warn("[hardDeleteUnassignedDoc] SQLite delete error:", sqliteErr);
   }

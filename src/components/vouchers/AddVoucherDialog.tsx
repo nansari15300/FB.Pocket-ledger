@@ -1,5 +1,4 @@
 "use client";
-import { deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { VoucherMasterEditHost } from "@/components/vouchers/VoucherMasterEditHost";
 import { ReconciledPointGuardProvider } from "@/components/vouchers/ReconciledPointGuardContext";
 import { VoucherOcrHeaderToggles, OCR_SWITCH_EVENT } from "@/modules/ocr";
@@ -3904,27 +3903,11 @@ export function AddVoucherDialog(props: any) {
         }
         if (unassignedFileId && cleanupCompanyId) {
           try {
-            const { deleteCompanyDocFromBrowserDb } = await import("@/lib/localCompanyDocMirror");
-            await deleteCompanyDocFromBrowserDb(cleanupCompanyId, "unassigned_documents", unassignedFileId, { force: true, notify: true });
-            const [{ ensurePocketBaseCompany }, { pbRequest, pbQuote }] = await Promise.all([
-              import("@/lib/pocketbaseData/pbSync"),
-              import("@/lib/pocketbaseData/pbClient"),
-            ]);
-            const companyRec = await ensurePocketBaseCompany(cleanupCompanyId);
-            if (companyRec) {
-              const filter = "company = " + pbQuote(companyRec) + " && app_id = " + pbQuote(unassignedFileId);
-              const res = (await pbRequest(
-                "/api/collections/pl_unassigned_documents/records?perPage=50&filter=" + encodeURIComponent(filter),
-                { method: "GET", timeoutMs: 15000 }
-              )) as { items?: Array<{ id: string }> };
-              if (Array.isArray(res?.items)) {
-                for (const it of res.items) {
-                  await pbRequest("/api/collections/pl_unassigned_documents/records/" + it.id, { method: "DELETE", timeoutMs: 15000 });
-                }
-              }
-            }
-            const fileDocRef = doc(firestore, "companies/" + cleanupCompanyId + "/unassigned_documents", unassignedFileId);
-            await deleteDoc(fileDocRef);
+            // Delete through the write gateway: the server's `delete` op. A raw collection
+            // DELETE is silently rejected (collection writes only go through `/api/pl/data/batch`),
+            // so the unassigned row stayed on the server and came back in the Gallery list.
+            const { hardDeleteUnassignedDoc } = await import("@/lib/unassignedDocHardDelete");
+            await hardDeleteUnassignedDoc(cleanupCompanyId, { id: unassignedFileId });
           } catch (error) {
             console.error("Failed to delete unassigned document:", error);
           }
