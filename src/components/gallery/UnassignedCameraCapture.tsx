@@ -14,10 +14,27 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, RotateCcw, Check, X, Loader2 } from "lucide-react";
+import { RotateCcw, Check, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+/**
+ * App ke andar ka camera trigger icon (dashboard FAB + gallery tabs) — user ki di hui
+ * camera-lens image, bilkul waisi hi. Home-screen / APK launcher icon isse alag hai.
+ */
+function CameraScanIcon({ className }: { className?: string }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- chhota static public icon
+    <img
+      src="/icons/camera-lens.png"
+      alt=""
+      aria-hidden
+      draggable={false}
+      className={cn("select-none object-contain", className)}
+    />
+  );
+}
 
 type Stage = "idle" | "starting" | "live" | "review";
 
@@ -28,6 +45,8 @@ export type UnassignedCameraCaptureProps = {
   bottomClass?: string;
   /** Optional extra classes for the floating trigger. */
   className?: string;
+  /** Optional inline style for the floating trigger (dashboard: Add New ke saath same row). */
+  wrapperStyle?: React.CSSProperties;
 };
 
 /** Build a scanner-looking image: grayscale + boosted contrast, page-ish margins cropped.
@@ -107,7 +126,7 @@ async function compressPickedImage(file: File): Promise<File> {
   }
 }
 
-export function UnassignedCameraCapture({ onCapture, bottomClass, className }: UnassignedCameraCaptureProps) {
+export function UnassignedCameraCapture({ onCapture, bottomClass, className, wrapperStyle }: UnassignedCameraCaptureProps) {
   const [stage, setStage] = useState<Stage>("idle");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -312,12 +331,14 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className }: U
         className={
           className ??
           cn(
-            "fixed right-3 z-[59] h-12 w-12 rounded-full border border-blue-400/80 bg-blue-100 text-blue-900 shadow-lg hover:bg-blue-200",
+            // Sirf square icon dikhta hai — koi circular ring/background nahi.
+            "fixed right-3 z-[59] h-12 w-12 border-0 bg-transparent p-0 shadow-none hover:bg-transparent active:bg-transparent focus-visible:ring-0",
             bottomClass ?? "bottom-[calc(9.5rem+env(safe-area-inset-bottom,0px))]"
           )
         }
+        style={wrapperStyle}
       >
-        <Camera className="h-5 w-5" />
+        <CameraScanIcon className="block !h-full !w-full shrink-0 object-contain" />
       </Button>
     </>
   );

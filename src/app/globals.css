@@ -3270,13 +3270,13 @@ button.day_selected.is-today.has-transactions {
   }
   
   /* Input and form element borders */
-  input:not([type="checkbox"]):not([type="radio"]):not(.border-0):not([data-pl-gallery-preview-size]):not([data-pl-mlc-search-input]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]),
+  input:not([type="checkbox"]):not([type="radio"]):not(.border-0):not([data-pl-gallery-columns-input]):not([data-pl-mlc-search-input]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]),
   textarea:not([data-pl-mlc-search-input]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not(.border-0),
   select:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not(.border-0),
   button:not([class*="border-0"]):not(.pl-master-list-row-name):not(.pl-master-list-row-name-strong):not([data-pl-list-name]):not([data-pl-txn-icon-btn]):not([data-pl-header-preview-switch]):not([data-pl-mlc-search-input]):not([data-pl-mobile-header-avatar-no-photo]):not([data-pl-mobile-header-avatar]):not([data-pl-master-list-chrome-chevron-toggle]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]),
-  [type="text"]:not(.pl-company-profile-field):not(.border-0):not([data-pl-gallery-preview-size]),
-  [type="number"]:not(.pl-company-profile-field):not(.border-0):not([data-pl-gallery-preview-size]),
-  [type="email"]:not(.pl-company-profile-field):not(.border-0):not([data-pl-gallery-preview-size]),
+  [type="text"]:not(.pl-company-profile-field):not(.border-0):not([data-pl-gallery-columns-input]),
+  [type="number"]:not(.pl-company-profile-field):not(.border-0):not([data-pl-gallery-columns-input]),
+  [type="email"]:not(.pl-company-profile-field):not(.border-0):not([data-pl-gallery-columns-input]),
   [type="password"]:not(.pl-company-profile-field):not(.border-0),
   [type="date"]:not(.pl-company-profile-field):not(.border-0),
   [type="time"]:not(.pl-company-profile-field):not(.border-0),
@@ -5725,7 +5725,7 @@ body.theme-pro .pl-settings-list-shell {
 }
 
 /* Pro: saare main forms â€” gray field + black border (Company Profile jaisa) */
-body.theme-pro main input:not([type="checkbox"]):not([type="radio"]):not([data-pl-mlc-search-input]):not([placeholder="Search transactions"]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-gallery-search-pill]):not([data-pl-gallery-preview-size]),
+body.theme-pro main input:not([type="checkbox"]):not([type="radio"]):not([data-pl-mlc-search-input]):not([placeholder="Search transactions"]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-gallery-search-pill]):not([data-pl-gallery-columns-input]),
 body.theme-pro main textarea:not(.pl-company-profile-field):not([data-pl-manage-share-field]),
 body.theme-pro main select:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-online-trigger-page-size]),
 body.theme-pro main button[role="combobox"]:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-mobile-txn-pager-select]):not([data-pl-gallery-page-select]),
@@ -7594,7 +7594,7 @@ body[class*="theme-"] main hr {
   border-color: #000 !important;
 }
 
-body[class*="theme-"] main input:not([type="checkbox"]):not([type="radio"]):not([data-pl-mlc-search-input]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-gallery-search-pill]):not([data-pl-gallery-preview-size]),
+body[class*="theme-"] main input:not([type="checkbox"]):not([type="radio"]):not([data-pl-mlc-search-input]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-gallery-search-pill]):not([data-pl-gallery-columns-input]),
 body[class*="theme-"] main textarea:not(.pl-company-profile-field):not([data-pl-manage-share-field]),
 body[class*="theme-"] main select:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-online-trigger-page-size]),
 body[class*="theme-"] main button[role="combobox"]:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-mobile-txn-pager-select]):not([data-pl-gallery-page-select]),
@@ -16437,10 +16437,10 @@ html body main [data-pl-gallery-company-footer][data-pl-gallery-company-footer][
   box-shadow: none !important;
 }
 /* Search box jaisa hi: pure white fill + blue border + rounded-md */
-:is(body[class*="theme-"], html body) input[data-pl-gallery-preview-size],
-:is(body[class*="theme-"], html body) input[data-pl-gallery-preview-size]:focus,
-:is(body[class*="theme-"], html body) input[data-pl-gallery-preview-size]:focus-visible,
-:is(body[class*="theme-"], html body) input[data-pl-gallery-preview-size]:hover {
+:is(body[class*="theme-"], html body) input[data-pl-gallery-columns-input],
+:is(body[class*="theme-"], html body) input[data-pl-gallery-columns-input]:focus,
+:is(body[class*="theme-"], html body) input[data-pl-gallery-columns-input]:focus-visible,
+:is(body[class*="theme-"], html body) input[data-pl-gallery-columns-input]:hover {
   border-width: 1px !important;
   border-style: solid !important;
   border-color: rgb(147 197 253) !important; /* blue-300 */

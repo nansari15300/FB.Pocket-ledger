@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Plus, PanelRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,40 @@ export function MobileFloatingButton() {
   const lastScrollY = useRef(0);
   const mainElementRef = useRef<HTMLElement | null>(null);
   const attachedRef = useRef<Set<HTMLElement | Window>>(new Set());
+
+  /**
+   * Dashboard: camera ko centre wale "Add New" ke 35px baaye rakhna hai. Add New ki width
+   * text se aati hai, isliye ek ref se measure karke half-width state me rakhte hain.
+   * (Hooks hamesha ek hi order me chalne chahiye — isliye early return se pehle.)
+   */
+  const addNewBtnRef = useRef<HTMLButtonElement | null>(null);
+  const [addNewHalfWidth, setAddNewHalfWidth] = useState(53);
+  useLayoutEffect(() => {
+    if (!isMobile || !isDashboardPath) return;
+    const measure = () => {
+      const el = addNewBtnRef.current;
+      if (!el) return;
+      const w = el.getBoundingClientRect().width;
+      if (w > 0) setAddNewHalfWidth((prev) => (Math.abs(prev - w / 2) > 0.5 ? w / 2 : prev));
+    };
+    // Layout effect: ref is already mounted here, so the very first paint is correct.
+    measure();
+    window.addEventListener("resize", measure);
+    let ro: ResizeObserver | null = null;
+    const el = addNewBtnRef.current;
+    if (el && typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(measure);
+      ro.observe(el);
+    }
+    return () => {
+      window.removeEventListener("resize", measure);
+      ro?.disconnect();
+    };
+  }, [isMobile, isDashboardPath, showButton, liftFabAboveRecentStrip]);
+
+  /** Dashboard camera portal ke liye: DOM-ready hone tak mount flag (early return se pehle). */
+  const [portalReady, setPortalReady] = useState(false);
+  useEffect(() => { setPortalReady(true); }, []);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -168,21 +203,61 @@ export function MobileFloatingButton() {
 
   /** Gallery pages have their own camera (Unassigned tab) — the page-level one would duplicate it. */
   const isGalleryPath = normalizedPathname === "/gallery";
+  /**
+   * Dashboard: camera "Add New" jaisa hi scroll logic follow kare — scroll down -> dono dikhe
+   * (3s), scroll up -> dono chhupe. Plus camera centre wale "Add New" ke 40px daahine, same row.
+   */
+  const dashboardCameraFollowsAddNew = isDashboardPath;
+  const cameraVisible = !dashboardCameraFollowsAddNew || showButton;
+  /** Add New FAB ka bottom — camera bhi bilkul isi row me baithta hai */
+  const addNewFabBottom = liftFabAboveRecentStrip
+    ? "calc(8.5rem + 10px + env(safe-area-inset-bottom, 0px))"
+    : isSelectedReportPage
+      ? "calc(var(--pl-mobile-ledger-action-footer-h, 2.875rem) + var(--pl-mobile-txn-footer-row-h, 2.625rem) + var(--pl-mobile-txn-toolbar-h, 2.625rem) + 2px)"
+      : "calc(5rem + 10px)";
+  const CAMERA_ADD_NEW_GAP_PX = 40;
+  const CAMERA_FAB_SIZE_PX = 48;
+  const cameraFabRightStyle: React.CSSProperties | undefined = dashboardCameraFollowsAddNew
+    ? {
+        bottom: addNewFabBottom,
+        // Camera = Add New ke right edge se 40px daahine + camera button ki width
+        right: `calc(50% - ${addNewHalfWidth}px - ${CAMERA_ADD_NEW_GAP_PX}px - ${CAMERA_FAB_SIZE_PX}px)`,
+      }
+    : undefined;
 
   return (
     <>
       {/* Camera scan FAB — dashboard entry point; saves into Unassigned Documents. */}
       {!isGalleryPath && (
-      <UnassignedCameraCapture
-        onCapture={handleScanPhoto}
-        bottomClass={cn(
-          liftFabAboveRecentStrip
-            ? "bottom-[calc(11.5rem+env(safe-area-inset-bottom,0px))]"
-            : isSelectedReportPage
-              ? "bottom-[calc(var(--pl-mobile-ledger-action-footer-h,2.875rem)+var(--pl-mobile-txn-footer-row-h,2.625rem)+var(--pl-mobile-txn-toolbar-h,2.625rem)+3.25rem)]"
-              : "bottom-[calc(8rem+env(safe-area-inset-bottom,0px))]"
-        )}
-      />
+        dashboardCameraFollowsAddNew ? (
+          // Dashboard: "Add New" ke same row me, 40px daahine; visibility bhi Add New jaisi.
+          // Body par portal — card ka `overflow-hidden` iske safed body ko clip na kare.
+          portalReady &&
+          createPortal(
+            <UnassignedCameraCapture
+              onCapture={handleScanPhoto}
+              className={cn(
+                // Sirf square icon — size gallery camera jaisa (48px), circle nahi
+                "fixed z-[70] h-12 w-12 border-0 bg-transparent p-0 shadow-none hover:bg-transparent active:bg-transparent focus-visible:ring-0",
+                "transition-opacity duration-300",
+                cameraVisible ? "opacity-100" : "pointer-events-none opacity-0"
+              )}
+              wrapperStyle={cameraFabRightStyle}
+            />,
+            document.body
+          )
+        ) : (
+          <UnassignedCameraCapture
+            onCapture={handleScanPhoto}
+            bottomClass={cn(
+              liftFabAboveRecentStrip
+                ? "bottom-[calc(11.5rem+env(safe-area-inset-bottom,0px))]"
+                : isSelectedReportPage
+                  ? "bottom-[calc(var(--pl-mobile-ledger-action-footer-h,2.875rem)+var(--pl-mobile-txn-footer-row-h,2.625rem)+var(--pl-mobile-txn-toolbar-h,2.625rem)+3.25rem)]"
+                  : "bottom-[calc(8rem+env(safe-area-inset-bottom,0px))]"
+            )}
+          />
+        )
       )}
       <div
         className={cn(
@@ -195,18 +270,18 @@ export function MobileFloatingButton() {
           liftFabAboveRecentStrip
             ? {
                 // ~footer (38px) + 2-row strip (~74px reserve) + chhota gap — Unapproved / row clear
-                bottom: "calc(8.5rem + 10px + env(safe-area-inset-bottom, 0px))",
+                bottom: addNewFabBottom,
               }
             : isSelectedReportPage
               ? {
                   // Action footer + pager + txn toolbar + 2px gap — FAB clears the full report footer stack.
-                  bottom:
-                    "calc(var(--pl-mobile-ledger-action-footer-h, 2.875rem) + var(--pl-mobile-txn-footer-row-h, 2.625rem) + var(--pl-mobile-txn-toolbar-h, 2.625rem) + 2px)",
+                  bottom: addNewFabBottom,
                 }
-            : undefined
+              : undefined
         }
       >
         <Button
+          ref={addNewBtnRef}
           size="lg"
           className={cn(
             /* h-7 (28px) + 50% height → 42px; width unchanged (px-4) */

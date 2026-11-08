@@ -61,12 +61,14 @@ public class MainActivity extends BridgeActivity {
                                 request.deny();
                                 return;
                             }
-                            if (checkSelfPermission(android.Manifest.permission.CAMERA)
-                                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                                // WebView origin may still prompt; grant here after the OS granted it.
-                                requestMediaPermission();
+                            if (isCameraGranted()) {
+                                request.grant(new String[] { android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE });
+                                return;
                             }
-                            request.grant(new String[] { android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE });
+                            // Pehli baar: OS prompt dikhao; grant tab karo jab user Allow kare —
+                            // warna getUserMedia turant reject ho kar native picker fallback par chala jata hai.
+                            pendingCameraRequest = request;
+                            requestPermissions(new String[] { android.Manifest.permission.CAMERA }, CAMERA_PERMISSION_REQUEST);
                         } catch (Throwable ignored) {
                             /* ignore */
                         }
@@ -78,12 +80,29 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    private void requestMediaPermission() {
+    private static final int CAMERA_PERMISSION_REQUEST = 7711;
+    /** Pehla getUserMedia request jab tak user OS prompt ka jawab na de. */
+    private android.webkit.PermissionRequest pendingCameraRequest;
+
+    private boolean isCameraGranted() {
+        return checkSelfPermission(android.Manifest.permission.CAMERA)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != CAMERA_PERMISSION_REQUEST) return;
+        android.webkit.PermissionRequest pending = pendingCameraRequest;
+        pendingCameraRequest = null;
+        if (pending == null) return;
         try {
-            if (android.os.Build.VERSION.SDK_INT >= 23
-                    && checkSelfPermission(android.Manifest.permission.CAMERA)
-                        != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[] { android.Manifest.permission.CAMERA }, 7711);
+            if (isCameraGranted() && grantResults.length > 0
+                    && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                pending.grant(new String[] { android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE });
+            } else {
+                // Denied — getUserMedia reject hoga aur app native camera picker par fallback karegi.
+                pending.deny();
             }
         } catch (Throwable ignored) {
             /* ignore */

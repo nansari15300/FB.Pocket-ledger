@@ -52,7 +52,7 @@ import {
   MoreVertical,
   Loader2,
   Trash2,
-  Ruler,
+  AlignJustify,
   Search,
   Edit,
   ChevronLeft,
@@ -332,15 +332,77 @@ const GALLERY_COLLAPSED_RIBBON_SCROLL_PB =
 
 /**
  * Gallery grid framing:
- * - Left / right padding 15px (fixed)
- * - Row gap 15px (fixed), tile-to-tile column gap = row gap
- * - Baaki puri width `previewSize` ke hisaab se barabar columns me bant jaati hai,
- *   cells typed value ke ±(gap/2) ke andar adjust hote hain, 1px se zyada khali jagah nahi.
+ * - Left / right / top / bottom padding 15px (fixed)
+ * - Column-to-column aur row-to-row gap 15px (fixed)
+ * - Beech ki puri jagah user ke diye columns (1..10) me barabar bant jaati hai;
+ *   preview ka size = jo width bachi uske hisaab se (koi khali jagah nahi).
  */
 const GALLERY_FIT_GAP = 15;
 const GALLERY_FIT_SIDE_PADDING = 15;
+const GALLERY_MIN_COLUMNS = 1;
+const GALLERY_MAX_COLUMNS = 10;
+const GALLERY_DEFAULT_COLUMNS = 2;
 
-function useGalleryFitColumns(rawSize: number, gap: number, sidePadding: number) {
+function clampGalleryColumns(raw: number | string): number {
+  const n = Math.round(Number(raw));
+  if (!Number.isFinite(n)) return GALLERY_DEFAULT_COLUMNS;
+  return Math.min(GALLERY_MAX_COLUMNS, Math.max(GALLERY_MIN_COLUMNS, n));
+}
+
+/** Columns pill: text input (1..10) — type karte hi grid update, range se bahar ho to clamp */
+function GalleryColumnsPill({
+  value,
+  onChange,
+  className,
+  fullWidth = false,
+}: {
+  value: string | number;
+  onChange: (value: string) => void;
+  className?: string;
+  fullWidth?: boolean;
+}) {
+  return (
+    <div
+      data-pl-gallery-columns-pill
+      className={cn(
+        "flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-full border border-blue-300 bg-blue-100/80 px-3",
+        className
+      )}
+    >
+      <AlignJustify className="h-3.5 w-3.5 shrink-0 text-blue-900" aria-hidden />
+      <span className="shrink-0 text-[11px] font-bold text-blue-900/70">Column</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        data-pl-gallery-columns-input
+        value={value}
+        onChange={(e) => {
+          const digits = e.target.value.replace(/[^0-9]/g, "");
+          if (digits === "") {
+            onChange("");
+            return;
+          }
+          onChange(String(clampGalleryColumns(digits)));
+        }}
+        onBlur={(e) => {
+          // Khali chhod diya to default columns
+          const digits = e.target.value.replace(/[^0-9]/g, "");
+          if (digits === "") onChange(String(GALLERY_DEFAULT_COLUMNS));
+          else onChange(String(clampGalleryColumns(digits)));
+        }}
+        aria-label="Preview columns (1 to 10)"
+        title="1 se 10 columns"
+        className={cn(
+          "h-6 w-10 shrink-0 rounded-md border-0 bg-white p-0 text-center text-xs font-bold text-blue-900 shadow-[inset_0_0_0_1px_#93c5fd] outline-none ring-0",
+          fullWidth && "flex-1"
+        )}
+      />
+    </div>
+  );
+}
+
+/** Container width ke hisaab se N columns ka exact tile size nikalta hai */
+function useGalleryFitColumns(rawColumns: number | string, gap: number, sidePadding: number) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [available, setAvailable] = useState(0);
 
@@ -355,41 +417,37 @@ function useGalleryFitColumns(rawSize: number, gap: number, sidePadding: number)
     return () => ro.disconnect();
   }, []);
 
-  const size = Math.max(48, Number.isFinite(rawSize) ? rawSize : 160);
+  const columns = clampGalleryColumns(rawColumns);
 
   const fit = useMemo(() => {
-    // clientWidth me padding shamil hai — hataa dete hain
-    const inner = Math.max(size, available - 2 * sidePadding);
+    // clientWidth me padding shamil hai — dono taraf ka 15px hataa dete hain
+    const inner = available - 2 * sidePadding;
     if (!available || inner <= 0) {
-      const fallback = Math.max(48, size - gap / 2);
-      return { size: fallback, width: fallback, offset: 0 };
+      return { size: 160, width: 160 };
     }
-    const count = Math.max(1, Math.floor((inner + gap) / (size + gap)));
-    const leftover = inner - (count * size + (count - 1) * gap);
-    const growPerCell = leftover / count; // 0..gap
-    const cell = size + growPerCell; // cell + gap = pitch
+    const cell = (inner - (columns - 1) * gap) / columns;
+    const safeCell = Math.max(40, cell);
     return {
-      size: Math.round(cell * 100) / 100,
-      width: Math.floor(cell),
-      offset: growPerCell / 2, // pehla cell thoda left, last thoda right — 1px tak balanced
+      size: Math.round(safeCell * 100) / 100,
+      width: Math.floor(safeCell),
     };
-  }, [available, sidePadding, size, gap]);
+  }, [available, columns, gap, sidePadding]);
 
-  return { containerRef, fit };
+  return { containerRef, fit, columns };
 }
 
-/** Gallery grid: typed scale ke aas-paas auto-fit, koi khali jagah nahi.
+/** Gallery grid: user ke columns count ke hisaab se exact fit, koi khali jagah nahi.
  *  `children` ko final tile size milta hai (render-prop) taaki har tile exactly fit ho. */
 function GalleryFitGrid({
-  previewSize,
+  columns,
   children,
 }: {
-  previewSize: number;
+  columns: number | string;
   children: (tileSize: number) => React.ReactNode;
 }) {
   const GAP = GALLERY_FIT_GAP;
   const SIDE_PADDING = GALLERY_FIT_SIDE_PADDING;
-  const { containerRef, fit } = useGalleryFitColumns(previewSize, GAP, SIDE_PADDING);
+  const { containerRef, fit, columns: cols } = useGalleryFitColumns(columns, GAP, SIDE_PADDING);
 
   return (
     <div
@@ -398,12 +456,11 @@ function GalleryFitGrid({
       style={{ paddingLeft: SIDE_PADDING, paddingRight: SIDE_PADDING }}
     >
       <div
-        className="grid justify-start"
+        className="grid"
         style={{
-          gridTemplateColumns: `repeat(auto-fill, ${fit.size}px)`,
+          gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
           columnGap: GAP,
           rowGap: GAP,
-          marginLeft: -fit.offset,
           paddingTop: SIDE_PADDING,
           paddingBottom: SIDE_PADDING,
         }}
@@ -517,7 +574,7 @@ function GalleryCollapsedFooterBar({
 }
 
 // --- Sub-Component: Company Files Tab ---
-function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher, onTabChange }: { previewSize: number, onSizeChange: (size: string | number) => void, onEditVoucher: (voucher: any) => void, onTabChange: (tab: "company-files" | "unassigned") => void }) {
+function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTabChange }: { previewColumns: string | number, onColumnsChange: (columns: string | number) => void, onEditVoucher: (voucher: any) => void, onTabChange: (tab: "company-files" | "unassigned") => void }) {
   const isMobile = useIsMobile();
   const { vouchers, loading, journalAccountNames, processedParties, processedPartiesForSelection, processedStaff, processedAccounts, processedItems, expenseAccounts, processedTaxes, userNames: vouchersUserNames } = useVouchers();
   const { dateSystem, formatDate, formatDateBS } = useDate();
@@ -1003,7 +1060,7 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher, onTabChange
         )}
       >
         <TooltipProvider delayDuration={100}>
-        <GalleryFitGrid previewSize={Number(previewSize)}>
+        <GalleryFitGrid columns={previewColumns}>
         {(tileSize) => (<>
           {paginatedCompanyRows.map(({ item, url, fileIndex: index }) => {
               const attachMeta = getVoucherAttachmentMeta(item, url, index, companyId);
@@ -1280,18 +1337,8 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher, onTabChange
                 <Skeleton className="h-9 w-[76px] rounded-md" />
               )}
             </div>
-            {/* 160 px pill — beech me (Page ke baad, pager se pehle) */}
-            <div className="mx-auto flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-blue-300 bg-blue-100/80 px-3">
-              <Ruler className="h-3.5 w-3.5 text-blue-900" />
-              <input
-                type="text"
-                data-pl-gallery-preview-size
-                value={previewSize}
-                onChange={(e) => onSizeChange(e.target.value.replace(/[^0-9]/g, ""))}
-                className="h-6 w-12 shrink-0 rounded-md border-0 bg-white p-0 text-center text-xs font-bold text-blue-900 outline-none ring-0"
-              />
-              <span className="text-[11px] font-bold text-blue-900/70">px</span>
-            </div>
+            {/* Column pill — beech me (Page ke baad, pager se pehle) */}
+            <GalleryColumnsPill value={previewColumns} onChange={onColumnsChange} className="mx-auto shrink-0" />
             <div className="shrink-0">
               <GalleryPagerInCard
                 page={companyPageClamped}
@@ -1550,7 +1597,7 @@ function firestoreCompanyIdForGallery(
 }
 
 // --- Sub-Component: Unassigned Documents Tab ---
-function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChange, onTabChange }: { handleAttachToVoucher: any; previewSize: number; onSizeChange: any; onTabChange: (tab: "company-files" | "unassigned") => void; }) {
+function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColumnsChange, onTabChange }: { handleAttachToVoucher: any; previewColumns: string | number; onColumnsChange: (columns: string | number) => void; onTabChange: (tab: "company-files" | "unassigned") => void; }) {
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const { company, companyId } = useCompany();
@@ -2266,7 +2313,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
         <input {...getInputProps()} className="hidden" />
 
         <TooltipProvider delayDuration={100}>
-        <GalleryFitGrid previewSize={Number(previewSize)}>
+        <GalleryFitGrid columns={previewColumns}>
         {(tileSize) => (<>
             {uploadingFiles.map((file) => (
               <div key={file.id} className="relative flex flex-col gap-1" style={{ width: `${tileSize}px` }}>
@@ -2488,7 +2535,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
         {isMobile && (
           <UnassignedCameraCapture
             onCapture={(file) => onDrop([file])}
-            className="absolute right-3 top-0 z-[59] h-12 w-12 -translate-y-[calc(100%+5px)] rounded-full border border-blue-400/80 bg-blue-100 text-blue-900 shadow-lg hover:bg-blue-200"
+            className="absolute right-3 top-0 z-[59] h-12 w-12 -translate-y-[calc(100%+5px)] border-0 bg-transparent p-0 shadow-none hover:bg-transparent active:bg-transparent focus-visible:ring-0"
           />
         )}
       <Card
@@ -2720,17 +2767,12 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
               <Skeleton className="h-9 w-[100px] shrink-0 rounded-md" />
             )}
 
-            <div className={cn("flex h-8 items-center gap-4 rounded-full border border-blue-300 bg-blue-100/80 px-3", isMobile ? "w-full justify-center" : "ml-auto")}>
-              <Ruler className="h-3.5 w-3.5 shrink-0 text-blue-900" />
-              <input
-                type="text"
-                data-pl-gallery-preview-size
-                value={previewSize}
-                onChange={(e) => onSizeChange(e.target.value.replace(/[^0-9]/g, ""))}
-                className="h-6 w-10 shrink-0 rounded-md border-0 bg-white p-0 text-center text-xs font-bold text-blue-900 shadow-[inset_0_0_0_1px_#93c5fd] outline-none ring-0"
-              />
-              <span className="text-[11px] font-bold text-blue-900/70">px</span>
-            </div>
+            <GalleryColumnsPill
+              value={previewColumns}
+              onChange={onColumnsChange}
+              className={cn(isMobile ? "w-full" : "ml-auto shrink-0")}
+              fullWidth={isMobile}
+            />
 
             {/* Tab switch — mobile par grid ki last row: dono buttons aadhi-aadhi full width */}
             <GalleryTabSwitch
@@ -2760,7 +2802,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
         createPortal(
           <UnassignedCameraCapture
             onCapture={(file) => onDrop([file])}
-            className="fixed right-4 bottom-[calc(96px+env(safe-area-inset-bottom,0px))] z-[70] h-12 w-12 rounded-full border border-blue-400/80 bg-blue-100 text-blue-900 shadow-lg hover:bg-blue-200"
+            className="fixed right-4 bottom-[calc(96px+env(safe-area-inset-bottom,0px))] z-[70] h-12 w-12 border-0 bg-transparent p-0 shadow-none hover:bg-transparent active:bg-transparent focus-visible:ring-0"
           />,
           document.body
         )}
@@ -2862,7 +2904,7 @@ export function GalleryPageContent() {
     window.addEventListener("pl:gallery:selection", onSel);
     return () => window.removeEventListener("pl:gallery:selection", onSel);
   }, []);
-  const [previewSize, setPreviewSize] = useState<string | number>(160);
+  const [previewColumns, setPreviewColumns] = useState<string | number>(GALLERY_DEFAULT_COLUMNS);
   const [isVoucherOpen, setIsVoucherOpen] = useState(false);
   const [defaultVoucherData, setDefaultVoucherData] = useState<any>(null);
 
@@ -2881,15 +2923,23 @@ export function GalleryPageContent() {
   );
 
   useEffect(() => {
-    const savedSize = localStorage.getItem('galleryPreviewSize');
-    if (savedSize && !isNaN(Number(savedSize))) {
-      setPreviewSize(Number(savedSize));
+    // Naya "Column" logic: agar sirf purane px-size ka save mila ho to column count nikaal lete hain
+    const savedCols = localStorage.getItem('galleryPreviewColumns');
+    if (savedCols && !isNaN(Number(savedCols))) {
+      setPreviewColumns(clampGalleryColumns(savedCols));
+      return;
+    }
+    const savedSize = Number(localStorage.getItem('galleryPreviewSize'));
+    if (savedSize > 0) {
+      const width = typeof window !== "undefined" ? window.innerWidth : 400;
+      const count = Math.floor((width - 2 * GALLERY_FIT_SIDE_PADDING + GALLERY_FIT_GAP) / (savedSize + GALLERY_FIT_GAP));
+      setPreviewColumns(clampGalleryColumns(count));
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('galleryPreviewSize', String(previewSize));
-  }, [previewSize]);
+    localStorage.setItem('galleryPreviewColumns', String(previewColumns));
+  }, [previewColumns]);
 
   // PDF hover: pehli load thodi jaldi — sirf `@/lib/pdfToImage` → `importPdfJsDist` se pdf.js load karo.
   // Alag `import("pdfjs-dist/build/pdf.mjs")` mat lagao: Webpack do chunk banata hai aur `__webpack_require__.r` par `Object.defineProperty` crash ho sakta hai.
@@ -2966,10 +3016,10 @@ export function GalleryPageContent() {
         {/* min-h-0: dashboard main ke andar sirf yahan grid scroll, tab row + footer card fixed */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {activeTab === 'company-files' && (
-           <CompanyFilesTab previewSize={Number(previewSize)} onSizeChange={setPreviewSize} onEditVoucher={handleEditVoucherClick} onTabChange={setGalleryTab} />
+           <CompanyFilesTab previewColumns={previewColumns} onColumnsChange={setPreviewColumns} onEditVoucher={handleEditVoucherClick} onTabChange={setGalleryTab} />
         )}
         {activeTab === 'unassigned' && (
-           <UnassignedDocumentsTab handleAttachToVoucher={handleAttachToVoucher} previewSize={Number(previewSize)} onSizeChange={setPreviewSize} onTabChange={setGalleryTab} />
+           <UnassignedDocumentsTab handleAttachToVoucher={handleAttachToVoucher} previewColumns={previewColumns} onColumnsChange={setPreviewColumns} onTabChange={setGalleryTab} />
         )}
         </div>
 
