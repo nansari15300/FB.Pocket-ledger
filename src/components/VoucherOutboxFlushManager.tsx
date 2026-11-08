@@ -107,11 +107,27 @@ export function VoucherOutboxFlushManager() {
     };
     window.addEventListener(SELECTED_COMPANY_CHANGED_EVENT, onSelectedCompany);
     if (typeof navigator !== "undefined" && navigator.onLine && !isFirebaseLedgerDataSyncDisabled()) scheduleFlush(FLUSH_AFTER_ONLINE_MS);
+    /**
+     * Refresh / tab close: fire the queued writes immediately. Without this a refresh 1-2s after an
+     * add or delete reloaded the list from the server before the outbox had been pushed, so the
+     * file looked missing (add) or reappeared (delete). `pagehide` runs before the tab is torn down
+     * and keeps the request alive long enough for a local server.
+     */
+    const onPageHide = () => {
+      if (isFirebaseLedgerDataSyncDisabled()) return;
+      try {
+        void flushVoucherOutbox();
+      } catch {
+        /* page is going away */
+      }
+    };
+    window.addEventListener("pagehide", onPageHide);
     /** Periodic retry jab awaited flush fail / queue baaki ho — 15s→8s taake web/exe cross-device kam late */
     const iv = setInterval(tick, 8_000);
     return () => {
       if (onlineTimer != null) clearTimeout(onlineTimer);
       pendingFlushTimers.forEach((t) => clearTimeout(t));
+      window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener(SERVER_QUOTA_HOLD_END_EVENT, onQuotaHoldEnd);
       window.removeEventListener("online", onOnline);
       window.removeEventListener("focus", onVisibleOrFocus);

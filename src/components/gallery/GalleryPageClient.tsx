@@ -1713,12 +1713,34 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
             storageBytes: compressedFile.size,
           });
           const docRef = doc(collection(firestore, `companies/${fsId}/unassigned_documents`));
-          batch.set(docRef, {
+          const uploadedAt = serverTimestamp();
+          const docData = {
             url: uploadResult.url, path: uploadResult.path, name: compressedFile.name,
             type: compressedFile.type.startsWith("image/") ? 'image' : 'pdf',
-            size: compressedFile.size, uploadedAt: serverTimestamp(), uploadedBy: user.uid, status: 'FREE'
-          });
+            size: compressedFile.size, uploadedAt, uploadedBy: user.uid, status: 'FREE'
+          };
+          batch.set(docRef, docData);
           batchOperationsCount++;
+          // Mirror locally right away: the list is read from SQLite, so without this row an
+          // immediate refresh shows the old list until the next server pull (1-2s race).
+          try {
+            const { upsertCompanyDocInBrowserDb } = await import("@/lib/localCompanyDocMirror");
+            await upsertCompanyDocInBrowserDb(fsId, "unassigned_documents", docRef.id, {
+              ...docData,
+              id: docRef.id,
+              uploadedAt: Timestamp.now(),
+            }, { force: true, notify: true, skipPlanMutationGate: true, skipCloudSyncEnqueue: true });
+          } catch {
+            /* next pull repairs the mirror */
+          }
+          // SQLite lives in memory until the 5s persist debounce runs; flush now so a refresh
+          // right after the upload still finds the row in IndexedDB.
+          try {
+            const { flushBrowserDbToIndexedDB } = await import("@/lib/localSqlite");
+            await flushBrowserDbToIndexedDB();
+          } catch {
+            /* pagehide flush is the fallback */
+          }
         } else {
           toast.error(`Upload failed: ${uploadingFile.name}`, { description: (uploadResult as any).error || "Upload failed." });
         }
