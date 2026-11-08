@@ -2486,6 +2486,8 @@ export const TransactionRow = React.memo(
                 markedAt={statementCheckMarkedAt}
                 message={statementCheckMessage}
                 onSaveMessage={onSaveStatementCheckMessage}
+                contextId={contextId}
+                companyId={company?.id}
               />
             ) : (
               renderHlDrCr(formatAmountCell(debit), "debit")
@@ -2521,6 +2523,8 @@ export const TransactionRow = React.memo(
                 markedAt={statementCheckMarkedAt}
                 message={statementCheckMessage}
                 onSaveMessage={onSaveStatementCheckMessage}
+                contextId={contextId}
+                companyId={company?.id}
               />
             ) : (
               renderHlDrCr(formatAmountCell(credit), "credit")
