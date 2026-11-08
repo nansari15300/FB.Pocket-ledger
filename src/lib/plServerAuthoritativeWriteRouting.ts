@@ -166,7 +166,26 @@ export async function executeCompanyDocBrowserWriteRoute(
     case "host_bridge":
       await invokeHostBridgeCompanyDocUpsert(companyId, collectionName, docId, data, options);
       return;
-    case "authoritative_http":
+    case "authoritative_http": {
+      /**
+       * Durable-first: land the write in the IndexedDB pending queue BEFORE the network call.
+       * A refresh 1-2s after Save used to abort the in-flight HTTP write, so the server never
+       * saw it and the next pull reverted the voucher / resurrected the deleted row. With the
+       * queue row already persisted, the replay drain finishes it after the reload (or on the
+       * next start / focus), and the pull keeps the unsynced local row win.
+       * The optimistic write is only a safety net: when the queue is unavailable (or a privileged
+       * caller needs a synchronous ack) we fall back to the old direct path.
+       */
+      const requireAck = dispatchOptions?.requireAuthoritativeAck === true;
+      if (!requireAck) {
+        try {
+          await enqueuePendingAuthoritativeCompanyDocWrite(companyId, collectionName, docId, data, options);
+          schedulePlServerAuthoritativeReplayDrain("authoritative_http_durable_first");
+          return;
+        } catch {
+          /* queue unavailable (no transport / hardened store) — fall through to the direct write */
+        }
+      }
       try {
         await invokePlServerAuthoritativeDocUpsert(companyId, collectionName, docId, data, options);
       } catch (e) {
@@ -192,6 +211,7 @@ export async function executeCompanyDocBrowserWriteRoute(
         throw e;
       }
       return;
+    }
     case "pending_enqueue":
       if (dispatchOptions?.requireAuthoritativeAck) {
         throw new PlServerAuthoritativeWriteError("authoritative_route_unavailable");

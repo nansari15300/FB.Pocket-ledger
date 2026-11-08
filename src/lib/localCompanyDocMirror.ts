@@ -1325,6 +1325,26 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
     unsyncedOutboxIds = new Set();
     unsyncedOutboxPayloads = new Map();
   }
+  // Also treat PL Server authoritative-queue rows as unsynced. Saves now land there first (durable
+  // IndexedDB) and are pushed right after; until the push succeeds, the server still holds the old
+  // row, so a pull (e.g. right after a refresh) must not overwrite the user's save or deletion.
+  try {
+    const { listPendingAuthoritativeCompanyDocWrites } = await import("@/lib/plServerAuthoritativePendingQueue");
+    const pending = await listPendingAuthoritativeCompanyDocWrites();
+    for (const item of pending) {
+      if (!item || item.companyId !== companyId || item.collectionName !== collectionName) continue;
+      const pid = String(item.docId || "").trim();
+      if (!pid) continue;
+      unsyncedOutboxIds.add(pid);
+      const payload = item.payload;
+      if (payload && typeof payload === "object") {
+        unsyncedOutboxPayloads.set(pid, { ...(payload as Record<string, unknown>), id: pid });
+      }
+    }
+  } catch {
+    /* queue unavailable — sync_outbox set still applies */
+  }
+
   for (const row of docs) {
     const rec = row as { id?: string };
     const id = rec?.id as string | undefined;

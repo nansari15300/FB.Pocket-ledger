@@ -483,9 +483,26 @@ function registerBrowserDbLifecycleFlushOnce(): void {
         plRoleSqliteLog("lifecycle_flush_skip_bridge", { reason: "avoid_stale_idb_clobber" });
         return;
       }
-      void flushPendingBrowserDbSave();
+      // Fire the writes synchronously: the async helper awaits the first namespace before the others
+      // even start, and the page is torn down in between. `export()` is synchronous, and each IDB put
+      // is queued before the tab dies, so every namespace lands.
+      try {
+        for (const ns of SQLITE_STORAGE_NAMESPACES) {
+          const cur = cachedByNs[ns];
+          if (!cur) continue;
+          if (cur.pendingSaveTimer) {
+            clearTimeout(cur.pendingSaveTimer);
+            cur.pendingSaveTimer = null;
+          }
+          const bytes = cur.db.export();
+          void saveDbToIndexedDB(bytes, ns).catch(() => undefined);
+        }
+      } catch {
+        /* page is going away */
+      }
     };
     window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") flush();
     });
@@ -525,9 +542,13 @@ function normalizeSqlParam(value: unknown): unknown {
  * On a fully mirrored online company that export is multi-MB and blocks the main thread for seconds, so it
  * must never run per write. Trailing debounce (coalesces a save's burst of writes) with a max wait, run in
  * idle time. pagehide flush (below) still persists on tab close.
+ *
+ * Keep this short: a refresh inside the window reloads the previous IndexedDB snapshot, so the user sees
+ * their save "revert" (deleted voucher returns, uploaded file disappears). 5s made that trivially easy to
+ * hit; a few hundred ms only coalesces the burst and is invisible next to the export cost.
  */
-const PERSIST_DEBOUNCE_MS = 5000;
-const PERSIST_MAX_WAIT_MS = 30_000;
+const PERSIST_DEBOUNCE_MS = 400;
+const PERSIST_MAX_WAIT_MS = 3000;
 function armDebouncedPersist(
   cur: { pendingSaveTimer: ReturnType<typeof setTimeout> | null },
   run: () => Promise<void>

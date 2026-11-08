@@ -1,12 +1,17 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Plus, PanelRight } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
+import { useCompany } from "@/hooks/useCompany";
+import { useAuth } from "@/hooks/useAuth";
+import { UnassignedCameraCapture } from "@/components/gallery/UnassignedCameraCapture";
+import { savePhotoToUnassigned } from "@/lib/savePhotoToUnassigned";
 import { useLocationSearchParams } from "@/hooks/useLocationSearchParams";
 import { useReportList } from "@/contexts/ReportListContext";
 import { useDashboard } from "@/hooks/useDashboard";
@@ -22,6 +27,29 @@ export function MobileFloatingButton() {
   const searchParams = useLocationSearchParams();
   const isMobile = useIsMobile();
   const { visibleCard } = useDashboard();
+  const { company, companyId } = useCompany();
+  const { user } = useAuth();
+  /** Dashboard scan: photo goes straight to Unassigned Documents, without leaving the page. */
+  const handleScanPhoto = useCallback(
+    async (file: File) => {
+      if (!companyId || !user?.uid) {
+        toast.error("Cannot save photo", { description: "Select a company and sign in first." });
+        throw new Error("missing_company_or_user");
+      }
+      const res = await savePhotoToUnassigned({
+        companyId,
+        companyName: company?.name,
+        uploadedBy: user.uid,
+        file,
+        company,
+      });
+      if (res.ok === false) {
+        toast.error("Photo could not be saved", { description: res.error });
+        throw new Error(res.error);
+      }
+    },
+    [companyId, user?.uid, company]
+  );
   /** Recent tab: fixed violet strip (Change date / Unapproved) + footer — `bottom-20` par FAB Unapproved par chadh jata tha. */
   const isDashboardPath = (pathname?.replace(/\/+$/, "") || "") === "/dashboard";
   const liftFabAboveRecentStrip =
@@ -140,6 +168,17 @@ export function MobileFloatingButton() {
 
   return (
     <>
+      {/* Camera scan FAB — dashboard entry point; saves into Unassigned Documents. */}
+      <UnassignedCameraCapture
+        onCapture={handleScanPhoto}
+        bottomClass={cn(
+          liftFabAboveRecentStrip
+            ? "bottom-[calc(11.5rem+env(safe-area-inset-bottom,0px))]"
+            : isSelectedReportPage
+              ? "bottom-[calc(var(--pl-mobile-ledger-action-footer-h,2.875rem)+var(--pl-mobile-txn-footer-row-h,2.625rem)+var(--pl-mobile-txn-toolbar-h,2.625rem)+3.25rem)]"
+              : "bottom-[calc(8rem+env(safe-area-inset-bottom,0px))]"
+        )}
+      />
       <div
         className={cn(
           "fixed left-1/2 -translate-x-1/2 z-50",

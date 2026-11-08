@@ -3270,17 +3270,17 @@ button.day_selected.is-today.has-transactions {
   }
   
   /* Input and form element borders */
-  input:not([type="checkbox"]):not([type="radio"]):not([data-pl-mlc-search-input]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]),
-  textarea:not([data-pl-mlc-search-input]):not(.pl-company-profile-field):not([data-pl-manage-share-field]),
-  select:not(.pl-company-profile-field):not([data-pl-manage-share-field]),
+  input:not([type="checkbox"]):not([type="radio"]):not(.border-0):not([data-pl-gallery-preview-size]):not([data-pl-mlc-search-input]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]),
+  textarea:not([data-pl-mlc-search-input]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not(.border-0),
+  select:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not(.border-0),
   button:not([class*="border-0"]):not(.pl-master-list-row-name):not(.pl-master-list-row-name-strong):not([data-pl-list-name]):not([data-pl-txn-icon-btn]):not([data-pl-header-preview-switch]):not([data-pl-mlc-search-input]):not([data-pl-mobile-header-avatar-no-photo]):not([data-pl-mobile-header-avatar]):not([data-pl-master-list-chrome-chevron-toggle]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]),
-  [type="text"]:not(.pl-company-profile-field),
-  [type="number"]:not(.pl-company-profile-field),
-  [type="email"]:not(.pl-company-profile-field),
-  [type="password"]:not(.pl-company-profile-field),
-  [type="date"]:not(.pl-company-profile-field),
-  [type="time"]:not(.pl-company-profile-field),
-  [type="datetime-local"]:not(.pl-company-profile-field) {
+  [type="text"]:not(.pl-company-profile-field):not(.border-0):not([data-pl-gallery-preview-size]),
+  [type="number"]:not(.pl-company-profile-field):not(.border-0):not([data-pl-gallery-preview-size]),
+  [type="email"]:not(.pl-company-profile-field):not(.border-0):not([data-pl-gallery-preview-size]),
+  [type="password"]:not(.pl-company-profile-field):not(.border-0),
+  [type="date"]:not(.pl-company-profile-field):not(.border-0),
+  [type="time"]:not(.pl-company-profile-field):not(.border-0),
+  [type="datetime-local"]:not(.pl-company-profile-field):not(.border-0) {
     border-width: 3px !important;
     border-color: #000000 !important;
   }
@@ -16402,4 +16402,40 @@ html body table[data-theme-table="transactions"] {
 :is(body[class*="theme-"], html body) [data-pl-ledger-txn-fixed-summary] td:not(#pl-theme-master-none) {
   border-top: 1px solid #000 !important;
   border-top-color: #000 !important;
+}
+
+/* ==========================================================================
+   Gallery footer: "preview size" input sits inside a blue pill.
+   Theme rules force 3px black borders on every text input; this control is a
+   bare number display, so strip border/background/outline at high specificity.
+   ========================================================================== */
+/* Unassigned footer card: the theme paints every `main .border` black on first
+   paint (before hydration), so the card flashed a black box on F5. Attribute
+   repetition raises specificity above those rules (same trick as Daybook). */
+html body[class*="theme-"] main [data-pl-gallery-unassigned-footer][data-pl-gallery-unassigned-footer][data-pl-gallery-unassigned-footer][data-pl-gallery-unassigned-footer][data-pl-gallery-unassigned-footer][data-pl-gallery-unassigned-footer],
+html body [data-pl-gallery-unassigned-footer][data-pl-gallery-unassigned-footer][data-pl-gallery-unassigned-footer][data-pl-gallery-unassigned-footer][data-pl-gallery-unassigned-footer][data-pl-gallery-unassigned-footer] {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: rgb(147 197 253) !important; /* blue-300 */
+}
+:is(body[class*="theme-"], html body) [data-pl-gallery-filter-bar] {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: rgb(147 197 253) !important; /* blue-300 */
+  box-shadow: none !important;
+}
+:is(body[class*="theme-"], html body) input[data-pl-gallery-preview-size],
+:is(body[class*="theme-"], html body) input[data-pl-gallery-preview-size]:focus,
+:is(body[class*="theme-"], html body) input[data-pl-gallery-preview-size]:focus-visible,
+:is(body[class*="theme-"], html body) input[data-pl-gallery-preview-size]:hover {
+  border-width: 0 !important;
+  border-style: none !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  outline-width: 0 !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
 }

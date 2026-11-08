@@ -47,6 +47,7 @@ import {
   Calendar as CalendarIcon,
   XCircle,
   UploadCloud,
+  Plus,
   UserCircle,
   MoreVertical,
   Loader2,
@@ -93,6 +94,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { UnassignedCameraCapture } from "@/components/gallery/UnassignedCameraCapture";
 import { openAttachmentInApp } from "@/lib/openAttachmentInApp";
 import { getAttachmentFormatLabel, getAttachmentFormatLabelFromHints } from "@/lib/attachmentFormatLabel";
 import { isLocalOnlyMode } from "@/lib/localMode";
@@ -1768,7 +1770,21 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
     }
   }, [companyId, user, company]);
   
-  const { getRootProps, getInputProps } = useDropzone({ onDrop });
+  const { getRootProps, getInputProps, open: openFilePicker } = useDropzone({ onDrop, noClick: true });
+  /** "Add File" button in the tab header opens the same picker the old dropzone did. */
+  const openAddFile = useCallback(() => openFilePicker(), [openFilePicker]);
+  /** The tab-bar "Add File" button (parent) opens this tab's hidden file input. */
+  useEffect(() => {
+    const onAddFile = () => openAddFile();
+    window.addEventListener("pl:gallery:add-file", onAddFile);
+    return () => window.removeEventListener("pl:gallery:add-file", onAddFile);
+  }, [openAddFile]);
+  /** The tab-bar "Select All" button (parent) toggles selection for this tab's filtered files. */
+  useEffect(() => {
+    const onSelectAll = () => handleSelectAllRef.current?.();
+    window.addEventListener("pl:gallery:select-all", onSelectAll);
+    return () => window.removeEventListener("pl:gallery:select-all", onSelectAll);
+  }, []);
   
   useEffect(() => {
     if (fileToRename) setRenameValue(getCleanName(fileToRename.name));
@@ -1901,8 +1917,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
   );
 
   const handleSelectAll = useCallback(() => {
-    if (filteredFiles.length === 0) return;
-    setSelectedFileIds((prev) => {
+    if (filteredFiles.length === 0) return;    setSelectedFileIds((prev) => {
       const allFilteredSelected = filteredFiles.every((f) => prev.has(f.id));
       if (allFilteredSelected) {
         // Deselect all
@@ -1913,6 +1928,28 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
       }
     });
   }, [filteredFiles]);
+
+  /** Kept in a ref so the window event listener stays stable while the handler changes. */
+  const handleSelectAllRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    handleSelectAllRef.current = handleSelectAll;
+  }, [handleSelectAll]);
+  /** Parent button label: "Select All" vs "Deselect All" (all filtered files selected). */
+  useEffect(() => {
+    try {
+      window.dispatchEvent(
+        new CustomEvent("pl:gallery:selection", {
+          detail: {
+            total: filteredFiles.length,
+            selected: selectedFileIds.size,
+            allSelected: filteredFiles.length > 0 && selectedFileIds.size === filteredFiles.length,
+          },
+        })
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [filteredFiles.length, selectedFileIds.size]);
 
   const handleBatchDelete = async () => {
     if (selectedFileIds.size === 0 || !companyId) return;
@@ -2037,21 +2074,26 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* Mobile / APK: floating camera — rear lens, scan look, Retry/Save. Saves into this
+          list under the signed-in user (so the "All Users" filter can pick it). */}
+      {isMobile && (
+        <UnassignedCameraCapture
+          onCapture={(file) => onDrop([file])}
+          bottomClass="bottom-[calc(6.5rem+env(safe-area-inset-bottom,0px))]"
+        />
+      )}
       {/* Upload + tiles scroll; filters/title footer me fix (company tab jaisa) */}
       <div
-        className={cn(
-          "min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain",
-          isMobile && !unassignedFooterExpanded ? GALLERY_COLLAPSED_RIBBON_SCROLL_PB : "pb-2"
-        )}
+        {...getRootProps({
+          className: cn(
+            "min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain",
+            isMobile && !unassignedFooterExpanded ? GALLERY_COLLAPSED_RIBBON_SCROLL_PB : "pb-2"
+          ),
+        })}
       >
-        <div
-          {...getRootProps()}
-          className="cursor-pointer rounded-lg border-2 border-dashed p-10 text-center transition-colors hover:bg-slate-50"
-        >
-          <input {...getInputProps()} />
-          <UploadCloud className="mx-auto h-10 w-10 text-slate-400" />
-          <p className="mt-2 text-sm text-slate-500">Drag or click to upload</p>
-        </div>
+        {/* Upload trigger lives in the Unassigned tab header ("Add File"); the big dashed
+            dropzone was removed. Hidden input + drop still work for drag & drop. */}
+        <input {...getInputProps()} className="hidden" />
 
         <TooltipProvider delayDuration={100}>
         <div className="grid gap-x-8 gap-y-12" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${previewSize}px, 1fr))` }}>
@@ -2272,40 +2314,29 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
       </div>
 
       {unassignedFooterExpanded ? (
-      <Card className="shrink-0 rounded-b-none border-b-0 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.08)] sm:rounded-b-lg sm:border-b">
-        <CardHeader className="space-y-0 !p-3 pb-2">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex min-w-0 flex-1 items-start gap-1.5">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="mt-0.5 h-8 w-8 shrink-0"
-                aria-expanded
-                aria-label="Hide unassigned panel"
-                onClick={() => setUnassignedFooterExpanded(false)}
-              >
-                <ChevronDown className="h-4 w-4" aria-hidden />
-              </Button>
+      <Card data-pl-gallery-unassigned-footer className="shrink-0 rounded-b-none border border-blue-300 border-b-0 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.08)] sm:rounded-b-lg sm:border-b">
+        <CardHeader className="space-y-0 !p-3 pb-2 [&>*+*]:!mt-[5px]">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-[5px]">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
               <div className="min-w-0">
               <CardTitle className="text-base font-bold leading-tight">Unassigned Documents</CardTitle>
               <CardDescription className="text-[11px] leading-snug">
-                Drag or click to upload. Attach them to vouchers later.
+                Attach them to vouchers later.
               </CardDescription>
               </div>
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-start sm:gap-2">
+            <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center sm:gap-[10px]">
               <Badge
                 variant="secondary"
-                className="max-w-[min(100%,280px)] px-2 py-0 text-center text-[10px] sm:max-w-none sm:text-right"
+                className="max-w-[min(100%,360px)] px-2 py-0 text-center text-xs sm:max-w-none sm:text-right"
               >
                 {filteredFiles.length === 0
                   ? `Showing 0 of ${unassignedFiles.length} files`
                   : `Showing ${unassignedSliceStart + 1}–${Math.min(unassignedSliceStart + unassignedFilesPerPage, filteredFiles.length)} of ${filteredFiles.length} files (${unassignedFiles.length} total)`}
               </Badge>
-              <div className="flex flex-col items-end gap-0.5">
+              <div className="flex items-center gap-[5px]">
                 <div className="flex items-center gap-1.5">
-                  <span className="whitespace-nowrap text-[10px] text-muted-foreground">Per page</span>
+                  <span className="whitespace-nowrap text-xs text-muted-foreground">Per page</span>
                   {isHydrated ? (
                     <Select
                       value={String(unassignedFilesPerPage)}
@@ -2314,7 +2345,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
                         setUnassignedFilesPage(1);
                       }}
                     >
-                      <SelectTrigger className="h-9 w-[76px] text-xs" aria-label="Files per page">
+                      <SelectTrigger className="pl-chrome-btn-drop h-9 w-[76px] rounded-full border border-blue-300 bg-blue-100/80 text-xs text-blue-900 focus:border-blue-500 focus-visible:border-blue-500" aria-label="Files per page">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -2334,20 +2365,34 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
                   totalPages={unassignedTotalPages}
                   onPageChange={setUnassignedFilesPage}
                 />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 shrink-0 rounded-full"
+                  aria-expanded
+                  aria-label="Hide unassigned panel"
+                  onClick={() => setUnassignedFooterExpanded(false)}
+                >
+                  <ChevronDown className="h-4 w-4" aria-hidden />
+                </Button>
               </div>
             </div>
           </div>
 
-          <div className="flex w-full flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2">
+          <div
+            data-pl-gallery-filter-bar
+            className="flex w-full flex-wrap items-center gap-[5px] rounded-lg bg-blue-100/40 p-2"
+          >
             <div className="flex-shrink-0">
               {isHydrated ? (
                 <BsDatePicker
                   valueAD={dateRange}
                   onChangeAD={setDateRange as any}
-                  className="h-9 min-h-9 px-2 text-xs"
+                  className="h-9 min-h-9 rounded-full border-blue-300 bg-blue-100/80 px-3 text-xs text-blue-900 hover:bg-blue-200/80"
                 />
               ) : (
-                <Button type="button" variant="outline" className="h-9 w-[190px] justify-start text-xs text-muted-foreground" disabled>
+                <Button type="button" variant="outline" className="h-9 w-[190px] justify-start rounded-full border-blue-300 bg-blue-100/80 text-xs text-blue-900" disabled>
                   <CalendarIcon className="mr-2 h-3.5 w-3.5" />
                   Pick a date range
                 </Button>
@@ -2361,22 +2406,22 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
                   value={selectedUploaderId}
                   onChange={setSelectedUploaderId}
                   placeholder="Filter by user"
-                  triggerClassName="h-9 text-xs"
+                  triggerClassName="h-9 rounded-full border-blue-300 bg-blue-100/80 text-xs text-blue-900 hover:bg-blue-200/80"
                 />
               ) : (
-                <Button type="button" variant="outline" className="h-9 w-full justify-start text-xs text-muted-foreground" disabled>
+                <Button type="button" variant="outline" className="h-9 w-full justify-start rounded-full border-blue-300 bg-blue-100/80 text-xs text-blue-900" disabled>
                   Filter by user
                 </Button>
               )}
             </div>
 
             <Button
-              variant="ghost"
+              variant="outline"
               onClick={() => {
                 setDateRange(undefined);
                 setSelectedUploaderId("all");
               }}
-              className="h-9 px-2.5 text-xs hover:text-destructive"
+              className="h-9 rounded-full border-blue-300 bg-blue-100/80 px-3 text-xs text-blue-900 hover:bg-blue-200/80 hover:text-destructive"
             >
               <XCircle className="mr-1.5 h-3.5 w-3.5" />
               Clear
@@ -2385,8 +2430,8 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
             {isHydrated ? (
               <Button
                 type="button"
-                variant={fullHoverPreview ? "secondary" : "outline"}
-                className={cn("inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 text-xs", isMobile && "min-w-[100px] flex-1")}
+                variant="outline"
+                className={cn("inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-blue-300 bg-blue-100/80 px-3 text-xs text-blue-900 hover:bg-blue-200/80", isMobile && "min-w-[100px] flex-1", fullHoverPreview && "border-blue-600 ring-1 ring-blue-600")}
                 disabled={pdfPrewarmLoading}
                 onClick={() => setFullHoverPreview((v) => !v)}
                 aria-pressed={fullHoverPreview}
@@ -2418,7 +2463,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
                 variant="outline"
                 size="sm"
                 onClick={handleSelectAll}
-                className="h-9 px-2.5 text-xs font-medium"
+                className="hidden h-9 px-2.5 text-xs font-medium"
               >
                 {selectedFileIds.size > 0 && selectedFileIds.size === filteredFiles.length ? (
                   <>
@@ -2447,17 +2492,16 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
               </Button>
             )}
 
-            <div className="ml-auto flex h-9 items-center gap-2 rounded-md border-2 border-primary/20 bg-background px-2 shadow-sm">
-              <Ruler className="h-3.5 w-3.5 text-primary" />
-              <div className="flex items-center">
-                <Input
-                  type="text"
-                  value={previewSize}
-                  onChange={(e) => onSizeChange(e.target.value.replace(/[^0-9]/g, ""))}
-                  className="h-9 w-14 border-0 p-0 text-center text-xs font-bold focus-visible:ring-0"
-                />
-                <span className="ml-0.5 text-[11px] font-bold text-muted-foreground">px</span>
-              </div>
+            <div className="ml-auto flex h-9 items-center gap-1.5 rounded-full border border-blue-300 bg-blue-100/80 px-3">
+              <Ruler className="h-3.5 w-3.5 text-blue-900" />
+              <input
+                type="text"
+                data-pl-gallery-preview-size
+                value={previewSize}
+                onChange={(e) => onSizeChange(e.target.value.replace(/[^0-9]/g, ""))}
+                className="h-6 w-9 border-0 bg-transparent p-0 text-center text-xs font-bold text-blue-900 outline-none ring-0"
+              />
+              <span className="text-[11px] font-bold text-blue-900/70">px</span>
             </div>
           </div>
         </CardHeader>
@@ -2556,6 +2600,20 @@ export function GalleryPageContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<GalleryTab>(() => getTabFromSearchParams(searchParams));
+  /** Selection state of the Unassigned tab, mirrored here for the tab-bar Select All button. */
+  const [gallerySelection, setGallerySelection] = useState({ total: 0, selected: 0, allSelected: false });
+  useEffect(() => {
+    const onSel = (ev: Event) => {
+      const d = (ev as CustomEvent<{ total?: number; selected?: number; allSelected?: boolean }>).detail;
+      setGallerySelection({
+        total: Number(d?.total) || 0,
+        selected: Number(d?.selected) || 0,
+        allSelected: d?.allSelected === true,
+      });
+    };
+    window.addEventListener("pl:gallery:selection", onSel);
+    return () => window.removeEventListener("pl:gallery:selection", onSel);
+  }, []);
   const [previewSize, setPreviewSize] = useState<string | number>(160);
   const [isVoucherOpen, setIsVoucherOpen] = useState(false);
   const [defaultVoucherData, setDefaultVoucherData] = useState<any>(null);
@@ -2654,29 +2712,65 @@ export function GalleryPageContent() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden px-0.5 pt-4 pb-0 sm:p-6 md:p-8">
-       <div className="mb-6 grid shrink-0 grid-cols-2 gap-4">
+       <div className="mb-6 flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          {activeTab === 'unassigned' && (
+            <Button
+              type="button"
+              size="sm"
+              className={cn(
+                "h-8 w-auto gap-1.5 rounded-full border border-blue-300 bg-blue-100/80 px-3 text-xs text-blue-900 hover:border-blue-400 hover:bg-blue-200/80",
+              )}
+              onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:select-all"))}
+              disabled={gallerySelection.total === 0}
+            >
+              {gallerySelection.allSelected ? (
+                <>
+                  <CheckSquare className="h-3.5 w-3.5" aria-hidden />
+                  Deselect All
+                </>
+              ) : (
+                <>
+                  <Square className="h-3.5 w-3.5" aria-hidden />
+                  Select All
+                </>
+              )}
+            </Button>
+          )}
           <Button
             onClick={() => setGalleryTab('company-files')}
+            size="sm"
             className={cn(
-              "h-12 text-sm",
+              "h-8 w-auto rounded-full px-3 text-xs",
               activeTab === 'company-files'
-                ? "bg-blue-600 text-white hover:bg-blue-700"
-                : "bg-blue-100 text-blue-800 hover:bg-blue-200"
+                ? "border border-blue-600 bg-blue-100/80 text-blue-900 font-semibold hover:bg-blue-200/80"
+                : "border border-blue-300 bg-blue-100/80 text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
             )}
           >
             Company Files
           </Button>
           <Button
             onClick={() => setGalleryTab('unassigned')}
+            size="sm"
             className={cn(
-              "h-12 text-sm",
+              "h-8 w-auto rounded-full px-3 text-xs",
               activeTab === 'unassigned'
-                ? "bg-blue-600 text-white hover:bg-blue-700"
-                : "bg-blue-100 text-blue-800 hover:bg-blue-200"
+                ? "border border-blue-600 bg-blue-100/80 text-blue-900 font-semibold hover:bg-blue-200/80"
+                : "border border-blue-300 bg-blue-100/80 text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
             )}
           >
             Unassigned Documents
           </Button>
+          {activeTab === 'unassigned' && (
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 w-auto gap-1.5 rounded-full border border-blue-300 bg-blue-100/80 px-3 text-xs text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
+              onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:add-file"))}
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden />
+              Add File
+            </Button>
+          )}
         </div>
 
         {/* min-h-0: dashboard main ke andar sirf yahan grid scroll, tab row + footer card fixed */}

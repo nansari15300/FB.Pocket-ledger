@@ -87,14 +87,30 @@ export async function hardDeleteUnassignedDoc(
       ? authId
       : companyId;
 
-  // 1. Delete physical file from storage
-  const filePath = docItem.path || docItem.url;
-  if (filePath) {
-    try {
-      await deleteFileFromStorageClient(filePath);
-    } catch (e) {
-      console.warn("[hardDeleteUnassignedDoc] file storage delete failed:", e);
-    }
+  // 1. Local first: tombstone the row and persist to IndexedDB before touching the network.
+  //    The list reads SQLite, so a refresh right after the click must already see it gone.
+  try {
+    await deleteCompanyDocFromBrowserDb(serverCompanyId, "unassigned_documents", docId, {
+      force: true,
+      notify: true,
+    });
+    await upsertCompanyDocInBrowserDb(
+      serverCompanyId,
+      "unassigned_documents",
+      docId,
+      { id: docId, isDeleted: true, [HARD_DELETED_FLAG]: true, deletedAtMs: Date.now() },
+      { force: true, notify: false, skipPlanMutationGate: true, skipCloudSyncEnqueue: true }
+    );
+  } catch (sqliteErr) {
+    console.warn("[hardDeleteUnassignedDoc] SQLite delete error:", sqliteErr);
+  }
+  // SQLite is in-memory until the 5s persist debounce; export now so an instant refresh
+  // reloads a snapshot that no longer has the file.
+  try {
+    const { flushBrowserDbToIndexedDB } = await import("@/lib/localSqlite");
+    await flushBrowserDbToIndexedDB();
+  } catch (persistErr) {
+    console.warn("[hardDeleteUnassignedDoc] immediate IDB persist failed:", persistErr);
   }
 
   // 2. Delete the server row.
@@ -115,21 +131,14 @@ export async function hardDeleteUnassignedDoc(
     return false;
   }
 
-  // 3. Mirror row gone + local hard-deleted tombstone (keeps the next pull from re-inserting it).
-  try {
-    await deleteCompanyDocFromBrowserDb(serverCompanyId, "unassigned_documents", docId, {
-      force: true,
-      notify: true,
-    });
-    await upsertCompanyDocInBrowserDb(
-      serverCompanyId,
-      "unassigned_documents",
-      docId,
-      { id: docId, isDeleted: true, [HARD_DELETED_FLAG]: true, deletedAtMs: Date.now() },
-      { force: true, notify: false, skipPlanMutationGate: true, skipCloudSyncEnqueue: true }
-    );
-  } catch (sqliteErr) {
-    console.warn("[hardDeleteUnassignedDoc] SQLite delete error:", sqliteErr);
+  // 3. Delete physical file from storage
+  const filePath = docItem.path || docItem.url;
+  if (filePath) {
+    try {
+      await deleteFileFromStorageClient(filePath);
+    } catch (e) {
+      console.warn("[hardDeleteUnassignedDoc] file storage delete failed:", e);
+    }
   }
 
   return true;

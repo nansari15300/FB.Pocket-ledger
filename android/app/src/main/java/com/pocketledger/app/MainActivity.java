@@ -28,6 +28,68 @@ public class MainActivity extends BridgeActivity {
         if (cachesClearedThisLaunch) clearCurrentWebViewHttpCacheAfterApkUpdate();
     }
 
+    @Override
+    public void onStart() {
+        super.onStart();
+        // Unassigned camera scan uses getUserMedia; the WebView denies it unless granted here.
+        grantWebViewMediaPermissions();
+    }
+
+    /**
+     * Allow the bundled WebView to use the camera for `getUserMedia` (document scan button).
+     * Still gated by the runtime CAMERA permission below, so the user sees the Android prompt.
+     */
+    private void grantWebViewMediaPermissions() {
+        try {
+            Bridge b = getBridge();
+            if (b == null) return;
+            WebView wv = b.getWebView();
+            if (wv == null) return;
+            wv.setWebChromeClient(new com.getcapacitor.BridgeWebChromeClient(b) {
+                @Override
+                public void onPermissionRequest(final android.webkit.PermissionRequest request) {
+                    runOnUiThread(() -> {
+                        try {
+                            boolean needsCamera = false;
+                            for (String r : request.getResources()) {
+                                if (android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)) {
+                                    needsCamera = true;
+                                    break;
+                                }
+                            }
+                            if (!needsCamera) {
+                                request.deny();
+                                return;
+                            }
+                            if (checkSelfPermission(android.Manifest.permission.CAMERA)
+                                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                // WebView origin may still prompt; grant here after the OS granted it.
+                                requestMediaPermission();
+                            }
+                            request.grant(new String[] { android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE });
+                        } catch (Throwable ignored) {
+                            /* ignore */
+                        }
+                    });
+                }
+            });
+        } catch (Throwable ignored) {
+            /* Bridge/WebView init race — ignore */
+        }
+    }
+
+    private void requestMediaPermission() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 23
+                    && checkSelfPermission(android.Manifest.permission.CAMERA)
+                        != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[] { android.Manifest.permission.CAMERA }, 7711);
+            }
+        } catch (Throwable ignored) {
+            /* ignore */
+        }
+    }
+
     /** Chromium WebView FORCE_DARK_OFF — `color-scheme` CSS ke alava native layer bhi light palette pakki karo (S25 APK vs Chrome). */
     private void disableWebViewAlgorithmicDarkening() {
         try {
