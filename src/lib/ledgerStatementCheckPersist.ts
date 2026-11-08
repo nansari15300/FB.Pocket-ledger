@@ -19,6 +19,30 @@ export type StatementCheckMeta = {
   message?: string;
 };
 
+/** One entry in the "backdated voucher" conflict history */
+export type ConflictHistoryEntry = {
+  /** ISO timestamp when user clicked "Continue" */
+  at: string;
+  /** Who performed the action */
+  byUser: string;
+  /** The Reconciled Point date (formatted string) */
+  reconciledDate: string;
+  /** The balance at the Reconciled Point BEFORE this action (optional, may be null) */
+  balanceBefore?: number | null;
+  /** Net balance change caused by this backdated voucher (amount / effect) */
+  balanceDelta?: number | null;
+  /** Balance AFTER the backdated action */
+  balanceAfter?: number | null;
+  /** The voucher date that was backdated */
+  voucherDate: string;
+  /** Voucher number, if known */
+  voucherNo?: string | null;
+  /** Account / ledger name */
+  accountName?: string | null;
+  /** "new" | "edit" | "delete" */
+  action?: string;
+};
+
 export type LedgerStatementCheckData = {
   markedIds: string[];
   metaById: Record<string, StatementCheckMeta>;
@@ -160,4 +184,75 @@ export async function persistLedgerStatementCheckedIds(
 ): Promise<void> {
   const existing = await readLedgerStatementCheckDataFromDb(scope.companyId, scope);
   await persistLedgerStatementCheckedData(company, scope, markedIds, existing.metaById);
+}
+
+/** Max history entries stored per entity */
+export const MAX_CONFLICT_HISTORY = 5;
+
+/**
+ * Append a new backdated-voucher conflict history entry to the entity's
+ * ledger_statement_checks document.  Keeps only the latest MAX_CONFLICT_HISTORY entries.
+ */
+export async function persistConflictHistoryEntry(
+  companyId: string,
+  contextId: string,
+  entry: ConflictHistoryEntry
+): Promise<void> {
+  // We store history in a special doc keyed by contextId (not per-user)
+  const docId = `conflict_history__${contextId}`;
+  let existing: Record<string, unknown> | null = null;
+  try {
+    existing = await getCompanyDocFromBrowserDb(companyId, LEDGER_STATEMENT_CHECKS_COLLECTION, docId);
+  } catch {
+    existing = null;
+  }
+
+  const prevHistory: ConflictHistoryEntry[] = Array.isArray((existing as any)?.conflictHistory)
+    ? (existing as any).conflictHistory
+    : [];
+
+  // Prepend newest entry, keep up to MAX_CONFLICT_HISTORY
+  const nextHistory = [entry, ...prevHistory].slice(0, MAX_CONFLICT_HISTORY);
+
+  const payload: Record<string, unknown> = {
+    ...(existing ?? {}),
+    id: docId,
+    companyId,
+    contextId,
+    conflictHistory: nextHistory,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await writeEntity({
+    companyId,
+    collectionName: LEDGER_STATEMENT_CHECKS_COLLECTION,
+    docId,
+    operation: existing ? "update" : "create",
+    data: payload,
+    options: existing ? undefined : { merge: true },
+  });
+
+  notifyBrowserDbCollectionUpdated(companyId, LEDGER_STATEMENT_CHECKS_COLLECTION, {
+    immediate: true,
+    source: "local_write",
+  });
+}
+
+/**
+ * Read the conflict history for a given contextId (account / party / staff).
+ */
+export async function readConflictHistory(
+  companyId: string,
+  contextId: string
+): Promise<ConflictHistoryEntry[]> {
+  const docId = `conflict_history__${contextId}`;
+  try {
+    const doc = await getCompanyDocFromBrowserDb(companyId, LEDGER_STATEMENT_CHECKS_COLLECTION, docId);
+    if (!doc) return [];
+    return Array.isArray((doc as any).conflictHistory)
+      ? (doc as any).conflictHistory
+      : [];
+  } catch {
+    return [];
+  }
 }

@@ -4,10 +4,13 @@ import React, { createContext, useCallback, useContext, useState, useRef } from 
 import {
   checkReconciledPointConflict,
   type ReconciledPointCheckParams,
+  type ReconciledPointConflict,
 } from "@/lib/reconciliation/reconciledPointGuard";
 import { ReconciledPointWarningDialog } from "@/components/vouchers/ReconciledPointWarningDialog";
 import usePermissions from "@/hooks/usePermissions";
 import { useDate } from "@/hooks/useDate";
+import { useAuth } from "@/hooks/useAuth";
+import { persistConflictHistoryEntry } from "@/lib/ledgerStatementCheckPersist";
 
 type ReconciledPointGuardContextValue = {
   checkAndConfirmReconciledDate: (params: ReconciledPointCheckParams) => Promise<boolean>;
@@ -22,17 +25,22 @@ export function ReconciledPointGuardProvider({ children }: { children: React.Rea
     reconciledDate: string;
     voucherDate: string;
     canSave: boolean;
+    conflict: ReconciledPointConflict | null;
+    params: ReconciledPointCheckParams | null;
   }>({
     open: false,
     accountName: "",
     reconciledDate: "",
     voucherDate: "",
     canSave: true,
+    conflict: null,
+    params: null,
   });
 
   const resolverRef = useRef<((allow: boolean) => void) | null>(null);
   const permissions = usePermissions();
   const { formatDateBySystem } = useDate();
+  const { user } = useAuth();
 
   // User has permission if they are owner, admin, manager, or have backdate privileges
   const canSavePastReconciled = Boolean(
@@ -64,13 +72,49 @@ export function ReconciledPointGuardProvider({ children }: { children: React.Rea
           reconciledDate: recDateStr,
           voucherDate: vDateStr,
           canSave: canSavePastReconciled,
+          conflict,
+          params,
         });
       });
     },
-    [canSavePastReconciled]
+    [canSavePastReconciled, formatDateBySystem]
   );
 
   const handleConfirm = () => {
+    // Save conflict history entry
+    const { conflict, params } = dialogState;
+    if (conflict && params?.companyId) {
+      // Gather all contextIds involved
+      const contextIds: string[] = [];
+      const addId = (id?: string | null) => { if (id && !contextIds.includes(id)) contextIds.push(id); };
+      addId(params.partyId);
+      addId(params.accountId);
+      addId(params.fromAccountId);
+      addId(params.toAccountId);
+      addId(params.creditAccountId);
+      addId(params.debitAccountId);
+      addId(params.staffId);
+      if (Array.isArray(params.entityIds)) params.entityIds.forEach(addId);
+
+      const byUser = user?.displayName || user?.email || "User";
+      const action = params.isDelete ? "delete" : params.isEdit ? "edit" : "new";
+
+      for (const ctxId of contextIds) {
+        void persistConflictHistoryEntry(params.companyId, ctxId, {
+          at: new Date().toISOString(),
+          byUser,
+          reconciledDate: dialogState.reconciledDate,
+          voucherDate: dialogState.voucherDate,
+          accountName: conflict.accountName || dialogState.accountName,
+          action,
+          balanceBefore: null,
+          balanceDelta: null,
+          balanceAfter: null,
+          voucherNo: null,
+        });
+      }
+    }
+
     setDialogState((s) => ({ ...s, open: false }));
     resolverRef.current?.(true);
     resolverRef.current = null;
