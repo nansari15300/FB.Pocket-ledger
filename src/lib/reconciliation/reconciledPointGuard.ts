@@ -25,7 +25,13 @@ export type ReconciledPointCheckParams = {
   creditAccountId?: string | null;
   debitAccountId?: string | null;
   staffId?: string | null;
+  entityIds?: Array<string | null | undefined>;
   allVouchers?: readonly any[] | null;
+  // Smart conditions:
+  isEdit?: boolean;
+  existingVoucher?: any;
+  newVoucherData?: any;
+  isDelete?: boolean;
 };
 
 function formatDateNice(date: Date): string {
@@ -39,7 +45,95 @@ function formatDateNice(date: Date): string {
   }
 }
 
-/** Check if voucherDate is strictly before an established Reconciled Point in any of the involved accounts. */
+/** Calculate the net signed balance impact of a voucher on a specific entity / account */
+export function getEntityNetEffect(v: any, entityId: string): number {
+  if (!v || !entityId) return 0;
+  const cleanId = String(entityId).trim();
+  const vType = String(v.type || "").toLowerCase();
+
+  // 1. Journal / Adjustment:
+  const lines = Array.isArray(v.lines) ? v.lines : (Array.isArray(v.entries) ? v.entries : null);
+  if (lines) {
+    let net = 0;
+    for (const line of lines) {
+      const lineAcc = String(line.accountId || line.partyId || line.entityId || "").trim();
+      if (lineAcc === cleanId) {
+        const amt = Number(line.amount ?? (line.debit || line.credit || 0)) || 0;
+        const lineType = String(line.type || (Number(line.debit) > 0 ? "debit" : "credit")).toLowerCase();
+        net += (lineType === "debit" ? amt : -amt);
+      }
+    }
+    return net;
+  }
+
+  // 2. Payment In:
+  if (vType === "payment_in" || vType === "direct_income") {
+    const amt = Number(v.amount ?? v.total ?? 0) || 0;
+    if (String(v.partyId || "").trim() === cleanId) return -amt; // credit to party
+    if (String(v.accountId || "").trim() === cleanId) return amt; // debit to cash/bank
+    return 0;
+  }
+
+  // 3. Payment Out:
+  if (vType === "payment_out" || vType === "direct_expense") {
+    const amt = Number(v.amount ?? v.total ?? 0) || 0;
+    if (String(v.partyId || "").trim() === cleanId) return amt; // debit to party
+    if (String(v.accountId || v.fromAccountId || "").trim() === cleanId) return -amt; // credit to cash/bank
+    return 0;
+  }
+
+  // 4. Sale:
+  if (vType === "sale") {
+    const amt = Number(v.total ?? v.amount ?? 0) || 0;
+    if (String(v.partyId || "").trim() === cleanId) return amt; // debit to party
+    return 0;
+  }
+
+  // 5. Purchase:
+  if (vType === "purchase") {
+    const amt = Number(v.total ?? v.amount ?? 0) || 0;
+    if (String(v.partyId || "").trim() === cleanId) return -amt; // credit to party
+    return 0;
+  }
+
+  // 6. Contra:
+  if (vType === "contra") {
+    const amt = Number(v.amount ?? v.total ?? 0) || 0;
+    if (String(v.fromAccountId || "").trim() === cleanId) return -amt;
+    if (String(v.toAccountId || "").trim() === cleanId) return amt;
+    return 0;
+  }
+
+  // 7. Salary:
+  if (vType === "salary") {
+    const lines = Array.isArray(v.lineItems) ? v.lineItems : null;
+    let net = 0;
+    if (lines) {
+      for (const item of lines) {
+        if (String(item.staffId || "").trim() === cleanId) {
+          const sal = Number(item.afterTaxSalary ?? item.salary ?? 0) || 0;
+          net -= sal;
+        }
+      }
+    }
+    const paidFrom = String(v.paidFromAccountId || v.debitAccountId || "").trim();
+    if (paidFrom === cleanId) {
+      const tot = Number(v.totalSalary ?? v.amount ?? 0) || 0;
+      net -= tot;
+    }
+    return net;
+  }
+
+  // Fallback: check if partyId or accountId matches
+  const amt = Number(v.total ?? v.amount ?? 0) || 0;
+  if (String(v.partyId || "").trim() === cleanId || String(v.accountId || "").trim() === cleanId) {
+    return amt;
+  }
+
+  return 0;
+}
+
+/** Check if voucher action affects ledger balance strictly on or before an established Reconciled Point */
 export async function checkReconciledPointConflict(
   params: ReconciledPointCheckParams
 ): Promise<ReconciledPointConflict> {
@@ -69,18 +163,33 @@ export async function checkReconciledPointConflict(
   add("account", params.creditAccountId);
   add("account", params.debitAccountId);
   add("staff", params.staffId);
+  if (Array.isArray(params.entityIds)) {
+    for (const eid of params.entityIds) add("any", eid);
+  }
+
+  // Also include entities from existingVoucher if in edit/delete mode
+  if (params.existingVoucher) {
+    const ev = params.existingVoucher;
+    add("party", ev.partyId);
+    add("account", ev.accountId);
+    add("account", ev.fromAccountId);
+    add("account", ev.toAccountId);
+    add("staff", ev.staffId);
+    const evLines = Array.isArray(ev.lines) ? ev.lines : (Array.isArray(ev.entries) ? ev.entries : null);
+    if (evLines) {
+      for (const line of evLines) {
+        add("any", line.accountId || line.partyId || line.entityId);
+      }
+    }
+  }
 
   if (candidates.length === 0) return { hasConflict: false };
 
   let allChecks: any[] = [];
   try {
-    allChecks = (await listCompanyDocsFromBrowserDb(companyId, "ledger_statement_checks")) || [];
+    allChecks = (await listCompanyDocsFromBrowserDb(companyId, "ledger_statement_checks", { forBackupMerge: true })) || [];
   } catch {
-    return { hasConflict: false };
-  }
-
-  if (!Array.isArray(allChecks) || allChecks.length === 0) {
-    return { hasConflict: false };
+    allChecks = [];
   }
 
   // Pre-index memory vouchers if provided
@@ -94,7 +203,7 @@ export async function checkReconciledPointConflict(
   for (const cand of candidates) {
     // Find checks for this entity
     const matchingDocs = allChecks.filter(
-      (c) => String(c?.contextId || "").trim() === cand.id
+      (c) => String(c?.contextId || "").trim() === cand.id || String(c?.id || "").includes(`__${cand.id}`)
     );
 
     if (matchingDocs.length === 0) continue;
@@ -137,21 +246,80 @@ export async function checkReconciledPointConflict(
 
     const reconStart = startOfDay(latestReconDate).getTime();
 
-    // If voucher date is strictly before the reconciled date
-    if (targetVDateStart < reconStart) {
+    // Prepare new voucher object for net calculation
+    const newVoucher = params.newVoucherData || {
+      partyId: params.partyId,
+      accountId: params.accountId,
+      fromAccountId: params.fromAccountId,
+      toAccountId: params.toAccountId,
+      staffId: params.staffId,
+      date: vDate,
+      lines: Array.isArray(params.entityIds) ? params.entityIds.map(id => ({ accountId: id })) : undefined,
+    };
+
+    // Evaluate Smart Conditions for this entity
+    let hasEntityConflict = false;
+
+    if (params.isDelete) {
+      // 1. DELETE ACTION:
+      const evDate = params.existingVoucher ? parseFirestoreDateFieldToJsDate(params.existingVoucher.date) : vDate;
+      const evTime = evDate ? startOfDay(evDate).getTime() : targetVDateStart;
+      const isPast = evTime <= reconStart;
+      const origNet = params.existingVoucher ? getEntityNetEffect(params.existingVoucher, cand.id) : 1;
+      if (isPast && Math.abs(origNet) > 0.001) {
+        hasEntityConflict = true;
+      }
+    } else if (params.isEdit && params.existingVoucher) {
+      // 2. EDIT ACTION:
+      const evDate = parseFirestoreDateFieldToJsDate(params.existingVoucher.date);
+      const evTime = evDate ? startOfDay(evDate).getTime() : 0;
+      const origInRecon = evDate ? evTime <= reconStart : false;
+      const newInRecon = targetVDateStart <= reconStart;
+
+      const origNet = getEntityNetEffect(params.existingVoucher, cand.id);
+      const newNet = getEntityNetEffect(newVoucher, cand.id);
+
+      if (origInRecon !== newInRecon) {
+        // Date moved across the Reconciled Point boundary!
+        hasEntityConflict = true;
+      } else if (!origInRecon && !newInRecon) {
+        // Both were after Reconciled Point, so Reconciled Point balance is unaffected
+        hasEntityConflict = false;
+      } else {
+        // Both are on/before Reconciled Point:
+        // Only trigger warning if financial balance impact on this account changed!
+        if (Math.abs(origNet - newNet) >= 0.001) {
+          hasEntityConflict = true;
+        } else {
+          // Amount / balance impact is identical (e.g. only narration changed, or date shifted within past)
+          hasEntityConflict = false;
+        }
+      }
+    } else {
+      // 3. CREATE NEW ACTION:
+      const newInRecon = targetVDateStart <= reconStart;
+      const newNet = getEntityNetEffect(newVoucher, cand.id);
+      if (newInRecon && Math.abs(newNet) > 0.001) {
+        hasEntityConflict = true;
+      }
+    }
+
+    if (hasEntityConflict) {
       let entityName = "Account";
       try {
-        if (cand.context === "party") {
-          const party = await getCompanyDocFromBrowserDb(companyId, "parties", cand.id);
-          entityName = String(party?.name || party?.partyName || "Party");
-        } else if (cand.context === "account") {
+        const party = await getCompanyDocFromBrowserDb(companyId, "parties", cand.id);
+        if (party?.name || party?.partyName) {
+          entityName = String(party.name || party.partyName);
+        } else {
           const acc =
             (await getCompanyDocFromBrowserDb(companyId, "bank_accounts", cand.id)) ||
             (await getCompanyDocFromBrowserDb(companyId, "accounts", cand.id));
-          entityName = String(acc?.accountName || acc?.name || "Bank / Cash Account");
-        } else if (cand.context === "staff") {
-          const st = await getCompanyDocFromBrowserDb(companyId, "staff", cand.id);
-          entityName = String(st?.name || "Staff Member");
+          if (acc?.accountName || acc?.name) {
+            entityName = String(acc.accountName || acc.name);
+          } else {
+            const st = await getCompanyDocFromBrowserDb(companyId, "staff", cand.id);
+            if (st?.name) entityName = String(st.name);
+          }
         }
       } catch {
         /* fallback */
@@ -184,38 +352,56 @@ export function getReconciledWarningDialogCopy(
   introLang: string = "en",
   accountName: string = "Account",
   reconciledDate: string = "",
-  voucherDate: string = ""
+  voucherDate: string = "",
+  uiLang: string = "en"
 ): ReconciledWarningDialogCopy {
+  const isNe = introLang === "ne";
+  const isHi = introLang === "hi";
+
+  const isUiNe = uiLang === "ne";
+  const isUiHi = uiLang === "hi";
+
+  // Buttons strictly bound to UI language:
+  const dontSave = isUiNe
+    ? "पछाडि / रद्द गर्नुहोस्"
+    : isUiHi
+    ? "वापस / रद्द करें"
+    : "Back / Cancel";
+
+  const saveAnyway = isUiNe
+    ? "जारी राख्नुहोस्"
+    : isUiHi
+    ? "जारी रखें"
+    : "Continue";
+
+  if (isNe) {
+    return {
+      title: "मेलमिलाप बिन्दु चेतावनी",
+      lead: `यस लेजर खाता (${accountName}) मा ${reconciledDate} मा Reconciled Point (मेलमिलाप बिन्दु) चिन्हित छ।`,
+      body: `यदि तपाईंले Reconciled Point भन्दा अघिल्लो मिति (${voucherDate}) मा भौचर थप्नुभयो भने, तपाईंको मेलमिलाप बेमेल (Mismatch) हुनेछ।`,
+      dontSave,
+      saveAnyway,
+      permissionDenied: "तपाईंसँग मेलमिलाप बिन्दु अघिको प्रविष्टि थप्ने वा परिवर्तन गर्ने अनुमति छैन।",
+    };
+  }
+
+  if (isHi) {
+    return {
+      title: "मेलमिलाप बिंदु चेतावनी",
+      lead: `इस लेज़र (${accountName}) में ${reconciledDate} को Reconciled Point (मेलमिलाप बिंदु) निर्धारित है।`,
+      body: `यदि आप Reconciled Point की तारीख से पहले (${voucherDate}) कोई वाउचर जोड़ते हैं, तो आपका मेलमिलाप बेमेल (Mismatch) हो जाएगा।`,
+      dontSave,
+      saveAnyway,
+      permissionDenied: "आपके पास मेलमिलाप बिंदु से पहले की प्रविष्टि जोड़ने की अनुमति नहीं है।",
+    };
+  }
+
   return {
-    title: pickIntroCopy(introLang, {
-      en: "Warning: Reconciled Point Alert",
-      ne: "चेतावनी: मेलमिलाप बिन्दु अलर्ट",
-      hi: "चेतावनी: मेलमिलाप बिंदु अलर्ट",
-    }),
-    lead: pickIntroCopy(introLang, {
-      en: `The ledger for "${accountName}" has an established Reconciled Point on ${reconciledDate}.`,
-      ne: `"${accountName}" को खातामा ${reconciledDate} सम्मको हिसाब-किताब मेलमिलाप (Reconciled) भइसकेको छ।`,
-      hi: `"${accountName}" के खाते में ${reconciledDate} तक के लेन-देन का मेलमिलाप (Reconciliation) पूर्ण हो चुका है।`,
-    }),
-    body: pickIntroCopy(introLang, {
-      en: `Recording or updating a transaction with a date (${voucherDate}) prior to this reconciled date will alter previously verified balances and may disrupt previous reconciliation.`,
-      ne: `उक्त मितिभन्दा पहिलेको मिति (${voucherDate}) मा नयाँ भौचर थप्दा वा परिवर्तन गर्दा प्रमाणित अघिल्लो हिसाब-किताब बिग्रन सक्छ र पुनः मेलमिलाप गर्नुपर्ने हुन सक्छ।`,
-      hi: `इस मेलमिलाप तिथि से पूर्व की तारीख (${voucherDate}) पर वाउचर जोड़ने या बदलने से पूर्व-सत्यापित शेष राशि प्रभावित हो सकती है और पिछला हिसाब-किताब बदल सकता है।`,
-    }),
-    permissionDenied: pickIntroCopy(introLang, {
-      en: "You do not have permission to record transactions prior to an established Reconciled Point. Please contact your company administrator.",
-      ne: "मेलमिलाप भइसकेको मितिभन्दा पहिले कारोबार प्रविष्ट गर्ने अनुमति तपाईंलाई छैन। कृपया व्यवस्थापकसँग सम्पर्क गर्नुहोस्।",
-      hi: "रिकॉन्सिल्ड तिथि से पूर्व लेनदेन दर्ज करने की अनुमति आपके पास नहीं है। कृपया व्यवस्थापक से संपर्क करें।",
-    }),
-    dontSave: pickIntroCopy(introLang, {
-      en: "Don't Save",
-      ne: "बचत नगर्नुहोस्",
-      hi: "सहेजें नहीं (रद्द करें)",
-    }),
-    saveAnyway: pickIntroCopy(introLang, {
-      en: "Save Anyway",
-      ne: "तैपनि बचत गर्नुहोस्",
-      hi: "फिर भी सहेजें",
-    }),
+    title: "Reconciled Point Conflict",
+    lead: `This ledger (${accountName}) has a Reconciled Point on ${reconciledDate}.`,
+    body: `If you add a voucher on ${voucherDate} behind the reconciled date, your reconciliation will be mismatched.`,
+    dontSave,
+    saveAnyway,
+    permissionDenied: "You do not have permission to post vouchers prior to an established Reconciled Point.",
   };
 }

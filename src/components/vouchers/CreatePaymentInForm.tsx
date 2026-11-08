@@ -1430,6 +1430,24 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       return;
     }
 
+    if (reconGuard) {
+      const isEdit = isPermissionEdit(!!voucher?.id, savedVoucherId);
+      const allowed = await reconGuard.checkAndConfirmReconciledDate({
+        companyId,
+        voucherDate: data.date,
+        partyId: data.partyId,
+        accountId: data.accountId,
+        allVouchers,
+        isEdit,
+        existingVoucher: voucher,
+        newVoucherData: { ...data, type: "payment_in" },
+      });
+      if (!allowed) {
+        setIsLoading(false);
+        return;
+      }
+    }
+
     try {
       // Permission check: create or edit (copy draft pehli save = create)
       const isEdit = isPermissionEdit(!!voucher?.id, savedVoucherId);

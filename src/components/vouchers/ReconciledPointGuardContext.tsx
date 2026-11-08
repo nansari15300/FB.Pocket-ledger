@@ -7,6 +7,7 @@ import {
 } from "@/lib/reconciliation/reconciledPointGuard";
 import { ReconciledPointWarningDialog } from "@/components/vouchers/ReconciledPointWarningDialog";
 import usePermissions from "@/hooks/usePermissions";
+import { useDate } from "@/hooks/useDate";
 
 type ReconciledPointGuardContextValue = {
   checkAndConfirmReconciledDate: (params: ReconciledPointCheckParams) => Promise<boolean>;
@@ -31,6 +32,7 @@ export function ReconciledPointGuardProvider({ children }: { children: React.Rea
 
   const resolverRef = useRef<((allow: boolean) => void) | null>(null);
   const permissions = usePermissions();
+  const { formatDateBySystem } = useDate();
 
   // User has permission if they are owner, admin, manager, or have backdate privileges
   const canSavePastReconciled = Boolean(
@@ -50,11 +52,17 @@ export function ReconciledPointGuardProvider({ children }: { children: React.Rea
 
       return new Promise<boolean>((resolve) => {
         resolverRef.current = resolve;
+        const recDateStr = conflict.reconciledDate
+          ? formatDateBySystem(conflict.reconciledDate)
+          : (conflict.reconciledDateFormatted || "");
+        const vDateStr = conflict.voucherDate
+          ? formatDateBySystem(conflict.voucherDate)
+          : (conflict.voucherDateFormatted || "");
         setDialogState({
           open: true,
           accountName: conflict.accountName || "Account",
-          reconciledDate: conflict.reconciledDateFormatted || "",
-          voucherDate: conflict.voucherDateFormatted || "",
+          reconciledDate: recDateStr,
+          voucherDate: vDateStr,
           canSave: canSavePastReconciled,
         });
       });

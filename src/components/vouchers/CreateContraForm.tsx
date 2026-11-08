@@ -1128,6 +1128,24 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       return;
     }
     
+    if (reconGuard) {
+      const isEdit = isPermissionEdit(!!voucher?.id, savedVoucherId);
+      const allowed = await reconGuard.checkAndConfirmReconciledDate({
+        companyId,
+        voucherDate: data.date,
+        fromAccountId: data.fromAccountId,
+        toAccountId: data.toAccountId,
+        allVouchers,
+        isEdit,
+        existingVoucher: voucher,
+        newVoucherData: { ...data, type: "contra" },
+      });
+      if (!allowed) {
+        setIsLoading(false);
+        return;
+      }
+    }
+
     try {
       // Permission check: create or edit (copy-draft pehli save = create)
       const isEdit = isPermissionEdit(!!voucher?.id, savedVoucherId);
@@ -1566,6 +1584,18 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
   const handleDelete = async () => {
     const voucherIdToDelete = savedVoucherId || voucher?.id || null;
     if (!voucherIdToDelete || !companyId) return;
+    if (reconGuard && voucher) {
+      const allowed = await reconGuard.checkAndConfirmReconciledDate({
+        companyId,
+        voucherDate: voucher.date,
+        fromAccountId: voucher.fromAccountId,
+        toAccountId: voucher.toAccountId,
+        allVouchers,
+        isDelete: true,
+        existingVoucher: voucher,
+      });
+      if (!allowed) return;
+    }
     
     try {
       assertCan(can, "delete_records");

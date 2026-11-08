@@ -41,12 +41,16 @@ export function ReconciledPointWarningDialog({
     i18n?.intro || "en",
     accountName,
     reconciledDate,
-    voucherDate
+    voucherDate,
+    i18n?.ui || "en"
   );
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent {...NESTED_VOUCHER_ALERT_SHELL} className="max-w-md">
+      <AlertDialogContent
+        overlayClassName="!z-[120] bg-black/60 backdrop-blur-sm"
+        className="!z-[121] max-w-md border-2 border-amber-500/80 shadow-2xl bg-card text-card-foreground"
+      >
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
             <AlertTriangle className="h-5 w-5 shrink-0" />

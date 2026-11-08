@@ -1318,11 +1318,15 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       }
 
       if (reconGuard) {
+        const isEdit = isPermissionEdit(!!voucher?.id, savedVoucherId);
         const allowed = await reconGuard.checkAndConfirmReconciledDate({
           companyId,
           voucherDate: data.date,
           partyId: data.partyId,
           allVouchers: vouchers,
+          isEdit,
+          existingVoucher: voucher,
+          newVoucherData: { ...data, type: "purchase" },
         });
         if (!allowed) {
           if (isMounted.current) setIsLoading(false);

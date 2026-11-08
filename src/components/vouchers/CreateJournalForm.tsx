@@ -1840,6 +1840,24 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       return;
     }
 
+    if (reconGuard) {
+      const isEdit = isPermissionEdit(!!voucher?.id, savedVoucherId);
+      const lineAccountIds = (data.lines || []).map((l: any) => l.accountId);
+      const allowed = await reconGuard.checkAndConfirmReconciledDate({
+        companyId,
+        voucherDate: data.date,
+        entityIds: lineAccountIds,
+        allVouchers: vouchers,
+        isEdit,
+        existingVoucher: voucher,
+        newVoucherData: { ...data, type: "journal" },
+      });
+      if (!allowed) {
+        setIsLoading(false);
+        return;
+      }
+    }
+
     try {
       // Permission check: create or edit
       const isEdit = isPermissionEdit(!!voucher?.id, savedVoucherId);
@@ -2244,6 +2262,18 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
   const handleDelete = async () => {
     const voucherIdToDelete = savedVoucherId || voucher?.id || null;
     if (!voucherIdToDelete || !companyId) return;
+    if (reconGuard && voucher) {
+      const lineAccountIds = (voucher.lines || voucher.entries || []).map((l: any) => l.accountId || l.partyId);
+      const allowed = await reconGuard.checkAndConfirmReconciledDate({
+        companyId,
+        voucherDate: voucher.date,
+        entityIds: lineAccountIds,
+        allVouchers: vouchers,
+        isDelete: true,
+        existingVoucher: voucher,
+      });
+      if (!allowed) return;
+    }
     
     try {
       assertCan(can, "delete_records");
