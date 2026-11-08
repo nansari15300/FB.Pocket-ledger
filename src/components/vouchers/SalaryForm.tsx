@@ -1,3 +1,4 @@
+import { useReconciledPointGuard } from "@/components/vouchers/ReconciledPointGuardContext";
 "use client";
 import { addDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
 import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
@@ -422,6 +423,7 @@ export function SalaryForm({
   );
   const { company, companyId } = useCompany();
   const { can, role, canPerformBackdatedAction, canEditRecord, canDeleteVoucher, fileAttachmentLimits, allowAttachments } = usePermissions();
+  const reconGuard = useReconciledPointGuard();
   const fileAttachLockedByDialog = !!voucher?.id && deleteDisabledWhenLinked;
   const isMobile = useIsMobile();
   const [loading, setLoading] = useState(true);
@@ -1747,7 +1749,37 @@ async function processAndSave(data: SalaryFormValues, saveAndNew: boolean = fals
 
     const isLocalMode = isLocalOnlyMode() || shouldReadLedgerFromSqliteOnly(company);
 
-    try {
+        if (reconGuard) {
+      for (const item of (data.lineItems || [])) {
+        if (item.staffId) {
+          const allowed = await reconGuard.checkAndConfirmReconciledDate({
+            companyId,
+            voucherDate: data.date,
+            staffId: item.staffId,
+            allVouchers,
+          });
+          if (!allowed) {
+            setIsLoading(false);
+            return;
+          }
+        }
+      }
+      const targetAccId = (data as any).paidFromAccountId || data.debitAccountId;
+      if (targetAccId) {
+        const allowed = await reconGuard.checkAndConfirmReconciledDate({
+          companyId,
+          voucherDate: data.date,
+          accountId: targetAccId,
+          allVouchers,
+        });
+        if (!allowed) {
+          setIsLoading(false);
+          return;
+        }
+      }
+    }
+
+try {
       // Permission check: create or edit
       const isEdit = isPermissionEdit(!!voucher?.id, savedVoucherIdRef);
       const voucherDate = data.date instanceof Date ? data.date : new Date(data.date);

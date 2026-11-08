@@ -3466,7 +3466,8 @@ button.day_selected.is-today.has-transactions {
   [data-vaul-overlay]:not([class*="border-0"]),
   [class*="dialog"]:not([class*="border-0"]):not([data-pl-dialog-shell]),
   [class*="sheet"]:not([class*="border-0"]):not([data-pl-dialog-shell]),
-  [class*="popover"]:not([class*="border-0"]) {
+  [class*="popover"]:not([class*="border-0"]):not([data-pl-dialog-shell]),
+  [data-radix-popover-content]:not([class*="border-0"]):not([data-pl-dialog-shell]) {
     border-width: 3px !important;
     border-color: #000000 !important;
   }
@@ -8474,14 +8475,26 @@ html[data-pl-statement-checked-blink="off"] .pl-statement-checked-msg {
 }
 
 /* Statement checked (3-dot Mark as checked) — amber fill; check-mode green Space mark se alag */
-body[class*="theme-"] [data-theme-table="transactions"] tbody tr.transaction-main-row[data-pl-statement-checked] > td,
-body[class*="theme-"] [data-theme-table="transactions"] tbody tr.narration-row[data-pl-statement-checked] > td {
+body[class*="theme-"] [data-theme-table="transactions"] tbody tr.transaction-main-row[data-pl-statement-checked]:not([data-pl-statement-checked="dim"]) > td,
+body[class*="theme-"] [data-theme-table="transactions"] tbody tr.narration-row[data-pl-statement-checked]:not([data-pl-statement-checked="dim"]) > td {
   transition: none !important;
   background-color: rgb(254 243 199 / 0.98) !important;
 }
-body[class*="theme-"].dark [data-theme-table="transactions"] tbody tr.transaction-main-row[data-pl-statement-checked] > td,
-body[class*="theme-"].dark [data-theme-table="transactions"] tbody tr.narration-row[data-pl-statement-checked] > td {
+body[class*="theme-"].dark [data-theme-table="transactions"] tbody tr.transaction-main-row[data-pl-statement-checked]:not([data-pl-statement-checked="dim"]) > td,
+body[class*="theme-"].dark [data-theme-table="transactions"] tbody tr.narration-row[data-pl-statement-checked]:not([data-pl-statement-checked="dim"]) > td {
   background-color: rgb(120 53 15 / 0.42) !important;
+}
+/* Dimmed older Reconciled Points */
+body[class*="theme-"] [data-theme-table="transactions"] tbody tr.transaction-main-row[data-pl-statement-checked="dim"] > td,
+body[class*="theme-"] [data-theme-table="transactions"] tbody tr.narration-row[data-pl-statement-checked="dim"] > td {
+  transition: none !important;
+  background-color: rgb(254 243 199 / 0.42) !important;
+  opacity: 0.72 !important;
+}
+body[class*="theme-"].dark [data-theme-table="transactions"] tbody tr.transaction-main-row[data-pl-statement-checked="dim"] > td,
+body[class*="theme-"].dark [data-theme-table="transactions"] tbody tr.narration-row[data-pl-statement-checked="dim"] > td {
+  background-color: rgb(120 53 15 / 0.18) !important;
+  opacity: 0.65 !important;
 }
 body[class*="theme-"] [data-theme-table="transactions"] tbody tr.transaction-main-row[data-pl-statement-checked]:has(+ .narration-row[data-pl-statement-checked]) > td {
   border-bottom-width: 0 !important;

@@ -1,3 +1,4 @@
+import { useReconciledPointGuard } from "@/components/vouchers/ReconciledPointGuardContext";
 
 "use client";
 
@@ -268,6 +269,7 @@ export function CreateContraForm({
   const { vouchers: allVouchers, loading: vouchersLoading, processedAccounts: allProcessedAccounts, processedParties, processedStaff, processedTaxes, processedExpenseAccounts } = useVouchers();
   const { company, companyId } = useCompany();
   const { can, role, canPerformBackdatedAction, canEditRecord, canDeleteVoucher, fileAttachmentLimits, allowAttachments } = usePermissions();
+  const reconGuard = useReconciledPointGuard();
   /** Sirf saved + dialog-linked par file band; nayi txn par parent flag ignore. */
   const fileAttachLockedByDialog = !!voucher?.id && deleteDisabledWhenLinked;
   const isMobile = useIsMobile();

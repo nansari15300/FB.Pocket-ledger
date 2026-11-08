@@ -548,6 +548,8 @@ export function TransactionsTable({
     context,
     contextId,
   });
+
+
   const fy = useFyVoucherScope();
   const recurringCompanyEnabled = isRecurringVoucherGenerationEnabled(company);
   const { templates: recurringTemplates } = useRecurringAccrualTemplates(
@@ -850,6 +852,25 @@ export function TransactionsTable({
     effectiveFyPartitionOpenings,
     effectiveFyPartitionOpeningsStatus,
   ]);
+
+  const latestCheckedId = useMemo(() => {
+    if (!ledgerStatementChecked || ledgerStatementChecked.checkedIds.size === 0) return null;
+    let latestId: string | null = null;
+    let latestTime = -Infinity;
+    const rows = tableTransactions as any[];
+    for (let i = 0; i < (rows?.length || 0); i++) {
+      const r = rows[i];
+      if (ledgerStatementChecked.isChecked(r)) {
+        const rowId = statementCheckTxnId(r);
+        const d = r?.date ? new Date(r.date).getTime() : 0;
+        if (d > latestTime || (d === latestTime && i >= 0)) {
+          latestTime = d;
+          latestId = rowId;
+        }
+      }
+    }
+    return latestId;
+  }, [tableTransactions, ledgerStatementChecked]);
   /** Unverified TDS legs stay on the row (dim) but must not inflate FY End Total Dr/Cr. */
   /** Tax page only: TDS Paid/Unpaid filter applies to TDS tax accounts, not VAT etc. */
   const isTdsTaxAccountPage = useMemo(
@@ -1277,6 +1298,8 @@ export function TransactionsTable({
     (t: any) => {
       const rowId = statementCheckTxnId(t);
       const isStatementChecked = ledgerStatementChecked.isChecked(t);
+      const isDim = isStatementChecked && latestCheckedId !== null && rowId !== latestCheckedId;
+      const statementMeta = rowId ? ledgerStatementChecked.metaById?.[rowId] : undefined;
       const canMarkStatement =
         ledgerStatementChecked.canMark &&
         rowId &&
@@ -1285,6 +1308,13 @@ export function TransactionsTable({
         t?.type !== FY_OPENING_ROW_TYPE;
       const statementCheckedProps = {
         isStatementChecked,
+        isStatementCheckedDim: isDim,
+        statementCheckMarkedBy: statementMeta?.markedBy,
+        statementCheckMarkedAt: statementMeta?.markedAt,
+        statementCheckMessage: statementMeta?.message,
+        onSaveStatementCheckMessage: rowId
+          ? (note: string) => ledgerStatementChecked.updateNote(rowId, note)
+          : undefined,
         onMarkAsChecked: canMarkStatement ? () => ledgerStatementChecked.toggleChecked(t) : undefined,
       };
       if (statementCheckModeActive) {
@@ -1312,6 +1342,7 @@ export function TransactionsTable({
       onStatementCheckRowFocus,
       selectedId,
       ledgerStatementChecked,
+      latestCheckedId,
     ]
   );
 
@@ -2244,6 +2275,8 @@ export function TransactionsTable({
         : ledgerTableRows,
     [ledgerTableRows, billWiseLinkPreview, billWiseLinkPreviewEnabled]
   );
+
+
 
   const rowsForRender = displayLedgerRows;
   const enforceCurrentFyAttachmentAutoLoad = dashboardRecentFyAttachmentGate && !pbCompanyNoFyAttachmentGate;
@@ -4157,21 +4190,34 @@ export function TransactionsTable({
         t?.type !== "opening_balance" &&
         t?.type !== FISCAL_YEAR_PARTITION_ROW_TYPE &&
         t?.type !== FY_OPENING_ROW_TYPE;
-      const statementCheckedMobileStyle: React.CSSProperties = {
-        borderWidth: 2,
-        borderStyle: "solid",
-        borderColor: "rgb(245, 158, 11)",
-        backgroundColor: "rgb(254, 243, 199)",
-        backgroundImage: "none",
-        color: "#000000",
-      };
+      const rowIdForCard = statementCheckTxnId(t);
+      const isDim = isStatementChecked && latestCheckedId !== null && rowIdForCard !== latestCheckedId;
+      const statementMeta = rowIdForCard ? ledgerStatementChecked.metaById?.[rowIdForCard] : undefined;
+      const statementCheckedMobileStyle: React.CSSProperties = isDim
+        ? {
+            borderWidth: 1,
+            borderStyle: "dashed",
+            borderColor: "rgb(217, 119, 6 / 0.5)",
+            backgroundColor: "rgb(254, 243, 199 / 0.45)",
+            backgroundImage: "none",
+            color: "#000000",
+            opacity: 0.75,
+          }
+        : {
+            borderWidth: 2,
+            borderStyle: "solid",
+            borderColor: "rgb(245, 158, 11)",
+            backgroundColor: "rgb(254, 243, 199)",
+            backgroundImage: "none",
+            color: "#000000",
+          };
       // Mobile transaction cards: border + amount chips follow 3-dot card color (not site theme).
       return (
         <Card
           key={key}
           data-pl-mobile-transaction-card={mobileCardTone}
           data-pl-mobile-card-color={mobileCardColor}
-          data-pl-statement-checked={isStatementChecked ? "" : undefined}
+          data-pl-statement-checked={isStatementChecked ? (isDim ? "dim" : "") : undefined}
           style={isStatementChecked ? statementCheckedMobileStyle : mobileCardPaletteStyle(mobileCardTone)}
           className={cn(
             "relative min-w-0 w-full overflow-hidden border-2 px-2.5 py-1 shadow-sm cursor-pointer transition-colors",
@@ -4270,7 +4316,7 @@ export function TransactionsTable({
                         className="flex items-center gap-2"
                       >
                         <CheckSquare className="h-3.5 w-3.5" />
-                        {isStatementChecked ? "Unmark as reconciled" : "Mark as reconciled"}
+                        {isStatementChecked ? "Unmark Reconciled Point" : "Mark as Reconciled Point"}
                       </DropdownMenuItem>
                     ) : null}
                     {isPendingApproval && canApproveCardRow ? (
@@ -4404,7 +4450,15 @@ export function TransactionsTable({
             </div>
           </div>
           {showCheckedMessage ? (
-            <StatementCheckedRowMessageLabel className="w-full" align="start" />
+            <StatementCheckedRowMessageLabel
+              className="w-full"
+              align="start"
+              isDim={isDim}
+              markedBy={statementMeta?.markedBy}
+              markedAt={statementMeta?.markedAt}
+              message={statementMeta?.message}
+              onSaveMessage={rowIdForCard ? (note) => ledgerStatementChecked.updateNote(rowIdForCard, note) : undefined}
+            />
           ) : null}
           {/* Bill-wise mobile: linked vouchers Status→Balance width par wrap (print parity) */}
           {showStatusDetailInCard ? (

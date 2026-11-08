@@ -9,8 +9,9 @@ import {
 } from "@/lib/localCompanyDocMirror";
 import {
   LEDGER_STATEMENT_CHECKS_COLLECTION,
-  persistLedgerStatementCheckedIds,
-  readLedgerStatementCheckedIdsFromDb,
+  persistLedgerStatementCheckedData,
+  readLedgerStatementCheckDataFromDb,
+  type StatementCheckMeta,
 } from "@/lib/ledgerStatementCheckPersist";
 import {
   statementCheckTxnId,
@@ -32,7 +33,7 @@ function sameCheckedIdSet(prev: Set<string>, ids: readonly string[]): boolean {
   return true;
 }
 
-/** 3-dot → Mark as checked — SQLite + online sync; check mode se alag tool. */
+/** 3-dot → Mark as Reconciled Point — SQLite + online sync; stores author, timestamp & message. */
 export function useLedgerStatementChecked({
   companyId,
   context,
@@ -53,6 +54,7 @@ export function useLedgerStatementChecked({
     : null;
 
   const [checkedIds, setCheckedIds] = useState<Set<string>>(() => new Set());
+  const [metaById, setMetaById] = useState<Record<string, StatementCheckMeta>>({});
   const hydratedScopeRef = useRef<string | null>(null);
   const marksHydratedRef = useRef(false);
   const userTouchedRef = useRef(false);
@@ -60,6 +62,7 @@ export function useLedgerStatementChecked({
   useEffect(() => {
     if (!scope || !scopeKey) {
       setCheckedIds(new Set());
+      setMetaById({});
       hydratedScopeRef.current = null;
       marksHydratedRef.current = false;
       userTouchedRef.current = false;
@@ -70,11 +73,13 @@ export function useLedgerStatementChecked({
     marksHydratedRef.current = false;
     userTouchedRef.current = false;
     setCheckedIds(new Set());
+    setMetaById({});
 
     let cancelled = false;
-    void readLedgerStatementCheckedIdsFromDb(scope.companyId, scope).then((ids) => {
+    void readLedgerStatementCheckDataFromDb(scope.companyId, scope).then((data) => {
       if (cancelled || hydratedScopeRef.current !== scopeKey || userTouchedRef.current) return;
-      setCheckedIds(new Set(ids));
+      setCheckedIds(new Set(data.markedIds));
+      setMetaById(data.metaById || {});
       marksHydratedRef.current = true;
     });
 
@@ -89,11 +94,12 @@ export function useLedgerStatementChecked({
       const detail = (e as CustomEvent<BrowserDbCollectionBumpDetail>).detail;
       if (!detail || detail.companyId !== companyId) return;
       if (detail.collection !== LEDGER_STATEMENT_CHECKS_COLLECTION) return;
-      // Apna save → bump → reload → persist loop (page hang) mat chalao.
+      // Prevent local write echo loop
       if (detail.source === "local_write") return;
-      void readLedgerStatementCheckedIdsFromDb(companyId, scope).then((ids) => {
+      void readLedgerStatementCheckDataFromDb(companyId, scope).then((data) => {
         if (hydratedScopeRef.current !== scopeKey) return;
-        setCheckedIds((prev) => (sameCheckedIdSet(prev, ids) ? prev : new Set(ids)));
+        setCheckedIds((prev) => (sameCheckedIdSet(prev, data.markedIds) ? prev : new Set(data.markedIds)));
+        setMetaById(data.metaById || {});
         marksHydratedRef.current = true;
       });
     };
@@ -116,21 +122,55 @@ export function useLedgerStatementChecked({
       if (!id) return;
       userTouchedRef.current = true;
       marksHydratedRef.current = true;
-      const next = new Set(checkedIds);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      setCheckedIds(next);
-      void persistLedgerStatementCheckedIds(company, scope, [...next]);
+      const nextChecked = new Set(checkedIds);
+      const nextMeta = { ...metaById };
+
+      if (nextChecked.has(id)) {
+        nextChecked.delete(id);
+        delete nextMeta[id];
+      } else {
+        nextChecked.add(id);
+        nextMeta[id] = {
+          markedBy: user?.displayName || user?.email || "User",
+          markedAt: new Date().toISOString(),
+          message: "",
+        };
+      }
+      setCheckedIds(nextChecked);
+      setMetaById(nextMeta);
+      void persistLedgerStatementCheckedData(company, scope, [...nextChecked], nextMeta);
     },
-    [scope, company, checkedIds]
+    [scope, company, checkedIds, metaById, user]
+  );
+
+  const updateNote = useCallback(
+    async (id: string, message: string) => {
+      if (!scope || !id) return;
+      const currentMeta = metaById[id] || {
+        markedBy: user?.displayName || user?.email || "User",
+        markedAt: new Date().toISOString(),
+      };
+      const nextMeta: Record<string, StatementCheckMeta> = {
+        ...metaById,
+        [id]: {
+          ...currentMeta,
+          message: message.trim(),
+        },
+      };
+      setMetaById(nextMeta);
+      await persistLedgerStatementCheckedData(company, scope, [...checkedIds], nextMeta);
+    },
+    [scope, company, checkedIds, metaById, user]
   );
 
   const canMark = Boolean(scope);
 
   return {
     checkedIds,
+    metaById,
     canMark,
     isChecked,
     toggleChecked,
+    updateNote,
   };
 }

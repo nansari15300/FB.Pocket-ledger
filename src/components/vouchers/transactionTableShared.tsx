@@ -1608,6 +1608,11 @@ export const TransactionRow = React.memo(
     isCheckModeMarked = false,
     /** 3-dot Mark as checked — amber row + Dr/Cr message (check mode se alag) */
     isStatementChecked = false,
+    isStatementCheckedDim = false,
+    statementCheckMarkedBy = null,
+    statementCheckMarkedAt = null,
+    statementCheckMessage = null,
+    onSaveStatementCheckMessage,
     onMarkAsChecked,
     /** Spend-wise group card: 3-dot me Select + Print */
     spendWiseInGroupCard = false,
@@ -2473,7 +2478,15 @@ export const TransactionRow = React.memo(
             ) : salePurchaseTdsVerifyCol === "debit" && salePurchaseTdsVerifyBadge ? (
               <span className={cn("inline-flex w-full", tdsLedgerRowLayout ? "justify-start" : "justify-end")}>{salePurchaseTdsVerifyBadge}</span>
             ) : isStatementChecked && statementCheckedMessageColumn(debit, credit) === "debit" ? (
-              <StatementCheckedRowMessageLabel className="w-full" align="end" />
+              <StatementCheckedRowMessageLabel
+                className="w-full"
+                align="end"
+                isDim={isStatementCheckedDim}
+                markedBy={statementCheckMarkedBy}
+                markedAt={statementCheckMarkedAt}
+                message={statementCheckMessage}
+                onSaveMessage={onSaveStatementCheckMessage}
+              />
             ) : (
               renderHlDrCr(formatAmountCell(debit), "debit")
             )}
@@ -2500,7 +2513,15 @@ export const TransactionRow = React.memo(
             ) : salePurchaseTdsVerifyCol === "credit" && salePurchaseTdsVerifyBadge ? (
               <span className={cn("inline-flex w-full", tdsLedgerRowLayout ? "justify-start" : "justify-end")}>{salePurchaseTdsVerifyBadge}</span>
             ) : isStatementChecked && statementCheckedMessageColumn(debit, credit) === "credit" ? (
-              <StatementCheckedRowMessageLabel className="w-full" align="end" />
+              <StatementCheckedRowMessageLabel
+                className="w-full"
+                align="end"
+                isDim={isStatementCheckedDim}
+                markedBy={statementCheckMarkedBy}
+                markedAt={statementCheckMarkedAt}
+                message={statementCheckMessage}
+                onSaveMessage={onSaveStatementCheckMessage}
+              />
             ) : (
               renderHlDrCr(formatAmountCell(credit), "credit")
             )}
@@ -2700,7 +2721,7 @@ export const TransactionRow = React.memo(
                   className="flex items-center gap-2"
                 >
                   <CheckSquare className="h-3.5 w-3.5" />
-                  {isStatementChecked ? "Unmark as reconciled" : "Mark as reconciled"}
+                  {isStatementChecked ? "Unmark Reconciled Point" : "Mark as Reconciled Point"}
                 </DropdownMenuItem>
               ) : null}
               {showSpendWiseGroupMenuActions ? (
@@ -2928,7 +2949,7 @@ export const TransactionRow = React.memo(
         data-pl-txn-hovered={pairHovered ? "" : undefined}
         data-pl-txn-selected={txnRowSelectedChrome ? "" : undefined}
         data-pl-check-marked={isCheckModeMarked ? "" : undefined}
-        data-pl-statement-checked={isStatementChecked ? "" : undefined}
+        data-pl-statement-checked={isStatementChecked ? (isStatementCheckedDim ? "dim" : "") : undefined}
         data-pl-fy-opening-row={isFyOpeningRow ? "" : undefined}
         data-check-focus={isCheckModeFocused ? "true" : undefined}
         data-pl-spend-wise-group={useRowSpendBorders ? swColor : undefined}
@@ -3016,7 +3037,7 @@ export const TransactionRow = React.memo(
         data-pl-txn-hovered={pairHovered ? "" : undefined}
         data-pl-txn-selected={txnRowSelectedChrome ? "" : undefined}
         data-pl-check-marked={isCheckModeMarked ? "" : undefined}
-        data-pl-statement-checked={isStatementChecked ? "" : undefined}
+        data-pl-statement-checked={isStatementChecked ? (isStatementCheckedDim ? "dim" : "") : undefined}
         data-pl-spend-wise-group={useRowSpendBorders ? swColor : undefined}
         data-pl-spend-edge={useRowSpendBorders ? spendWiseEdgeAttr : undefined}
         data-pl-spend-in-group-card={spendWiseInGroupCard ? "" : undefined}

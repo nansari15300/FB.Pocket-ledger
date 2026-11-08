@@ -1,6 +1,7 @@
 "use client";
 import { deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { VoucherMasterEditHost } from "@/components/vouchers/VoucherMasterEditHost";
+import { ReconciledPointGuardProvider } from "@/components/vouchers/ReconciledPointGuardContext";
 import { VoucherOcrHeaderToggles, OCR_SWITCH_EVENT } from "@/modules/ocr";
 import dynamic from "next/dynamic";
 
@@ -4842,7 +4843,7 @@ export function AddVoucherDialog(props: any) {
 
   const voucherDialogFormTree = (
     <VoucherAttachmentFallbackContext.Provider value={voucherAttachmentFallbackValue}>
-      <>
+      <ReconciledPointGuardProvider>
         <VoucherDialogContent
           {...rest}
           defaultTab={defaultTabProp}
@@ -4897,7 +4898,7 @@ export function AddVoucherDialog(props: any) {
           recurringVoucherSaveBlocked={recurringVoucherSaveBlocked}
           recurringVoucherAuxiliaryDirty={recurringVoucherAuxiliaryDirty}
         />
-      </>
+      </ReconciledPointGuardProvider>
     </VoucherAttachmentFallbackContext.Provider>
   );
 

@@ -1,3 +1,4 @@
+import { useReconciledPointGuard } from "@/components/vouchers/ReconciledPointGuardContext";
 "use client";
 import { addDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
 import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
@@ -393,6 +394,7 @@ export function CreateJournalForm({
 
   const { dateSystem, formatDate, formatCurrencyForPrint } = useDate();
   const { can, role, canPerformBackdatedAction, canEditRecord, canDeleteVoucher, fileAttachmentLimits, allowAttachments } = usePermissions();
+  const reconGuard = useReconciledPointGuard();
   const { deviceLimitReached } = useDeviceLimitContext();
   const { vouchers, processedPartiesForSelection, processedStaff, processedAccounts, expenseAccounts, processedTaxes } = useVouchers();
   /** Header company ≠ compare company: Firestore/SQLite se usi company ki ledger lists. */

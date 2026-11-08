@@ -1,3 +1,4 @@
+import { useReconciledPointGuard } from "@/components/vouchers/ReconciledPointGuardContext";
 
 "use client";
 
@@ -521,6 +522,7 @@ export function CreateSaleForm({
   );
   const { user, customUser } = useAuth();
   const { role, can, canPerformBackdatedAction, canEditRecord, canDeleteVoucher, fileAttachmentLimits, allowAttachments } = usePermissions();
+  const reconGuard = useReconciledPointGuard();
   const { dateSystem, formatCurrency, formatCurrencyForPrint, formatDate, formatDateBS } = useDate();
   const router = useRouter();
   const isMobile = useIsMobile();
@@ -1531,6 +1533,19 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       if (!user || !companyId || !company) {
         sonnerToast.error("Error", { description: "Login and company selection required." });
         return null;
+      }
+
+      if (reconGuard) {
+        const allowed = await reconGuard.checkAndConfirmReconciledDate({
+          companyId,
+          voucherDate: data.date,
+          partyId: data.partyId,
+          allVouchers: vouchers,
+        });
+        if (!allowed) {
+          if (isMounted.current) setIsLoading(false);
+          return null;
+        }
       }
 
       const toastId = await beginVoucherSaveLoadingOrBlock(companyId, "Saving sale...");

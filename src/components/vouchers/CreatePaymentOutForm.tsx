@@ -1,3 +1,4 @@
+import { useReconciledPointGuard } from "@/components/vouchers/ReconciledPointGuardContext";
 "use client";
 import { addDoc, updateDoc, deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
@@ -359,6 +360,7 @@ export function CreatePaymentOutForm({
   const { vouchers: allVouchers, loading: vouchersLoading, processedParties, processedPartiesForSelection, processedStaff, processedTaxes, processedStaffGroups, processedAccounts, expenseAccounts } = useVouchers();
   const { company, companyId } = useCompany();
   const { can, role, canPerformBackdatedAction, canEditRecord, canDeleteVoucher, fileAttachmentLimits, allowAttachments } = usePermissions();
+  const reconGuard = useReconciledPointGuard();
   /** Sirf saved + dialog-linked par file band; nayi txn par parent flag ignore. */
   const fileAttachLockedByDialog = !!voucher?.id && deleteDisabledWhenLinked;
   const isMobile = useIsMobile();
