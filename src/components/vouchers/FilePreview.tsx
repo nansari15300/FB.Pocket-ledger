@@ -677,6 +677,8 @@ interface FilePreviewProps {
   enableHoverFullPreview?: boolean;
   /** Thumbnail ke corner par chhota PDF/JPEG text; forms + gallery ke liye default on. */
   showFormatBadge?: boolean;
+  /** Gallery tiles: outer frame/shadow hata do — sirf ek 1px border rakho. */
+  flushFrame?: boolean;
   /** Saved URLs only (same voucher/entity set) — click par multi-file viewer ← → / swipe */
   attachmentGallery?: { urls: string[]; startIndex: number };
   /** Voucher edit: `files` se string URLs — server pe HTTPS milne par index match */
@@ -729,6 +731,7 @@ export function FilePreview({
   objectFit = "cover",
   enableHoverFullPreview = false,
   showFormatBadge = true,
+  flushFrame = false,
   attachmentGallery,
   attachmentClientFileUrls,
   holdAttachmentClipboard = true,
@@ -3484,7 +3487,8 @@ export function FilePreview({
   const borderedPreview = (
     <div
       className={cn(
-        "relative w-full h-full rounded-lg overflow-hidden bg-background shadow-sm flex items-center justify-center touch-manipulation border border-border",
+        "relative w-full h-full rounded-lg overflow-hidden flex items-center justify-center touch-manipulation border",
+        flushFrame ? "border-blue-300 bg-transparent shadow-none" : "border-border bg-background shadow-sm",
         disabled && !allowPreviewWhenDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
         disabled && allowPreviewWhenDisabled && "opacity-90"
       )}

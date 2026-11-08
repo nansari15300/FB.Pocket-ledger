@@ -16427,21 +16427,27 @@ html body main [data-pl-gallery-company-footer][data-pl-gallery-company-footer][
   border-style: solid !important;
   border-color: rgb(147 197 253) !important; /* blue-300 */
 }
+/* Filter bar is just a layout grid now — no secondary box/border. */
 :is(body[class*="theme-"], html body) [data-pl-gallery-filter-bar] {
-  border-width: 1px !important;
-  border-style: solid !important;
-  border-color: rgb(147 197 253) !important; /* blue-300 */
+  border-width: 0 !important;
+  border-style: none !important;
+  border-color: transparent !important;
+  background-color: transparent !important;
+  padding: 0 !important;
   box-shadow: none !important;
 }
+/* Search box jaisa hi: pure white fill + blue border + rounded-md */
 :is(body[class*="theme-"], html body) input[data-pl-gallery-preview-size],
 :is(body[class*="theme-"], html body) input[data-pl-gallery-preview-size]:focus,
 :is(body[class*="theme-"], html body) input[data-pl-gallery-preview-size]:focus-visible,
 :is(body[class*="theme-"], html body) input[data-pl-gallery-preview-size]:hover {
-  border-width: 0 !important;
-  border-style: none !important;
-  border-color: transparent !important;
-  background: transparent !important;
-  background-color: transparent !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: rgb(147 197 253) !important; /* blue-300 */
+  border-radius: 0.375rem !important; /* rounded-md — search box jaisa */
+  background: #fff !important;
+  background-color: #fff !important;
+  background-image: none !important;
   box-shadow: none !important;
   outline: none !important;
   outline-width: 0 !important;

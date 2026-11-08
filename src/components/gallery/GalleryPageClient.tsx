@@ -77,6 +77,7 @@ import {
 } from "@/lib/firebaseStorageDownloadUrl";
 import { Combobox } from "@/components/ui/combobox";
 import { useDropzone } from "react-dropzone";
+import { createPortal } from "react-dom";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
@@ -272,9 +273,146 @@ function GalleryPagerInCard({
   );
 }
 
+/** Gallery tab switch pills — PC pe page ke top me, mobile pe footer card ke andar. */
+function GalleryTabSwitch({
+  activeTab,
+  onTabChange,
+  className,
+  inline = false,
+}: {
+  activeTab: "company-files" | "unassigned";
+  onTabChange: (tab: "company-files" | "unassigned") => void;
+  className?: string;
+  /** true: wrapper ke bina — parent grid ke direct children (full-width cells) */
+  inline?: boolean;
+}) {
+  const buttons = (
+    <>
+      <Button
+        onClick={() => onTabChange("unassigned")}
+        size="sm"
+        style={activeTab === "unassigned" ? { borderColor: "#16a34a", borderWidth: 1, borderStyle: "solid" } : undefined}
+        className={cn(
+          "h-8 w-auto shrink-0 rounded-full px-3 text-xs",
+          inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
+          activeTab === "unassigned"
+            ? "border border-green-600 bg-blue-100/80 font-semibold text-blue-900 hover:bg-blue-200/80"
+            : "border border-blue-300 bg-blue-100/80 text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
+        )}
+      >
+        Unassigned Documents
+      </Button>
+      <Button
+        onClick={() => onTabChange("company-files")}
+        size="sm"
+        style={activeTab === "company-files" ? { borderColor: "#16a34a", borderWidth: 1, borderStyle: "solid" } : undefined}
+        className={cn(
+          "h-8 w-auto shrink-0 rounded-full px-3 text-xs",
+          inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
+          activeTab === "company-files"
+            ? "border border-green-600 bg-blue-100/80 font-semibold text-blue-900 hover:bg-blue-200/80"
+            : "border border-blue-300 bg-blue-100/80 text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
+        )}
+      >
+        Company Files
+      </Button>
+    </>
+  );
+
+  if (inline) return buttons;
+
+  return (
+    <div className={cn("shrink-0 flex-wrap items-center justify-end gap-1.5", className)}>{buttons}</div>
+  );
+}
+
 /** Mobile collapsed ribbon ki height (~20% patla) — grid scroll `pb` isi se match */
 const GALLERY_COLLAPSED_RIBBON_SCROLL_PB =
   "pb-[calc(2.6rem+env(safe-area-inset-bottom,0px))]";
+
+/**
+ * Gallery grid framing:
+ * - Left / right padding 15px (fixed)
+ * - Row gap 15px (fixed), tile-to-tile column gap = row gap
+ * - Baaki puri width `previewSize` ke hisaab se barabar columns me bant jaati hai,
+ *   cells typed value ke ±(gap/2) ke andar adjust hote hain, 1px se zyada khali jagah nahi.
+ */
+const GALLERY_FIT_GAP = 15;
+const GALLERY_FIT_SIDE_PADDING = 15;
+
+function useGalleryFitColumns(rawSize: number, gap: number, sidePadding: number) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [available, setAvailable] = useState(0);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => setAvailable(el.clientWidth);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const size = Math.max(48, Number.isFinite(rawSize) ? rawSize : 160);
+
+  const fit = useMemo(() => {
+    // clientWidth me padding shamil hai — hataa dete hain
+    const inner = Math.max(size, available - 2 * sidePadding);
+    if (!available || inner <= 0) {
+      const fallback = Math.max(48, size - gap / 2);
+      return { size: fallback, width: fallback, offset: 0 };
+    }
+    const count = Math.max(1, Math.floor((inner + gap) / (size + gap)));
+    const leftover = inner - (count * size + (count - 1) * gap);
+    const growPerCell = leftover / count; // 0..gap
+    const cell = size + growPerCell; // cell + gap = pitch
+    return {
+      size: Math.round(cell * 100) / 100,
+      width: Math.floor(cell),
+      offset: growPerCell / 2, // pehla cell thoda left, last thoda right — 1px tak balanced
+    };
+  }, [available, sidePadding, size, gap]);
+
+  return { containerRef, fit };
+}
+
+/** Gallery grid: typed scale ke aas-paas auto-fit, koi khali jagah nahi.
+ *  `children` ko final tile size milta hai (render-prop) taaki har tile exactly fit ho. */
+function GalleryFitGrid({
+  previewSize,
+  children,
+}: {
+  previewSize: number;
+  children: (tileSize: number) => React.ReactNode;
+}) {
+  const GAP = GALLERY_FIT_GAP;
+  const SIDE_PADDING = GALLERY_FIT_SIDE_PADDING;
+  const { containerRef, fit } = useGalleryFitColumns(previewSize, GAP, SIDE_PADDING);
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full min-w-0"
+      style={{ paddingLeft: SIDE_PADDING, paddingRight: SIDE_PADDING }}
+    >
+      <div
+        className="grid justify-start"
+        style={{
+          gridTemplateColumns: `repeat(auto-fill, ${fit.size}px)`,
+          columnGap: GAP,
+          rowGap: GAP,
+          marginLeft: -fit.offset,
+          paddingTop: SIDE_PADDING,
+          paddingBottom: SIDE_PADDING,
+        }}
+      >
+        {children(fit.width)}
+      </div>
+    </div>
+  );
+}
 
 /** Footer collapse: poori width ribbon — ← bilkul left, → bilkul right; ↑ + beech me current page; arrow ke paas page counts */
 function GalleryCollapsedFooterBar({
@@ -379,7 +517,7 @@ function GalleryCollapsedFooterBar({
 }
 
 // --- Sub-Component: Company Files Tab ---
-function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { previewSize: number, onSizeChange: (size: string | number) => void, onEditVoucher: (voucher: any) => void }) {
+function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher, onTabChange }: { previewSize: number, onSizeChange: (size: string | number) => void, onEditVoucher: (voucher: any) => void, onTabChange: (tab: "company-files" | "unassigned") => void }) {
   const isMobile = useIsMobile();
   const { vouchers, loading, journalAccountNames, processedParties, processedPartiesForSelection, processedStaff, processedAccounts, processedItems, expenseAccounts, processedTaxes, userNames: vouchersUserNames } = useVouchers();
   const { dateSystem, formatDate, formatDateBS } = useDate();
@@ -861,16 +999,13 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
       <div
         className={cn(
           "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain",
-          isMobile && "px-0.5",
           isMobile && !companyFooterExpanded && GALLERY_COLLAPSED_RIBBON_SCROLL_PB
         )}
       >
         <TooltipProvider delayDuration={100}>
-        <div
-          className="grid gap-x-8 gap-y-12 pb-4"
-          style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${previewSize}px, 1fr))` }}
-        >
-        {paginatedCompanyRows.map(({ item, url, fileIndex: index }) => {
+        <GalleryFitGrid previewSize={Number(previewSize)}>
+        {(tileSize) => (<>
+          {paginatedCompanyRows.map(({ item, url, fileIndex: index }) => {
               const attachMeta = getVoucherAttachmentMeta(item, url, index, companyId);
               const formatCaption = companyGalleryFormatCaption(url, attachMeta, pendingLocalLabelsByRef);
               const cleanFileName = getCleanName(
@@ -889,10 +1024,10 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
               };
 
               const tileEl = (
-                       <div className="relative group w-full flex flex-col gap-2 no-underline">
+                       <div className="relative group flex flex-col gap-1 no-underline" style={{ width: `${tileSize}px` }}>
                          <div
-                            className="relative w-full aspect-square border border-transparent group-hover:border-primary group-hover:shadow-lg transition-all rounded-lg overflow-hidden bg-muted/30 cursor-pointer"
-                            style={{ width: `${previewSize}px`, height: `${previewSize}px` }}
+                            className="relative overflow-hidden rounded-lg bg-muted/30 cursor-pointer transition-shadow group-hover:shadow-lg"
+                            style={{ width: `${tileSize}px`, height: `${tileSize}px` }}
                             onClick={() => {
                               void openAttachmentInApp(url, {
                                 title: cleanFileName,
@@ -912,7 +1047,7 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
                             <FilePreview
                               key={`cf-${item.id}-${index}-e${galleryPdfThumbEpoch}`}
                               file={url}
-                              size={Number(previewSize)}
+                              size={Number(tileSize)}
                               storagePath={attachMeta.storagePath}
                               fileSize={attachMeta.fileSize}
                               sourceFileName={attachMeta.sourceFileName}
@@ -923,6 +1058,7 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
                               stableLocalPreviewOnly
                               enableHoverFullPreview={false}
                               holdAttachmentClipboard={false}
+                              flushFrame
                             />
                             {!item.isAvatar && (
                               <DropdownMenu>
@@ -954,11 +1090,8 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
                               </DropdownMenu>
                             )}
                          </div>
-                         <p className="text-[10px] text-center truncate px-2 text-muted-foreground">
+                         <p className="w-full max-w-full min-w-0 truncate px-0.5 text-center text-[10px] text-muted-foreground" style={{ width: `${tileSize}px` }}>
                             {cleanFileName}
-                         </p>
-                         <p className="text-[9px] text-center font-semibold uppercase tracking-wide text-muted-foreground">
-                            {formatCaption}
                          </p>
                       </div>
               );
@@ -1020,6 +1153,7 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
                                   enableHoverFullPreview={false}
                                   showFormatBadge={false}
                                   holdAttachmentClipboard={false}
+                                  flushFrame
                                 />
                               );
                             })()}
@@ -1048,7 +1182,8 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
                 </Tooltip>
               );
         })}
-        </div>
+        </>)}
+        </GalleryFitGrid>
         </TooltipProvider>
       </div>
 
@@ -1067,51 +1202,49 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
       >
         <CardHeader
           className={cn(
-            // Default CardHeader p-6 hatake ~40% kam vertical: p-3 + chhota gap
-            "flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 !p-3 bg-transparent sm:gap-2",
-            isMobile && "flex-col items-stretch gap-2 px-0"
+            // Default CardHeader p-6 hatake: uniform ~12px padding charon taraf,
+            // rows ke beech 5px gap (gap-[5px]); header→content bhi 5px.
+            "flex flex-row flex-wrap items-center justify-between gap-[5px] space-y-0 !p-3 !pb-0 bg-transparent sm:gap-[5px]",
+            isMobile && "flex-col items-stretch gap-[5px] px-3 pb-0"
           )}
         >
-          {/* Ek hi column: row 1 = title + badge + chevron, row 2 = [Page][20][‹][1/2][›] */}
-          <div className="flex w-full min-w-0 flex-col gap-2">
-          <div className="flex w-full items-start justify-between gap-2">
-            {/* Left: title + subtitle (full width, no squeeze). Chevron sits on the right. */}
+          {/* Row 1: title + subtitle (left, one line each); badge pill + chevron
+              side by side on the right. Pill text wraps instead of overflowing. */}
+          <div className="flex w-full min-w-0 flex-col gap-[5px]">
+          <div className="flex w-full items-start gap-[5px]">
             <div className="min-w-0 flex-1">
-              <CardTitle className="text-base font-semibold leading-tight">
+              <CardTitle className="whitespace-nowrap text-sm sm:text-base font-semibold leading-tight">
                 {showAvatarsOnly ? "Account Avatars" : "Company File Gallery"}
               </CardTitle>
-              <CardDescription className="text-[11px] leading-snug">
+              <CardDescription className="whitespace-nowrap text-[11px] leading-snug">
                 {showAvatarsOnly ? "Profile pictures for parties, staff, etc." : "All transaction documents."}
               </CardDescription>
             </div>
-            {/* Poora panel band: yahan ChevronDown = hide (right edge). */}
-            <Badge
-              variant="secondary"
-              className="mt-1 max-w-[min(100%,280px)] shrink-0 whitespace-nowrap px-2 py-0 text-[10px]"
-            >
-              {companyFlatRows.length === 0
-                ? `Showing 0 of ${allFilesCount} files`
-                : `Showing ${companySliceStart + 1}–${Math.min(companySliceStart + companyFilesPerPage, companyFlatRows.length)} of ${filteredFilesCount} files (${allFilesCount} in company)`}
-            </Badge>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="mt-0.5 h-8 w-8 shrink-0 border-blue-400/70 bg-background/90 dark:border-blue-600/70"
-              aria-expanded
-              aria-label="Hide gallery panel"
-              onClick={() => setCompanyFooterExpanded(false)}
-            >
-              <ChevronDown className="h-4 w-4" aria-hidden />
-            </Button>
+            <div className="flex shrink-0 items-start gap-[5px] pt-0.5">
+              <Badge
+                variant="secondary"
+                className="max-w-[min(38vw,170px)] whitespace-normal break-words text-left border border-blue-300 bg-blue-100/80 px-2 py-0.5 text-[10px] leading-snug text-blue-900 hover:bg-blue-100/80"
+              >
+                {companyFlatRows.length === 0
+                  ? `Showing 0 of ${allFilesCount} files`
+                  : `Showing ${companySliceStart + 1}–${Math.min(companySliceStart + companyFilesPerPage, companyFlatRows.length)} of ${filteredFilesCount} files (${allFilesCount} in company)`}
+              </Badge>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-7 w-7 shrink-0 border-blue-400/70 bg-background/90 dark:border-blue-600/70"
+                aria-expanded
+                aria-label="Hide gallery panel"
+                onClick={() => setCompanyFooterExpanded(false)}
+              >
+                <ChevronDown className="h-4 w-4" aria-hidden />
+              </Button>
+            </div>
           </div>
           {/* Per page + pager ek hi line: [Per page][20] [‹][1/2][›] */}
           <div className="flex w-full flex-nowrap items-center justify-end gap-1.5 sm:w-auto">
-            <div className="flex shrink-0 items-center gap-1">
-              <span className="whitespace-nowrap text-[10px] text-muted-foreground">
-                <span className="sm:hidden">Page</span>
-                <span className="hidden sm:inline">Per page</span>
-              </span>
+            <div className="flex shrink-0 items-center">
               {/* Radix Select SSR par random aria-controls; mount ke baad hi render = hydration mismatch avoid */}
               {mounted ? (
                 <Select
@@ -1121,13 +1254,20 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
                     setCompanyFilesPage(1);
                   }}
                 >
-                  <SelectTrigger
-                    data-pl-gallery-page-select
-                    className="pl-chrome-btn-drop h-9 w-[76px] rounded-md border border-blue-300 bg-white text-xs text-blue-900 focus:border-blue-500 focus-visible:border-blue-500"
-                    aria-label="Files per page"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
+                  <div className="relative">
+                    {/* 2 rows: label upar, niche [20 + chevron] ek hi row me — box ka size wahi */}
+                    <span className="pointer-events-none absolute left-2 top-[4px] z-[2] leading-none text-[9px] text-muted-foreground">
+                      <span className="sm:hidden">Page</span>
+                      <span className="hidden sm:inline">Per page</span>
+                    </span>
+                    <SelectTrigger
+                      data-pl-gallery-page-select
+                      className="pl-chrome-btn-drop h-8 w-[76px] items-center justify-between gap-1 rounded-md border border-blue-300 bg-white px-2 pb-0.5 pt-[13px] text-xs text-blue-900 focus:border-blue-500 focus-visible:border-blue-500 [&>span]:!block [&>span]:!truncate"
+                      aria-label="Files per page"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                  </div>
                   <SelectContent>
                     {GALLERY_FILES_PER_PAGE_OPTIONS.map((n) => (
                       <SelectItem key={n} value={String(n)}>
@@ -1141,14 +1281,14 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
               )}
             </div>
             {/* 160 px pill — beech me (Page ke baad, pager se pehle) */}
-            <div className="mx-auto flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-blue-300 bg-blue-100/80 px-3">
+            <div className="mx-auto flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-blue-300 bg-blue-100/80 px-3">
               <Ruler className="h-3.5 w-3.5 text-blue-900" />
               <input
                 type="text"
                 data-pl-gallery-preview-size
                 value={previewSize}
                 onChange={(e) => onSizeChange(e.target.value.replace(/[^0-9]/g, ""))}
-                className="h-6 w-9 border-0 bg-transparent p-0 text-center text-xs font-bold text-blue-900 outline-none ring-0"
+                className="h-6 w-12 shrink-0 rounded-md border-0 bg-white p-0 text-center text-xs font-bold text-blue-900 outline-none ring-0"
               />
               <span className="text-[11px] font-bold text-blue-900/70">px</span>
             </div>
@@ -1160,12 +1300,11 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
               />
             </div>
           </div>
-          </div>
-          <div className={cn("flex flex-wrap items-center gap-1.5", isMobile && "flex w-full min-w-0 flex-row flex-nowrap items-center gap-1.5 px-1")}>
+          <div className={cn("flex flex-wrap items-center gap-[5px]", isMobile && "flex w-full min-w-0 flex-row flex-nowrap items-center gap-[5px]")}>
             <Button
               variant={showAvatarsOnly ? "secondary" : "outline"}
               onClick={() => setShowAvatarsOnly(!showAvatarsOnly)}
-              className={cn("h-9 shrink-0 px-2.5 text-xs", isMobile && "shrink-0")}
+              className={cn("h-8 shrink-0 px-2.5 text-xs", isMobile && "shrink-0")}
             >
               {!isMobile && <UserCircle className="mr-1.5 h-3.5 w-3.5" />}
               Avatars
@@ -1176,15 +1315,15 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
                   <BsDatePicker
                     valueAD={dateRange}
                     onChangeAD={setDateRange as any}
-                    className="h-9 min-h-9 w-full min-w-0 px-2 text-xs"
+                    className="h-8 min-h-8 w-full min-w-0 px-2 text-xs"
                   />
                 </div>
               ) : (
-                <BsDatePicker valueAD={dateRange} onChangeAD={setDateRange as any} className="h-9 min-h-9 px-2 text-xs" />
+                <BsDatePicker valueAD={dateRange} onChangeAD={setDateRange as any} className="h-8 min-h-8 px-2 text-xs" />
               ))}
-            {!mounted && <Skeleton className="h-9 w-[180px] shrink-0 rounded-md" />}
+            {!mounted && <Skeleton className="h-8 w-[180px] shrink-0 rounded-md" />}
             {!showAvatarsOnly && mounted && (
-              <div className="relative ml-auto w-32 shrink-0 sm:w-40">
+              <div className={cn("relative w-32 shrink-0 sm:w-40", isMobile ? "min-w-0 flex-1" : "ml-auto")}>
                 <Search
                   className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-blue-900/70"
                   aria-hidden
@@ -1195,52 +1334,60 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
                   onChange={(e) => setVoucherNumberSearch(e.target.value)}
                   placeholder="Voucher no…"
                   data-pl-gallery-search-pill
-                  className="h-9 rounded-md border border-blue-300 bg-white pl-7 text-xs text-blue-900 placeholder:text-blue-900/50 focus:border-blue-500 focus-visible:border-blue-500 focus-visible:ring-0 dark:bg-white dark:text-blue-900"
+                  className={cn(
+                    "h-8 rounded-md border border-blue-300 bg-white pl-7 text-xs text-blue-900 shadow-[inset_0_0_0_1px_#93c5fd] placeholder:text-blue-900/50 focus:border-blue-500 focus-visible:border-blue-500 focus-visible:ring-0 dark:bg-white dark:text-blue-900",
+                    hasFiltersApplied && "pr-8"
+                  )}
                   aria-label="Search by voucher number"
                 />
+                {/* X sirf search box ke andar, right side */}
+                {hasFiltersApplied && (
+                  <button
+                    type="button"
+                    onClick={handleClearFilters}
+                    aria-label="Clear filters"
+                    title="Clear filters"
+                    className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-blue-900/70 transition-colors hover:bg-blue-100 hover:text-destructive"
+                  >
+                    <XCircle className="h-5 w-5" aria-hidden />
+                  </button>
+                )}
               </div>
             )}
           </div>
+          </div>
         </CardHeader>
-        <CardContent className={cn("bg-transparent px-3 pb-2.5 pt-0", isMobile && "px-0.5")}>
+        <CardContent className={cn("bg-transparent px-3 pb-3 !pt-[5px]", isMobile && "px-3")}>
           <div
             className={cn(
-              isMobile ? "flex flex-row flex-wrap items-center gap-1.5" : "grid grid-cols-2 items-center gap-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-7"
+              // Mobile: Unassigned jaisa 2-column pill grid (left column 10% bada).
+              isMobile ? "grid grid-cols-[1.1fr_1fr] items-stretch gap-[5px]" : "grid grid-cols-2 items-center gap-[5px] md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-7"
             )}
           >
             {mounted ? (
               <>
-                <div className={cn(isMobile && "min-w-[100px] flex-1")}>
+                <div className={cn(isMobile && "min-w-0")}>
                   <Combobox
                     options={[{ id: "all", label: "All Accounts" }, ...CATEGORIES].map((c) => ({ value: c.id, label: c.label }))}
                     value={selectedAccountType}
                     onChange={setSelectedAccountType}
                     placeholder="Account Type"
-                    triggerClassName="h-9 text-xs"
+                    triggerClassName="h-8 text-xs"
                   />
                 </div>
-                <div className={cn(isMobile && "min-w-[100px] flex-1")}>
+                <div className={cn(isMobile && "min-w-0")}>
                   <Combobox
                     options={allEntityOptions}
                     value={selectedEntityId}
                     onChange={setSelectedEntityId}
                     placeholder="Search Account..."
-                    triggerClassName="h-9 text-xs"
-                  />
-                </div>
-                <div className={cn(isMobile && "min-w-[100px] flex-1")}>
-                  <Combobox
-                    options={[{ value: "all", label: "All Users" }, ...userOptions]}
-                    value={selectedUserId}
-                    onChange={setSelectedUserId}
-                    placeholder="Filter by user"
-                    triggerClassName="h-9 text-xs"
+                    triggerClassName="h-8 text-xs"
                   />
                 </div>
                 <Button
                   type="button"
                   variant={fullHoverPreview ? "secondary" : "outline"}
-                  className={cn("inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 text-xs", isMobile && "min-w-[100px] flex-1")}
+                  className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 text-xs", isMobile && "w-full min-w-0 justify-center")}
                   disabled={pdfPrewarmLoading}
                   onClick={() => setFullHoverPreview((v) => !v)}
                   aria-pressed={fullHoverPreview}
@@ -1262,21 +1409,24 @@ function CompanyFilesTab({ previewSize, onSizeChange, onEditVoucher }: { preview
                   )}
                   Full preview
                 </Button>
-                {hasFiltersApplied && (
-                  <Button
-                    variant="ghost"
-                    onClick={handleClearFilters}
-                    size={isMobile ? "icon" : "sm"}
-                    className={cn(
-                      "h-9 border border-dashed border-blue-400/70 px-2.5 text-xs dark:border-blue-600/70",
-                      isMobile && "w-9 shrink-0 p-0"
-                    )}
-                    title={isMobile ? "Clear filters" : undefined}
-                  >
-                    <XCircle className={cn("h-3.5 w-3.5", !isMobile && "mr-1.5")} />
-                    {!isMobile && "Clear All"}
-                  </Button>
-                )}
+                <div className={cn(isMobile && "min-w-0")}>
+                  <Combobox
+                    options={[{ value: "all", label: "All Users" }, ...userOptions]}
+                    value={selectedUserId}
+                    onChange={setSelectedUserId}
+                    placeholder="Filter by user"
+                    triggerClassName="h-8 w-full rounded-full border-blue-300 bg-blue-100/80 text-xs text-blue-900 hover:bg-blue-200/80"
+                  />
+                </div>
+                <div
+                  className={cn("col-span-2", isMobile ? "grid grid-cols-2 gap-[5px]" : "flex items-center justify-end gap-1.5")}
+                >
+                  <GalleryTabSwitch
+                    activeTab="company-files"
+                    onTabChange={onTabChange}
+                    inline
+                  />
+                </div>
               </>
             ) : (
               <>
@@ -1400,7 +1550,7 @@ function firestoreCompanyIdForGallery(
 }
 
 // --- Sub-Component: Unassigned Documents Tab ---
-function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChange }: { handleAttachToVoucher: any; previewSize: number; onSizeChange: any; }) {
+function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChange, onTabChange }: { handleAttachToVoucher: any; previewSize: number; onSizeChange: any; onTabChange: (tab: "company-files" | "unassigned") => void; }) {
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const { company, companyId } = useCompany();
@@ -1967,6 +2117,18 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
     }
   }, [filteredFiles.length, selectedFileIds.size]);
 
+  /** Clear button sirf tab dikhe jab koi filter lagaa ho ya koi file tick ho. */
+  const hasActiveFiltersOrSelection =
+    selectedFileIds.size > 0 ||
+    selectedUploaderId !== "all" ||
+    Boolean(dateRange?.from || dateRange?.to);
+
+  const handleClear = () => {
+    setDateRange(undefined);
+    setSelectedUploaderId("all");
+    setSelectedFileIds(new Set());
+  };
+
   const handleBatchDelete = async () => {
     if (selectedFileIds.size === 0 || !companyId) return;
     setIsBatchDeleting(true);
@@ -2104,16 +2266,17 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
         <input {...getInputProps()} className="hidden" />
 
         <TooltipProvider delayDuration={100}>
-        <div className="grid gap-x-8 gap-y-12" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${previewSize}px, 1fr))` }}>
+        <GalleryFitGrid previewSize={Number(previewSize)}>
+        {(tileSize) => (<>
             {uploadingFiles.map((file) => (
-              <div key={file.id} className="relative w-full flex flex-col gap-2">
-                  <div className="relative w-full aspect-square rounded-lg bg-muted/30 flex items-center justify-center" style={{ width: `${previewSize}px`, height: `${previewSize}px` }}>
+              <div key={file.id} className="relative flex flex-col gap-1" style={{ width: `${tileSize}px` }}>
+                  <div className="relative rounded-lg bg-muted/30 flex items-center justify-center" style={{ width: `${tileSize}px`, height: `${tileSize}px` }}>
                       <div className="flex flex-col items-center gap-2 text-muted-foreground">
                         <Loader2 className="h-8 w-8 animate-spin" />
                         <span className="text-xs">Uploading...</span>
                       </div>
                   </div>
-                  <p className="text-[10px] text-center truncate px-2 text-muted-foreground">{file.name}</p>
+                  <p className="w-full min-w-0 max-w-full truncate px-0.5 text-center text-[10px] text-muted-foreground">{file.name}</p>
               </div>
             ))}
             {paginatedUnassignedFiles.map((file) => {
@@ -2154,27 +2317,26 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
               const isSelected = selectedFileIds.has(file.id);
 
               const tileEl = (
-                <div className="relative group w-full flex flex-col gap-2">
+                <div className="relative group flex flex-col gap-1" style={{ width: `${tileSize}px` }}>
                   <div
                     className={cn(
-                      "relative w-full aspect-square border transition-all rounded-lg overflow-hidden bg-muted/30 cursor-pointer",
-                      isSelected
-                        ? "border-primary ring-2 ring-primary/40 shadow-md"
-                        : "border-transparent group-hover:border-primary group-hover:shadow-lg"
+                      "relative overflow-hidden rounded-lg bg-muted/30 cursor-pointer transition-shadow",
+                      isSelected ? "ring-2 ring-primary/50 shadow-md" : "group-hover:shadow-lg"
                     )}
-                    style={{ width: `${previewSize}px`, height: `${previewSize}px` }}
+                    style={{ width: `${tileSize}px`, height: `${tileSize}px` }}
                     onClick={openAtt}
                   >
                     <FilePreview
                       key={`ua-${file.id}-e${galleryPdfThumbEpoch}`}
                       file={file.url}
-                      size={Number(previewSize)}
+                      size={Number(tileSize)}
                       fileSize={file.size}
                       storagePath={isLocalFileRef(String(file.url || "")) ? undefined : file.path}
                       forceLocalAttachmentOnly={localAttachmentsOnly}
                       stableLocalPreviewOnly
                       enableHoverFullPreview={false}
                       holdAttachmentClipboard={false}
+                      flushFrame
                     />
                     <div
                       className={cn(
@@ -2238,10 +2400,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                  <p className="text-[10px] text-center truncate px-2 text-muted-foreground">{cleanFileName}</p>
-                  <p className="text-[9px] text-center font-semibold uppercase tracking-wide text-muted-foreground">
-                    {getAttachmentFormatLabel(file.url)}
-                  </p>
+                  <p className="w-full min-w-0 max-w-full truncate px-0.5 text-center text-[10px] text-muted-foreground">{cleanFileName}</p>
                 </div>
               );
 
@@ -2293,6 +2452,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
                             showFormatBadge={false}
                             fileSize={file.size}
                             holdAttachmentClipboard={false}
+                            flushFrame
                           />
                         ))()}
                       </div>
@@ -2317,13 +2477,14 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
                 </Tooltip>
               );
             })}
-        </div>
+        </>)}
+        </GalleryFitGrid>
         </TooltipProvider>
       </div>
 
       {unassignedFooterExpanded ? (
       <div className="relative shrink-0">
-        {/* Mobile / APK: camera FAB outside the card, 5px above its top edge (not clipped). */}
+        {/* Mobile / APK: card khula hai to camera card ke bahar 5px upar (clip nahi hota). */}
         {isMobile && (
           <UnassignedCameraCapture
             onCapture={(file) => onDrop([file])}
@@ -2336,60 +2497,35 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
         className="shrink-0 rounded-b-none border border-blue-300 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.08)] sm:rounded-b-lg"
       >
         <CardHeader className="space-y-0 !p-3 pb-2 [&>*+*]:!mt-[5px]">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-[5px]">
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              <div className="min-w-0">
-              <CardTitle className="text-base font-bold leading-tight">Unassigned Documents</CardTitle>
-              <CardDescription className="text-[11px] leading-snug">
-                Attach them to vouchers later.
-              </CardDescription>
+          {/* Company Files jaisa stack: title/subtitle → (badge + chevron) → (Per page + pager) */}
+          <div className="flex w-full min-w-0 flex-col gap-[5px]">
+            <div className="flex w-full items-start gap-[5px]">
+              <div className="min-w-0 flex-1">
+                <CardTitle className="text-sm font-bold leading-tight sm:text-base">Unassigned Documents</CardTitle>
+                <CardDescription className="text-[11px] leading-snug">
+                  Attach them to vouchers later.
+                </CardDescription>
               </div>
-            </div>
-            <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center sm:gap-[10px]">
-              <Badge
-                variant="secondary"
-                className="max-w-[min(100%,360px)] px-2 py-0 text-center text-xs sm:max-w-none sm:text-right"
-              >
-                {filteredFiles.length === 0
-                  ? `Showing 0 of ${unassignedFiles.length} files`
-                  : `Showing ${unassignedSliceStart + 1}–${Math.min(unassignedSliceStart + unassignedFilesPerPage, filteredFiles.length)} of ${filteredFiles.length} files (${unassignedFiles.length} total)`}
-              </Badge>
-              <div className="flex items-center gap-[5px]">
-                <div className="flex items-center gap-1.5">
-                  <span className="whitespace-nowrap text-xs text-muted-foreground">Per page</span>
-                  {isHydrated ? (
-                    <Select
-                      value={String(unassignedFilesPerPage)}
-                      onValueChange={(v) => {
-                        setUnassignedFilesPerPage(Number(v));
-                        setUnassignedFilesPage(1);
-                      }}
-                    >
-                      <SelectTrigger className="pl-chrome-btn-drop h-9 w-[76px] rounded-full border border-blue-300 bg-blue-100/80 text-xs text-blue-900 focus:border-blue-500 focus-visible:border-blue-500" aria-label="Files per page">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {GALLERY_FILES_PER_PAGE_OPTIONS.map((n) => (
-                          <SelectItem key={n} value={String(n)}>
-                            {n}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Skeleton className="h-9 w-[76px] rounded-md" />
-                  )}
-                </div>
-                <GalleryPagerInCard
-                  page={unassignedPageClamped}
-                  totalPages={unassignedTotalPages}
-                  onPageChange={setUnassignedFilesPage}
-                />
+              <div className="flex shrink-0 items-start gap-[5px]">
+                {/* Clear — default me hidden; filter ya tick lage to dikhe */}
+                {hasActiveFiltersOrSelection && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleClear}
+                    className="h-7 w-auto shrink-0 gap-1 rounded-full border-blue-300 bg-blue-100/80 px-2 text-[10px] text-blue-900 animate-in fade-in hover:bg-blue-200/80 hover:text-destructive"
+                    aria-label="Clear filters and selection"
+                    title="Clear filters and selection"
+                  >
+                    <XCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    Clear
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="outline"
                   size="icon"
-                  className="h-9 w-9 shrink-0 rounded-full"
+                  className="h-7 w-7 shrink-0 rounded-full border-blue-400/70 bg-background/90 dark:border-blue-600/70"
                   aria-expanded
                   aria-label="Hide unassigned panel"
                   onClick={() => setUnassignedFooterExpanded(false)}
@@ -2398,60 +2534,167 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
                 </Button>
               </div>
             </div>
+
+            <div className="flex w-full flex-nowrap items-stretch gap-[5px]">
+              <Badge
+                variant="secondary"
+                style={{ borderColor: "#93c5fd", borderWidth: 1, borderStyle: "solid" }}
+                className="flex h-8 min-w-0 flex-1 items-center justify-center whitespace-normal break-words rounded-full border border-blue-300 bg-blue-100/80 px-2 py-0 text-center text-[10px] font-semibold leading-tight text-blue-900"
+              >
+                {filteredFiles.length === 0
+                  ? `Showing 0 of ${unassignedFiles.length} files`
+                  : `Showing ${unassignedSliceStart + 1}–${Math.min(unassignedSliceStart + unassignedFilesPerPage, filteredFiles.length)} of ${filteredFiles.length} files (${unassignedFiles.length} total)`}
+              </Badge>
+              <div className="flex shrink-0 items-center">
+                {isHydrated ? (
+                  <Select
+                    value={String(unassignedFilesPerPage)}
+                    onValueChange={(v) => {
+                      setUnassignedFilesPerPage(Number(v));
+                      setUnassignedFilesPage(1);
+                    }}
+                  >
+                    <div className="relative">
+                      {/* 2 rows: label upar, niche [20 + chevron] ek hi row me — Company Files jaisa */}
+                      <span className="pointer-events-none absolute left-3 top-[4px] z-[2] leading-none text-[9px] text-muted-foreground">
+                        Per page
+                      </span>
+                      <SelectTrigger
+                        className="pl-chrome-btn-drop h-8 w-[88px] items-center justify-between gap-1 rounded-full border border-blue-300 bg-blue-100/80 px-3 pb-0.5 pt-[13px] text-xs text-blue-900 focus:border-blue-500 focus-visible:border-blue-500 [&>span]:!block [&>span]:!truncate"
+                        aria-label="Files per page"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                    </div>
+                    <SelectContent>
+                      {GALLERY_FILES_PER_PAGE_OPTIONS.map((n) => (
+                        <SelectItem key={n} value={String(n)}>
+                          {n}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Skeleton className="h-9 w-[92px] rounded-full" />
+                )}
+              </div>
+              <GalleryPagerInCard
+                page={unassignedPageClamped}
+                totalPages={unassignedTotalPages}
+                onPageChange={setUnassignedFilesPage}
+              />
+            </div>
           </div>
 
           <div
             data-pl-gallery-filter-bar
-            className="flex w-full flex-wrap items-center gap-[5px] rounded-lg bg-blue-100/40 p-2"
+            className={cn(
+              // Secondary box/border hataya — sab pills ek hi main card me.
+              "w-full gap-[5px]",
+              // Mobile: 2 columns — left pills right se 10% bade, sab pills full cell width.
+              isMobile ? "grid grid-cols-[1.1fr_1fr]" : "flex flex-wrap items-center"
+            )}
           >
-            <div className="flex-shrink-0">
+            {/* Date range + Add File */}
+            <div className="min-w-0">
               {isHydrated ? (
                 <BsDatePicker
                   valueAD={dateRange}
                   onChangeAD={setDateRange as any}
-                  className="h-9 min-h-9 rounded-full border-blue-300 bg-blue-100/80 px-3 text-xs text-blue-900 hover:bg-blue-200/80"
+                  className="h-8 min-h-8 w-full rounded-full border-blue-300 bg-blue-100/80 px-3 text-xs text-blue-900 hover:bg-blue-200/80"
                 />
               ) : (
-                <Button type="button" variant="outline" className="h-9 w-[190px] justify-start rounded-full border-blue-300 bg-blue-100/80 text-xs text-blue-900" disabled>
+                <Button type="button" variant="outline" className="h-8 w-full justify-start rounded-full border-blue-300 bg-blue-100/80 text-xs text-blue-900" disabled>
                   <CalendarIcon className="mr-2 h-3.5 w-3.5" />
                   Pick a date range
                 </Button>
               )}
             </div>
 
-            <div className="min-w-[200px] max-w-[300px] flex-1">
+            {/* Add File — date range ke theek bagal me */}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:add-file"))}
+              className="h-8 w-full min-w-0 gap-1.5 rounded-full border-blue-300 bg-blue-100/80 px-3 text-xs text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden />
+              Add File
+            </Button>
+
+            <div className={cn("min-w-0", !isMobile && "min-w-[200px] max-w-[300px] flex-1")}>
               {isHydrated ? (
                 <Combobox
                   options={[{ value: "all", label: "All Users" }, ...uploaderOptions]}
                   value={selectedUploaderId}
                   onChange={setSelectedUploaderId}
                   placeholder="Filter by user"
-                  triggerClassName="h-9 rounded-full border-blue-300 bg-blue-100/80 text-xs text-blue-900 hover:bg-blue-200/80"
+                  triggerClassName="h-8 w-full rounded-full border-blue-300 bg-blue-100/80 text-xs text-blue-900 hover:bg-blue-200/80"
                 />
               ) : (
-                <Button type="button" variant="outline" className="h-9 w-full justify-start rounded-full border-blue-300 bg-blue-100/80 text-xs text-blue-900" disabled>
+                <Button type="button" variant="outline" className="h-8 w-full justify-start rounded-full border-blue-300 bg-blue-100/80 text-xs text-blue-900" disabled>
                   Filter by user
                 </Button>
               )}
             </div>
 
-            <Button
-              variant="outline"
-              onClick={() => {
-                setDateRange(undefined);
-                setSelectedUploaderId("all");
-              }}
-              className="h-9 rounded-full border-blue-300 bg-blue-100/80 px-3 text-xs text-blue-900 hover:bg-blue-200/80 hover:text-destructive"
-            >
-              <XCircle className="mr-1.5 h-3.5 w-3.5" />
-              Clear
-            </Button>
+            {/* Select All + Delete icon (right side, ek hi pill ke andar) */}
+            <div className="flex h-8 w-full min-w-0 items-center rounded-full border border-blue-300 bg-blue-100/80 pr-1">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={handleSelectAll}
+                disabled={filteredFiles.length === 0}
+                className="h-7 min-w-0 flex-1 justify-center gap-1.5 rounded-full border-0 bg-transparent px-2 text-xs text-blue-900 hover:bg-blue-200/60"
+              >
+                {selectedFileIds.size > 0 && selectedFileIds.size === filteredFiles.length ? (
+                  <>
+                    <CheckSquare className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
+                    Deselect All
+                  </>
+                ) : (
+                  <>
+                    <Square className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                    Select All
+                  </>
+                )}
+              </Button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedFileIds.size > 0 && !isBatchDeleting) setBatchDeleteOpen(true);
+                }}
+                disabled={selectedFileIds.size === 0 || isBatchDeleting}
+                aria-label={
+                  selectedFileIds.size > 0
+                    ? `Delete ${selectedFileIds.size} selected`
+                    : "Select files to delete"
+                }
+                title={
+                  selectedFileIds.size > 0
+                    ? `Delete ${selectedFileIds.size} selected`
+                    : "Select files to delete"
+                }
+                className={cn(
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all",
+                  selectedFileIds.size > 0
+                    ? "bg-transparent opacity-100 hover:bg-destructive/10"
+                    : "bg-transparent opacity-40"
+                )}
+              >
+                <Trash2
+                  className="h-4 w-4 text-destructive"
+                  strokeWidth={selectedFileIds.size > 0 ? 2.75 : 1.75}
+                  aria-hidden
+                />
+              </button>
+            </div>
 
             {isHydrated ? (
               <Button
                 type="button"
                 variant="outline"
-                className={cn("inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-blue-300 bg-blue-100/80 px-3 text-xs text-blue-900 hover:bg-blue-200/80", isMobile && "min-w-[100px] flex-1", fullHoverPreview && "border-blue-600 ring-1 ring-blue-600")}
+                className={cn("inline-flex h-8 w-full min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border-blue-300 bg-blue-100/80 px-3 text-xs text-blue-900 hover:bg-blue-200/80", fullHoverPreview && "border-blue-600 ring-1 ring-blue-600")}
                 disabled={pdfPrewarmLoading}
                 onClick={() => setFullHoverPreview((v) => !v)}
                 aria-pressed={fullHoverPreview}
@@ -2477,52 +2720,25 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
               <Skeleton className="h-9 w-[100px] shrink-0 rounded-md" />
             )}
 
-            {filteredFiles.length > 0 && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleSelectAll}
-                className="hidden h-9 px-2.5 text-xs font-medium"
-              >
-                {selectedFileIds.size > 0 && selectedFileIds.size === filteredFiles.length ? (
-                  <>
-                    <CheckSquare className="mr-1.5 h-3.5 w-3.5 text-primary" />
-                    Deselect All
-                  </>
-                ) : (
-                  <>
-                    <Square className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                    Select All
-                  </>
-                )}
-              </Button>
-            )}
-
-            {selectedFileIds.size > 0 && (
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                onClick={() => setBatchDeleteOpen(true)}
-                className="h-9 px-3 text-xs font-semibold shadow-sm animate-in fade-in"
-              >
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                Delete Selected ({selectedFileIds.size})
-              </Button>
-            )}
-
-            <div className="ml-auto flex h-9 items-center gap-1.5 rounded-full border border-blue-300 bg-blue-100/80 px-3">
-              <Ruler className="h-3.5 w-3.5 text-blue-900" />
+            <div className={cn("flex h-8 items-center gap-4 rounded-full border border-blue-300 bg-blue-100/80 px-3", isMobile ? "w-full justify-center" : "ml-auto")}>
+              <Ruler className="h-3.5 w-3.5 shrink-0 text-blue-900" />
               <input
                 type="text"
                 data-pl-gallery-preview-size
                 value={previewSize}
                 onChange={(e) => onSizeChange(e.target.value.replace(/[^0-9]/g, ""))}
-                className="h-6 w-9 border-0 bg-transparent p-0 text-center text-xs font-bold text-blue-900 outline-none ring-0"
+                className="h-6 w-10 shrink-0 rounded-md border-0 bg-white p-0 text-center text-xs font-bold text-blue-900 shadow-[inset_0_0_0_1px_#93c5fd] outline-none ring-0"
               />
               <span className="text-[11px] font-bold text-blue-900/70">px</span>
             </div>
+
+            {/* Tab switch — mobile par grid ki last row: dono buttons aadhi-aadhi full width */}
+            <GalleryTabSwitch
+              activeTab="unassigned"
+              onTabChange={onTabChange}
+              inline
+              className="col-span-2 hidden max-sm:grid max-sm:w-full max-sm:grid-cols-2 max-sm:gap-[5px]"
+            />
           </div>
         </CardHeader>
       </Card>
@@ -2537,6 +2753,17 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewSize, onSizeChan
           variant="unassigned"
         />
       )}
+
+      {/* Mobile / APK camera FAB — sirf jab card hidden ho tab yahan (bottom se 1 inch).
+          Card khula ho to camera card ke upar wale wrapper me hai. */}
+      {isMobile && !unassignedFooterExpanded && typeof document !== "undefined" &&
+        createPortal(
+          <UnassignedCameraCapture
+            onCapture={(file) => onDrop([file])}
+            className="fixed right-4 bottom-[calc(96px+env(safe-area-inset-bottom,0px))] z-[70] h-12 w-12 rounded-full border border-blue-400/80 bg-blue-100 text-blue-900 shadow-lg hover:bg-blue-200"
+          />,
+          document.body
+        )}
 
         <AlertDialog open={!!fileToDelete} onOpenChange={(open) => !open && setFileToDelete(null)}>
             <AlertDialogContent>
@@ -2733,74 +2960,16 @@ export function GalleryPageContent() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden px-0.5 pt-4 pb-0 sm:p-6 md:p-8">
-       <div className="mb-6 flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-          {activeTab === 'unassigned' && (
-            <Button
-              type="button"
-              size="sm"
-              className={cn(
-                "h-8 w-auto gap-1.5 rounded-full border border-blue-300 bg-blue-100/80 px-3 text-xs text-blue-900 hover:border-blue-400 hover:bg-blue-200/80",
-              )}
-              onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:select-all"))}
-              disabled={gallerySelection.total === 0}
-            >
-              {gallerySelection.allSelected ? (
-                <>
-                  <CheckSquare className="h-3.5 w-3.5" aria-hidden />
-                  Deselect All
-                </>
-              ) : (
-                <>
-                  <Square className="h-3.5 w-3.5" aria-hidden />
-                  Select All
-                </>
-              )}
-            </Button>
-          )}
-          <Button
-            onClick={() => setGalleryTab('company-files')}
-            size="sm"
-            className={cn(
-              "h-8 w-auto rounded-full px-3 text-xs",
-              activeTab === 'company-files'
-                ? "border border-blue-600 bg-blue-100/80 text-blue-900 font-semibold hover:bg-blue-200/80"
-                : "border border-blue-300 bg-blue-100/80 text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
-            )}
-          >
-            Company Files
-          </Button>
-          <Button
-            onClick={() => setGalleryTab('unassigned')}
-            size="sm"
-            className={cn(
-              "h-8 w-auto rounded-full px-3 text-xs",
-              activeTab === 'unassigned'
-                ? "border border-blue-600 bg-blue-100/80 text-blue-900 font-semibold hover:bg-blue-200/80"
-                : "border border-blue-300 bg-blue-100/80 text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
-            )}
-          >
-            Unassigned Documents
-          </Button>
-          {activeTab === 'unassigned' && (
-            <Button
-              type="button"
-              size="sm"
-              className="h-8 w-auto gap-1.5 rounded-full border border-blue-300 bg-blue-100/80 px-3 text-xs text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
-              onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:add-file"))}
-            >
-              <Plus className="h-3.5 w-3.5" aria-hidden />
-              Add File
-            </Button>
-          )}
-        </div>
+       {/* Mobile: tab buttons footer card ke andar. PC: yahan top me. */}
+       <GalleryTabSwitch activeTab={activeTab} onTabChange={setGalleryTab} className="hidden sm:flex" />
 
         {/* min-h-0: dashboard main ke andar sirf yahan grid scroll, tab row + footer card fixed */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {activeTab === 'company-files' && (
-           <CompanyFilesTab previewSize={Number(previewSize)} onSizeChange={setPreviewSize} onEditVoucher={handleEditVoucherClick} />
+           <CompanyFilesTab previewSize={Number(previewSize)} onSizeChange={setPreviewSize} onEditVoucher={handleEditVoucherClick} onTabChange={setGalleryTab} />
         )}
         {activeTab === 'unassigned' && (
-           <UnassignedDocumentsTab handleAttachToVoucher={handleAttachToVoucher} previewSize={Number(previewSize)} onSizeChange={setPreviewSize} />
+           <UnassignedDocumentsTab handleAttachToVoucher={handleAttachToVoucher} previewSize={Number(previewSize)} onSizeChange={setPreviewSize} onTabChange={setGalleryTab} />
         )}
         </div>
 

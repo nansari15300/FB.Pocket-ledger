@@ -30,24 +30,32 @@ export type UnassignedCameraCaptureProps = {
   className?: string;
 };
 
-/** Build a scanner-looking image: grayscale + boosted contrast, page-ish margins cropped. */
+/** Build a scanner-looking image: grayscale + boosted contrast, page-ish margins cropped.
+ *  Output is downscaled + JPEG-compressed so camera uploads stay light. */
 async function renderScannedFile(video: HTMLVideoElement, mirrored: boolean): Promise<File> {
   const vw = video.videoWidth || 1080;
   const vh = video.videoHeight || 1440;
+
+  // Longest edge cap — full 12MP photos are unnecessary for a document scan.
+  const MAX_EDGE = 1600;
+  const scale = Math.min(1, MAX_EDGE / Math.max(vw, vh));
+  const outW = Math.max(1, Math.round(vw * scale));
+  const outH = Math.max(1, Math.round(vh * scale));
+
   const canvas = document.createElement("canvas");
-  canvas.width = vw;
-  canvas.height = vh;
+  canvas.width = outW;
+  canvas.height = outH;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("canvas_unavailable");
 
   if (mirrored) {
-    ctx.translate(vw, 0);
+    ctx.translate(outW, 0);
     ctx.scale(-1, 1);
   }
-  ctx.drawImage(video, 0, 0, vw, vh);
+  ctx.drawImage(video, 0, 0, outW, outH);
 
   // Scan look: desaturate, then stretch contrast around a bright paper mid-tone.
-  const img = ctx.getImageData(0, 0, vw, vh);
+  const img = ctx.getImageData(0, 0, outW, outH);
   const d = img.data;
   const CONTRAST = 1.55;
   for (let i = 0; i < d.length; i += 4) {
@@ -58,7 +66,7 @@ async function renderScannedFile(video: HTMLVideoElement, mirrored: boolean): Pr
   ctx.putImageData(img, 0, 0);
 
   const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob((b) => resolve(b), "image/jpeg", 0.92)
+    canvas.toBlob((b) => resolve(b), "image/jpeg", 0.82)
   );
   if (!blob) throw new Error("encode_failed");
   const stamp = new Date();
@@ -67,6 +75,36 @@ async function renderScannedFile(video: HTMLVideoElement, mirrored: boolean): Pr
     stamp.getHours()
   )}${pad(stamp.getMinutes())}${pad(stamp.getSeconds())}.jpg`;
   return new File([blob], name, { type: "image/jpeg", lastModified: stamp.getTime() });
+}
+
+/** Native camera / gallery picker se aayi image ko downscale + JPEG re-encode karo. */
+async function compressPickedImage(file: File): Promise<File> {
+  try {
+    if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
+    const bitmap = await createImageBitmap(file);
+    const MAX_EDGE = 1600;
+    const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+    const outW = Math.max(1, Math.round(bitmap.width * scale));
+    const outH = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, outW, outH);
+    bitmap.close?.();
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.82)
+    );
+    if (!blob || blob.size >= file.size) return file;
+    const base = file.name.replace(/\.[^.]+$/, "") || "Scan";
+    return new File([blob], `${base}.jpg`, {
+      type: "image/jpeg",
+      lastModified: file.lastModified || Date.now(),
+    });
+  } catch {
+    return file;
+  }
 }
 
 export function UnassignedCameraCapture({ onCapture, bottomClass, className }: UnassignedCameraCaptureProps) {
@@ -176,9 +214,11 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className }: U
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    fileRef.current = file;
-    setPreviewUrl(URL.createObjectURL(file));
     setStage("review");
+    void compressPickedImage(file).then((compressed) => {
+      fileRef.current = compressed;
+      setPreviewUrl(URL.createObjectURL(compressed));
+    });
   }, []);
 
   return (
