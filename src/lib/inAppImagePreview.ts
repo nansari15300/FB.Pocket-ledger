@@ -159,26 +159,16 @@ export function showInAppImagePreview(
   attachPreviewCloseInteraction(closeBtn, safeClose);
 
   const openBtn = mkBtn("Browser");
-  /** APK: Custom Tab (`http` URL); blob/data: anchor click — do methods mix karke double-tab na khule */
+  /** APK: real device browser (not the in-app Custom Tab that had no way to close). */
   const openInSystemBrowser = () => {
     const href = String(imageSrc || "").trim();
     if (!href) return;
     void (async () => {
-      let native = false;
-      try {
-        native = Capacitor.isNativePlatform();
-      } catch {
-        native = false;
+      if (/^https?:\/\//i.test(href)) {
+        const { openInDeviceBrowser } = await import("@/lib/openInDeviceBrowser");
+        if (await openInDeviceBrowser(href)) return;
       }
-      try {
-        if (native && /^https?:\/\//i.test(href)) {
-          const { Browser } = await import("@capacitor/browser");
-          await Browser.open({ url: href });
-          return;
-        }
-      } catch (e) {
-        console.warn("[inAppImagePreview] Browser.open failed, fallback anchor", e);
-      }
+      // blob:/data: cannot be handed to another app — fall back to a new tab/anchor.
       try {
         const a = document.createElement("a");
         a.href = href;

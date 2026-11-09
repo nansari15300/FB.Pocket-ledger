@@ -35,7 +35,8 @@ function blobToBase64DataUrl(blob: Blob): Promise<string> {
 }
 
 /**
- * Remote PDF URL (Firebase download, etc.) — native: @capacitor/browser (Chrome Custom Tab); web: window.open.
+ * Remote PDF URL (server / download link) — native: the device's real browser (not a Custom Tab,
+ * which had no close affordance); web: a new tab.
  */
 export async function openHttpPdfInExternalBrowser(url: string): Promise<void> {
   const u = String(url || "").trim();
@@ -43,15 +44,8 @@ export async function openHttpPdfInExternalBrowser(url: string): Promise<void> {
     console.warn("[openPdfExternal] expected http(s) URL", u.slice(0, 64));
     return;
   }
-  if (isCapacitorNative()) {
-    try {
-      const { Browser } = await import("@capacitor/browser");
-      await Browser.open({ url: u });
-      return;
-    } catch (e) {
-      console.warn("[openPdfExternal] Browser.open failed", e);
-    }
-  }
+  const { openInDeviceBrowser } = await import("@/lib/openInDeviceBrowser");
+  if (await openInDeviceBrowser(u)) return;
   window.open(u, "_blank", "noopener,noreferrer");
 }
 

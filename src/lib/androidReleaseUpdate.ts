@@ -50,8 +50,10 @@ export async function androidDownloadAndInstallUpdate(
       };
     }
     try {
-      const { Browser } = await import("@capacitor/browser");
-      await Browser.open({ url: storeTarget });
+      // Play Store link: hand it to the real browser / Play Store app, not an in-app Custom Tab.
+      const { openInDeviceBrowser } = await import("@/lib/openInDeviceBrowser");
+      const opened = await openInDeviceBrowser(storeTarget);
+      if (!opened) throw new Error("Could not open the store link.");
       return { ok: true, playStore: true };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "Could not open Play Store." };
