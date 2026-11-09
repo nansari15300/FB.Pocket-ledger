@@ -96,6 +96,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { UnassignedCameraCapture } from "@/components/gallery/UnassignedCameraCapture";
+import { GalleryTilePreview } from "@/components/gallery/GalleryTilePreview";
 import { openAttachmentInApp } from "@/lib/openAttachmentInApp";
 import { getAttachmentFormatLabel, getAttachmentFormatLabelFromHints } from "@/lib/attachmentFormatLabel";
 import { isLocalOnlyMode } from "@/lib/localMode";
@@ -2557,17 +2558,12 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
                     style={{ width: `${tileSize}px`, height: `${tileSize}px` }}
                     onClick={openAtt}
                   >
-                    <FilePreview
+                    <GalleryTilePreview
                       key={`ua-${file.id}-e${galleryPdfThumbEpoch}`}
-                      file={file.url}
-                      size={Number(tileSize)}
-                      fileSize={file.size}
+                      url={String(file.url || "")}
                       storagePath={isLocalFileRef(String(file.url || "")) ? undefined : file.path}
-                      forceLocalAttachmentOnly={localAttachmentsOnly}
-                      stableLocalPreviewOnly
-                      enableHoverFullPreview={false}
-                      holdAttachmentClipboard={false}
-                      flushFrame
+                      fileSize={file.size}
+                      size={Number(tileSize) || 120}
                     />
                     <div
                       className={cn(
