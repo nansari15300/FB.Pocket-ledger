@@ -11,7 +11,7 @@ import type { Company } from "@/hooks/useCompany";
 import { collection, query, doc, Timestamp, serverTimestamp, where, orderBy, limit, startAfter, documentId } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import type { QueryDocumentSnapshot } from "@/lib/pbCompat/firestore";
-import { firestore, isFirestoreBlockedForServerSession } from "@/lib/firebase";
+import { firestore, isFirestoreBlockedForServerSession } from "@/lib/plClientSession";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";

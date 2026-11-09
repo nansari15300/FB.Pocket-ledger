@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomBytes } from "crypto";
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import { pocketBaseServerUrlForApi } from "@/lib/localCloudSync/server/pbBearerAuth";
 
 /**
@@ -123,12 +123,9 @@ function defaultTransport(): PbBillingTransport {
 
 function fvKind(v: unknown): string | null {
   if (!v || typeof v !== "object") return null;
-  if (!(v instanceof admin.firestore.FieldValue)) return null;
   const name = String((v as { methodName?: unknown }).methodName || "");
-  if (name) return name.replace(/^FieldValue\./, "");
-  if (v.isEqual(admin.firestore.FieldValue.delete())) return "delete";
-  if (v.isEqual(admin.firestore.FieldValue.serverTimestamp())) return "serverTimestamp";
-  return "unknown";
+  if (name.startsWith("FieldValue.")) return name.slice("FieldValue.".length);
+  return null;
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -146,7 +143,7 @@ export function encodeValue(v: unknown, path: string, ops: FieldOp[] | null): Js
   if (v === undefined) return undefined;
   if (v === null || typeof v === "string" || typeof v === "boolean") return v;
   if (typeof v === "number") return Number.isFinite(v) ? v : null;
-  if (v instanceof admin.firestore.Timestamp) return tsJson(v.seconds, v.nanoseconds);
+  if (v instanceof PbTimestamp) return tsJson(v.seconds, v.nanoseconds);
   if (v instanceof Date) {
     const ms = v.getTime();
     return Number.isFinite(ms) ? tsJson(Math.floor(ms / 1000), (((ms % 1000) + 1000) % 1000) * 1e6) : null;
@@ -204,12 +201,41 @@ function encodeData(data: Record<string, unknown>, ops: FieldOp[], dotted: boole
   return out;
 }
 
+/** Minimal `admin.firestore.Timestamp` stand-in: same fields, same helpers the billing code calls. */
+class PbTimestamp {
+  readonly seconds: number;
+  readonly nanoseconds: number;
+  constructor(seconds: number, nanoseconds: number) {
+    this.seconds = Math.trunc(seconds) || 0;
+    this.nanoseconds = Math.max(0, Math.min(999_999_999, Math.trunc(nanoseconds) || 0));
+  }
+  static now(): PbTimestamp {
+    const ms = Date.now();
+    return new PbTimestamp(Math.floor(ms / 1000), (ms % 1000) * 1e6);
+  }
+  static fromMillis(ms: number): PbTimestamp {
+    return new PbTimestamp(Math.floor(ms / 1000), (ms % 1000) * 1e6);
+  }
+  static fromDate(d: Date): PbTimestamp {
+    return PbTimestamp.fromMillis(d.getTime());
+  }
+  toMillis(): number {
+    return this.seconds * 1000 + Math.floor(this.nanoseconds / 1e6);
+  }
+  toDate(): Date {
+    return new Date(this.toMillis());
+  }
+  isEqual(other: PbTimestamp): boolean {
+    return this.seconds === other.seconds && this.nanoseconds === other.nanoseconds;
+  }
+}
+
 export function decodeValue(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(decodeValue);
   if (v && typeof v === "object") {
     const o = v as { __fsTs?: unknown; seconds?: unknown; nanoseconds?: unknown };
     if (o.__fsTs === true && typeof o.seconds === "number") {
-      return new admin.firestore.Timestamp(o.seconds, Math.max(0, Math.min(999999999, Number(o.nanoseconds) || 0)));
+      return new PbTimestamp(o.seconds, Number(o.nanoseconds) || 0);
     }
     const out: Record<string, unknown> = {};
     for (const [k, x] of Object.entries(v as Record<string, unknown>)) out[k] = decodeValue(x);
@@ -255,13 +281,13 @@ class PbDocSnap {
   private readonly _data: Record<string, unknown> | undefined;
   readonly createTime = undefined;
   readonly updateTime = undefined;
-  readonly readTime: admin.firestore.Timestamp;
+  readonly readTime: PbTimestamp;
   constructor(ref: PbDocRef, data: Record<string, unknown> | undefined) {
     this.ref = ref;
     this.id = ref.id;
     this.exists = data !== undefined;
     this._data = data;
-    this.readTime = admin.firestore.Timestamp.now();
+    this.readTime = PbTimestamp.now();
   }
   data(): Record<string, unknown> | undefined {
     return this._data === undefined ? undefined : (decodeValue(this._data) as Record<string, unknown>);
@@ -319,7 +345,13 @@ class PbQuery {
   }
   orderBy(field: unknown, dir: "asc" | "desc" = "asc"): PbQuery {
     // FieldPath.documentId() = the default order (by id)
-    if (field instanceof admin.firestore.FieldPath) return new PbQuery(this.db, this.path, this.wheres, null, this.lim);
+    if (
+      field &&
+      typeof field === "object" &&
+      String((field as { methodName?: unknown }).methodName || "").includes("documentId")
+    ) {
+      return new PbQuery(this.db, this.path, this.wheres, null, this.lim);
+    }
     const f = String(field);
     if (!/^[A-Za-z0-9_]{1,100}$/.test(f)) throw new PbBillingError(3, `Unsupported orderBy field: ${f}`);
     return new PbQuery(this.db, this.path, this.wheres, [f, dir === "desc" ? "desc" : "asc"], this.lim);

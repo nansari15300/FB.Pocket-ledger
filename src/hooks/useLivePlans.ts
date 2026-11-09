@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { DEFAULT_PLANS, type Plan, type PlanId } from "@/config/plans";
 import { mergeAppSettingsPlansDoc } from "@/lib/mergeAppSettingsPlans";
 import {

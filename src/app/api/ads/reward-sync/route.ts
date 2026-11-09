@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import { corsHeadersForPocketLedgerBillingApi } from "@/lib/server/billingApiCors";
 import { resolveBillingCaller } from "@/lib/server/billingCaller";
 import { todayDayKey, type AdActiveUnlock, type AdPendingEvent } from "@/lib/ads/adWalletTypes";

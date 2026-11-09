@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
 import { LoadingSpinner } from '@/components/layout/LoadingSpinner';
 import { collectExpenseGroupScopeAccounts } from '@/lib/expenseGroupTree';
 import { doc } from "@/lib/pbCompat/firestore";
-import { firestore } from '@/lib/firebase';
+import { firestore } from '@/lib/plClientSession';
 import { masterDetailListHref } from '@/lib/masterDetailListPath';
 import { resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";
 

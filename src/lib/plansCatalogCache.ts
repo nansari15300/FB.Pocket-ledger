@@ -76,7 +76,7 @@ export async function resolvePlansCatalogForEntitlements(): Promise<Record<PlanI
           }
           getDoc = seam.getDoc;
         }
-        const { firestore } = await import("@/lib/firebase");
+        const { firestore } = await import("@/lib/plClientSession");
         const { mergeAppSettingsPlansDoc } = await import("@/lib/mergeAppSettingsPlans");
         const snap = await getDoc(doc(firestore, "app_settings", "plans"));
         if (snap.exists()) {

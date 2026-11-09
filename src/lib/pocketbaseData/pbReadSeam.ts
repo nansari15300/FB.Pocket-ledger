@@ -16,19 +16,16 @@
  * Anything the seam cannot evaluate (collection groups, deeper paths) goes to Firestore.
  */
 
-import {
-  doc as fsDoc,
-  getCountFromServer as fsGetCountFromServer,
-  getDoc as fsGetDoc,
-  getDocFromCache as fsGetDocFromCache,
-  getDocFromServer as fsGetDocFromServer,
-  getDocs as fsGetDocs,
-  getDocsFromCache as fsGetDocsFromCache,
-  getDocsFromServer as fsGetDocsFromServer,
-  onSnapshot as fsOnSnapshot,
-  Timestamp,
-} from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+/** Firebase client leaf removed — non-PB paths must fail loudly. */
+type Fn = (...a: unknown[]) => unknown;
+const leafReadGone: Fn = () => {
+  throw new Error("[pl] PocketBase-only: Firebase read/fallback removed for this path");
+};
+const leafOnSnapshotGone: Fn = () => {
+  throw new Error("[pl] PocketBase-only: Firebase onSnapshot fallback removed for this path");
+};
+import { Timestamp } from "@/lib/pbCompat/firestore";
+import { PbDocumentReference, type Converter } from "@/lib/pocketbaseData/pbRef";
 import {
   isPocketBaseCompanyId,
   isPocketBaseRootWritePending,
@@ -41,7 +38,8 @@ import { isSuperAdminEmail } from "@/lib/recovery/recoveryMode";
 import { isPocketBaseRealtimeLive } from "@/lib/pocketbaseData/pbRealtimeState";
 
 
-type AnyRec = Record<string, unknown>;
+/** Snapshot data is untyped by design (Firestore returns `DocumentData` = `{[k: string]: any}`). */
+type AnyRec = Record<string, any>;
 
 type PbTarget =
   | { kind: "doc"; companyId: string; coll: string; docId: string; path: string }
@@ -160,35 +158,76 @@ function parseQueryImpl(qi: unknown): ParsedQuery {
   };
 }
 
-/** PocketBase company target of a ref / query, or null (-> Firestore). */
+/** Our `PbQuerySpec` (`pbQuery.ts`) -> the internal filter/order shape evaluated below. */
+function parseQuerySpec(spec: AnyRec): ParsedQuery {
+  const filters = Array.isArray(spec.filters) ? (spec.filters as AnyRec[]) : [];
+  const orderBy = Array.isArray(spec.orderBy) ? (spec.orderBy as AnyRec[]) : [];
+  const lim = spec.limit;
+  const boundOf = (b: unknown, inclusiveDefault: boolean): ParsedQuery["startAt"] => {
+    if (!b) return null;
+    const o = b as { position?: unknown; inclusive?: unknown };
+    if (!Array.isArray(o.position)) return null;
+    return { position: o.position, inclusive: typeof o.inclusive === "boolean" ? o.inclusive : inclusiveDefault };
+  };
+  return {
+    filters: filters.map((f) => toParsedFilter(f)),
+    orderBy: orderBy.map((ob) => ({
+      field: Array.isArray(ob.field) ? (ob.field as string[]).map(String) : [String(ob.field ?? "")],
+      key: ob.key === true,
+      dir: ob.dir === "desc" ? ("desc" as const) : ("asc" as const),
+    })),
+    limit: typeof lim === "number" && Number.isFinite(lim) ? lim : null,
+    limitToLast: spec.limitToLast === true,
+    startAt: boundOf(spec.startAt, true) ?? boundOf(spec.startAfter, false),
+    endAt: boundOf(spec.endAt, true) ?? boundOf(spec.endBefore, false),
+  };
+}
+
+/** One `where()` entry from `pbQuery.ts` -> `ParsedFilter`. */
+function toParsedFilter(f: AnyRec): ParsedFilter {
+  if (f && Array.isArray(f.filters)) {
+    return { type: "composite", op: String(f.kind || "and"), filters: (f.filters as AnyRec[]).map(toParsedFilter) };
+  }
+  const field = Array.isArray(f?.field) ? (f.field as string[]).map(String) : [String(f?.field ?? "")];
+  return {
+    type: "field",
+    field,
+    key: f?.key === true,
+    op: String(f?.op ?? "=="),
+    value: f?.value,
+  };
+}
+
+/** PocketBase company target of a ref / query, or null. */
 function pbTargetOf(refOrQuery: unknown): PbTarget | null {
   const o = refOrQuery as AnyRec | null;
   if (!o || typeof o !== "object") return null;
   try {
-    if (o.type === "document" || o.type === "collection") {
-      const parts = String(o.path || "").split("/").filter(Boolean);
-      if (parts[0] !== "companies" || !isPocketBaseCompanyId(parts[1])) return null;
+    const kind = o.kind;
+    // Our own reference objects (`pbRef.ts` / `pbQuery.ts`) — no Firestore internals.
+    if ((kind === "document" || kind === "doc") && Array.isArray(o.__segments)) {
+      const parts = (o.__segments as string[]).map(String);
+      if (parts.length < 2 || parts[0] !== "companies" || !isPocketBaseCompanyId(parts[1])) return null;
       const path = parts.join("/");
-      if (o.type === "document" && parts.length === 2) {
-        return { kind: "root", companyId: parts[1], path };
-      }
-      if (o.type === "document" && parts.length === 4 && !parts[2].startsWith("_")) {
+      if (parts.length === 2) return { kind: "root", companyId: parts[1], path };
+      if (parts.length === 4 && !parts[2].startsWith("_")) {
         return { kind: "doc", companyId: parts[1], coll: parts[2], docId: parts[3], path };
-      }
-      if (o.type === "collection" && parts.length === 3) {
-        return { kind: "query", companyId: parts[1], coll: parts[2], path, q: null };
       }
       return null;
     }
-    if (o.type === "query") {
-      const qi = o._query as AnyRec | undefined;
-      if (!qi || qi.collectionGroup) return null;
-      const parts = segmentsOf(qi.path);
-      if (!parts || parts.length !== 3 || parts[0] !== "companies" || !isPocketBaseCompanyId(parts[1])) return null;
-      return { kind: "query", companyId: parts[1], coll: parts[2], path: parts.join("/"), q: parseQueryImpl(qi) };
+    if ((kind === "collection" || kind === "query") && Array.isArray((o.__plQuery as AnyRec | undefined)?.collection)) {
+      const spec = o.__plQuery as AnyRec;
+      const parts = (spec.collection as string[]).map(String);
+      if (parts.length !== 3 || parts[0] !== "companies" || !isPocketBaseCompanyId(parts[1])) return null;
+      return { kind: "query", companyId: parts[1], coll: parts[2], path: parts.join("/"), q: parseQuerySpec(spec) };
+    }
+    if (kind === "collection" && Array.isArray(o.__segments)) {
+      const parts = (o.__segments as string[]).map(String);
+      if (parts.length !== 3 || parts[0] !== "companies" || !isPocketBaseCompanyId(parts[1])) return null;
+      return { kind: "query", companyId: parts[1], coll: parts[2], path: parts.join("/"), q: null };
     }
   } catch {
-    return null; // not understood -> Firestore (unchanged behaviour)
+    return null;
   }
   return null;
 }
@@ -416,8 +455,8 @@ function makeDocSnapshot(ref: unknown, id: string, data: AnyRec | null, converte
 }
 
 function docRefFor(companyId: string, coll: string, id: string, converter?: unknown): unknown {
-  const r = fsDoc(firestore, "companies", companyId, coll, id);
-  return converter ? r.withConverter(converter as never) : r;
+  const r = new PbDocumentReference(["companies", companyId, coll, id]);
+  return converter ? r.withConverter(converter as Converter) : r;
 }
 
 function stripId(d: AnyRec): AnyRec {
@@ -847,8 +886,8 @@ function adminDoc(path: string, mode: GlobalMode = "admin"): Promise<AnyRec | nu
 
 function adminRefFor(path: string, converter: unknown): unknown {
   const parts = path.split("/").filter(Boolean);
-  const r = fsDoc(firestore, parts[0], ...parts.slice(1));
-  return converter ? r.withConverter(converter as never) : r;
+  const r = new PbDocumentReference(parts);
+  return converter ? r.withConverter(converter as Converter) : r;
 }
 
 async function adminGetDocSnapshot(ref: unknown, t: Extract<AdminTarget, { kind: "doc" }>): Promise<AnyRec> {
@@ -1009,8 +1048,6 @@ function onAdminSnapshot(args: unknown[], t: AdminTarget): () => void {
 /* public API (Firestore signatures)                                   */
 /* ------------------------------------------------------------------ */
 
-type Fn = (...a: unknown[]) => unknown;
-
 function wrapDocRead(fsFn: Fn, rootFromServer: boolean): Fn {
   return (...args: unknown[]) => {
     const t = noPocketBaseCompanies() ? null : pbTargetOf(args[0]);
@@ -1038,12 +1075,37 @@ function wrapQueryRead(fsFn: Fn): Fn {
   };
 }
 
-export const getDoc = wrapDocRead(fsGetDoc as Fn, true) as typeof fsGetDoc;
-export const getDocFromServer = wrapDocRead(fsGetDocFromServer as Fn, true) as typeof fsGetDocFromServer;
-export const getDocFromCache = wrapDocRead(fsGetDocFromCache as Fn, false) as typeof fsGetDocFromCache;
-export const getDocs = wrapQueryRead(fsGetDocs as Fn) as typeof fsGetDocs;
-export const getDocsFromServer = wrapQueryRead(fsGetDocsFromServer as Fn) as typeof fsGetDocsFromServer;
-export const getDocsFromCache = wrapQueryRead(fsGetDocsFromCache as Fn) as typeof fsGetDocsFromCache;
+export const getDoc = wrapDocRead(leafReadGone, true) as unknown as <T = AnyRec>(ref: unknown) => Promise<{
+  id: string;
+  ref: any;
+  exists(): boolean;
+  data(): T | undefined;
+  get(field: unknown): any;
+  metadata: { fromCache: boolean; hasPendingWrites: boolean };
+  [k: string]: any;
+}>;
+export const getDocFromServer = wrapDocRead(leafReadGone, true) as unknown as typeof getDoc;
+export const getDocFromCache = wrapDocRead(leafReadGone, false) as unknown as typeof getDoc;
+export const getDocs = wrapQueryRead(leafReadGone) as unknown as <T = AnyRec>(q: unknown) => Promise<{
+  docs: Array<{
+    id: string;
+    ref: any;
+    exists: true;
+    data(): T;
+    get(field: unknown): any;
+    metadata: { fromCache: boolean; hasPendingWrites: boolean };
+    [k: string]: any;
+  }>;
+  size: number;
+  empty: boolean;
+  forEach(cb: (d: any) => void, thisArg?: unknown): void;
+  docChanges(): any[];
+  query: any;
+  metadata: { fromCache: boolean; hasPendingWrites: boolean };
+  [k: string]: any;
+}>;
+export const getDocsFromServer = wrapQueryRead(leafReadGone) as unknown as typeof getDocs;
+export const getDocsFromCache = wrapQueryRead(leafReadGone) as unknown as typeof getDocs;
 
 export const getCountFromServer = ((...args: unknown[]) => {
   const t = noPocketBaseCompanies() ? null : pbTargetOf(args[0]);
@@ -1056,12 +1118,12 @@ export const getCountFromServer = ((...args: unknown[]) => {
       });
     }
   }
-  if (!t || t.kind !== "query") return (fsGetCountFromServer as Fn)(...args);
+  if (!t || t.kind !== "query") return leafReadGone(...args);
   return pbGetQuerySnapshot(args[0], t, null).then((r) => {
     const count = r.snap.size as number;
     return { data: () => ({ count }) };
   });
-}) as typeof fsGetCountFromServer;
+}) as ((...args: unknown[]) => Promise<{ data: () => { count: number } }>);
 
 type Observer = { next?: (v: unknown) => void; error?: (e: unknown) => void; complete?: () => void };
 
@@ -1084,14 +1146,14 @@ function observerFrom(args: unknown[]): Observer {
 
 /** `onSnapshot`: PocketBase company targets re-read the local mirror on every change bump. */
 export const onSnapshot = ((...args: unknown[]) => {
-  if (typeof window === "undefined") return (fsOnSnapshot as Fn)(...args);
+  if (typeof window === "undefined") return leafOnSnapshotGone(...args);
   const t = noPocketBaseCompanies() ? null : pbTargetOf(args[0]);
   if (!t) {
     const at = adminTargetOf(args[0]);
     if (at) return onAdminSnapshot(args, at);
   }
   if (t && t.kind === "root" && isPocketBaseAppSessionActive()) return onRootSnapshotServerOnly(args, t);
-  if (!t || t.kind === "root") return (fsOnSnapshot as Fn)(...args);
+  if (!t || t.kind === "root") return leafOnSnapshotGone(...args);
   const target = args[0];
   const obs = observerFrom(args);
   let closed = false;
@@ -1152,7 +1214,7 @@ export const onSnapshot = ((...args: unknown[]) => {
     if (timer) clearTimeout(timer);
     if (bumpEvent) window.removeEventListener(bumpEvent, onBump);
   };
-}) as typeof fsOnSnapshot;
+}) as ((...args: unknown[]) => () => void);
 
 /** Server login: root `onSnapshot` = server read now, on root-updated events, and every 60s. */
 function onRootSnapshotServerOnly(args: unknown[], t: Extract<PbTarget, { kind: "root" }>): () => void {

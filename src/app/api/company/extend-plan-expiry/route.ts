@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import { resolveBillingCaller } from "@/lib/server/billingCaller";
 
+import { Timestamp } from "@/lib/server/pbBilling/fieldValue";
 /**
  * Owner-only: push company.planExpiry forward by N calendar days (Firestore only).
  * Does not change Stripe subscription period — for manual grace / offline extensions.
@@ -48,7 +50,7 @@ export async function POST(req: NextRequest) {
     const newExpMs = base + days * 86400000;
 
     await ref.update({
-      planExpiry: admin.firestore.Timestamp.fromMillis(newExpMs),
+      planExpiry: Timestamp.fromMillis(newExpMs),
     });
 
     return NextResponse.json({ ok: true, planExpiryMs: newExpMs });

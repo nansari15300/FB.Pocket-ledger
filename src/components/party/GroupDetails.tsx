@@ -182,7 +182,7 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { doc, query, collection, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { batchFetchUserDisplayNamesFromFirestore } from "@/lib/batchFetchUserDisplayNames";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { applyPaymentBillWiseLinkAllocations } from "@/lib/voucherActionsClient";
 import { StaffGroupDetails } from "../staff/StaffGroupDetails";
 import type { StaffGroup, Staff } from "../staff/types";

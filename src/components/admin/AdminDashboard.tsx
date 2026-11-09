@@ -36,7 +36,7 @@ import {
 } from "lucide-react";
 import { collection, query, where, Timestamp, orderBy } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useAuth } from "@/hooks/useAuth";
 import { ensureAdminSync } from "@/lib/adminSync";
 import { useDate } from "@/hooks/useDate";

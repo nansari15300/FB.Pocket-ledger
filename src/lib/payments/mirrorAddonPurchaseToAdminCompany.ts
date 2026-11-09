@@ -1,5 +1,5 @@
 import "server-only";
-import type admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import { mirrorSubscriptionPaymentWithUserLookup } from "@/lib/adminPanelAccounting/mirrorSubscriptionPayment";
 import { packAddonItemsForStorage, type AddonPurchaseLine } from "@/lib/payments/addonItemsPacked";
 

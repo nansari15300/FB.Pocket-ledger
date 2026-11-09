@@ -8,8 +8,8 @@ import { doc, type DocumentReference } from "@/lib/pbCompat/firestore";
 // Seam imports: company docs of a PocketBase company must come from the server mirror, never
 // Firestore (Firebase is authentication only now).
 import { getDoc, getDocFromCache, getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
-import { storage } from "@/lib/firebase";
-import { firestore } from "@/lib/firebase";
+import { storage } from "@/lib/plClientSession";
+import { firestore } from "@/lib/plClientSession";
 import { writeEntity } from "@/lib/writeGateway";
 import { Capacitor } from "@capacitor/core";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";

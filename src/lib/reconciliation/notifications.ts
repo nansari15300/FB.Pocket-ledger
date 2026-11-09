@@ -8,7 +8,7 @@ import {
   reconciliationUserLabel,
   sendReconciliationChatMessage,
 } from "@/lib/reconciliation/reconciliationChat";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 
 type ReconAlertBase = {
   shareId: string;

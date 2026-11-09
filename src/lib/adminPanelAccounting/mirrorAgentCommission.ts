@@ -1,4 +1,5 @@
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import { getPlan, normalizePlanIdForClient, type PlanId } from "@/config/plans";
 import {
   ADMIN_PANEL_COMPANIES_COLLECTION,
@@ -6,6 +7,8 @@ import {
   CLOUD_ADMIN_PANEL_TENANT_ID,
 } from "@/lib/adminPanelCompany/constants";
 import { seedAdminPanelCompanyDefaultMasters } from "@/lib/adminPanelCompany/seedDefaultMasters";
+
+import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
 
 export type MirrorAgentCommissionInput = {
   paymentId: string;
@@ -104,7 +107,7 @@ export async function mirrorAgentCommissionForSubscription(
     const expenseId =
       String(settings.defaultAgentCommissionExpenseId || ADMIN_PANEL_SEED_AGENT_EXPENSE_ID).trim() ||
       ADMIN_PANEL_SEED_AGENT_EXPENSE_ID;
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = serverTimestamp();
     const partyId = `agent-${distributor.uid}`.slice(0, 120);
 
     await companyRef.collection("parties").doc(partyId).set(

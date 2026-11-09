@@ -171,7 +171,7 @@ import { getTransactionQuickSearchHaystack } from "@/components/vouchers/transac
 import { SpendWiseBlinkInfoDialog } from "../vouchers/SpendWiseBlinkInfoDialog";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { Checkbox } from "../ui/checkbox";
 import { useTransactions } from "@/hooks/use-transactions";
 import { useIsMobile, useCalendarMonths } from "@/hooks/use-mobile";

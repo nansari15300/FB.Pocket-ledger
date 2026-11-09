@@ -6,7 +6,7 @@ import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
 import { adminServerSetDoc, isAdminServerDataActive } from "@/lib/pocketbaseData/pbReadSeam";
 import { useState } from "react";
 import { doc, Timestamp } from "@/lib/pbCompat/firestore";
-import { firestore as db } from "@/lib/firebase";
+import { firestore as db } from "@/lib/plClientSession";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'

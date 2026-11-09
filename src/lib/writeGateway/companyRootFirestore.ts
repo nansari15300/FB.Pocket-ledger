@@ -3,7 +3,7 @@
  * mutations sirf yahan (Firestore internal) taaki UI me raw `updateDoc`/`setDoc` na rahe.
  */
 import { doc, setDoc, updateDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 
 /** Company profile/settings shard par partial patch. */
 export async function updateCompanyRootFirestore(companyFirestoreId: string, patch: Record<string, unknown>): Promise<void> {

@@ -4,7 +4,7 @@ import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { useEffect, useRef } from "react";
 import { collection, doc, query, where } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
 import { LOCAL_SERVER_SHARE_ALERT_KIND } from "@/lib/plServerShareInvite";

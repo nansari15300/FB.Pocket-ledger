@@ -7,7 +7,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useAdminAccess } from '@/hooks/useAdminAccess'
 import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDocFromServer } from '@/lib/pocketbaseData/pbReadSeam';
-import { firestore as db } from "@/lib/firebase";
+import { firestore as db } from "@/lib/plClientSession";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";

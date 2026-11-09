@@ -142,7 +142,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { doc } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";
 
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import { resolveSuperAdminCaller } from "@/lib/server/adminCaller";
 import { syncOwnedCompaniesFromUserDocCanonicalPlan } from "@/lib/server/accountCanonicalPlan";
 

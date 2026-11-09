@@ -25,7 +25,7 @@ import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { toast } from "sonner";
 import { collection, doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import {
   applyClientDateRangeFilter,

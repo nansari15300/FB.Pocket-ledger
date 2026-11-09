@@ -3,7 +3,7 @@
  * Tab `ownerId === userId` se company dhundho — preferred id match ho to wahi, warna sabse recently touched.
  */
 import "server-only";
-import type admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 
 function docTimeMs(data: admin.firestore.DocumentData | undefined): number {
   if (!data) return 0;

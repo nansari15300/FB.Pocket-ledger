@@ -4,7 +4,7 @@ import { writeBatch } from "@/lib/writeGateway/pbWrites";
 import { useEffect, useRef } from "react";
 import { collection, query, where, orderBy } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useAuth } from "@/hooks/useAuth";
 
 /**

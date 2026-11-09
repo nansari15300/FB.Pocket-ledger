@@ -16,7 +16,7 @@ import {
   DocumentData,
 } from '@/lib/pbCompat/firestore';
 import { getDocs, onSnapshot } from '@/lib/pocketbaseData/pbReadSeam';
-import { firestore as db } from '@/lib/firebase'
+import { firestore as db } from '@/lib/plClientSession'
 import type { Company } from '@/app/(admin)/admin/companies/page';
 import type { Role } from "@/utils/rbac";
 import { PRESENCE_ONLINE_THRESHOLD_MS } from "@/lib/presenceConstants";

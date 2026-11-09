@@ -5,7 +5,7 @@
  * Firestore + other devices cannot resolve those — upload bytes to Storage here and swap in HTTPS URLs.
  */
 import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
-import { storage } from "@/lib/firebase";
+import { storage } from "@/lib/plClientSession";
 import {
   getPendingPayloadForLocalRef,
   removePendingFile,

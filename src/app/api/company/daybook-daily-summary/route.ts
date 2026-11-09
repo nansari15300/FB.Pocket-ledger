@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
-import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
+import type admin from "@/lib/server/pbAdminTypes";
 import { isCompanyOwner } from "@/lib/server/companyOwner";
 import {
   buildDaybookDailySummary,
   type DaybookSummaryAccountInput,
 } from "@/lib/accountLedgerDaySummary";
 
+import { FieldPath } from "@/lib/server/pbBilling/fieldValue";
+import { verifyCompanyApiCallerByToken, type CompanyApiCaller } from "@/lib/server/companyApiCaller";
+import { pbBillingReady } from "@/lib/server/pbBilling/pbBillingDb";
+import { serverDb } from "@/lib/server/appDb";
 /** Firestore company subdocs jahan optional encryption marker — Admin read par bhi client decrypt ke bina compute nahi. */
 const PL_ENCRYPTED_V1 = "plEncryptedV1";
 const VOUCHER_PAGE_SIZE = 400;
@@ -18,7 +21,7 @@ type Body = {
   userIdFilter?: string | null;
 };
 
-function canReadCompanyDashboard(decoded: admin.auth.DecodedIdToken, data: Record<string, unknown>): boolean {
+function canReadCompanyDashboard(decoded: CompanyApiCaller, data: Record<string, unknown>): boolean {
   if (isCompanyOwner(decoded, data as { ownerId?: string; ownerEmail?: string })) return true;
   const emails = Array.isArray(data.sharedWithEmails) ? data.sharedWithEmails : [];
   const e = String(decoded.email || "")
@@ -39,7 +42,7 @@ function isEncryptedDoc(data: Record<string, unknown> | undefined): boolean {
  */
 export async function POST(req: NextRequest) {
   try {
-    if (!isFirebaseAdminConfigured()) {
+    if (!pbBillingReady()) {
       return NextResponse.json(
         { ok: false, useClientFallback: true, reason: "admin_not_configured" },
         { status: 503 }
@@ -51,11 +54,9 @@ export async function POST(req: NextRequest) {
     if (!token) {
       return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
     }
-
-    getAdminDb();
-    let decoded: admin.auth.DecodedIdToken;
+    let decoded: CompanyApiCaller;
     try {
-      decoded = await admin.auth().verifyIdToken(token);
+      decoded = await verifyCompanyApiCallerByToken(token);
     } catch {
       return NextResponse.json({ error: "Invalid auth token" }, { status: 401 });
     }
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
         ? null
         : String(body.userIdFilter);
 
-    const db = getAdminDb();
+    const db = serverDb();
     const ref = db.collection("companies").doc(companyId);
     const companySnap = await ref.get();
     if (!companySnap.exists) {
@@ -115,7 +116,7 @@ export async function POST(req: NextRequest) {
     for (;;) {
       let q: admin.firestore.Query = ref
         .collection("vouchers")
-        .orderBy(admin.firestore.FieldPath.documentId())
+        .orderBy(FieldPath.documentId() as unknown as admin.firestore.FieldPath)
         .limit(VOUCHER_PAGE_SIZE);
       if (last) {
         q = q.startAfter(last);

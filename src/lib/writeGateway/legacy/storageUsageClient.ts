@@ -4,7 +4,7 @@ import { updateDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { doc, collection } from "@/lib/pbCompat/firestore";
 import { getDoc, getCountFromServer } from "@/lib/pocketbaseData/pbReadSeam";
 import { increment } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import {
   numericEntitlement,
   companyStorageIsLocal,

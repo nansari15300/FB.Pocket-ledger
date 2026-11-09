@@ -17,7 +17,7 @@ import {
   deleteField,
 } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { updateCompanyRootFirestore } from "@/lib/writeGateway/companyRootFirestore";
 import { type PlanId } from "@/config/plans";
 import { resolveAccountPlanIdForEntitlements } from "@/lib/accountPlanForOwner";

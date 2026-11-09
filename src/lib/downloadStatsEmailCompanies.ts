@@ -1,4 +1,4 @@
-import type admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 
 export type EmailCompanyEntry = {
   name: string;

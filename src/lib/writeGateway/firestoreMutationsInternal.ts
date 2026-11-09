@@ -3,23 +3,40 @@
  * ESLint `no-restricted-imports` baaki `src/lib` (aur baad mein UI) me direct `firebase/firestore` mutation import rokta hai.
  */
 
-import {
-  addDoc as firestoreAddDoc,
-  collection,
-  deleteDoc as firestoreDeleteDoc,
-  doc,
-  getDoc as firestoreGetDoc,
-  runTransaction as firestoreRunTransaction,
-  serverTimestamp,
-  setDoc as firestoreSetDoc,
-  updateDoc as firestoreUpdateDoc,
-  writeBatch as firestoreWriteBatch,
-  type CollectionReference,
-  type DocumentReference,
-  type Transaction,
-  type WriteBatch,
+/** Firebase write leaf removed — non-PB paths must fail loudly (no silent success). */
+type RawFn = (...args: any[]) => any;
+const firestoreWriteGone: RawFn = async () => {
+  throw new Error("[pl] PocketBase-only: Firebase write/fallback removed for this path");
+};
+const firestoreBatchGone: RawFn = () => {
+  throw new Error("[pl] PocketBase-only: Firebase writeBatch fallback removed for this path");
+};
+const firestoreAddDoc = firestoreWriteGone;
+const firestoreDeleteDoc = firestoreWriteGone;
+const firestoreGetDoc = firestoreWriteGone;
+const firestoreRunTransaction = firestoreWriteGone;
+const firestoreSetDoc = firestoreWriteGone;
+const firestoreUpdateDoc = firestoreWriteGone;
+const firestoreWriteBatch = firestoreBatchGone;
+import type {
+  CollectionReference,
+  DocumentReference,
+  Transaction,
+  WriteBatch,
 } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { PbCollectionReference, PbDocumentReference } from "@/lib/pocketbaseData/pbRef";
+import { pbCollection, pbDoc } from "@/lib/pocketbaseData/pbQuery";
+import { serverTimestamp } from "@/lib/pocketbaseData/pbValues";
+
+/** Same constructors, without going through the Firestore-shaped module (avoids a type cycle). */
+function collection(...args: unknown[]): CollectionReference {
+  return pbCollection(...args) as unknown as CollectionReference;
+}
+
+function doc(...args: unknown[]): DocumentReference {
+  return pbDoc(...args) as unknown as DocumentReference;
+}
+import { firestoreHandle as firestore } from "@/lib/pbCompat/firestore";
 import { isPocketBaseCompanyId, notePocketBaseRootWrite, listPocketBaseCompanyIds } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import type { PbBatchOp, PbExpect, PbOpResult, PbWriteMode } from "@/lib/pocketbaseData/pbSync";
 import { isPocketBaseAppSessionActive } from "@/lib/pocketbaseData/pbAppSession";
@@ -218,22 +235,9 @@ async function writePocketBaseRootServerOnly(
 function scheduleLedgerChangeLog(ref: unknown, op: "create" | "update" | "delete"): void {
   const parsed = parseLedgerDocPath(ref);
   if (!parsed) return;
-  if (isPocketBaseCompanyId(parsed.fsCompanyId)) return;
-  const safe = `${Date.now()}_${parsed.collectionName}_${parsed.docId}_${Math.random()
-    .toString(36)
-    .slice(2, 8)}`
-    .replace(/[^a-zA-Z0-9_-]/g, "_")
-    .slice(0, 180);
-  const changeRef = doc(firestore, `companies/${parsed.fsCompanyId}/_pl_change_log`, safe);
-  void firestoreSetDoc(changeRef, {
-    collectionName: parsed.collectionName,
-    docId: parsed.docId,
-    op,
-    at: serverTimestamp(),
-    source: "firestoreMutationsInternal",
-  }).catch(() => {
-    /* change feed is best-effort; target write already succeeded */
-  });
+  // PocketBase companies: change feed is handled by pbSync. Non-PB Firebase change log removed.
+  void op;
+  void parsed;
 }
 
 export const setDoc: typeof firestoreSetDoc = (async (...args: unknown[]) => {

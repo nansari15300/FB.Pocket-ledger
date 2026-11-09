@@ -1,7 +1,7 @@
 import { updateDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { doc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { deleteCompanyComplete } from "@/lib/actions/deleteCompanyAction";
 import { resolveCompanyRecycleRootForId, companyRecycleMustSkipFirestore } from "@/lib/companyRecycleRoot";
 

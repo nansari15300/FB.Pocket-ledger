@@ -2,7 +2,7 @@
 
 import { doc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { writeBatch } from "@/lib/writeGateway/firestoreMutationsInternal";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
 import { getLocalCompanyById } from "@/lib/localCompanyStore";
 import { writeEntity } from "@/lib/writeGateway";

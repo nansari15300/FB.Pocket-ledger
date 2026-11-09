@@ -3,7 +3,7 @@
 import { deleteDoc, updateDoc, writeBatch } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { doc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { openDB } from "@/lib/offlineDb";
 
 const STORE = "pendingRecycleBinMutations";
@@ -104,7 +104,7 @@ function getStoragePath(filePath: string): string | null {
 
 async function deleteStorageFilesForDoc(data: Record<string, unknown>): Promise<void> {
   const { ref, deleteObject } = await import("@/lib/pocketbaseData/pbStorage");
-  const { storage } = await import("@/lib/firebase");
+  const { storage } = await import("@/lib/plClientSession");
   const paths: string[] = [];
   if (Array.isArray(data.filePaths)) paths.push(...(data.filePaths as string[]));
   if (data.storagePath && typeof data.storagePath === "string") paths.push(data.storagePath);

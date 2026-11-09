@@ -6,7 +6,7 @@
  */
 
 import { Timestamp } from "@/lib/pbCompat/firestore";
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/plClientSession";
 
 const DEVICE_STORAGE_KEY = "pl_ledger_device_id_v1";
 

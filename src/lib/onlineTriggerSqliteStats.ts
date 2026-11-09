@@ -1,7 +1,7 @@
 "use client";
 
 import { collection, getCountFromServer } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { getBrowserDbForCompanyId } from "@/lib/localSqlite";
 import { getLocalCompanyById } from "@/lib/localCompanyStore";
 import { countPendingFilesForCompany, listPendingFilesForCompany } from "@/lib/localPendingFiles";

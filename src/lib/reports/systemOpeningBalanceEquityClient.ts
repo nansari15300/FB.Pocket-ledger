@@ -1,6 +1,6 @@
 "use client";
 
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/plClientSession";
 import { getLocalCompanyById } from "@/lib/localCompanyStore";
 import {
   getCompanyDocFromBrowserDb,

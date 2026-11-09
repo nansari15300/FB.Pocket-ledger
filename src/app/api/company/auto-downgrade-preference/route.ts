@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
+
 import { resolveBillingCaller } from "@/lib/server/billingCaller";
 import { isCompanyOwner } from "@/lib/server/companyOwner";
+
+import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
 
 type Body = {
   companyId?: string;
@@ -41,7 +43,7 @@ export async function POST(req: NextRequest) {
 
     await companyRef.update({
       autoDowngradeToBasicWhenExpired: raw,
-      autoDowngradePreferenceUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      autoDowngradePreferenceUpdatedAt: serverTimestamp(),
     });
 
     return NextResponse.json({ ok: true, autoDowngradeToBasicWhenExpired: raw });

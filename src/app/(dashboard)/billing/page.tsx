@@ -39,7 +39,7 @@ import { AppFreshInfoButton } from "@/components/ui/AppFreshInfoButton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { auth, firestore } from "@/lib/firebase";
+import { auth, firestore } from "@/lib/plClientSession";
 import { getBillingApiIdToken, getServerLoginBillingAuthHeader } from "@/lib/firebaseAuthForApi";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell, TableFooter } from "@/components/ui/table";

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { collection, limit, onSnapshot, orderBy, query } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useCompany } from "@/hooks/useCompany";
 import { isCloudBackedCompanyShape } from "@/lib/offlineFullWarmSync";
 import { pullCompanyDocFromFirestoreToLocalDb } from "@/lib/firestoreToLocalCompanyPull";

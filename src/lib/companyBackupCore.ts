@@ -4,7 +4,7 @@ import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { Capacitor } from "@capacitor/core";
 import { collection, doc, query, orderBy, limit, startAfter, documentId } from "@/lib/pbCompat/firestore";
 import type { QueryDocumentSnapshot } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { encryptData, encryptBytes } from "@/lib/encryption";
 import { normalizeRestoreAllowedGmailList } from "@/lib/backupRestoreAccess";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";

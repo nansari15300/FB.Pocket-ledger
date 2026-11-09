@@ -7,7 +7,7 @@
 import { deleteDoc, updateDoc, writeBatch } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { collection, deleteField, doc, limit, query } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { deleteCompanyFirebaseStorageFolder } from "@/lib/deleteCompanyStorageFolder";
 
 /** `companies/{id}` ke neeche jo subcollections app me use hoti hain — root delete se pehle khali karo. */

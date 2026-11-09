@@ -7,7 +7,7 @@
  * - Permission-denied retries may force at most once per 60 s.
  * Never throws; returns null on failure / signed-out.
  */
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/plClientSession";
 import { plRegistryPullDebug } from "@/lib/registryPullDebug";
 
 const FORCE_MIN_INTERVAL_MS = 5 * 60_000;

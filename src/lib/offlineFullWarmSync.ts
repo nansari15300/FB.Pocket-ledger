@@ -8,7 +8,7 @@
 
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import type { Company } from "@/hooks/useCompany";
 import {
   COMPANY_LOCAL_MIRROR_SUBCOLLECTIONS,
@@ -47,7 +47,7 @@ import {
 } from "@/lib/attachmentHoldClipboard";
 import { isLocalFileRef } from "@/lib/localPendingFiles";
 import { isDriveFileRef } from "@/lib/legacyDriveFileRef";
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/plClientSession";
 import { markEmbeddedFullWarmSucceeded } from "@/lib/embeddedWarmBootstrapFlags";
 import { isEmbeddedOfflinePreloadClient } from "@/lib/isEmbeddedOfflinePreloadClient";
 import { isDeviceLocalCompany, isServerGateCompany, shouldReadLedgerFromSqliteOnly } from "@/lib/companyStorageKind";

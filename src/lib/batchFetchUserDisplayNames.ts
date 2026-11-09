@@ -2,7 +2,7 @@
 
 import { collection, doc, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 
 /** Firestore `where('…','in', …)` discrete values cap. */
 export const FIRESTORE_UID_IN_CHUNK = 30;

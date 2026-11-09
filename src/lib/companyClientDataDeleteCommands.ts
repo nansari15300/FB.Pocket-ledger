@@ -2,7 +2,7 @@
 
 import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { doc, serverTimestamp } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { clientRandomUUID } from "@/lib/clientRandomUUID";
 import { getLocalCompanyById, removeLocalCompanyById, upsertLocalCompany, type LocalCompanyDoc } from "@/lib/localCompanyStore";
 import { flushPendingBrowserDbSave } from "@/lib/localSqlite";

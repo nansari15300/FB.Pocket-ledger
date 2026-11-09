@@ -9,7 +9,7 @@ import {
   type QueryDocumentSnapshot,
 } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { startOfDay } from "date-fns";
 import { getAnusuchi13FyKey } from "@/lib/reports/anusuchi13Confirmation";
 import { parseFirestoreDateFieldToJsDate } from "@/lib/voucherDateNormalize";

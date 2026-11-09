@@ -1,8 +1,18 @@
-import type * as admin from "firebase-admin";
+import "server-only";
+
+/**
+ * Caller identity used by the ownership checks. Structurally compatible with the Firebase
+ * `DecodedIdToken` fields these helpers used to read, so callers can pass a Pocket Ledger Server
+ * session (`CompanyApiCaller`) instead.
+ */
+export type OwnerCheckCaller = {
+  uid: string;
+  email?: string | null;
+};
 
 /** Same rules as extend-plan-expiry: UID match or normalized email match. */
 export function isCompanyOwner(
-  decoded: admin.auth.DecodedIdToken,
+  decoded: OwnerCheckCaller,
   data: { ownerId?: string; ownerEmail?: string }
 ): boolean {
   const ownerEmail = String(data.ownerEmail || "")

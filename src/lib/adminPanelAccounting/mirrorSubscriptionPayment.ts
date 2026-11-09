@@ -1,4 +1,4 @@
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 
 import {
 
@@ -41,6 +41,8 @@ import {
 } from "@/lib/adminPanelAccounting/subscriptionCatalogItems";
 
 
+
+import { deleteField, serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
 
 export type MirrorSubscriptionPaymentInput = {
 
@@ -133,7 +135,7 @@ export async function mirrorSubscriptionPaymentToAdminCompany(
 
     const partyRef = companyRef.collection("parties").doc(partyId);
 
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = serverTimestamp();
 
 
 
@@ -420,7 +422,7 @@ export async function upgradeLegacySubscriptionMirrorPair(
 
   const saleData = saleSnap.data() as Record<string, unknown>;
 
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  const now = serverTimestamp();
 
 
 
@@ -476,15 +478,15 @@ export async function upgradeLegacySubscriptionMirrorPair(
 
       lineItems,
 
-      accountId: admin.firestore.FieldValue.delete(),
+      accountId: deleteField(),
 
-      bankAccountId: admin.firestore.FieldValue.delete(),
+      bankAccountId: deleteField(),
 
-      bankAccountName: admin.firestore.FieldValue.delete(),
+      bankAccountName: deleteField(),
 
-      debitAccount: admin.firestore.FieldValue.delete(),
+      debitAccount: deleteField(),
 
-      creditAccount: admin.firestore.FieldValue.delete(),
+      creditAccount: deleteField(),
 
       updatedAt: now,
 
@@ -624,7 +626,7 @@ export async function syncMirroredSubscriptionVoucherBankAccount(
 
 
 
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  const now = serverTimestamp();
 
   await receiptRef.set(
 
@@ -696,7 +698,7 @@ export async function syncAdminPanelSubscriberPartyProfile(
 
   });
 
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  const now = serverTimestamp();
 
   await companyRef.collection("parties").doc(partyId).set(
 

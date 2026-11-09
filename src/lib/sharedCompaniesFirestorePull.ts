@@ -3,7 +3,7 @@
 import { collection, getDocsFromServer, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { getValidPocketBaseAuth } from "@/lib/pocketbaseData/pbClient";
-import { auth, firestore, ensureEmbeddedFirestoreOnlineForCloudCompanyLoad } from "@/lib/firebase";
+import { auth, firestore, ensureEmbeddedFirestoreOnlineForCloudCompanyLoad } from "@/lib/plClientSession";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { ensureFreshIdToken } from "@/lib/ensureFreshIdToken";
 import {

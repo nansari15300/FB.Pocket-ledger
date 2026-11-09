@@ -1,6 +1,6 @@
 "use client";
 
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/plClientSession";
 
 const APP_ACCOUNT_IDENTITY_KEY = "pl_app_account_identity_v1";
 

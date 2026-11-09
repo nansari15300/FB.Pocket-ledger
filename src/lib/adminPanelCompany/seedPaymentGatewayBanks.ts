@@ -1,4 +1,5 @@
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import {
   mergeGatewayKeysWithEnv,
   parseGatewayPaymentFlags,
@@ -10,6 +11,8 @@ import {
   ADMIN_PANEL_SEED_GATEWAY_BANK_ID,
   CLOUD_ADMIN_PANEL_TENANT_ID,
 } from "@/lib/adminPanelCompany/constants";
+
+import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
 
 export const ADMIN_PANEL_GATEWAY_BANK_IDS = {
   stripe: "system-payment-gateway-stripe",
@@ -69,7 +72,7 @@ export async function seedPaymentGatewayBanksForAdminCompany(
   const flags = parseGatewayPaymentFlags(raw);
   const avail = resolveBillingGatewayAvailability(keys, flags);
 
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  const now = serverTimestamp();
   const batch = db.batch();
   let writes = 0;
 

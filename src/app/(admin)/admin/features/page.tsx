@@ -5,7 +5,7 @@
 import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAdminAccess } from '@/hooks/useAdminAccess';
-import { firestore } from '@/lib/firebase';
+import { firestore } from '@/lib/plClientSession';
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocFromServer, onSnapshot } from '@/lib/pocketbaseData/pbReadSeam';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';

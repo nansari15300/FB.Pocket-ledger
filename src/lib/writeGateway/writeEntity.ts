@@ -6,7 +6,7 @@
  */
 
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, setDoc, updateDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
 import { getLocalCompanyById } from "@/lib/localCompanyStore";
@@ -31,7 +31,7 @@ import {
   removeRecycleBinAlerts,
   sendRecycleBinMovedAlert,
 } from "@/lib/writeGateway/legacy/recycleBinAlerts";
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/plClientSession";
 import { isSoftDeleteLedgerPatch, purgeGhostLocalCompanyDoc } from "@/lib/purgeGhostLocalCompanyDoc";
 import { isCompanyNotFoundError } from "@/lib/companyUpdateGuard";
 import { isPureLocalLedgerCompany, companyRowUsesSqliteLedgerWrites } from "@/lib/companyStorageKind";

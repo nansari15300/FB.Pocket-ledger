@@ -5,7 +5,7 @@ import { updateDoc, writeBatch } from "@/lib/writeGateway/pbWrites";
 import { adminServerWriteBlocked } from "@/lib/adminData/adminServerMode";
 import { useState, useMemo, useCallback } from "react";
 import { doc, Timestamp, deleteField } from "@/lib/pbCompat/firestore";
-import { firestore as db } from "@/lib/firebase";
+import { firestore as db } from "@/lib/plClientSession";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'

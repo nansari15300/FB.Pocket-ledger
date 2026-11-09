@@ -9,7 +9,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import { doc, collection } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { toast } from "sonner";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useCompany } from "@/hooks/useCompany";
 import { getCompanyDocFromBrowserDb, listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { ComboboxEditOptionContext, type ComboboxEditOptionResolver } from "@/components/ui/comboboxEditOption";

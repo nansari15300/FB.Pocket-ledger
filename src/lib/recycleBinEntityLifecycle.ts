@@ -8,7 +8,7 @@
 import { deleteDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
 import { Timestamp, collection, doc, query, serverTimestamp, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore, auth } from "@/lib/firebase";
+import { firestore, auth } from "@/lib/plClientSession";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { isEmbeddedOfflinePreloadClient } from "@/lib/isEmbeddedOfflinePreloadClient";
 import { isCloudBackedCompanyShape } from "@/lib/offlineFullWarmSync";
@@ -432,7 +432,7 @@ export async function deleteFirebaseStorageFilesForDoc(
   } else if (urls.length > 0) {
     // No company id — best-effort delete (no reuse scan).
     const { ref, deleteObject } = await import("@/lib/pocketbaseData/pbStorage");
-    const { storage } = await import("@/lib/firebase");
+    const { storage } = await import("@/lib/plClientSession");
     for (const filePath of urls) {
       const storagePath = resolveFirebaseStoragePath(filePath);
       if (!storagePath) continue;
@@ -448,7 +448,7 @@ export async function deleteFirebaseStorageFilesForDoc(
   // (warna reused source file delete ho jati).
   if (directPaths.length === 0) return;
   const { ref, deleteObject } = await import("@/lib/pocketbaseData/pbStorage");
-  const { storage } = await import("@/lib/firebase");
+  const { storage } = await import("@/lib/plClientSession");
   const { tryGetStoragePathFromFirebaseDownloadUrl: pathFromHttps } = await import(
     "@/lib/firebaseStorageDownloadUrl"
   );
@@ -667,7 +667,7 @@ async function deleteVoucherFirebaseStorageObjectsReuseSafe(input: {
   if (!cid || !vid) return 0;
   const { buildVoucherStorageScanPrefixes } = await import("@/lib/companyStorageWipePrefixes");
   const { ref, list, deleteObject } = await import("@/lib/pocketbaseData/pbStorage");
-  const { storage } = await import("@/lib/firebase");
+  const { storage } = await import("@/lib/plClientSession");
   const typeHint = String(input.voucherType || "").trim();
   // Missing type → sirf us voucherId ke orphans dhoondo, saare type folders me — bilkul journal pe force default mat.
   const types = typeHint

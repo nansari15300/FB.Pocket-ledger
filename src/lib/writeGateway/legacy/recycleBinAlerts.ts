@@ -4,7 +4,7 @@ import { STAFF_ENTITY_LABEL } from "@/lib/staffEntityDisplayName";
 
 import { collection, doc, query, serverTimestamp, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import type { Company } from "@/hooks/useCompany";
 import { getEffectiveNotificationSettings } from "@/lib/localUserNotificationSettings";
 import { getLocalCompanyById } from "@/lib/localCompanyStore";

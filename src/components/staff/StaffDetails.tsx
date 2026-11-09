@@ -183,7 +183,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { applyPaymentBillWiseLinkAllocations } from "@/lib/voucherActionsClient";
 import { useTransactions } from "@/hooks/use-transactions";
 import { useVouchers } from "@/hooks/useVouchers";

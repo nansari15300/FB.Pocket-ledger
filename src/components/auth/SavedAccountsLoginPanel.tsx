@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/plClientSession";
 import { pocketBaseGoogleSignIn, pocketBaseSignIn, pocketBaseSignOut } from "@/lib/pocketbaseData/pbClient";
 import { pocketBaseSessionUid, readPocketBaseAppProfile, startPocketBaseAppSession } from "@/lib/pocketbaseData/pbAppSession";
 import { resolvePostAuthCompanyRoute } from "@/lib/postAuthCompanyRoute";

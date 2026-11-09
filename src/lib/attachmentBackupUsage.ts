@@ -3,7 +3,7 @@
 import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore, isFirestoreBlockedForServerSession } from "@/lib/firebase";
+import { firestore, isFirestoreBlockedForServerSession } from "@/lib/plClientSession";
 import type { Entitlements, PlanId } from "@/config/plans";
 import { isUnlimitedEntitlementCap } from "@/config/plans";
 import { getPlanFromPlans } from "@/hooks/useLivePlans";

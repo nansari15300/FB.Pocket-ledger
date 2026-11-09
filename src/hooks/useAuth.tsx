@@ -5,7 +5,7 @@ import type { User } from "@/lib/pbCompat/auth";
 import { onAuthStateChanged } from "@/lib/pbCompat/auth";
 import { useRouter, usePathname } from "next/navigation";
 import React, { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { auth, firestore, isFirestoreBlockedForServerSession } from "@/lib/firebase";
+import { auth, firestore, isFirestoreBlockedForServerSession } from "@/lib/plClientSession";
 import { slugify } from "@/lib/slugify";
 import { getCountryByIP } from "@/lib/getCountryByIP";
 import { doc, onSnapshot, serverTimestamp, collection, query, where, getDocs, getDoc } from "@/lib/pbCompat/firestore";

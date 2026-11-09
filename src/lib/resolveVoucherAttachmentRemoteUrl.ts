@@ -2,7 +2,7 @@
 
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { isLocalFileRef, LOCAL_FILE_PREFIX } from "@/lib/localPendingFiles";
 import { normalizeFileUrlsField, getVoucherAttachmentUrlsForUi } from "@/lib/voucherAttachmentNormalize";
 import { isLocalOnlyMode } from "@/lib/localMode";

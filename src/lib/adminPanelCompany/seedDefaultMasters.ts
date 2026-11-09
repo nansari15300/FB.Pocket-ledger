@@ -1,4 +1,5 @@
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import {
   ADMIN_PANEL_COMPANIES_COLLECTION,
   ADMIN_PANEL_SEED_AGENT_EXPENSE_ID,
@@ -9,6 +10,8 @@ import {
   seedPaymentGatewayBanksForAdminCompany,
 } from "@/lib/adminPanelCompany/seedPaymentGatewayBanks";
 
+import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
+
 export async function seedAdminPanelCompanyDefaultMasters(
   db: admin.firestore.Firestore
 ): Promise<void> {
@@ -16,7 +19,7 @@ export async function seedAdminPanelCompanyDefaultMasters(
   const snap = await companyRef.get();
   if (!snap.exists) return;
 
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  const now = serverTimestamp();
   const tenantId = CLOUD_ADMIN_PANEL_TENANT_ID;
 
   const expenseRef = companyRef.collection("expense_accounts").doc(ADMIN_PANEL_SEED_AGENT_EXPENSE_ID);

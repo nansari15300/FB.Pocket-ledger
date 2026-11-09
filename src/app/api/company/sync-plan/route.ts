@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import { corsHeadersForPocketLedgerBillingApi } from "@/lib/server/billingApiCors";
 import { isCompanyOwner } from "@/lib/server/companyOwner";
 import { applyExpiredPaidPlanAutoDowngradeIfEligible } from "@/lib/server/applyExpiredPaidPlanAutoDowngrade";
@@ -36,6 +37,8 @@ function isTransientFirestoreOrNetworkError(e: unknown): boolean {
     code === "ABORTED"
   );
 }
+
+type PlanDocSnap = { exists: boolean; data: () => Record<string, unknown> };
 
 async function withFirestoreTransientRetry<T>(fn: () => Promise<T>): Promise<T> {
   let last: unknown;
@@ -93,7 +96,7 @@ export async function POST(req: NextRequest) {
         : companyId /* backward compat: same id */;
 
     const ref = billingCaller.db.collection("companies").doc(companyId);
-    const snap = await withFirestoreTransientRetry(() => ref.get());
+    const snap = await withFirestoreTransientRetry(() => ref.get() as Promise<PlanDocSnap>);
     if (!snap.exists) {
       return NextResponse.json({ error: "company_not_found" }, { status: 404, headers: cors });
     }
@@ -116,7 +119,7 @@ export async function POST(req: NextRequest) {
       decoded,
     });
     const liveData = expiredDowngraded
-      ? ((await withFirestoreTransientRetry(() => ref.get())).data() || {})
+      ? ((await withFirestoreTransientRetry(() => ref.get() as Promise<PlanDocSnap>)).data() || {})
       : data;
 
     const planId = normalizePlanIdForClient(liveData.planId != null ? String(liveData.planId) : undefined);
@@ -177,7 +180,7 @@ export async function POST(req: NextRequest) {
     let responseData = liveData as Record<string, unknown>;
     if (ownerUid && decoded.uid === ownerUid && isCompanyOwner(decoded, liveData as { ownerId?: string; ownerEmail?: string })) {
       await reconcileOwnerCompaniesPlanWithDriftHeal(db, ownerUid);
-      const refetch = await withFirestoreTransientRetry(() => ref.get());
+      const refetch = await withFirestoreTransientRetry(() => ref.get() as Promise<PlanDocSnap>);
       responseData = (refetch.data() as Record<string, unknown>) || responseData;
     }
 

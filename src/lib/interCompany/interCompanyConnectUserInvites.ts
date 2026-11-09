@@ -8,7 +8,7 @@
 import { deleteDoc, setDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
 import { collection, collectionGroup, deleteField, doc, query, serverTimestamp, where, type DocumentReference, type Unsubscribe } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 import type {
   InterCompanyConnectMasterVisibility,

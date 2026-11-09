@@ -1,4 +1,4 @@
-import type admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import {
   ADMIN_PANEL_COMPANIES_COLLECTION,
   CLOUD_ADMIN_PANEL_TENANT_ID,

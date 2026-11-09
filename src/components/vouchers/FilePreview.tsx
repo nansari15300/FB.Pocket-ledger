@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { openAttachmentInApp } from "@/lib/openAttachmentInApp";
 import { AttachmentHoverPortal, useTapInteractionMode } from "@/components/vouchers/AttachmentHoverPortal";
 import { MultiAttachmentPortalPreview } from "@/components/vouchers/attachmentHoverPreviewBody";
-import { storage } from "@/lib/firebase";
+import { storage } from "@/lib/plClientSession";
 import { ref, getBlob, getMetadata } from "@/lib/pocketbaseData/pbStorage";
 import {
   getAttachmentFormatLabel,

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
-import { isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
+
 import { isServerBillingBearer, resolveBillingCallerFromToken } from "@/lib/server/billingCaller";
 import { normalizePlanIdForClient, PLAN_TIER_ORDER, type PlanId } from "@/config/plans";
 import { readOnlineDemoOfferFromPlansDoc } from "@/lib/mergeAppSettingsPlans";
 
+import { Timestamp } from "@/lib/server/pbBilling/fieldValue";
+import { pbBillingReady } from "@/lib/server/pbBilling/pbBillingDb";
 const MS_PER_DAY = 86_400_000;
 
 export async function POST(req: NextRequest) {
@@ -12,7 +13,7 @@ export async function POST(req: NextRequest) {
     const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() || "";
     if (!token) return NextResponse.json({ error: "missing_token" }, { status: 401 });
     // Firebase token -> Firestore (unchanged); `plpb.` server login -> Pocket Ledger Server store.
-    if (!isServerBillingBearer(token) && !isFirebaseAdminConfigured()) {
+    if (!isServerBillingBearer(token) && !pbBillingReady()) {
       return NextResponse.json({ error: "online_demo_unavailable" }, { status: 503 });
     }
     const billingCaller = await resolveBillingCallerFromToken(token);
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
         row.ref,
         {
           planId,
-          planExpiry: admin.firestore.Timestamp.fromMillis(expiryMs),
+          planExpiry: Timestamp.fromMillis(expiryMs),
           planExpiryMs: expiryMs,
           planUpgradedAtMs: now,
           demoPlanActive: true,

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore, isFirestoreBlockedForServerSession } from "@/lib/firebase";
+import { firestore, isFirestoreBlockedForServerSession } from "@/lib/plClientSession";
 import {
   applyLocalDevPocketBaseGuard,
   DEFAULT_ONLINE_DATA_SERVER_SETTINGS,

@@ -5,7 +5,7 @@
 import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { doc, serverTimestamp, type Unsubscribe } from "@/lib/pbCompat/firestore";
 import { getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import type { InterCompanyEntityKind } from "@/components/inter-company/InterCompanyEntitySide";
 import { isPureLocalInterCompanyCompany } from "@/lib/interCompany/localInterCompanyPolicy";
 import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";

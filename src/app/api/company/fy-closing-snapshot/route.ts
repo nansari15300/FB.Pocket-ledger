@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import { startOfDay } from "date-fns";
-import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
 import type { FyPeriodKind } from "@/lib/fyPagination/types";
 import {
   accumulateVouchersForServerClosing,
@@ -19,6 +18,9 @@ import {
   masterDisplayNameFromFirestore,
 } from "@/lib/fyPagination/server/buildFySnapshotBalanceLabels";
 
+import { verifyCompanyApiCallerByToken, type CompanyApiCaller } from "@/lib/server/companyApiCaller";
+import { pbBillingReady } from "@/lib/server/pbBilling/pbBillingDb";
+import { serverDb } from "@/lib/server/appDb";
 type Body = {
   companyId?: string;
   periodKind?: FyPeriodKind;
@@ -28,7 +30,7 @@ type Body = {
   forceRebuild?: boolean;
 };
 
-function canReadCompany(decoded: admin.auth.DecodedIdToken, data: Record<string, unknown>): boolean {
+function canReadCompany(decoded: CompanyApiCaller, data: Record<string, unknown>): boolean {
   if (isCompanyOwner(decoded, data as { ownerId?: string; ownerEmail?: string })) return true;
   const emails = Array.isArray(data.sharedWithEmails) ? data.sharedWithEmails : [];
   const e = String(decoded.email || "").toLowerCase().trim();
@@ -46,7 +48,7 @@ function fySnapshotDocId(periodKind: FyPeriodKind, periodKey: string): string {
  */
 export async function POST(req: NextRequest) {
   try {
-    if (!isFirebaseAdminConfigured()) {
+    if (!pbBillingReady()) {
       return NextResponse.json(
         { ok: false, useClientFallback: true, reason: "admin_not_configured" },
         { status: 503 }
@@ -58,11 +60,9 @@ export async function POST(req: NextRequest) {
     if (!token) {
       return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
     }
-
-    getAdminDb();
-    let decoded: admin.auth.DecodedIdToken;
+    let decoded: CompanyApiCaller;
     try {
-      decoded = await admin.auth().verifyIdToken(token);
+      decoded = await verifyCompanyApiCallerByToken(token);
     } catch {
       return NextResponse.json({ error: "Invalid auth token" }, { status: 401 });
     }
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "companyId, periodKind, periodKey, beforeMs required" }, { status: 400 });
     }
 
-    const db = getAdminDb();
+    const db = serverDb();
     const ref = db.collection("companies").doc(companyId);
     const companySnap = await ref.get();
     if (!companySnap.exists) {

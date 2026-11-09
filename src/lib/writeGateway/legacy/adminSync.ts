@@ -1,7 +1,7 @@
 import { setDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { isPocketBaseAppSessionActive } from "@/lib/pocketbaseData/pbAppSession";
 import type { User } from "@/lib/pbCompat/auth";
 

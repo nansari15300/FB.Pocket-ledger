@@ -8,7 +8,7 @@ import { Suspense, useState, useEffect, useCallback } from 'react';
 import type { DateRange } from "@/components/ui/ad-calendar";
 import { LoadingSpinner } from '@/components/layout/LoadingSpinner';
 import { doc } from "@/lib/pbCompat/firestore";
-import { firestore } from '@/lib/firebase';
+import { firestore } from '@/lib/plClientSession';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";
 import { mergeLedgerUserDisplayNameMaps } from "@/lib/ledgerUserColumnDisplay";

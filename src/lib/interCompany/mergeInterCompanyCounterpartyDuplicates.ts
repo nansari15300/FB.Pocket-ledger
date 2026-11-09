@@ -5,7 +5,7 @@
 
 import { collection } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import {
   interCompanyClearingPartyDedupeKeys,
   isInterCompanyCompanyClearingParty,

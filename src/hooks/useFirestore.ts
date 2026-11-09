@@ -1,5 +1,5 @@
 "use client";
-import { firestore as db } from "@/lib/firebase";
+import { firestore as db } from "@/lib/plClientSession";
 import { collection, doc, query, where, type Firestore } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import type { Role } from "@/utils/rbac";

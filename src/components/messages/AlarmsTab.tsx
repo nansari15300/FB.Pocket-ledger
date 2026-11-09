@@ -8,7 +8,7 @@ import { useDate } from "@/hooks/useDate";
 import { useAuth } from "@/hooks/useAuth";
 import { collection, query, orderBy, where, doc, serverTimestamp, Timestamp } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { cn } from "@/lib/utils";
 import {
   Card,

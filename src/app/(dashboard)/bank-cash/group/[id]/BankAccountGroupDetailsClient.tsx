@@ -12,7 +12,7 @@ import { filterMembersByMasterGroupScope } from '@/lib/masterGroupMemberScope';
 import { BANK_ENTITY_GROUP_PRESET } from '@/lib/masterEntityGroupFormPresets';
 import { isMasterEntitySystemGroupId, resolveBankListGroupBucketId } from '@/lib/masterEntitySystemGroups';
 import { doc } from "@/lib/pbCompat/firestore";
-import { firestore } from '@/lib/firebase';
+import { firestore } from '@/lib/plClientSession';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";
 

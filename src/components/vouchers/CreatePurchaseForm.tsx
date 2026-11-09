@@ -111,7 +111,7 @@ import {
 } from "@/lib/linkAllocationSettings";
 import { parseFirestoreDateFieldToJsDate } from "@/lib/voucherDateNormalize";
 
-import { firestore, storage } from "@/lib/firebase";
+import { firestore, storage } from "@/lib/plClientSession";
 import { collection, query, where, serverTimestamp, doc, Timestamp } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";

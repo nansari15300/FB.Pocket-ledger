@@ -132,7 +132,7 @@ export async function ensureVoucherLoadSettingsHydrated(): Promise<VoucherLoadSe
           }
           getDoc = seam.getDoc;
         }
-        const { firestore } = await import("@/lib/firebase");
+        const { firestore } = await import("@/lib/plClientSession");
         const snap = await getDoc(doc(firestore, VOUCHER_LOAD_SETTINGS_COLLECTION, VOUCHER_LOAD_SETTINGS_ID));
         const next = normalizeVoucherLoadSettings(snap.exists() ? snap.data() : undefined);
         writeCachedVoucherLoadSettings(next);

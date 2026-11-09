@@ -1,6 +1,7 @@
 import "server-only";
 
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import { PB_BEARER_PREFIX, verifyPocketBaseBearer } from "@/lib/localCloudSync/server/pbBearerAuth";
 import { pbBillingDb, pbBillingReady } from "@/lib/server/pbBilling/pbBillingDb";
 
@@ -50,7 +51,7 @@ export async function resolveBillingCallerFromToken(token: string): Promise<Bill
       email_verified: true,
       firebase: { sign_in_provider: "pl_server", identities: {} },
     } as unknown as admin.auth.DecodedIdToken;
-    return { ok: true, decoded, db: pbBillingDb(), store: "server" };
+    return { ok: true, decoded, db: pbBillingDb() as admin.firestore.Firestore, store: "server" };
   }
   return { ok: false, status: 401, error: "Sign in with your Pocket Ledger Server account (Firebase login is no longer supported)." };
 }
@@ -67,12 +68,12 @@ export function billingStoreFromMeta(meta: Record<string, unknown> | null | unde
 
 export function billingDbForStore(store: BillingStore): admin.firestore.Firestore {
   void store;
-  return pbBillingDb();
+  return pbBillingDb() as admin.firestore.Firestore;
 }
 
 /**
  * Routes that never required auth (initiate / addon-checkout): a `Bearer plpb.` header switches them to the
- * server store (and must verify); without it they keep the old Firebase behaviour unchanged.
+ * server store (and must verify); without a PB bearer the route stays unauthenticated (no Firebase).
  */
 export async function optionalServerBillingCaller(req: Request): Promise<BillingCallerResult | null> {
   const token = bearerFromRequest(req);

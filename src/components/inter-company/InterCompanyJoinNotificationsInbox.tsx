@@ -7,7 +7,7 @@ import { deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { useEffect, useMemo, useState } from "react";
 import { doc, query, collection, where } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

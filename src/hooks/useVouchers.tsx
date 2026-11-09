@@ -8,7 +8,7 @@ import { usePathname } from "next/navigation";
 // Full collection queries: web cloud bhi pura voucher list (no orderBy/limit window).
 import { collectionGroup, query, where, collection, doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc, getDocs, getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useCompany } from "./useCompany";
 import { useAuth } from "./useAuth";
 import { useFyVoucherScope } from "@/contexts/FyVoucherScopeContext";

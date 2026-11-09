@@ -1,6 +1,6 @@
 import "server-only";
 
-import type admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import { normalizePlanIdForClient, type PlanId } from "@/config/plans";
 import { getMergedPlan } from "@/lib/server/getEffectivePlanRegionalPrice";
 import { pickAccountPlanCanonFromCompanySnapshots } from "@/lib/server/accountCanonicalPlan";

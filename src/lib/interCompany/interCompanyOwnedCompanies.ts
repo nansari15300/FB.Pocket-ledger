@@ -3,7 +3,7 @@
  */
 import { collection, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 
 export async function resolveOwnedCompaniesForUser(
   uid: string,

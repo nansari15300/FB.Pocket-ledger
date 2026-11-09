@@ -73,7 +73,7 @@ import { AdRuntimeBootstrap } from "@/components/ads/AdRuntimeBootstrap";
 import { AdLockedScreenBanner } from "@/components/ads/AdLockedScreenBanner";
 import { collection, doc, serverTimestamp, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase"; // device-limit overlay: companies/{id}/devices + users lookup
+import { firestore } from "@/lib/plClientSession"; // device-limit overlay: companies/{id}/devices + users lookup
 import { Settings, Monitor, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { isPbOnlySession } from "@/lib/pocketbaseData/userDisplayNameSession";

@@ -5,6 +5,8 @@ import { google } from "googleapis";
 import { createGoogleOAuth2Client } from "@/lib/server/googleOAuthCredentials";
 import { hostingSetting } from "@/lib/server/hostingConfig";
 
+import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
+
 export type DriveOAuthState = {
   returnPath: string;
   uid: string;
@@ -78,16 +80,19 @@ export function buildGoogleDriveAuthUrl(state: DriveOAuthState): string {
   });
 }
 
-/** OAuth token shard hatao — client Firestore delete rules se block hota hai. */
-export async function deleteGoogleDriveTokensForUser(uid: string): Promise<void> {
-  const { getAdminDb, isFirebaseAdminConfigured } = await import("@/lib/firebaseAdmin");
-  if (!isFirebaseAdminConfigured()) {
-    throw new Error("Firebase Admin not configured for Drive disconnect");
-  }
+/** Drive grant doc on the Pocket Ledger Server: `user_tokens/{uid}/google/drive` (`pl_billing_docs`). */
+async function driveTokenRef(uid: string) {
   const id = String(uid || "").trim();
   if (!id) throw new Error("uid required");
-  const db = getAdminDb();
-  await db.collection("user_tokens").doc(id).collection("google").doc("drive").delete();
+  // Loaded lazily: this module is also imported by routes that never touch Drive.
+  const { serverDb } = await import("@/lib/server/appDb");
+  return serverDb().collection("user_tokens").doc(id).collection("google").doc("drive");
+}
+
+/** OAuth token shard hatao (Drive disconnect). */
+export async function deleteGoogleDriveTokensForUser(uid: string): Promise<void> {
+  const ref = await driveTokenRef(uid);
+  await ref.delete();
 }
 
 export type GoogleDriveTokenPatch = {
@@ -99,20 +104,12 @@ export type GoogleDriveTokenPatch = {
   connectedEmail?: string | null;
 };
 
-/** OAuth callback — Admin SDK se token save (client Firestore rules server par nahi chalte). */
+/** OAuth callback — token sirf server par (Pocket Ledger Server `pl_billing_docs`). */
 export async function saveGoogleDriveTokensForUser(
   uid: string,
   patch: GoogleDriveTokenPatch
 ): Promise<void> {
-  const admin = await import("firebase-admin");
-  const { getAdminDb, isFirebaseAdminConfigured } = await import("@/lib/firebaseAdmin");
-  if (!isFirebaseAdminConfigured()) {
-    throw new Error("Firebase Admin not configured for Drive OAuth callback");
-  }
-  const id = String(uid || "").trim();
-  if (!id) throw new Error("uid required");
-  const db = getAdminDb();
-  const ref = db.collection("user_tokens").doc(id).collection("google").doc("drive");
+  const ref = await driveTokenRef(uid);
   const existingSnap = await ref.get();
   const existing = existingSnap.exists ? (existingSnap.data() as Record<string, unknown>) : {};
   const refreshToken =
@@ -126,7 +123,7 @@ export async function saveGoogleDriveTokensForUser(
       scope: patch.scope ?? null,
       tokenType: patch.tokenType ?? null,
       connectedEmail: patch.connectedEmail ?? null,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: serverTimestamp(),
     },
     { merge: true }
   );
@@ -136,18 +133,19 @@ export async function saveGoogleDriveTokensForUser(
 export async function getGoogleDriveConnectionStatus(
   uid: string
 ): Promise<{ connected: boolean; email: string | null }> {
-  const { getAdminDb, isFirebaseAdminConfigured } = await import("@/lib/firebaseAdmin");
-  if (!isFirebaseAdminConfigured()) {
-    return { connected: false, email: null };
-  }
   const id = String(uid || "").trim();
   if (!id) return { connected: false, email: null };
-  const db = getAdminDb();
-  const snap = await db.collection("user_tokens").doc(id).collection("google").doc("drive").get();
-  if (!snap.exists) return { connected: false, email: null };
-  const d = snap.data() as Record<string, unknown>;
-  const accessToken = String(d.accessToken || "").trim();
-  if (!accessToken) return { connected: false, email: null };
-  const email = String(d.connectedEmail || "").trim() || null;
-  return { connected: true, email };
+  try {
+    const ref = await driveTokenRef(id);
+    const snap = await ref.get();
+    if (!snap.exists) return { connected: false, email: null };
+    const d = snap.data() as Record<string, unknown>;
+    const accessToken = String(d.accessToken || "").trim();
+    if (!accessToken) return { connected: false, email: null };
+    const email = String(d.connectedEmail || "").trim() || null;
+    return { connected: true, email };
+  } catch {
+    // Server not linked: the UI shows "not connected" instead of an error card.
+    return { connected: false, email: null };
+  }
 }

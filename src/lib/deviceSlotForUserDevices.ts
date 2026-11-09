@@ -8,7 +8,7 @@
 
 import { collectionGroup, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 
 /** UI: 5 → "05"; missing → em dash */
 export function formatDeviceSlotLabel(slot: number | undefined): string {

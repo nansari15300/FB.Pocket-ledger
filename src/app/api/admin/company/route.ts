@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
-import { getAdminDb } from "@/lib/firebaseAdmin";
+
 import { isSuperAdminServer } from "@/lib/server/isSuperAdminServer";
 import {
   ADMIN_PANEL_COMPANIES_COLLECTION,
@@ -10,14 +9,16 @@ import {
 } from "@/lib/adminPanelCompany/constants";
 import { seedAdminPanelCompanyDefaultMasters } from "@/lib/adminPanelCompany/seedDefaultMasters";
 
+import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
+
+import { verifyCompanyApiCallerByToken, type CompanyApiCaller } from "@/lib/server/companyApiCaller";
+import { serverDb } from "@/lib/server/appDb";
 async function requireSuperAdmin(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
   if (!token) return { error: "Missing Authorization Bearer token", status: 401 } as const;
-
-  getAdminDb();
   try {
-    const decoded = await admin.auth().verifyIdToken(token);
+    const decoded = await verifyCompanyApiCallerByToken(token);
     if (!(await isSuperAdminServer(decoded.uid, decoded.email ?? undefined))) {
       return { error: "SuperAdmin only", status: 403 } as const;
     }
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
   const auth = await requireSuperAdmin(req);
   if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const db = getAdminDb();
+  const db = serverDb();
   const companyRef = db.collection(ADMIN_PANEL_COMPANIES_COLLECTION).doc(CLOUD_ADMIN_PANEL_TENANT_ID);
   const snap = await companyRef.get();
   if (snap.exists) {
@@ -51,7 +52,7 @@ export async function PATCH(req: NextRequest) {
   const auth = await requireSuperAdmin(req);
   if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const db = getAdminDb();
+  const db = serverDb();
   const companyRef = db.collection(ADMIN_PANEL_COMPANIES_COLLECTION).doc(CLOUD_ADMIN_PANEL_TENANT_ID);
   if (!(await companyRef.get()).exists) {
     return NextResponse.json({ error: "Create Admin Panel Company first" }, { status: 409 });
@@ -59,7 +60,7 @@ export async function PATCH(req: NextRequest) {
 
   const body = (await req.json()) as Record<string, unknown>;
   const patch: Record<string, unknown> = {
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: serverTimestamp(),
   };
   for (const key of ["name", "address", "phone", "email", "pan"] as const) {
     if (typeof body[key] === "string") {
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
   const auth = await requireSuperAdmin(req);
   if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const db = getAdminDb();
+  const db = serverDb();
   const companyRef = db.collection(ADMIN_PANEL_COMPANIES_COLLECTION).doc(CLOUD_ADMIN_PANEL_TENANT_ID);
   const existing = await companyRef.get();
   if (existing.exists) {
@@ -94,7 +95,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  const now = serverTimestamp();
   const batch = db.batch();
   batch.create(companyRef, {
     tenantId: CLOUD_ADMIN_PANEL_TENANT_ID,

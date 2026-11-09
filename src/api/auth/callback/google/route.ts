@@ -4,7 +4,7 @@ import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { doc, getDoc, serverTimestamp } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 
 type DecodedState = {
   returnPath?: string;

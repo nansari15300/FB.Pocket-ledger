@@ -2,7 +2,7 @@
 
 import { addDoc, setDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
 import { collection, doc, serverTimestamp } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { appNavHref } from "@/lib/appNavHref";
 import { RECON_PAGE_TITLE, RECON_SHARE_HEADER_LABEL } from "@/lib/reconciliation/labels";
 

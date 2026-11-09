@@ -385,7 +385,7 @@ async function resolveCompressionPlanId(
   let planId = resolveEffectivePlanIdForVoucherQuota(companyId, sqliteHint ?? null);
   if (planId === "basic") {
     try {
-      const { auth } = await import("@/lib/firebase");
+      const { auth } = await import("@/lib/plClientSession");
       const uid = auth.currentUser?.uid?.trim();
       if (uid) {
         const { readAccountPlanLocalCache } = await import("@/lib/accountPlanLocalCache");

@@ -1,7 +1,7 @@
 
 'use client'
 import { useAdminAccess } from '@/hooks/useAdminAccess'
-import { firestore as db } from '@/lib/firebase'
+import { firestore as db } from '@/lib/plClientSession'
 import {
   collection,
   orderBy,

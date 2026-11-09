@@ -6,7 +6,7 @@ import { PlaceholderPage } from "../layout/PlaceholderPage";
 import { useReportPartyView } from "@/contexts/ReportPartyViewContext";
 import { DaybookReport } from "@/components/reports/DaybookReport";
 import { useCompany } from "@/hooks/useCompany";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { collectionGroup, query, where, collection } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import React, { useState } from "react";

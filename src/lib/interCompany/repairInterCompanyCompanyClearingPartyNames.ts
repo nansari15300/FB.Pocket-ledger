@@ -6,7 +6,7 @@
 import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { collection, doc } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import {
   formatInterCompanyAccountClearingPartyName,
   isInterCompanyAccountClearingPartyName,

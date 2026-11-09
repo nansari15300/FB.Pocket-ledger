@@ -10,7 +10,7 @@ import { setDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { z } from 'zod';
 import { doc } from "@/lib/pbCompat/firestore";
-import { firestore } from '@/lib/firebase';
+import { firestore } from '@/lib/plClientSession';
 
 const GatewayKeysSchema = z.object({
   stripeSecretKey: z.string().optional(),

@@ -13,7 +13,7 @@ import {
 } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { deleteDoc, setDoc, updateDoc, runTransaction } from "@/lib/writeGateway/firestoreMutationsInternal";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { addBsMonths, adToBs, bsToAd, getBSMonthDays, NEPALI_MONTHS } from "@/lib/bs-date";
 import { parseFirestoreDateFieldToJsDate } from "@/lib/voucherDateNormalize";
 import { preferLocalLedgerReads } from "@/lib/apkOnlineFirestoreWritePolicy";

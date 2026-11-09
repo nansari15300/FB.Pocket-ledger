@@ -3,7 +3,7 @@
 import { deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { isDeviceLocalCompany } from "@/lib/companyStorageKind";
 
 /** Online / Firebase / Drive link fields — local backup-restore company row me nahi rehne chahiye. */

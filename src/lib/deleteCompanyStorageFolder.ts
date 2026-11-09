@@ -5,7 +5,7 @@
  * Data-only restore iske bina chale — purane HTTPS URLs reuse hote hain.
  */
 import { ref, list, deleteObject, type StorageReference } from "@/lib/pocketbaseData/pbStorage";
-import { storage } from "@/lib/firebase";
+import { storage } from "@/lib/plClientSession";
 import { withOnlineTriggerScope } from "@/lib/onlineTriggerLog";
 import {
   buildCompanyStorageWipePrefixes,

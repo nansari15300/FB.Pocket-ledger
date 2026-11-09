@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
-import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
+
 import { invalidateOpeningSnapshotsAdmin } from "@/lib/fyPagination/server/invalidateOpeningSnapshotsAdmin";
 import { isCompanyOwner } from "@/lib/server/companyOwner";
 
+import { verifyCompanyApiCallerByToken, type CompanyApiCaller } from "@/lib/server/companyApiCaller";
+import { pbBillingReady } from "@/lib/server/pbBilling/pbBillingDb";
+import { serverDb } from "@/lib/server/appDb";
 type Body = {
   companyId?: string;
   /** Vouchers on/after this ms invalidate snapshots with beforeMs > afterMs. */
@@ -12,7 +14,7 @@ type Body = {
   invalidateAll?: boolean;
 };
 
-function canWriteCompany(decoded: admin.auth.DecodedIdToken, data: Record<string, unknown>): boolean {
+function canWriteCompany(decoded: CompanyApiCaller, data: Record<string, unknown>): boolean {
   if (isCompanyOwner(decoded, data as { ownerId?: string; ownerEmail?: string })) return true;
   const emails = Array.isArray(data.sharedWithEmails) ? data.sharedWithEmails : [];
   const e = String(decoded.email || "").toLowerCase().trim();
@@ -22,7 +24,7 @@ function canWriteCompany(decoded: admin.auth.DecodedIdToken, data: Record<string
 
 export async function POST(req: NextRequest) {
   try {
-    if (!isFirebaseAdminConfigured()) {
+    if (!pbBillingReady()) {
       return NextResponse.json({ ok: false, reason: "admin_not_configured" }, { status: 503 });
     }
 
@@ -31,11 +33,9 @@ export async function POST(req: NextRequest) {
     if (!token) {
       return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
     }
-
-    getAdminDb();
-    let decoded: admin.auth.DecodedIdToken;
+    let decoded: CompanyApiCaller;
     try {
-      decoded = await admin.auth().verifyIdToken(token);
+      decoded = await verifyCompanyApiCallerByToken(token);
     } catch {
       return NextResponse.json({ error: "Invalid auth token" }, { status: 401 });
     }
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "afterMs or invalidateAll required" }, { status: 400 });
     }
 
-    const db = getAdminDb();
+    const db = serverDb();
     const ref = db.collection("companies").doc(companyId);
     const companySnap = await ref.get();
     if (!companySnap.exists) {

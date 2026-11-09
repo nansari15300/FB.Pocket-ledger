@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
-import { firestore, storage } from "@/lib/firebase";
+import { firestore, storage } from "@/lib/plClientSession";
 import { collection, serverTimestamp, query, where, doc } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";

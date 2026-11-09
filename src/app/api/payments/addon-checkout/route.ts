@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
-import admin from "firebase-admin";
+
 import {
   getEsewaEpayV2FormUrl,
   isBillingGatewayAvailable,
@@ -28,6 +28,8 @@ import {
 import { mergeAppSettingsPlansDoc } from "@/lib/mergeAppSettingsPlans";
 import { planAllowsFirebaseOnline } from "@/lib/planSyncEntitlements";
 import { resolveOwnerActivePaidSubscription } from "@/lib/server/resolveOwnerSubscriptionBilling";
+
+import { serverTimestamp, Timestamp } from "@/lib/server/pbBilling/fieldValue";
 
 type BodyItem = { kind?: AddonKind | string; quantity?: number };
 
@@ -159,7 +161,7 @@ export async function POST(req: NextRequest) {
 
     if (gateway === "khalti" || gateway === "esewa") {
       const pendingId = uuidv4();
-      const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + PENDING_ADDON_PURCHASE_TTL_MS);
+      const expiresAt = Timestamp.fromMillis(Date.now() + PENDING_ADDON_PURCHASE_TTL_MS);
       const pendingRef = db.collection(PENDING_ADDON_PURCHASES_COLLECTION).doc(pendingId);
       await pendingRef.set({
         companyId: effectiveCompanyId || null,
@@ -169,7 +171,7 @@ export async function POST(req: NextRequest) {
         amountNpr,
         gateway,
         status: "pending",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp(),
         expiresAt,
       });
 

@@ -318,7 +318,7 @@ export async function resolveCompanyUsesPocketLedgerStorage(companyId: string): 
     const row = await getLocalCompanyById(cid, { includeDeleted: true });
     if (companyUsesPocketLedgerStorage(row)) return true;
     const { doc, getDoc } = await import("@/lib/pbCompat/firestore");
-    const { firestore } = await import("@/lib/firebase");
+    const { firestore } = await import("@/lib/plClientSession");
     const snap = await getDoc(doc(firestore, "companies", cid));
     return snap.exists() && companyUsesPocketLedgerStorage(snap.data() as CompanyStorageLayoutRow);
   } catch {

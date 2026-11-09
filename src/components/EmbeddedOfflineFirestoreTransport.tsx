@@ -9,7 +9,7 @@
 
 import { useEffect } from "react";
 import { isEmbeddedOfflinePreloadClient } from "@/lib/isEmbeddedOfflinePreloadClient";
-import { syncEmbeddedFirestoreTransportFromNavigator } from "@/lib/firebase";
+import { syncEmbeddedFirestoreTransportFromNavigator } from "@/lib/plClientSession";
 
 const NETWORK_SYNC_DEBOUNCE_MS = 900;
 

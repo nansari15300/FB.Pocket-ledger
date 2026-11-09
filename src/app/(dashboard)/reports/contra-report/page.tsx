@@ -36,7 +36,7 @@ import { Badge } from "@/components/ui/badge";
 import * as XLSX from 'xlsx';
 import { RunningBalanceFullChart } from "@/components/reports/RunningBalanceFullChart";
 import { doc } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { Calendar } from "@/components/ui/calendar";
 import { toast } from "sonner";
 import type { Account } from "@/components/bank-cash/types";

@@ -3,7 +3,7 @@
 import { setDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 
 const CONFIG_PATH = "config/recycleBin";
 

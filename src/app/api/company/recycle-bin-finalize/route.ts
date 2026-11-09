@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
+
 import { corsHeadersForPocketLedgerBillingApi } from "@/lib/server/billingApiCors";
-import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
+
 import { ownerFinalizeCompanyRecycleBinOnServer } from "@/lib/server/ownerRecycleBinCompanyServer";
 
+import { verifyCompanyApiCallerByToken, type CompanyApiCaller } from "@/lib/server/companyApiCaller";
 type Body = { companyId?: string };
 
 /** CORS preflight — static EXE/APK → hosted Super Admin–aware finalize. */
@@ -14,20 +15,15 @@ export async function OPTIONS(req: NextRequest) {
 export async function POST(req: NextRequest) {
     const cors = corsHeadersForPocketLedgerBillingApi(req);
     try {
-        if (!isFirebaseAdminConfigured()) {
-            return NextResponse.json({ error: "admin_not_configured" }, { status: 503, headers: cors });
-        }
-
         const authHeader = req.headers.get("authorization");
         const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
         if (!token) {
             return NextResponse.json({ error: "missing_token" }, { status: 401, headers: cors });
         }
 
-        getAdminDb();
-        let decoded: admin.auth.DecodedIdToken;
+        let decoded: CompanyApiCaller;
         try {
-            decoded = await admin.auth().verifyIdToken(token);
+            decoded = await verifyCompanyApiCallerByToken(token);
         } catch {
             return NextResponse.json({ error: "invalid_token" }, { status: 401, headers: cors });
         }

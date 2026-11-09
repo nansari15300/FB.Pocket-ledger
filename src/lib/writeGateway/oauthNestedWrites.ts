@@ -2,7 +2,7 @@
  * `user_tokens/{uid}/google/drive` — OAuth token shard; sirf gateway se likho.
  */
 import { doc, setDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 
 export async function setGoogleDriveUserTokenMerge(uid: string, patch: Record<string, unknown>): Promise<void> {
   const id = String(uid || "").trim();

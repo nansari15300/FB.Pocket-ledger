@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Download } from "lucide-react";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { useAuth } from "@/hooks/useAuth";
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/plClientSession";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";

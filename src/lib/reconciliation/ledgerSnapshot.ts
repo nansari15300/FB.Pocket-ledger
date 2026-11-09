@@ -3,7 +3,7 @@
 import { endOfDay, startOfDay } from "date-fns";
 import { collection, doc } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { buildCopyLedgerComparison, reconciliationCollectionToLedgerContext } from "@/lib/copyLedgerCrossCompany";
 import { getCompanyDocFromBrowserDb, listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { isLocalOnlyMode } from "@/lib/localMode";

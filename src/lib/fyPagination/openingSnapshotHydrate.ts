@@ -8,7 +8,7 @@ import { getTransactionAmounts } from "@/hooks/use-transactions";
 import { isCloudLinkedCompanyStorage } from "@/lib/companyUnlockGate";
 import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import type { CompanyStorageRow } from "@/lib/companyStorageKind";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { fetchServerFyClosingSnapshot } from "@/lib/fyPagination/serverFyClosingSnapshotClient";
 import { fySnapshotDocPath } from "@/lib/ledgerModes/online/fyMonthQueries";

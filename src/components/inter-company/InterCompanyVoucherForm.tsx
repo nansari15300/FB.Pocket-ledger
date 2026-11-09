@@ -11,7 +11,7 @@ import { z } from "zod";
 import { CalendarIcon, ArrowLeftRight } from "lucide-react";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -159,7 +159,7 @@ import {
   resolveOtherChargeAddNewType,
 } from "@/lib/otherChargeComboboxAddNew";
 import { uploadVoucherAttachmentFileToFirebase } from "@/lib/voucherFormAttachmentSave";
-import { storage } from "@/lib/firebase";
+import { storage } from "@/lib/plClientSession";
 import { checkStorageLimit, incrementCompanyStorage } from "@/lib/storageUsageClient";
 import {
   appendLocalOnlyVoucherFilesToUrls,

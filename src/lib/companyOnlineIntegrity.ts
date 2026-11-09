@@ -2,7 +2,7 @@
 
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { doc } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { demoteCompanyToLocal } from "@/lib/companyDemote";
 import { isDeviceLocalCompany, isStrictLocalOnlyCompany, isServerGateCompany } from "@/lib/companyStorageKind";
 import { isProtectedOwnerLocalBackupCompany } from "@/lib/localBackupRestoreCompany";

@@ -14,7 +14,7 @@ import { sortRecentTransactionsDesc } from "@/lib/recentTransactionsSort";
 import { getActiveGate } from "@/lib/gates/gateStore";
 import { isServerGateCompany } from "@/lib/companyStorageKind";
 import { voucherIdFingerprint } from "@/lib/plServerLiveChangeTrace";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { doc, collection, query, where } from "@/lib/pbCompat/firestore";
 import { applyPaymentBillWiseLinkAllocations } from '@/lib/voucherActionsClient';
 import * as React from 'react';

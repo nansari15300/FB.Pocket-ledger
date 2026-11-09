@@ -2,7 +2,7 @@ import { deleteFileFromStorageClient } from "@/lib/storageClient";
 import { deleteCompanyDocFromBrowserDb, upsertCompanyDocInBrowserDb } from "@/lib/localCompanyDocMirror";
 import { deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { doc } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { isPocketBaseCompany, isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 
 export type UnassignedDocToDelete = {

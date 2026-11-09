@@ -5,7 +5,7 @@
 import { deleteDoc, runTransaction, setDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
 import { arrayRemove, arrayUnion, collection, collectionGroup, deleteField, doc, limit, query, serverTimestamp, where, type Unsubscribe } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { auth, firestore } from "@/lib/firebase";
+import { auth, firestore } from "@/lib/plClientSession";
 import { upsertInterCompanyPublicCompanyProfile } from "@/lib/interCompany/interCompanyPublicCompanyProfile";
 import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";
 

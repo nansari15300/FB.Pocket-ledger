@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import {
   DEFAULT_VOUCHER_LOAD_SETTINGS,
   normalizeVoucherLoadSettings,

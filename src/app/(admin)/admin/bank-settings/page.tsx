@@ -27,7 +27,7 @@ import { Info, Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from '@/lib/pocketbaseData/pbReadSeam';
-import { firestore } from '@/lib/firebase';
+import { firestore } from '@/lib/plClientSession';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';

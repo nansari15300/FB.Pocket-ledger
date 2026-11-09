@@ -4,7 +4,7 @@
 import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { adminServerWriteBlocked, isAdminServerMode } from "@/lib/adminData/adminServerMode";
 import React, { useEffect, useState, useMemo } from "react";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { doc } from "@/lib/pbCompat/firestore";
 import { adminServerSetDoc, isAdminServerDataActive, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { Permission, PermissionGroups, type PermissionGroup } from "@/lib/permissions";

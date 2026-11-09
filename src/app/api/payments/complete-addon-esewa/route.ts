@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import {
   applyAddonPurchaseToFirestore,
   PENDING_ADDON_PURCHASES_COLLECTION,
@@ -12,6 +13,8 @@ import {
 } from "@/ai/flows/gateway-keys";
 import type { AddonKind } from "@/lib/planAddOns";
 import { resolveBillingCaller } from "@/lib/server/billingCaller";
+
+import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
 
 type Body = {
   decoded?: Record<string, unknown>;
@@ -99,7 +102,7 @@ export async function POST(req: NextRequest) {
 
     await pendingRef.update({
       status: "applied",
-      appliedAt: admin.firestore.FieldValue.serverTimestamp(),
+      appliedAt: serverTimestamp(),
     });
 
     return NextResponse.json({ ok: true });

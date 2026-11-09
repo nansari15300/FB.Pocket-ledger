@@ -7,7 +7,7 @@ import { STAFF_ENTITY_GROUPS_LABEL, STAFF_ENTITY_LABEL } from "@/lib/staffEntity
 import { PermissionRouteGuard } from "@/components/permission/PermissionRouteGuard";
 import { collection, query, where, doc, serverTimestamp, type QueryDocumentSnapshot } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
@@ -132,7 +132,7 @@ function mergeDeletedCompanyFirestoreDocs(
         const storage = String(data.storageOption ?? "firebase").toLowerCase();
         byId.set(docSnap.id, {
             id: docSnap.id,
-            name: data.name || "Unnamed Company",
+            name: typeof data.name === "string" && data.name ? data.name : "Unnamed Company",
             type: "Company",
             deletedAt: coerceDeletedAtToDate(data.deletedAt) ?? undefined,
             collectionPath: "companies",

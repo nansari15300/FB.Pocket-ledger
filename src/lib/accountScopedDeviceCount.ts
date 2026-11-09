@@ -2,7 +2,7 @@
 
 import { collection, collectionGroup, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { isCloudLinkedCompanyStorage } from "@/lib/companyUnlockGate";
 import { getOrCreateDeviceId } from "@/lib/deviceLimitClient";
 

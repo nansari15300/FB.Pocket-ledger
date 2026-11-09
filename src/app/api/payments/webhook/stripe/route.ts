@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { billingDbForStore, billingStoreFromMeta } from "@/lib/server/billingCaller";
-import * as admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import { normalizePlanIdForClient } from "@/config/plans";
 import { grantAccountCanonicalPlan } from "@/lib/server/accountCanonicalPlan";
 import {
@@ -9,6 +9,8 @@ import {
   getStripeForPaymentsMerged,
   getSubscriptionWithPeriodEndRetry,
 } from "@/lib/payments/stripeCheckoutFulfill";
+
+import { deleteField, serverTimestamp, Timestamp } from "@/lib/server/pbBilling/fieldValue";
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -61,7 +63,7 @@ export async function POST(req: NextRequest) {
       const subscriptionUserId = meta.userId?.trim();
       if (!subscriptionUserId) return NextResponse.json({ received: true });
 
-      const planExpiry = admin.firestore.Timestamp.fromMillis(endMs);
+      const planExpiry = Timestamp.fromMillis(endMs);
       const isFirstSubscriptionInvoice = invoice.billing_reason === "subscription_create";
       let accountOwnerUid = subscriptionUserId;
       if (companyId) {
@@ -93,13 +95,13 @@ export async function POST(req: NextRequest) {
         planExpiryMs: endMs,
         stripeSubscriptionId: subId,
         // Successful charge — purana “renewal failed” banner hata do.
-        billingAutoRenewFailureNoticeEn: admin.firestore.FieldValue.delete(),
-        billingAutoRenewFailureNoticeUntilMs: admin.firestore.FieldValue.delete(),
-        billingAutoRenewLastFailedInvoiceId: admin.firestore.FieldValue.delete(),
+        billingAutoRenewFailureNoticeEn: deleteField(),
+        billingAutoRenewFailureNoticeUntilMs: deleteField(),
+        billingAutoRenewLastFailedInvoiceId: deleteField(),
         // Renewal timestamp sirf actual renewals par — pehli invoice par nahi (misleading "renewal").
         ...(isFirstSubscriptionInvoice
           ? {}
-          : { lastSubscriptionRenewalAt: admin.firestore.FieldValue.serverTimestamp() }),
+          : { lastSubscriptionRenewalAt: serverTimestamp() }),
       });
 
       return NextResponse.json({ received: true });
@@ -161,9 +163,9 @@ export async function POST(req: NextRequest) {
 
       await coRef.update({
         planExpiryMs: newExpMs,
-        planExpiry: admin.firestore.Timestamp.fromMillis(newExpMs),
+        planExpiry: Timestamp.fromMillis(newExpMs),
         ...(invId ? { billingAutoRenewLastFailedInvoiceId: invId } : {}),
-        billingAutoRenewLastFailureAt: admin.firestore.FieldValue.serverTimestamp(),
+        billingAutoRenewLastFailureAt: serverTimestamp(),
         billingAutoRenewFailureNoticeEn: noticeEn,
         billingAutoRenewFailureNoticeUntilMs: nowMs + MS_3D,
       });

@@ -5,8 +5,8 @@
  * yahan browser SQLite (`company_docs`) se saari subcollections Firestore me push (batched set).
  */
 
-import { doc, writeBatch, Timestamp, type Firestore } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { doc, writeBatch, Timestamp, type Firestore, type DocumentReference, type DocumentData } from "@/lib/pbCompat/firestore";
+import { firestore } from "@/lib/plClientSession";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { COMPANY_LOCAL_MIRROR_SUBCOLLECTIONS } from "@/lib/firestoreToLocalCompanyPull";
 import { isLocalFileRef } from "@/lib/localPendingFiles";
@@ -96,7 +96,7 @@ function sanitizeDocForFirestore(obj: Record<string, unknown>): Record<string, u
 
 async function commitWrites(
   db: Firestore,
-  ops: Array<{ ref: ReturnType<typeof doc>; data: Record<string, unknown> }>
+  ops: Array<{ ref: DocumentReference<DocumentData>; data: Record<string, unknown> }>
 ): Promise<void> {
   for (let i = 0; i < ops.length; i += BATCH_MAX) {
     const chunk = ops.slice(i, i + BATCH_MAX);
@@ -156,7 +156,7 @@ export async function pushAllLocalCompanyDocsToFirestore(
       }
       if (!rows.length) continue;
 
-      const ops: Array<{ ref: ReturnType<typeof doc>; data: Record<string, unknown> }> = [];
+      const ops: Array<{ ref: DocumentReference<DocumentData>; data: Record<string, unknown> }> = [];
       for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
         const row = rows[rowIndex]!;
         const docId = String((row as { id?: string }).id ?? "");
@@ -167,7 +167,7 @@ export async function pushAllLocalCompanyDocsToFirestore(
         if (data.companyId == null || String(data.companyId).trim() === "") {
           data.companyId = fsCompanyId;
         }
-        const ref = doc(firestore, `companies/${fsCompanyId}/${collectionName}`, docId);
+        const ref: DocumentReference<DocumentData> = doc(firestore, `companies/${fsCompanyId}/${collectionName}`, docId);
         ops.push({ ref, data });
         if (rowIndex > 0 && rowIndex % 40 === 0) await yieldToMain();
       }

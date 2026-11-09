@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
+
 import { v4 as uuidv4 } from "uuid";
-import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
 import { isSuperAdminServer } from "@/lib/server/isSuperAdminServer";
 import { normalizePlanIdForClient } from "@/config/plans";
 import { getEffectivePlanPrices } from "@/lib/server/getEffectivePlanPrices";
 import { mirrorSubscriptionPaymentWithUserLookup } from "@/lib/adminPanelAccounting/mirrorSubscriptionPayment";
 import { PAID_PLAN_IDS } from "@/lib/payments/stripeCheckoutFulfill";
 
+import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
+
+import { verifyCompanyApiCallerByToken, type CompanyApiCaller } from "@/lib/server/companyApiCaller";
+import { pbBillingReady } from "@/lib/server/pbBilling/pbBillingDb";
+import { serverDb } from "@/lib/server/appDb";
 const MS_YEAR = 365.25 * 24 * 60 * 60 * 1000;
 
 type Body = {
@@ -29,7 +33,7 @@ type Body = {
  */
 export async function POST(req: NextRequest) {
   try {
-    if (!isFirebaseAdminConfigured()) {
+    if (!pbBillingReady()) {
       return NextResponse.json({ error: "admin_not_configured" }, { status: 503 });
     }
 
@@ -38,11 +42,9 @@ export async function POST(req: NextRequest) {
     if (!token) {
       return NextResponse.json({ error: "missing_token" }, { status: 401 });
     }
-
-    getAdminDb();
-    let decoded: admin.auth.DecodedIdToken;
+    let decoded: CompanyApiCaller;
     try {
-      decoded = await admin.auth().verifyIdToken(token);
+      decoded = await verifyCompanyApiCallerByToken(token);
     } catch {
       return NextResponse.json({ error: "invalid_token" }, { status: 401 });
     }
@@ -59,7 +61,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "ownerId_and_companyId_required" }, { status: 400 });
     }
 
-    const db = getAdminDb();
+    const db = serverDb();
     const companySnap = await db.collection("companies").doc(companyId).get();
     if (!companySnap.exists) {
       return NextResponse.json({ error: "company_not_found" }, { status: 404 });
@@ -119,7 +121,7 @@ export async function POST(req: NextRequest) {
       billingIntent: "admin_grant",
       planExpiryMs: newExpiryMs,
       adminGrantReason: reason,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: serverTimestamp(),
       createdByUid: decoded.uid,
     });
 

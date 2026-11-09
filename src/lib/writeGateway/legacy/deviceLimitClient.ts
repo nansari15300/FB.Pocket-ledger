@@ -3,7 +3,7 @@
 import { setDoc, deleteDoc, writeBatch } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { doc, collection, collectionGroup, serverTimestamp, query, orderBy, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import { resolveDeviceSlotForCompanyWrite } from "@/lib/deviceSlotForUserDevices";
 import { isUnlimitedEntitlementCap } from "@/config/plans";

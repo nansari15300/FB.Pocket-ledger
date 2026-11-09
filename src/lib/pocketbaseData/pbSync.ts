@@ -588,7 +588,7 @@ export async function pbPushCompanyRootFromFirestore(
   // Server login: no Firestore session; the server copy is the only one.
   if (isPocketBaseAppSessionActive()) return null;
   try {
-    const [{ doc, getDoc }, { firestore }] = await Promise.all([import("@/lib/pbCompat/firestore"), import("@/lib/firebase")]);
+    const [{ doc, getDoc }, { firestore }] = await Promise.all([import("@/lib/pbCompat/firestore"), import("@/lib/plClientSession")]);
     const snap = await getDoc(doc(firestore, "companies", companyId));
     if (!snap.exists()) return null;
     return await pbWriteCompanyRoot(companyId, snap.data() as Record<string, unknown>, "set");

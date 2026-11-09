@@ -4,7 +4,7 @@
 import { collection, collectionGroup, limit, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import type { InterCompanyEntityKind } from "@/components/inter-company/InterCompanyEntitySide";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { listLocalCompanies } from "@/lib/localCompanyStore";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { isLocalOnlyMode } from "@/lib/localMode";

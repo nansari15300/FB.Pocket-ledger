@@ -2,7 +2,7 @@
 "use client"
 import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { useAdminAccess } from '@/hooks/useAdminAccess'
-import { firestore as db } from '@/lib/firebase'
+import { firestore as db } from '@/lib/plClientSession'
 import { collection, doc, Timestamp, query } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc } from '@/lib/pocketbaseData/pbReadSeam';
 import { useEffect, useState, useMemo } from 'react'

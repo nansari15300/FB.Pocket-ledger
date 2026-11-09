@@ -82,7 +82,7 @@ import { createPortal } from "react-dom";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { collection, query, where, serverTimestamp, doc, orderBy, arrayRemove, Timestamp } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { toast } from "sonner";

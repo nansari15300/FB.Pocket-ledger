@@ -4,7 +4,7 @@
 import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { collection, doc, limit, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { getLocalCompanyById, listLocalCompanies, upsertLocalCompany } from "@/lib/localCompanyStore";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { isInterCompanySystemEnabled } from "@/lib/interCompany/interCompanyEnabled";

@@ -39,7 +39,7 @@ import {
 } from "@/lib/nestedLedgerMasterEditPresentation";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useCompany } from "@/hooks/useCompany";
 import { useBalanceSheetLedgerLiveRevision } from "@/hooks/useBalanceSheetLedgerLiveRevision";
 import { MonthYearFilter } from "@/components/dashboard/MonthYearFilter";

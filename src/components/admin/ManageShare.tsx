@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { doc, arrayRemove, collection, query, where } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { updateCompanyRootFirestore } from "@/lib/writeGateway/companyRootFirestore";
 import { useCompany } from "@/hooks/useCompany";
 import { useAuth } from "@/hooks/useAuth";

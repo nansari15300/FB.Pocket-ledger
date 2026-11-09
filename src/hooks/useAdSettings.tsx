@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { DEFAULT_AD_SETTINGS, normalizeAdSettings, type AdSettings } from "@/lib/adSettings";
 import { readCachedAdSettings, writeCachedAdSettings } from "@/lib/ads/adSettingsCache";
 

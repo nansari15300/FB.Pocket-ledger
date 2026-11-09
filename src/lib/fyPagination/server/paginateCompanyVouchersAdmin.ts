@@ -1,5 +1,6 @@
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 
+import { FieldPath } from "@/lib/server/pbBilling/fieldValue";
 const VOUCHER_PAGE_SIZE = 400;
 
 export function isEncryptedCompanyDoc(data: Record<string, unknown> | undefined): boolean {
@@ -37,7 +38,7 @@ export async function forEachCompanyVoucherPageAdmin(
   for (;;) {
     let q: admin.firestore.Query = companyRef
       .collection("vouchers")
-      .orderBy(admin.firestore.FieldPath.documentId())
+      .orderBy(FieldPath.documentId() as unknown as admin.firestore.FieldPath)
       .limit(VOUCHER_PAGE_SIZE);
     if (last) q = q.startAfter(last);
 
@@ -75,7 +76,7 @@ export async function paginateCompanyVouchersAdmin(
   for (;;) {
     let q: admin.firestore.Query = companyRef
       .collection("vouchers")
-      .orderBy(admin.firestore.FieldPath.documentId())
+      .orderBy(FieldPath.documentId() as unknown as admin.firestore.FieldPath)
       .limit(VOUCHER_PAGE_SIZE);
     if (last) q = q.startAfter(last);
 

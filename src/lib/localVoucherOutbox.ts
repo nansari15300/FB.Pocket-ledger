@@ -27,7 +27,7 @@ import {
   queueFirestoreNetworkOp,
   markFirestoreNetworkDisabledByApi,
   settleAfterFirestoreNetworkEnabled,
-} from "@/lib/firebase";
+} from "@/lib/plClientSession";
 import { getBrowserDbForCompanyId } from "@/lib/localSqlite";
 import {
   apkEmbeddedSqliteFirstWritesPreferred,

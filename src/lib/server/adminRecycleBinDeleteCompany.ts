@@ -1,51 +1,38 @@
 import "server-only";
 
-import admin from "firebase-admin";
-import { getAdminDb } from "@/lib/firebaseAdmin";
-import { adminDeleteCompanyFirebaseStorageFolder } from "@/lib/server/adminDeleteCompanyStorageFolder";
-
-const BATCH = 400;
-
-async function deleteDocumentRecursive(docRef: admin.firestore.DocumentReference): Promise<void> {
-    const subcollections = await docRef.listCollections();
-    for (const colRef of subcollections) {
-        await drainCollectionRecursive(colRef);
-    }
-    await docRef.delete();
-}
-
-async function drainCollectionRecursive(colRef: admin.firestore.CollectionReference): Promise<void> {
-    const snap = await colRef.orderBy(admin.firestore.FieldPath.documentId()).limit(BATCH).get();
-    if (snap.empty) return;
-    for (const d of snap.docs) {
-        await deleteDocumentRecursive(d.ref);
-    }
-    await drainCollectionRecursive(colRef);
-}
+import { pocketBaseServerUrlForApi } from "@/lib/localCloudSync/server/pbBearerAuth";
 
 /**
- * Super-admin recycle bin: company root + saari nested subcollections hatao (Admin SDK — client rules / offline race se alag).
+ * Super-admin recycle bin: permanently wipe a soft-deleted company.
+ *
+ * The wipe itself runs on the Pocket Ledger Server (`POST /api/pl/admin/recycle-delete` →
+ * `pb_hooks/lib/company_delete.js`), which removes the company row, every `pl_data` mirror row,
+ * change-log rows and its stored files in one transaction. Doing it from here used to mean walking
+ * Firestore subcollections with the Admin SDK.
+ *
+ * The caller must be the server's main admin; the endpoint enforces that itself (and refuses a
+ * company that is not in the recycle bin).
  */
 export async function adminServerHardDeleteDeletedCompany(companyId: string): Promise<void> {
-    const cid = String(companyId || "").trim();
-    if (!cid) throw new Error("Invalid company id");
+  const cid = String(companyId || "").trim();
+  if (!cid) throw new Error("Invalid company id");
 
-    const db = getAdminDb();
-    const ref = db.collection("companies").doc(cid);
-    const snap = await ref.get();
-    if (!snap.exists) return;
+  const token = String(process.env.PL_SERVER_ADMIN_TOKEN || "").trim();
+  const res = await fetch(`${pocketBaseServerUrlForApi()}/api/pl/admin/recycle-delete`, {
+    method: "POST",
+    // The server checks the real admin session; a service token may be supplied for cron use.
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: token } : {}),
+    },
+    body: JSON.stringify({ companyId: cid }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(60_000),
+  });
 
-    const data = snap.data() || {};
-    if (data.isDeleted !== true) {
-        throw new Error("Company is not soft-deleted; hard delete refused.");
-    }
-
-    const companyName = typeof data.name === "string" ? data.name : undefined;
-    try {
-        await adminDeleteCompanyFirebaseStorageFolder({ companyId: cid, companyName });
-    } catch (e) {
-        console.warn("[adminServerHardDeleteDeletedCompany] storage wipe failed", cid, e);
-    }
-
-    await deleteDocumentRecursive(ref);
+  if (res.status === 404) return; // already gone
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Recycle delete failed (${res.status}): ${detail.slice(0, 300)}`);
+  }
 }

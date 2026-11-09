@@ -3,7 +3,7 @@
 import * as React from "react";
 import { collection, query, where } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import type { RecurringVoucherTemplate } from "@/lib/recurringVouchers";
 import { resolveRecurringTemplateProgress } from "@/lib/recurringVouchers";
 import {

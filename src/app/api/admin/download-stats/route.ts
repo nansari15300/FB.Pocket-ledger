@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
-import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
+
 import { isSuperAdminServer } from "@/lib/server/isSuperAdminServer";
 import {
   DOWNLOAD_EVENTS_COLLECTION,
@@ -14,19 +13,22 @@ import { ANDROID_APP_VERSION, DESKTOP_APP_VERSION } from "@/config/releaseVersio
 import { compareReleaseVersions } from "@/lib/releaseUpdateCheck";
 import { loadEmailCompanyProfiles } from "@/lib/downloadStatsEmailCompanies";
 
+import { verifyCompanyApiCallerByToken, type CompanyApiCaller } from "@/lib/server/companyApiCaller";
+import { pbBillingReady } from "@/lib/server/pbBilling/pbBillingDb";
+import { serverDb } from "@/lib/server/appDb";
 export const dynamic = "force-dynamic";
 
 async function requireSuperAdmin(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
   if (!token) return { error: NextResponse.json({ error: "Missing Authorization" }, { status: 401 }) };
-  if (!isFirebaseAdminConfigured()) {
+  if (!pbBillingReady()) {
     return { error: NextResponse.json({ error: "Admin not configured" }, { status: 503 }) };
   }
-  getAdminDb();
-  let decoded: admin.auth.DecodedIdToken;
+
+  let decoded: CompanyApiCaller;
   try {
-    decoded = await admin.auth().verifyIdToken(token);
+    decoded = await verifyCompanyApiCallerByToken(token);
   } catch {
     return { error: NextResponse.json({ error: "Invalid auth token" }, { status: 401 }) };
   }
@@ -41,7 +43,7 @@ export async function GET(req: NextRequest) {
     const gate = await requireSuperAdmin(req);
     if ("error" in gate) return gate.error;
 
-    const db = getAdminDb();
+    const db = serverDb();
     const [statsSnap, statsUpdateSnap, eventsSnap] = await Promise.all([
       db.doc(DOWNLOAD_STATS_DOC).get(),
       db.doc(DOWNLOAD_STATS_UPDATE_DOC).get(),

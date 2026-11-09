@@ -1,4 +1,4 @@
-import type admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 
 /** Mark server opening snapshots stale so the next read recomputes (no voucher scan here). */
 export async function invalidateOpeningSnapshotsAdmin(

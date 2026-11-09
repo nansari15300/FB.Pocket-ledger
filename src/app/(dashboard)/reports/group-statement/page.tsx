@@ -24,7 +24,7 @@ import { useDate } from "@/hooks/useDate";
 import type { DateRange } from "@/components/ui/ad-calendar";
 import { doc, query, collection, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { cn, masterDetailBalanceToneClass } from "@/lib/utils";
 import { ReportRegisterListHeading } from "@/components/reports/ReportRegisterListHeading";
 import { masterListSelectedCn, masterListUnselectedCn } from "@/lib/listSelectionChrome";

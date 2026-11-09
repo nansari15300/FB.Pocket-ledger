@@ -15,7 +15,7 @@ import { getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
 import { useVouchers } from "@/hooks/useVouchers";
-import { firestore, storage } from "@/lib/firebase";
+import { firestore, storage } from "@/lib/plClientSession";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Loader2, Upload, Trash2, FileText, CalendarIcon } from "lucide-react";

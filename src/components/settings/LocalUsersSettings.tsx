@@ -20,7 +20,7 @@ import { useLivePlans, getPlanFromPlans } from "@/hooks/useLivePlans";
 import { numericEntitlement, isAtOrOverEntitlementCap, formatEntitlementCapLabel, type PlanId } from "@/config/plans";
 import { isCloudLinkedCompanyStorage } from "@/lib/companyUnlockGate";
 import { doc } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { updateCompanyDocRoot } from "@/lib/companyDocsClient";
 
 type LocalUser = { id: string; username: string; displayName?: string; role?: string; createdAt?: number };

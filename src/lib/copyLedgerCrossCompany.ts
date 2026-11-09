@@ -7,7 +7,7 @@
 
 import { collection, query, Timestamp, where, doc } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { saveVoucher } from "@/lib/voucherActionsClient";
 import { voucherTouchesPartyLedger } from "@/lib/voucherTouchesPartyLedger";
 import { getRpLedgerDebitCredit, type RpLedgerContext } from "@/lib/receivablesPayablesLedgerAmounts";

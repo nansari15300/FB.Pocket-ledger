@@ -1,7 +1,7 @@
 "use client";
 
 import { getBlob, ref } from "@/lib/pocketbaseData/pbStorage";
-import { storage } from "@/lib/firebase";
+import { storage } from "@/lib/plClientSession";
 import { tryGetStoragePathFromFirebaseDownloadUrl } from "@/lib/firebaseStorageDownloadUrl";
 
 /**

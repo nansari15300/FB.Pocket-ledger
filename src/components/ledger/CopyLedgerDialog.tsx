@@ -48,7 +48,7 @@ import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { isPartyMasterDetailPath, PARTY_PAGE_OVERDUE_SELECTED_ID } from "@/lib/partyUrlContext";
 import { collection, doc } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { auth, firestore } from "@/lib/firebase";
+import { auth, firestore } from "@/lib/plClientSession";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { flushVoucherOutbox } from "@/lib/localVoucherOutbox";

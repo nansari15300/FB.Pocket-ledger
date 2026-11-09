@@ -15,7 +15,7 @@
 import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { adoptServerAttachmentRefsOverLocal } from "@/lib/mirrorAttachmentRefAdopt";
 import { doc, getDoc, Timestamp } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { clearBrowserDbCache, getBrowserDbForCompanyId } from "@/lib/localSqlite";
 import { yieldToMain } from "@/lib/yieldToMain";
 import { isLocalOnlyMode } from "@/lib/localMode";

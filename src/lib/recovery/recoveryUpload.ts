@@ -512,7 +512,7 @@ async function blobFromFirebaseFile(url: string, signal?: AbortSignal): Promise<
     try {
       const [{ getBlob, ref }, { storage }] = await Promise.all([
         import("@/lib/pocketbaseData/pbStorage"),
-        import("@/lib/firebase"),
+        import("@/lib/plClientSession"),
       ]);
       const blob = await withTimeout(getBlob(ref(storage, path)), FILE_FETCH_MS, signal);
       if (blob && blob.size > 0) return blob;

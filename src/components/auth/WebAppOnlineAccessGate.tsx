@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { CloudOff, Download, Loader2, LogOut, RefreshCw, ShieldCheck, TrendingUp } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { clearPocketBaseAppSessionOnLogout } from "@/lib/firebase";
+import { clearPocketBaseAppSessionOnLogout } from "@/lib/plClientSession";
 import { isPocketBaseSessionUser } from "@/lib/pocketbaseData/pbAppSession";
 import { isServerOnlyLoginSession } from "@/lib/pocketbaseData/serverSessionCompanyScope";
 import { webAppBasePath } from "@/lib/webAppBasePath";

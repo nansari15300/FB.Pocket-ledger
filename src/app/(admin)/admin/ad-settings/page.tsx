@@ -6,7 +6,7 @@ import { doc } from "@/lib/pbCompat/firestore";
 import { getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
 import { ChevronDown, Info, Loader2, Megaphone, Save, ShieldCheck } from "lucide-react";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

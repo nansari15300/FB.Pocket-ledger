@@ -77,7 +77,7 @@ import * as XLSX from "xlsx";
 import { RunningBalanceFullChart } from "@/components/reports/RunningBalanceFullChart";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { Card } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";

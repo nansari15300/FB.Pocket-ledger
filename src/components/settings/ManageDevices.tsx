@@ -4,7 +4,7 @@ import { deleteDoc, updateDoc, writeBatch } from "@/lib/writeGateway/pbWrites";
 import { useEffect, useState, useMemo } from "react";
 import { collection, doc, query, where, orderBy } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useCompany } from "@/hooks/useCompany";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

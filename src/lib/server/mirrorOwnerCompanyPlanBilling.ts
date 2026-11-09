@@ -2,7 +2,7 @@
  * Ek owner ki saari `companies` docs par wahi plan / expiry / tier-switch timestamps —
  * billing "Joined date" + `planId` mismatch kam (multi-company account).
  */
-import * as admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 
 const FIRESTORE_BATCH_SAFE_OPS = 450;
 

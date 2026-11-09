@@ -18,7 +18,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/plClientSession";
 import { getBillingApiIdToken } from "@/lib/firebaseAuthForApi";
 import { getBillingApiUrl } from "@/lib/billingApiOrigin";
 import { openBillingStatementPdfPreview } from "@/lib/billingStatementPdf";

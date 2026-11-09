@@ -3,7 +3,7 @@
 import { addDoc, deleteDoc, setDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
 import { collection, deleteField, doc, query, serverTimestamp, where, type Unsubscribe } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { getPlServerSharedCompanies } from "@/lib/plServerAccessContext";
 import { getCompanyDocFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { preferLocalLedgerReads } from "@/lib/apkOnlineFirestoreWritePolicy";

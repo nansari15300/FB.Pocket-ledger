@@ -25,7 +25,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ItemFilterDropdown } from "../items/ItemFilterDropdown";
 import { collection, query, doc, where } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { AddVoucherDialog } from "../vouchers/AddVoucherDialog";
 import { VoucherTypeFilter } from "../vouchers/VoucherTypeFilter";
 import { Badge } from "@/components/ui/badge";

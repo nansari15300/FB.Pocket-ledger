@@ -2,7 +2,7 @@
 
 import { query, collection, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { getElectronLocalServerApi, type LocalAppServerAccessTokenSummary, isLocalAppServerSharingActive, resolveLocalAppServerSharingPort } from "@/lib/electronLocalServer";
 import { getLocalCompanyById, upsertLocalCompany, type LocalCompanyDoc } from "@/lib/localCompanyStore";
 import {

@@ -17,7 +17,7 @@ import { Calendar as CalendarIcon, Printer } from "lucide-react";
 import { Calendar } from "../ui/calendar";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 
 export function PurchaseRegister() {
   const { vouchers, loading } = useFyScopedVouchers();

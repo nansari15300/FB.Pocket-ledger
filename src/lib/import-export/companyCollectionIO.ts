@@ -2,7 +2,7 @@
 
 import { collection, query } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { writeEntity } from "@/lib/writeGateway";
 

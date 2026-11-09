@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
-import { getAdminDb } from "@/lib/firebaseAdmin";
+
 import { isSuperAdminServer } from "@/lib/server/isSuperAdminServer";
 import { listAdminSubscriptionPayments } from "@/lib/adminPanelAccounting/subscriptionPaymentsSource";
 
+import { verifyCompanyApiCallerByToken, type CompanyApiCaller } from "@/lib/server/companyApiCaller";
+import { serverDb } from "@/lib/server/appDb";
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
@@ -11,11 +12,9 @@ export async function GET(req: NextRequest) {
     if (!token) {
       return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
     }
-
-    getAdminDb();
-    let decoded: admin.auth.DecodedIdToken;
+    let decoded: CompanyApiCaller;
     try {
-      decoded = await admin.auth().verifyIdToken(token);
+      decoded = await verifyCompanyApiCallerByToken(token);
     } catch {
       return NextResponse.json({ error: "Invalid auth token" }, { status: 401 });
     }
@@ -26,7 +25,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "SuperAdmin only" }, { status: 403 });
     }
 
-    const db = getAdminDb();
+    const db = serverDb();
     const merged = await listAdminSubscriptionPayments(db, 500);
 
     const payments = merged.map((row) => ({

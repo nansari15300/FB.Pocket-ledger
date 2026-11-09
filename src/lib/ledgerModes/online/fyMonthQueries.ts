@@ -4,7 +4,7 @@
  */
 import { collection, orderBy, query, where, type Query } from "@/lib/pbCompat/firestore";
 import { endOfMonth, startOfMonth } from "date-fns";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import type { FyDateRangeMs } from "@/lib/fyPagination/types";
 
 export function firestoreVouchersQueryForRange(

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import admin from "firebase-admin";
+
 import { v4 as uuidv4 } from "uuid";
 import crypto from "crypto";
 import {
@@ -26,6 +26,8 @@ import {
   PENDING_SUBSCRIPTION_CHECKOUT_TTL_MS,
 } from "@/lib/payments/pendingSubscriptionCheckout";
 import { optionalServerBillingCaller } from "@/lib/server/billingCaller";
+import { serverTimestamp, Timestamp } from "@/lib/server/pbBilling/fieldValue";
+
 type AdminKeysResult = {
   stored: GatewayKeys;
   adminReadOk: boolean;
@@ -286,8 +288,8 @@ export async function POST(req: NextRequest) {
           amountNpr,
           currency: checkoutCurrency,
           status: "pending",
-          expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + PENDING_SUBSCRIPTION_CHECKOUT_TTL_MS),
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          expiresAt: Timestamp.fromMillis(Date.now() + PENDING_SUBSCRIPTION_CHECKOUT_TTL_MS),
+          createdAt: serverTimestamp(),
         });
         
         const message_parts = [

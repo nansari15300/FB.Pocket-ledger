@@ -32,7 +32,7 @@ import { getDefaultCurrencyForCountry } from "@/lib/worldCurrencies";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { uploadCompanyLogo } from "@/lib/storage";
 import { generateLocalFileId, LOCAL_FILE_PREFIX, putPendingFile } from "@/lib/localPendingFiles";
 import { useDate } from "@/hooks/useDate";

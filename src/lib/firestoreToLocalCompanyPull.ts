@@ -7,7 +7,7 @@
  */
 
 import { collection, doc, getDoc, getDocs, query } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import type { Company } from "@/hooks/useCompany";
 import {
   deleteCompanyDocFromBrowserDb,

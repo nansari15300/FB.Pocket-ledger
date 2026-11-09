@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
+
 import { isCompanyOwner } from "@/lib/server/companyOwner";
 import { getStripeForPaymentsMerged } from "@/lib/payments/stripeCheckoutFulfill";
 import { resolveBillingCaller } from "@/lib/server/billingCaller";
+
+import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
 
 type Body = {
   companyId?: string;
@@ -69,7 +71,7 @@ export async function POST(req: NextRequest) {
 
     await companyRef.update({
       billingAutoRenew: enabled,
-      billingAutoRenewUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      billingAutoRenewUpdatedAt: serverTimestamp(),
     });
 
     return NextResponse.json({ ok: true, billingAutoRenew: enabled });

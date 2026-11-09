@@ -10,7 +10,7 @@ import { Badge } from "../ui/badge";
 import { useEffect, useState } from "react";
 import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore as db } from "@/lib/firebase";
+import { firestore as db } from "@/lib/plClientSession";
 import { computePresenceLooksOnline } from "@/lib/presenceDisplay";
 
 const getInitials = (name: string) => {

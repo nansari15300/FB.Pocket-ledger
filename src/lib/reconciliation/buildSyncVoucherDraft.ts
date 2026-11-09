@@ -2,7 +2,7 @@ import { STAFF_ENTITY_LABEL } from "@/lib/staffEntityDisplayName";
 import { startOfDay } from "date-fns";
 import { collection, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import type { ReconciliationEntityType, ReconciliationLedgerRow, ReconciliationShare } from "@/lib/reconciliation/types";

@@ -21,7 +21,7 @@ import { format as formatFns, formatDistanceToNow } from "date-fns";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { collection, doc, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { diff } from "deep-object-diff";
 import { Button } from "../ui/button";
 import { cn } from "@/lib/utils";

@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
 import { collection, query, orderBy, doc, arrayUnion, where, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDocs, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useMemo, useRef, useEffect } from "react";
 import {
   Card,

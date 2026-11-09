@@ -9,7 +9,7 @@ import type { DateRange } from "@/components/ui/ad-calendar";
 import { useRouter } from 'next/navigation';
 import { LoadingSpinner } from '@/components/layout/LoadingSpinner';
 import { doc } from "@/lib/pbCompat/firestore";
-import { firestore } from '@/lib/firebase';
+import { firestore } from '@/lib/plClientSession';
 import { resolveUserDisplayName } from "@/lib/pocketbaseData/userDisplayNameSession";
 
 export function TaxDetailsClient() {

@@ -18,7 +18,7 @@ import {
   buildVoucherAttachmentStoragePath,
   resolveCompanyUsesPocketLedgerStorage,
 } from "@/lib/firebaseStoragePaths";
-import { storage } from "@/lib/firebase";
+import { storage } from "@/lib/plClientSession";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
 import {
   dedupeVoucherAttachmentUrlList,

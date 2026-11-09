@@ -1,7 +1,7 @@
 import { addDoc } from "@/lib/writeGateway/pbWrites";
 import { collection, serverTimestamp } from "@/lib/pbCompat/firestore";
 import type { Company } from "@/hooks/useCompany";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { apkEntityWriteUsesLocalSqliteMirror } from "@/lib/apkOnlineFirestoreWritePolicy";
 import { upsertCompanyDocInBrowserDb } from "@/lib/localCompanyDocMirror";
 import { enqueueCompanyDocOutbox } from "@/lib/localVoucherOutbox";

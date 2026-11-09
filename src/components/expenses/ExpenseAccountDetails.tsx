@@ -166,7 +166,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useTransactions } from "@/hooks/use-transactions";
 import { useBalanceMode } from "@/hooks/useBalanceMode";
 import { useIsMobile, useCalendarMonths } from "@/hooks/use-mobile";

@@ -24,7 +24,7 @@ import { verifyPlanEntitlementJws } from "@/lib/security/planEntitlementJwtVerif
 import { getOrCreateClientDeviceId } from "@/lib/security/deviceIdentity";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { isPocketBaseAppSessionMarked } from "@/lib/pocketbaseData/pbAppSession";
 
 const TWENTY_DAYS_MS = 20 * 24 * 60 * 60 * 1000;

@@ -14,7 +14,7 @@ import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
 import { useToast } from "@/hooks/use-toast";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import {
   stageEntityAvatarAndDocuments,
   uploadEntityAvatarAndDocumentsRemote,

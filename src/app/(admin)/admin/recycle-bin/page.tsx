@@ -8,7 +8,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { collection, query, where, doc, serverTimestamp, deleteField } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";

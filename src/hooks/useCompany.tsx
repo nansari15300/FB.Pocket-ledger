@@ -11,7 +11,7 @@ import {
   firestore,
   ensureEmbeddedFirestoreOnlineForCloudCompanyLoad,
   syncEmbeddedFirestoreTransportFromNavigator,
-} from "@/lib/firebase";
+} from "@/lib/plClientSession";
 import type { PermissionConfig } from "./usePermissions";
 import {
   isLiveFirestoreCompanyRegistry,

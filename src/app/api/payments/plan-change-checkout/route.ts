@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import { v4 as uuidv4 } from "uuid";
 import crypto from "crypto";
 import {
@@ -37,6 +38,8 @@ import { getPublicAppHrefForPaymentRedirects } from "@/lib/checkoutPublicOrigin"
 import { applyOwnerPlanMirrorBatched } from "@/lib/server/mirrorOwnerCompanyPlanBilling";
 import { persistAccountCanonicalPlanDoc } from "@/lib/server/accountCanonicalPlan";
 import { resolveBillingCaller } from "@/lib/server/billingCaller";
+
+import { serverTimestamp, Timestamp } from "@/lib/server/pbBilling/fieldValue";
 
 type AdminKeysResult = {
   stored: GatewayKeys;
@@ -303,10 +306,10 @@ export async function POST(req: NextRequest) {
             })
           : null;
       const planSwitchMs = Date.now();
-      const planSwitchTs = admin.firestore.Timestamp.fromMillis(planSwitchMs);
+      const planSwitchTs = Timestamp.fromMillis(planSwitchMs);
       const primaryCompanyUpdate: Record<string, unknown> = {
         planId: targetPlanId,
-        planExpiry: admin.firestore.Timestamp.fromMillis(quote.newExpiryMs),
+        planExpiry: Timestamp.fromMillis(quote.newExpiryMs),
         planExpiryMs: quote.newExpiryMs,
         planUpgradedAt: planSwitchTs,
         planUpgradedAtMs: planSwitchMs,
@@ -327,19 +330,19 @@ export async function POST(req: NextRequest) {
         planChangeHistory,
         planExpiryMs: quote.newExpiryMs,
         planChangeOneTime: true,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp(),
       });
       const histRef = companyRef.collection("subscription_history").doc();
       batch.set(histRef, {
         ...planChangeHistory,
         source: "server_proration_zero_net",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp(),
       });
       await batch.commit();
       const mirrorOwnerId = String(cdata.ownerId ?? decoded.uid ?? "").trim();
       const siblingOnlyPatch: Record<string, unknown> = {
         planId: targetPlanId,
-        planExpiry: admin.firestore.Timestamp.fromMillis(quote.newExpiryMs),
+        planExpiry: Timestamp.fromMillis(quote.newExpiryMs),
         planExpiryMs: quote.newExpiryMs,
         planUpgradedAt: planSwitchTs,
         planUpgradedAtMs: planSwitchMs,
@@ -381,7 +384,7 @@ export async function POST(req: NextRequest) {
       const adminResult = await getGatewayKeysFromAdmin();
       const keys = mergeGatewayKeysWithEnv(adminResult.stored);
       const pendingId = uuidv4();
-      const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + PENDING_PLAN_CHANGE_TTL_MS);
+      const expiresAt = Timestamp.fromMillis(Date.now() + PENDING_PLAN_CHANGE_TTL_MS);
       const pendingRef = db.collection(PENDING_PLAN_CHANGES_COLLECTION).doc(pendingId);
 
       await pendingRef.set({
@@ -398,7 +401,7 @@ export async function POST(req: NextRequest) {
         creditNpr: quote.creditNpr,
         gateway,
         status: "pending",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp(),
         expiresAt,
       });
 

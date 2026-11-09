@@ -2,7 +2,7 @@
 
 import { addDoc, updateDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { collection, doc, serverTimestamp } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { openDB } from "@/lib/offlineDb";
 import { emitLocalMutationEvent, subscribeLocalMutationEvent } from "@/lib/localMutationEvents";
 import { isLocalFileRef, uploadPendingLocalFileRef } from "@/lib/localPendingFiles";

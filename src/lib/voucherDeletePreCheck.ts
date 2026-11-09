@@ -3,7 +3,7 @@
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import type { Company } from "@/hooks/useCompany";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { companyRowUsesSqliteLedgerWrites, isServerGateCompany } from "@/lib/companyStorageKind";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { getCompanyDocFromBrowserDb } from "@/lib/localCompanyDocMirror";

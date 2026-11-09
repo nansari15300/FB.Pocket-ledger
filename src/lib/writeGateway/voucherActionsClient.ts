@@ -10,7 +10,7 @@ import {
 } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { addDoc, getDoc, setDoc, updateDoc, runTransaction } from "@/lib/writeGateway/firestoreMutationsInternal";
-import { auth, firestore, storage, firestoreNetworkDisabledByApi } from "@/lib/firebase";
+import { auth, firestore, storage, firestoreNetworkDisabledByApi } from "@/lib/plClientSession";
 import { ref as storageRef, deleteObject } from "@/lib/pocketbaseData/pbStorage";
 import { moveFilesToVoucherDateClient } from "@/lib/storageClient";
 import { deleteFirebaseStorageUrlsWithRegistry } from "@/lib/companyAttachmentRegistry";

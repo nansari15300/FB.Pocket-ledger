@@ -4,7 +4,7 @@
  */
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { getPlan, type PlanId } from "@/config/plans";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { apkEmbeddedSqliteFirstWritesPreferred } from "@/lib/apkOnlineFirestoreWritePolicy";

@@ -47,7 +47,7 @@ import { Input } from "../ui/input";
 import { toast } from "@/hooks/use-toast";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { auth, firestore } from "@/lib/firebase";
+import { auth, firestore } from "@/lib/plClientSession";
 import { useEmbeddedLogout } from "@/contexts/EmbeddedLogoutContext";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { maybeMarkEmbeddedPendingCompanyDataWarm } from "@/lib/embeddedPendingCompanyWarm";

@@ -15,7 +15,7 @@ import { PermissionButton } from "@/components/permission";
 import type { DateRange } from "@/components/ui/ad-calendar";
 import { doc, collection, query, where, orderBy } from "@/lib/pbCompat/firestore";
 import { getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useRouter } from "next/navigation";
 import { usePageMemory } from "@/hooks/usePageMemory";
 import { ScrollArea } from "@/components/ui/scroll-area";

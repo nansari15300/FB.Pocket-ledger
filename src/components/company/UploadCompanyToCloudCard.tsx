@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useCompany } from "@/hooks/useCompany";
 import { useAuth } from "@/hooks/useAuth";
 import { doc, serverTimestamp, deleteField } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { promoteLocalCompanyRowToOnline } from "@/lib/localCompanyStore";
 import { canUploadOneMoreOnline } from "@/lib/companyOnlineSlots";
 import { useToast } from "@/hooks/use-toast";

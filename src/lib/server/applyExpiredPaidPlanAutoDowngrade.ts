@@ -2,11 +2,13 @@
  * Paid plan ki `planExpiry` beet chuki ho aur owner ne opt-out na kiya ho — company ko Basic par server-side.
  * `sync-plan` call par chalta hai taaki app khulte hi expiry resolve ho.
  */
-import * as admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import { normalizePlanIdForClient, type PlanId } from "@/config/plans";
 import { isCompanyOwner } from "@/lib/server/companyOwner";
 import { applyOwnerPlanMirrorBatched } from "@/lib/server/mirrorOwnerCompanyPlanBilling";
 import { persistAccountCanonicalPlanDoc } from "@/lib/server/accountCanonicalPlan";
+
+import { deleteField, serverTimestamp, Timestamp } from "@/lib/server/pbBilling/fieldValue";
 
 const PAID: PlanId[] = ["advance", "pro", "pro-plus"];
 
@@ -42,15 +44,15 @@ export async function applyExpiredPaidPlanAutoDowngradeIfEligible(args: {
   if (autoDowngrade === false) return false;
 
   const autoDownMs = Date.now();
-  const autoDownTs = admin.firestore.Timestamp.fromMillis(autoDownMs);
+  const autoDownTs = Timestamp.fromMillis(autoDownMs);
   const companyPatch: Record<string, unknown> = {
     planId: "basic",
-    planExpiry: admin.firestore.FieldValue.delete(),
-    planExpiryMs: admin.firestore.FieldValue.delete(),
-    stripeSubscriptionId: admin.firestore.FieldValue.delete(),
+    planExpiry: deleteField(),
+    planExpiryMs: deleteField(),
+    stripeSubscriptionId: deleteField(),
     planUpgradedAt: autoDownTs,
     planUpgradedAtMs: autoDownMs,
-    lastAutoDowngradeToBasicAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastAutoDowngradeToBasicAt: serverTimestamp(),
     lastAutoDowngradeToBasicReason: "paid_plan_expired_no_renewal",
   };
 
@@ -63,7 +65,7 @@ export async function applyExpiredPaidPlanAutoDowngradeIfEligible(args: {
     oldExpiryMs: expMs,
     newExpiryMs: null,
     source: "auto_downgrade_paid_expired",
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: serverTimestamp(),
   });
   await batch.commit();
 

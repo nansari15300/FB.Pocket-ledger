@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { Search, Pencil } from "lucide-react";
 import { EditStaffDialog } from "@/components/staff/EditStaffDialog";
 import { EditStaffGroupDialog } from "@/components/staff/EditStaffGroupDialog";

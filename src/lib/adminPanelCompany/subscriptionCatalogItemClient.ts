@@ -36,7 +36,7 @@ export async function fetchAdminPanelSubscriptionCatalogFields(
       if (seam.isAdminServerDataActive()) getDoc = seam.getDoc;
       else skip = true;
     }
-    const { firestore } = await import("@/lib/firebase");
+    const { firestore } = await import("@/lib/plClientSession");
     const snap = skip ? null : await getDoc(doc(firestore, "app_settings", "plans"));
     if (snap && snap.exists()) {
       const raw = snap.data() as Record<string, unknown>;

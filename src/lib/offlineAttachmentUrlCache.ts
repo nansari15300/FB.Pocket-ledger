@@ -16,7 +16,7 @@ import {
   normalizeFirebaseStorageObjectPathForSdk,
   tryGetStoragePathFromFirebaseDownloadUrl,
 } from "@/lib/firebaseStorageDownloadUrl";
-import { storage } from "@/lib/firebase";
+import { storage } from "@/lib/plClientSession";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import { electronAttachmentDisplayUrlFromPath } from "@/lib/electronAttachmentFs";
 import { usesEmbeddedNativeAttachmentStorage } from "@/lib/usesEmbeddedNativeAttachmentStorage";

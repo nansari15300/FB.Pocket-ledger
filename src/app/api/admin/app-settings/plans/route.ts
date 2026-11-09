@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import { resolveSuperAdminCaller } from "@/lib/server/adminCaller";
 import {
   sanitizeOnlineDemoOffer,
@@ -20,12 +21,14 @@ import {
   type DeviceUserAddOnOffer,
 } from "@/lib/planAddOns";
 
+import { deleteField, Timestamp } from "@/lib/server/pbBilling/fieldValue";
+
 function coerceLimitedTimeOfferDate(plan: Record<string, unknown>): Record<string, unknown> {
   const ltd = plan.limitedTimeOfferDate;
   if (typeof ltd === "string" && ltd.trim()) {
     const d = new Date(ltd);
     if (!Number.isNaN(d.getTime())) {
-      return { ...plan, limitedTimeOfferDate: admin.firestore.Timestamp.fromDate(d) };
+      return { ...plan, limitedTimeOfferDate: Timestamp.fromDate(d) };
     }
     return plan;
   }
@@ -33,7 +36,7 @@ function coerceLimitedTimeOfferDate(plan: Record<string, unknown>): Record<strin
   const s = (ltd as { seconds?: unknown; _seconds?: unknown }).seconds ?? (ltd as { _seconds?: unknown })._seconds;
   const n = (ltd as { nanoseconds?: unknown; _nanoseconds?: unknown }).nanoseconds ?? (ltd as { _nanoseconds?: unknown })._nanoseconds;
   if (typeof s === "number" && typeof n === "number") {
-    return { ...plan, limitedTimeOfferDate: new admin.firestore.Timestamp(s, n) };
+    return { ...plan, limitedTimeOfferDate: new Timestamp(s, n) };
   }
   return plan;
 }
@@ -66,7 +69,7 @@ async function applyExistingDemoAction(opts: {
         ref: company.ref,
         patch: {
           planId: nextOffer.planId,
-          planExpiry: admin.firestore.Timestamp.fromMillis(expiryMs),
+          planExpiry: Timestamp.fromMillis(expiryMs),
           planExpiryMs: expiryMs,
           demoPlanId: nextOffer.planId,
           demoPlanDays: replacementDays,
@@ -78,7 +81,7 @@ async function applyExistingDemoAction(opts: {
       ref: company.ref,
       patch: {
         planId: "basic",
-        planExpiry: admin.firestore.Timestamp.fromMillis(now),
+        planExpiry: Timestamp.fromMillis(now),
         planExpiryMs: now,
         demoPlanActive: false,
         demoPlanDisabledAtMs: now,
@@ -155,7 +158,7 @@ export async function POST(req: NextRequest) {
         {
           deviceUserAddOns: {
             ...deviceUserAddOns,
-            hiddenFromBilling: admin.firestore.FieldValue.delete(),
+            hiddenFromBilling: deleteField(),
           },
           entitlementCapConvention: "zero_means_none",
         },

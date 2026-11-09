@@ -4,7 +4,7 @@ import { Readable } from "node:stream";
 import { google } from "googleapis";
 import { createGoogleOAuth2Client } from "@/lib/server/googleOAuthCredentials";
 import { ensureHostingConfig } from "@/lib/server/hostingConfig";
-import { getAdminDb, isFirebaseAdminConfigured } from "@/lib/firebaseAdmin";
+import { serverDb } from "@/lib/server/appDb";
 import type { CloudSyncManifest, LocalCloudSyncOperation } from "@/lib/localCloudSync/types";
 import type { DriveSharedCompanyListItem } from "@/lib/localCloudSync/types";
 import {
@@ -62,10 +62,8 @@ async function looksLikePocketLedgerCompanyFolder(
 
 async function loadDriveTokens(uid: string): Promise<DriveTokens> {
   await ensureHostingConfig(); // oauthClient() below needs the client id / secret
-  if (!isFirebaseAdminConfigured()) {
-    throw new Error("Firebase Admin not configured for Drive sync");
-  }
-  const db = getAdminDb();
+  const { serverDb } = await import("@/lib/server/appDb");
+  const db = serverDb();
   const snap = await db.collection("user_tokens").doc(uid).collection("google").doc("drive").get();
   if (!snap.exists) throw new Error("Google Drive not connected");
   const d = snap.data() as Record<string, unknown>;

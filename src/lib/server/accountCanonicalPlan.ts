@@ -4,9 +4,11 @@
  * - Owned company rows are compatibility projections for existing sync/offline clients.
  * - Legacy company-first accounts are migrated lazily on their first reconciliation.
  */
-import * as admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import { normalizePlanIdForClient, planTierIndex, type PlanId } from "@/config/plans";
 import { applyOwnerPlanMirrorBatched } from "@/lib/server/mirrorOwnerCompanyPlanBilling";
+
+import { deleteField, serverTimestamp, Timestamp } from "@/lib/server/pbBilling/fieldValue";
 
 export type AccountPlanCanon = {
   planId: PlanId;
@@ -72,7 +74,7 @@ export function buildCompanyPatchFromAccountCanon(
   canon: AccountPlanCanon,
   ownerUid?: string
 ): Record<string, unknown> {
-  const planUpgradedAt = admin.firestore.Timestamp.fromMillis(canon.planUpgradedAtMs);
+  const planUpgradedAt = Timestamp.fromMillis(canon.planUpgradedAtMs);
   const patch: Record<string, unknown> = {
     planId: canon.planId,
     planUpgradedAt,
@@ -81,14 +83,14 @@ export function buildCompanyPatchFromAccountCanon(
   };
   if (ownerUid?.trim()) patch.planOwnerUid = ownerUid.trim();
   if (canon.planId === "basic") {
-    patch.planExpiry = admin.firestore.FieldValue.delete();
-    patch.planExpiryMs = admin.firestore.FieldValue.delete();
+    patch.planExpiry = deleteField();
+    patch.planExpiryMs = deleteField();
     // Paid → Basic / auto-downgrade: Stripe IDs hatao taaki client cache purana subscription na chipkaye.
-    patch.stripeCustomerId = admin.firestore.FieldValue.delete();
-    patch.stripeSubscriptionId = admin.firestore.FieldValue.delete();
+    patch.stripeCustomerId = deleteField();
+    patch.stripeSubscriptionId = deleteField();
   } else {
     if (canon.planExpiryMs != null && Number.isFinite(canon.planExpiryMs)) {
-      patch.planExpiry = admin.firestore.Timestamp.fromMillis(canon.planExpiryMs);
+      patch.planExpiry = Timestamp.fromMillis(canon.planExpiryMs);
       patch.planExpiryMs = canon.planExpiryMs;
     }
     // Khalti/eSewa paid: canon par Stripe na ho to field mat chhedo — warna non-Stripe tenant ka customer ID delete ho jata.
@@ -139,7 +141,7 @@ export async function grantAccountCanonicalPlan(
       planId: canon.planId,
       planExpiryMs: canon.planExpiryMs,
       source,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: serverTimestamp(),
     },
     { merge: true }
   );

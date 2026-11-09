@@ -35,7 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import * as XLSX from 'xlsx';
 import { RunningBalanceFullChart } from "@/components/reports/RunningBalanceFullChart";
 import { doc } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import AdCalendar from "@/components/ui/ad-calendar";
 import { DateRangePresetRow } from "@/components/ui/DateRangePresetRow";
 import { toast } from "sonner";

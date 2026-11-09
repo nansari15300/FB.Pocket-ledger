@@ -1,4 +1,4 @@
-import type admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import {
   DEFAULT_BILLING_POLICY_FLAGS,
   parseBillingPolicyDoc,

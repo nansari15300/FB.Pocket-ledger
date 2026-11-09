@@ -307,10 +307,10 @@ export async function ensureOnlineDataServerSettingsHydrated(opts?: {
         }
 
         // 2. Fallback to Firestore if not blocked
-        const { isFirestoreBlockedForServerSession } = await import("@/lib/firebase");
+        const { isFirestoreBlockedForServerSession } = await import("@/lib/plClientSession");
         if (!isFirestoreBlockedForServerSession()) {
           const { doc, getDoc } = await import("@/lib/pbCompat/firestore");
-          const { firestore } = await import("@/lib/firebase");
+          const { firestore } = await import("@/lib/plClientSession");
           const snap = await Promise.race([
             getDoc(doc(firestore, ONLINE_DATA_SERVER_SETTINGS_COLLECTION, ONLINE_DATA_SERVER_SETTINGS_ID)),
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000)),

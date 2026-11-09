@@ -4,7 +4,7 @@
 import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import {
   generateUniqueInterCompanyAccountNo,
   isValidInterCompanyAcNo,

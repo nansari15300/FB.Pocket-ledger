@@ -9,7 +9,7 @@ import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { ref, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore, storage } from "@/lib/firebase";
+import { firestore, storage } from "@/lib/plClientSession";
 import { COMPANY_LOCAL_MIRROR_SUBCOLLECTIONS } from "@/lib/firestoreToLocalCompanyPull";
 import {
   deserializeLocalDbValue,

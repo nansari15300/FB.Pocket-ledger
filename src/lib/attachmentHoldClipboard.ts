@@ -2,7 +2,7 @@
  * 2s hold copy/paste: clipboard me compact marker + optional same-tab blob sid.
  * Paste (voucher forms): saved `src` ref ho to wahi URL reuse; sirf unsaved File / sid-only → naya File upload.
  */
-import { storage } from "@/lib/firebase";
+import { storage } from "@/lib/plClientSession";
 import { ref, getBlob } from "@/lib/pocketbaseData/pbStorage";
 import { getBlobFromLocalFileRef, isLocalFileRef } from "@/lib/localPendingFiles";
 import { isDriveFileRef } from "@/lib/legacyDriveFileRef";

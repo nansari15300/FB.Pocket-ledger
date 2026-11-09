@@ -9,7 +9,7 @@ import { runTransaction, setDoc } from "@/lib/writeGateway/pbWrites";
 import { collection, doc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { ref, deleteObject, getBlob } from "@/lib/pocketbaseData/pbStorage";
-import { firestore, storage } from "@/lib/firebase";
+import { firestore, storage } from "@/lib/plClientSession";
 import { companyAttachmentRegistryEnabled } from "@/lib/firebaseBillingOptimization";
 import { tryGetStoragePathFromFirebaseDownloadUrl } from "@/lib/firebaseStorageDownloadUrl";
 import { isOfflineCompanyStorage } from "@/lib/companyUnlockGate";
@@ -890,7 +890,7 @@ async function forceDeleteStorageUrls(
   traceCtx?: { companyId: string; entityId?: string }
 ): Promise<void> {
   const { deleteObject: delObj } = await import("@/lib/pocketbaseData/pbStorage");
-  const { storage: st } = await import("@/lib/firebase");
+  const { storage: st } = await import("@/lib/plClientSession");
   const trace =
     typeof process !== "undefined" && process.env.NODE_ENV !== "production"
       ? await import("@/lib/attachmentDeleteTrace")

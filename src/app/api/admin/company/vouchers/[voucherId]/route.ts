@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
-import { getAdminDb } from "@/lib/firebaseAdmin";
+
 import { isSuperAdminServer } from "@/lib/server/isSuperAdminServer";
 import {
   ADMIN_PANEL_COMPANIES_COLLECTION,
   CLOUD_ADMIN_PANEL_TENANT_ID,
 } from "@/lib/adminPanelCompany/constants";
 
+import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
+
+import { verifyCompanyApiCallerByToken, type CompanyApiCaller } from "@/lib/server/companyApiCaller";
+import { serverDb } from "@/lib/server/appDb";
 export const dynamic = "force-dynamic";
 
 const ALLOWED_PATCH_KEYS = new Set(["allocations", "openingBalanceAllocated"]);
@@ -15,10 +18,8 @@ async function requireSuperAdmin(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
   if (!token) return { error: "Missing Authorization Bearer token", status: 401 } as const;
-
-  getAdminDb();
   try {
-    const decoded = await admin.auth().verifyIdToken(token);
+    const decoded = await verifyCompanyApiCallerByToken(token);
     if (!(await isSuperAdminServer(decoded.uid, decoded.email ?? undefined))) {
       return { error: "SuperAdmin only", status: 403 } as const;
     }
@@ -57,7 +58,7 @@ export async function PATCH(
     return NextResponse.json({ error: "No allowed fields in body" }, { status: 400 });
   }
 
-  const db = getAdminDb();
+  const db = serverDb();
   const ref = db.collection(ADMIN_PANEL_COMPANIES_COLLECTION).doc(CLOUD_ADMIN_PANEL_TENANT_ID).collection("vouchers").doc(id);
   const snap = await ref.get();
   if (!snap.exists) return NextResponse.json({ error: "Voucher not found" }, { status: 404 });
@@ -65,7 +66,7 @@ export async function PATCH(
   await ref.set(
     {
       ...patch,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: serverTimestamp(),
     },
     { merge: true }
   );

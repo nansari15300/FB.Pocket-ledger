@@ -5,7 +5,7 @@
  * Online `uploadEntityAvatarAndDocumentsRemote` — turant Storage URL Firestore me (dusre device par turant kaam).
  */
 import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
-import { storage } from "@/lib/firebase";
+import { storage } from "@/lib/plClientSession";
 import { isOfflineCompanyStorage } from "@/lib/companyUnlockGate";
 import { companyRowUsesSqliteLedgerWrites, isServerGateCompany } from "@/lib/companyStorageKind";
 import { isPlServerThinStaffClient } from "@/lib/plServerThinStaffClient";

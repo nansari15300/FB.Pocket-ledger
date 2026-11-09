@@ -74,7 +74,7 @@ import { useDate } from "@/hooks/useDate";
 import { useVouchers } from "@/hooks/useVouchers";
 import { saveVoucher } from "@/lib/voucherActionsClient";
 
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { checkStorageLimit, incrementCompanyStorage } from "@/lib/storageUsageClient";
 import { collection, query, doc, serverTimestamp, Timestamp } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";

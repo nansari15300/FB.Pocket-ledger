@@ -8,7 +8,7 @@ import { STAFF_SYSTEM_GROUP_ID } from "@/lib/staffSystemGroups";
 import { writeEntity } from "@/lib/writeGateway";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 
 export type StaffModuleSystemGroupSeed = {
   id: string;

@@ -16,7 +16,7 @@ import { PermissionButton } from "@/components/permission";
 import type { DateRange } from "@/components/ui/ad-calendar";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useLiveMasterSelection } from "@/hooks/useLiveMasterSelection";
 import { Button } from "@/components/ui/button";

@@ -3,7 +3,7 @@
 import { numToWords } from "@/lib/number-to-words";
 import { useCompany } from "@/hooks/useCompany";
 import { useDate } from "@/hooks/useDate";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { doc, Timestamp } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
 import { useParams } from "next/navigation";

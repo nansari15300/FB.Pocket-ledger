@@ -3,7 +3,7 @@
 import { addDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { collection, serverTimestamp, doc, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore, firestoreNetworkDisabledByApi } from "@/lib/firebase";
+import { firestore, firestoreNetworkDisabledByApi } from "@/lib/plClientSession";
 import type { Company } from "@/hooks/useCompany";
 import { getEffectiveNotificationSettings } from "@/lib/localUserNotificationSettings";
 import { preferLocalLedgerReads } from "@/lib/apkOnlineFirestoreWritePolicy";

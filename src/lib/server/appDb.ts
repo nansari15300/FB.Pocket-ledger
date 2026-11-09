@@ -1,6 +1,6 @@
 import "server-only";
 
-import type admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import { pbBillingDb } from "@/lib/server/pbBilling/pbBillingDb";
 
 /**
@@ -12,5 +12,5 @@ import { pbBillingDb } from "@/lib/server/pbBilling/pbBillingDb";
  * (The return type is only the Firestore-shaped interface the billing helpers were written for.)
  */
 export function serverDb(): admin.firestore.Firestore {
-  return pbBillingDb();
+  return pbBillingDb() as admin.firestore.Firestore;
 }

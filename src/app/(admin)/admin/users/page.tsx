@@ -15,7 +15,7 @@ import {
   type QueryDocumentSnapshot,
 } from '@/lib/pbCompat/firestore';
 import { getDocs, onSnapshot } from '@/lib/pocketbaseData/pbReadSeam';
-import { firestore as db } from '@/lib/firebase'
+import { firestore as db } from '@/lib/plClientSession'
 import type { Company } from '@/app/(admin)/admin/types';
 import type { Role } from "@/utils/rbac";
 import { computePresenceLooksOnline } from "@/lib/presenceDisplay";

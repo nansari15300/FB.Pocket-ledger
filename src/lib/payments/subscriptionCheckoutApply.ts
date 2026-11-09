@@ -1,7 +1,7 @@
 /**
  * Khalti/eSewa **new subscription** checkout → Firestore plan upgrade (Stripe webhook jaisa, bina subscription id).
  */
-import * as admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import { normalizePlanIdForClient, type PlanId } from "@/config/plans";
 import { PAID_PLAN_IDS } from "@/lib/payments/stripeCheckoutFulfill";
 import { findOwnedCompanyIdForUser } from "@/lib/payments/resolveStripeFirestoreCompany";
@@ -9,6 +9,8 @@ import { grantAccountCanonicalPlan } from "@/lib/server/accountCanonicalPlan";
 import { mirrorSubscriptionPaymentToAdminCompany } from "@/lib/adminPanelAccounting/mirrorSubscriptionPayment";
 import { termDurationMs, type SubscriptionTermKey } from "@/lib/subscriptionPlanMath";
 import type { VerifiedLocalPlanApplyPayload } from "@/lib/payments/localStripePlanApplyTypes";
+
+import { serverTimestamp, Timestamp } from "@/lib/server/pbBilling/fieldValue";
 
 export type ApplySubscriptionCheckoutInput = {
   db: admin.firestore.Firestore;
@@ -59,7 +61,7 @@ export async function applyNewSubscriptionCheckoutToFirestore(
           gateway,
           status: "completed",
           billingIntent: "donation",
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: serverTimestamp(),
         },
         { merge: true }
       );
@@ -87,7 +89,7 @@ export async function applyNewSubscriptionCheckoutToFirestore(
           status: "completed",
           billingIntent: "donation",
           subscriptionFulfillComplete: true,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: serverTimestamp(),
         },
         { merge: true }
       );
@@ -148,8 +150,8 @@ export async function applyNewSubscriptionCheckoutToFirestore(
     return { ok: true, mirrorLocal };
   }
 
-  const planExpiry = admin.firestore.Timestamp.fromMillis(planExpiryMs);
-  const planUpgradedAtTs = admin.firestore.Timestamp.fromMillis(tierSwitchMs);
+  const planExpiry = Timestamp.fromMillis(planExpiryMs);
+  const planUpgradedAtTs = Timestamp.fromMillis(tierSwitchMs);
 
   await paymentRef.set(
     {
@@ -164,7 +166,7 @@ export async function applyNewSubscriptionCheckoutToFirestore(
       subscriptionTermKey,
       planExpiryMs,
       subscriptionFulfillComplete: true,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: serverTimestamp(),
     },
     { merge: true }
   );
@@ -203,7 +205,7 @@ export async function applyNewSubscriptionCheckoutToFirestore(
       source: `${gateway}_subscribe`,
       gateway,
       paymentId,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: serverTimestamp(),
     });
 
   const cdataFull = companySnap.data() as Record<string, unknown> | undefined;

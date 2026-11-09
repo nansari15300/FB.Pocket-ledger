@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
 import { Timestamp, collection, query, serverTimestamp, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { isLocalOnlyMode } from "@/lib/localMode";

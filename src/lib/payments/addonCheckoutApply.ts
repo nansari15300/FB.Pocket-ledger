@@ -4,11 +4,13 @@
  * One payment can include multiple kinds (e.g. devices + users together).
  */
 import "server-only";
-import * as admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import { resolveOwnerActivePaidSubscription } from "@/lib/server/resolveOwnerSubscriptionBilling";
 import { normalizeAddonKind, type AddonKind } from "@/lib/planAddOns";
 import { packAddonItemsForStorage } from "@/lib/payments/addonItemsPacked";
 import { mirrorAddonPurchaseToAdminCompany } from "@/lib/payments/mirrorAddonPurchaseToAdminCompany";
+
+import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
 
 export const PENDING_ADDON_PURCHASES_COLLECTION = "pending_addon_purchases";
 export const PENDING_ADDON_PURCHASE_TTL_MS = 60 * 60 * 1000;
@@ -140,7 +142,7 @@ export async function applyAddonPurchaseToFirestore(
     const udata = (userSnap.exists ? userSnap.data() : {}) as Record<string, unknown>;
     const patch: Record<string, unknown> = {
       addonExpiryMs: expiryMs,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: serverTimestamp(),
     };
     for (const { kind, quantity } of items) {
       const field = fieldForKind(kind);
@@ -163,7 +165,7 @@ export async function applyAddonPurchaseToFirestore(
         addonKind: items[0]?.kind,
         addonQuantity: items.reduce((s, i) => s + i.quantity, 0),
         addonFulfillComplete: true,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp(),
       },
       { merge: true }
     );

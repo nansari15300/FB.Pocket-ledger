@@ -5,7 +5,7 @@
  * taaki dusri device / peer company apni storage se file khol sake (shared HTTPS link kaafi nahi).
  */
 import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
-import { storage } from "@/lib/firebase";
+import { storage } from "@/lib/plClientSession";
 import { incrementCompanyStorage } from "@/lib/storageUsageClient";
 import { fetchAttachmentRefBlob } from "@/lib/attachmentRefBlobFetch";
 import { isLocalFileRef } from "@/lib/localPendingFiles";

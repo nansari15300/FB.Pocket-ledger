@@ -7,7 +7,7 @@
  */
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { getCompanyDocFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { attachmentPersistableRefsMatch } from "@/lib/companyAttachmentRegistry";
 

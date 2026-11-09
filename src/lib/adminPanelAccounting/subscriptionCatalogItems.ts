@@ -1,4 +1,4 @@
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 
 import { getPlan, normalizePlanIdForClient, PLAN_TIER_ORDER, type Plan, type PlanId } from "@/config/plans";
 
@@ -185,18 +185,13 @@ export function parsePackedAddonItems(raw: string | null | undefined): Array<{ k
 
 
 
-function seedAdminPanelCatalogItemGroups(
+import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
 
-  batch: admin.firestore.WriteBatch,
-
-  companyRef: admin.firestore.DocumentReference,
-
-  tenantId: string,
+function seedAdminPanelCatalogItemGroups(batch: admin.firestore.WriteBatch, companyRef: admin.firestore.DocumentReference, tenantId: string,
 
   now: admin.firestore.FieldValue
 
 ): void {
-
   batch.set(
 
     companyRef.collection("item_groups").doc(ADMIN_PANEL_SUBSCRIPTION_PLAN_GROUP_ID),
@@ -277,13 +272,13 @@ export async function ensureSubscriptionCatalogItems(
 
   const { plansById, addonOffer } = await loadAdminCatalogPricing(db);
 
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  const now = serverTimestamp();
 
   const batch = db.batch();
 
   let writes = 0;
 
-  seedAdminPanelCatalogItemGroups(batch, companyRef, CLOUD_ADMIN_PANEL_TENANT_ID, now);
+  seedAdminPanelCatalogItemGroups(batch, companyRef, CLOUD_ADMIN_PANEL_TENANT_ID, now as unknown as admin.firestore.FieldValue);
 
   writes += 2;
 
@@ -337,9 +332,10 @@ export async function ensureSubscriptionCatalogItems(
 
         active: true,
 
-        updatedAt: now,
+        // The PB adapter encodes this sentinel directly; the Admin type only knows `FieldValue`.
+        updatedAt: now as unknown as admin.firestore.FieldValue,
 
-        createdAt: now,
+        createdAt: now as unknown as admin.firestore.FieldValue,
 
       },
 
@@ -399,9 +395,10 @@ export async function ensureSubscriptionCatalogItems(
 
         active: true,
 
-        updatedAt: now,
+        // The PB adapter encodes this sentinel directly; the Admin type only knows `FieldValue`.
+        updatedAt: now as unknown as admin.firestore.FieldValue,
 
-        createdAt: now,
+        createdAt: now as unknown as admin.firestore.FieldValue,
 
       },
 

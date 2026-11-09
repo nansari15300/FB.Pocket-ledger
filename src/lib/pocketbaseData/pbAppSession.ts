@@ -23,7 +23,7 @@ import {
 } from "@/lib/pocketbaseData/pbClient";
 import { registerPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { ONLINE_DATA_SERVER_POCKETBASE_ID } from "@/lib/onlineDataServer";
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/plClientSession";
 
 const SESSION_KIND_KEY = "pl_app_session_kind_v1";
 const PROFILE_KEY = "pl_pb_app_profile_v1";

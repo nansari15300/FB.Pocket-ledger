@@ -4,7 +4,7 @@
 import { addDoc, deleteDoc, setDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
 import { collection, doc, query, serverTimestamp, where, type Unsubscribe } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { auth, firestore } from "@/lib/firebase";
+import { auth, firestore } from "@/lib/plClientSession";
 import type { InterCompanyGroupCompanyOwner } from "@/lib/interCompany/interCompanyGroups";
 import { ensureJoinPairCompaniesInInterCompanySystem } from "@/lib/interCompany/interCompanyGroups";
 import { notifyInterCompanyAlertsChanged } from "@/lib/interCompany/interCompanyAlerts";

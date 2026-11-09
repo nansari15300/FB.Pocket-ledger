@@ -1,6 +1,6 @@
 "use client";
 
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/plClientSession";
 import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import type { FyPeriodKind } from "@/lib/fyPagination/types";

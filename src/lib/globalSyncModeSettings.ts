@@ -127,7 +127,7 @@ export async function ensureGlobalSyncModeSettingsHydrated(): Promise<GlobalSync
           }
           getDoc = seam.getDoc;
         }
-        const { firestore } = await import("@/lib/firebase");
+        const { firestore } = await import("@/lib/plClientSession");
         const snap = await getDoc(doc(firestore, SYNC_MODE_SETTINGS_COLLECTION, SYNC_MODE_SETTINGS_ID));
         const next = normalizeGlobalSyncModeSettings(snap.exists() ? snap.data() : undefined);
         writeCachedGlobalSyncModeSettings(next);

@@ -3,7 +3,7 @@
 import { addDoc } from "@/lib/writeGateway/pbWrites";
 import { collection, query, serverTimestamp, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { buildPlServerGateInviteLink } from "@/lib/plServerGateInviteLink";
 import { dedupePlServerListingUrls, rewritePlServerListingUrlsPort } from "@/lib/plServerPublicHostUrl";
 import { appNavHref } from "@/lib/appNavHref";

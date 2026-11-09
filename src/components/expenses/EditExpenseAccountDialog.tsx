@@ -53,7 +53,7 @@ import {
 } from "@/components/inter-company/MasterFormLayout";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import {
   MASTER_ALERT_DIALOG_CANCEL_GRAY_CLASS,
   MASTER_DIALOG_CANCEL_GRAY_PILL_BTN_CLASS,

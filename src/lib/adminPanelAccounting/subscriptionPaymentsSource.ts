@@ -1,4 +1,4 @@
-import type admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import { resolveAddonItemsPackedFromPaymentData } from "@/lib/payments/addonItemsPacked";
 
 export type AdminSubscriptionPaymentRow = {

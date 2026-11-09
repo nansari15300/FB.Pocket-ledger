@@ -8,7 +8,7 @@
 import { deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDocFromCache } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { getBrowserDbForCompanyId, scheduleBrowserDbPersistAfterWrite, flushPendingBrowserDbSave } from "@/lib/localSqlite";
 import { getLocalCompanyById } from "@/lib/localCompanyStore";
 import { LOCAL_MIRROR_META_SERVER_CONFIRMED_KEY } from "@/lib/localMirrorServerMeta";

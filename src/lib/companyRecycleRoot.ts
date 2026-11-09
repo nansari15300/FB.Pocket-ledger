@@ -11,7 +11,7 @@
  */
 import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { deleteField, doc, serverTimestamp } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import {
   getLocalCompanyById,
   removeLocalCompanyById,

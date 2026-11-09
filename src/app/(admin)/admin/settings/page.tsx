@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppFreshInfoButton } from "@/components/ui/AppFreshInfoButton";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useToast } from "@/hooks/use-toast";
 import {
   DEFAULT_VOUCHER_LOAD_SETTINGS,

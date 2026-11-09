@@ -8,7 +8,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { collection, query, QuerySnapshot, DocumentData } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useDataSource } from "@/contexts/DataSourceContext";
 import { createLocalApiClient } from "@/lib/localApiClient";
 import { isStaticAppBuild } from "@/lib/isStaticAppBuild";

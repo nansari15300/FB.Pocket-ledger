@@ -138,7 +138,7 @@ import {
 } from "@/lib/spendWiseDateRangeGroups";
 import { applySpendWiseStatementRunningBalances } from "@/lib/spendWiseStatementRunningBalance";
 import { doc } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import usePermissions from "@/hooks/usePermissions";
 import { useAuth } from "@/hooks/useAuth";
 import { userCanViewSpecialAccountBalance, userIsSpecialAccountOwner } from "@/lib/specialAccountUsage";

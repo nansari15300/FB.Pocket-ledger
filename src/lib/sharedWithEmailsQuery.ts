@@ -3,7 +3,7 @@
  * `sharedWithEmailsLower` stores lowercase only — query + rules align reliably.
  */
 
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/plClientSession";
 
 /** Shared query/listener: Firebase Auth token email (rules `request.auth.token.email` se match). */
 export function resolveFirestoreAuthEmail(fallback?: string | null): string {

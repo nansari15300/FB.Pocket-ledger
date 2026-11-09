@@ -1,6 +1,6 @@
 import { updateDoc } from "@/lib/writeGateway/pbWrites";
 import { doc } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import type { Company } from "@/hooks/useCompany";
 import type { MasterEntityGroupFormPreset } from "@/lib/masterEntityGroupFormPresets";
 import { getCompanyDocFromBrowserDb, upsertCompanyDocInBrowserDb } from "@/lib/localCompanyDocMirror";

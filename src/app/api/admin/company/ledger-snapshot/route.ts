@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
-import { getAdminDb } from "@/lib/firebaseAdmin";
+
 import { isSuperAdminServer } from "@/lib/server/isSuperAdminServer";
 import {
   ADMIN_PANEL_COMPANIES_COLLECTION,
@@ -21,14 +20,14 @@ import {
 } from "@/lib/adminPanelCompany/mapLedgerSnapshot";
 import { ensureSubscriptionCatalogItems } from "@/lib/adminPanelAccounting/subscriptionCatalogItems";
 
+import { verifyCompanyApiCallerByToken, type CompanyApiCaller } from "@/lib/server/companyApiCaller";
+import { serverDb } from "@/lib/server/appDb";
 async function requireSuperAdmin(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
   if (!token) return { error: "Missing Authorization Bearer token", status: 401 } as const;
-
-  getAdminDb();
   try {
-    const decoded = await admin.auth().verifyIdToken(token);
+    const decoded = await verifyCompanyApiCallerByToken(token);
     if (!(await isSuperAdminServer(decoded.uid, decoded.email ?? undefined))) {
       return { error: "SuperAdmin only", status: 403 } as const;
     }
@@ -52,7 +51,7 @@ export async function GET(req: NextRequest) {
   const auth = await requireSuperAdmin(req);
   if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const db = getAdminDb();
+  const db = serverDb();
   const companyRef = db.collection(ADMIN_PANEL_COMPANIES_COLLECTION).doc(CLOUD_ADMIN_PANEL_TENANT_ID);
   const companySnap = await companyRef.get();
   if (!companySnap.exists) {

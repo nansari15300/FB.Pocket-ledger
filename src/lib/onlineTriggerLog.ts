@@ -1193,7 +1193,7 @@ function installQuotaLogObservers(): void {
       if (!quotaLine || pbOnlyNow) prevWarn.apply(console, args as []);
       if (!quotaLine || pbOnlyNow) return;
       const quotaText = argsText(args).slice(0, 4000);
-      void Promise.all([import("@/lib/quotaAdminNotice"), import("@/lib/firebase")])
+      void Promise.all([import("@/lib/quotaAdminNotice"), import("@/lib/plClientSession")])
         .then(([n, fb]) => n.notifyQuotaErrorForAdmin(quotaText, fb.auth?.currentUser?.email))
         .catch(() => undefined);
       if (quotaNoteBusy) return;

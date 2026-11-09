@@ -50,7 +50,7 @@ import {
 } from "@/lib/voucherFormAttachmentSave";
 import { sendTransactionAlert, isAmountOverOneLakh, getChangedFieldLabels } from "@/lib/transactionAlerts";
 import { assertCan, assertCanPerformBackdated, assertCanEdit, PermissionDeniedError } from "@/lib/permissions/enforcePermission";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { collection, query, where, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { getDocs, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { hasPaymentLinks } from "@/lib/payment-allocation-utils";

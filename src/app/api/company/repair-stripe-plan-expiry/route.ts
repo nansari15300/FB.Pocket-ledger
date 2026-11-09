@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import Stripe from "stripe";
 import { serverDb } from "@/lib/server/appDb";
 import { isCompanyOwner } from "@/lib/server/companyOwner";

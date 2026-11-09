@@ -3,7 +3,7 @@
  */
 import "server-only";
 import Stripe from "stripe";
-import * as admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import { normalizePlanIdForClient, type PlanId } from "@/config/plans";
 import { mergeGatewayKeysWithEnv, type GatewayKeys } from "@/ai/flows/gateway-keys";
 import { serverDb } from "@/lib/server/appDb";
@@ -21,6 +21,8 @@ import {
   termDurationMs,
   type SubscriptionTermKey,
 } from "@/lib/subscriptionPlanMath";
+
+import { serverTimestamp, Timestamp } from "@/lib/server/pbBilling/fieldValue";
 
 /** Paid SKUs only; basic stays free and is not granted via checkout. */
 export const PAID_PLAN_IDS = new Set<PlanId>(["advance", "pro", "pro-plus"]);
@@ -353,7 +355,7 @@ export async function fulfillStripeCheckoutSessionCompleted(
         stripeCustomerId,
         stripeSubscriptionId,
         planExpiryMs,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp(),
       },
       { merge: true }
     );
@@ -425,7 +427,7 @@ export async function fulfillStripeCheckoutSessionCompleted(
       stripeSubscriptionId,
       billingIntent,
       ...(planExpiryMs != null ? { planExpiryMs } : {}),
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: serverTimestamp(),
     },
     { merge: true }
   );
@@ -444,7 +446,7 @@ export async function fulfillStripeCheckoutSessionCompleted(
   }
 
   const planExpiry: admin.firestore.Timestamp | null =
-    planExpiryMs != null ? admin.firestore.Timestamp.fromMillis(planExpiryMs) : null;
+    planExpiryMs != null ? Timestamp.fromMillis(planExpiryMs) as unknown as admin.firestore.Timestamp : null;
 
   const companyRef = db.collection("companies").doc(effectiveCompanyId);
   if (!companySnap.exists) {
@@ -458,7 +460,7 @@ export async function fulfillStripeCheckoutSessionCompleted(
   const patch: Record<string, unknown> = {
     planId,
     lastStripeCheckoutSessionId: session.id,
-    planUpgradedAt: admin.firestore.Timestamp.fromMillis(tierSwitchMs),
+    planUpgradedAt: Timestamp.fromMillis(tierSwitchMs),
     planUpgradedAtMs: tierSwitchMs,
   };
   if (planExpiry) {

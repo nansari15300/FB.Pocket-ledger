@@ -4,7 +4,7 @@
 import { updateDoc, addDoc, writeBatch, setDoc } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { doc, collection, serverTimestamp, Timestamp, deleteField, query, where } from "@/lib/pbCompat/firestore";
-import { firestore } from '@/lib/firebase';
+import { firestore } from '@/lib/plClientSession';
 import { ensureSuperAdminInSharedEmails } from '@/lib/superAdminEmails';
 import { diff } from 'deep-object-diff';
 import { moveFilesToVoucherDate } from "@/lib/storage"; // Import the move function

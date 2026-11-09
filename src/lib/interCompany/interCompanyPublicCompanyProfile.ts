@@ -5,7 +5,7 @@
 import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { doc, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import type { Company } from "@/hooks/useCompany";
 import {
   buildCompanySummary,
@@ -223,7 +223,7 @@ export async function backfillInterCompanyGroupCompanyOwners(args: {
 
   if (dirty) {
     const { doc, serverTimestamp, updateDoc } = await import("@/lib/pbCompat/firestore");
-    const { firestore } = await import("@/lib/firebase");
+    const { firestore } = await import("@/lib/plClientSession");
     await updateDoc(doc(firestore, "inter_company_groups", systemId), {
       ...patch,
       updatedAt: serverTimestamp(),

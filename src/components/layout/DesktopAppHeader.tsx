@@ -116,7 +116,7 @@ import {
 } from "@/lib/planAddOns";
 import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { GlobalFileHoverPreviewSwitch } from "@/components/layout/GlobalFileHoverPreviewSwitch";
 import { HeaderAppearanceMenu } from "@/components/layout/HeaderAppearanceMenu";
 import { LanguageGlobeButton } from "@/components/layout/LanguageGlobeButton";

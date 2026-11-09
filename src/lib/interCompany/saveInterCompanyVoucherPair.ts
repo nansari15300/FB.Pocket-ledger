@@ -4,7 +4,7 @@
 import type { InterCompanyEntityKind } from "@/components/inter-company/InterCompanyEntitySide";
 import { collection, doc, query, where, Timestamp } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { auth, firestore } from "@/lib/firebase";
+import { auth, firestore } from "@/lib/plClientSession";
 import {
   isRecurringAutoUserDisplayLabel,
   resolveHumanActorDisplayLabel,

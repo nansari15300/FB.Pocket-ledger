@@ -2,7 +2,7 @@
 
 import { collection, limit, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { getDriveApiUser } from "@/lib/firebaseAuthForApi";
 import { postDriveJsonViaClient } from "@/lib/localCloudSync/driveApiClient";
 import { getLocalCompanyById, listLocalCompanies, upsertLocalCompany } from "@/lib/localCompanyStore";

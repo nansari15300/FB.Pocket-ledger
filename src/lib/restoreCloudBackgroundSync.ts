@@ -7,7 +7,7 @@
 import { setDoc, writeBatch } from "@/lib/writeGateway/pbWrites";
 import { collection, doc, limit, query, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { COLLECTIONS_TO_BACKUP } from "@/lib/companyBackupCore";
 import { getLocalCompanyById, upsertLocalCompany } from "@/lib/localCompanyStore";
 import { forceUploadLocalCompanyToServer } from "@/lib/forceUploadLocalCompanyToServer";
@@ -121,7 +121,7 @@ export async function patchSqliteHttpsAttachmentsToFirestore(companyId: string):
   const { isLocalFileRef } = await import("@/lib/localPendingFiles");
   const { resolveAuthoritativeFirestoreCompanyId } = await import("@/lib/resolveAuthoritativeFirestoreCompanyId");
   const { doc, setDoc } = await import("@/lib/pbCompat/firestore");
-  const { firestore } = await import("@/lib/firebase");
+  const { firestore } = await import("@/lib/plClientSession");
 
   const fsCompanyId = await resolveAuthoritativeFirestoreCompanyId(cid);
   let patched = 0;

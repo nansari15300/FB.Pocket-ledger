@@ -12,7 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useCompany } from "@/hooks/useCompany";
 import { sortRecentTransactionsDesc } from "@/lib/recentTransactionsSort";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { doc, collection, query, where } from "@/lib/pbCompat/firestore";
 import * as React from 'react';
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';

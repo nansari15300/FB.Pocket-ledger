@@ -12,7 +12,7 @@ import {
   markFirestoreNetworkDisabledByApi,
   queueFirestoreNetworkOp,
   settleAfterFirestoreNetworkEnabled,
-} from "@/lib/firebase";
+} from "@/lib/plClientSession";
 import { isLocalOnlyMode } from "@/lib/localMode";
 
 let adminShellMountDepth = 0;

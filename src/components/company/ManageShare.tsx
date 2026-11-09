@@ -14,7 +14,7 @@ import {
 import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { useDeviceLimitContext } from "@/contexts/DeviceLimitContext";
 import { countAccountScopedDevicesForUser } from "@/lib/accountScopedDeviceCount";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { updateCompanyRootFirestore } from "@/lib/writeGateway/companyRootFirestore";
 import { useCompany } from "@/hooks/useCompany";
 import { useAuth } from "@/hooks/useAuth";

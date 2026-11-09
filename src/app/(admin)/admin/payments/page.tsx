@@ -11,7 +11,7 @@ import {
   query,
 } from '@/lib/pbCompat/firestore';
 import { onSnapshot } from '@/lib/pocketbaseData/pbReadSeam';
-import { firestore } from '@/lib/firebase';
+import { firestore } from '@/lib/plClientSession';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';

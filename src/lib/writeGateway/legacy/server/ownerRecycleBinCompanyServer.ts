@@ -1,8 +1,9 @@
 import "server-only";
 
-import admin from "firebase-admin";
-import { getAdminDb } from "@/lib/firebaseAdmin";
+import { serverDb } from "@/lib/server/appDb";
 import { adminServerHardDeleteDeletedCompany } from "@/lib/server/adminRecycleBinDeleteCompany";
+
+import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
 
 function ownsDeletedCompany(data: Record<string, unknown>, uid: string, email: string | undefined): boolean {
     const oid = String(data.ownerId || "").trim();
@@ -31,7 +32,7 @@ export async function ownerFinalizeCompanyRecycleBinOnServer(params: {
     if (!cid) return { ok: false, error: "Invalid company id" };
 
     try {
-        const db = getAdminDb();
+        const db = serverDb();
         const ref = db.collection("companies").doc(cid);
         const snap = await ref.get();
         if (!snap.exists) return { ok: true };
@@ -53,7 +54,7 @@ export async function ownerFinalizeCompanyRecycleBinOnServer(params: {
             await adminServerHardDeleteDeletedCompany(cid);
         } else {
             await ref.update({
-                movedToAdminRecycleAt: admin.firestore.FieldValue.serverTimestamp(),
+                movedToAdminRecycleAt: serverTimestamp(),
             });
         }
         return { ok: true };

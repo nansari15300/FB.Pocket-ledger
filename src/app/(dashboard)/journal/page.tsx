@@ -19,7 +19,7 @@ import type { DateRange } from "@/components/ui/ad-calendar";
 import { useRouter } from "next/navigation";
 import { doc, collection, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 
 // ✅ Custom Hook Import
 import { usePageMemory } from "@/hooks/usePageMemory";

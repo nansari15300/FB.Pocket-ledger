@@ -3,7 +3,7 @@
  */
 import { doc, setDoc, updateDoc, writeBatch } from "@/lib/writeGateway/firestoreMutationsInternal";
 import { serverTimestamp } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 
 /** Fire-and-forget user doc patch (auth bootstrap / presence). */
 export function voidUpdateUsersDoc(userDocId: string, patch: Record<string, unknown>): void {

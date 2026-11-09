@@ -32,8 +32,8 @@ import { type Resolver, useForm } from "react-hook-form";
 import { startOfDay } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 
-import { firestore } from "@/lib/firebase";
-import { storage } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
+import { storage } from "@/lib/plClientSession";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
 import { useDate } from "@/hooks/useDate";

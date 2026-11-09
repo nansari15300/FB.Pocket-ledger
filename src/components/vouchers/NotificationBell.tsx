@@ -13,7 +13,7 @@ import { Bell, MailOpen, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { collection, query, where, doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { useCompany } from "@/hooks/useCompany";
 import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";

@@ -2,7 +2,7 @@
  * Shared Firestore writes for prorated plan renew / upgrade (one-time payment, any gateway).
  * Stripe webhook + sync + Khalti/eSewa completion routes all funnel through this for consistent payment rows / admin history.
  */
-import * as admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import { normalizePlanIdForClient, type PlanId } from "@/config/plans";
 import {
   buildMergedFrozenStateAfterPaidUpgrade,
@@ -13,6 +13,8 @@ import { PAID_PLAN_IDS } from "@/lib/payments/stripeCheckoutFulfill";
 import { applyOwnerPlanMirrorBatched } from "@/lib/server/mirrorOwnerCompanyPlanBilling";
 import { persistAccountCanonicalPlanDoc } from "@/lib/server/accountCanonicalPlan";
 import { mirrorSubscriptionPaymentToAdminCompany } from "@/lib/adminPanelAccounting/mirrorSubscriptionPayment";
+
+import { serverTimestamp, Timestamp } from "@/lib/server/pbBilling/fieldValue";
 
 /** Snapshot stored on payment docs + merged into admin plan-change History dialog. */
 export type PlanChangeHistoryFirestore = {
@@ -112,14 +114,14 @@ export async function applyPlanChangeOneTimeToFirestore(input: ApplyPlanChangeOn
       planChangeOneTime: true,
       planChangeFulfillComplete: true,
       ...(stripeCustomerId ? { stripeCustomerId } : {}),
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: serverTimestamp(),
     },
     { merge: true }
   );
 
-  const planExpiry = admin.firestore.Timestamp.fromMillis(newPlanExpiryMs);
+  const planExpiry = Timestamp.fromMillis(newPlanExpiryMs);
   const tierSwitchMs = Date.now();
-  const planUpgradedAtTs = admin.firestore.Timestamp.fromMillis(tierSwitchMs);
+  const planUpgradedAtTs = Timestamp.fromMillis(tierSwitchMs);
 
   /** Saari owned companies par yahi slice — `billingFrozen*` sirf checkout wali company (tier ramp). */
   const commonCompanyPatch: Record<string, unknown> = {
@@ -189,7 +191,7 @@ export async function applyPlanChangeOneTimeToFirestore(input: ApplyPlanChangeOn
     gateway,
     paymentId,
     ...(historyExtra ?? {}),
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: serverTimestamp(),
   });
   }
 

@@ -102,7 +102,7 @@ export function reportFirestoreListenFailure(source: string, collectionPath: str
   const classified = classifyFirestoreClientError(err);
   if (classified.kind === "quota") {
     startServerQuotaHold();
-    void import("@/lib/firebase")
+    void import("@/lib/plClientSession")
       .then((m) => notifyQuotaErrorForAdmin(`${classified.code} ${classified.message}`, m.auth.currentUser?.email))
       .catch(() => undefined);
   }

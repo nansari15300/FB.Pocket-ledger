@@ -4,7 +4,7 @@
  * so Firestore would only fail with "client is offline"). Firebase session: unchanged getDoc users/{uid}.
  */
 import { doc, getDoc } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { isPocketBaseAppSessionActive, pocketBaseSessionUid, readPocketBaseAppProfile } from "@/lib/pocketbaseData/pbAppSession";
 
 /** True when signed in with the Pocket Ledger Server login alone (no Firebase user). Never throws. */
@@ -43,7 +43,10 @@ export async function resolveUserDisplayName(userId: string, fallback: string, t
     const userDoc = await getDoc(doc(firestore, "users", userId));
     if (userDoc.exists()) {
       const d = userDoc.data();
-      return d.displayName || d.email || fallback;
+      if (!d) return fallback;
+      const displayName = typeof d.displayName === "string" ? d.displayName : "";
+      const email = typeof d.email === "string" ? d.email : "";
+      return displayName || email || fallback;
     }
   } catch (e) {
     // Callers used to swallow these silently; only log when a tag is given.

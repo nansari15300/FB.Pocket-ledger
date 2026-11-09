@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import type { PlanId } from "@/config/plans";
 import {
   isBillingGatewayAvailable,
@@ -14,6 +15,8 @@ import { applyNewSubscriptionCheckoutToFirestore } from "@/lib/payments/subscrip
 import type { SubscriptionTermKey } from "@/lib/subscriptionPlanMath";
 import { SUBSCRIPTION_TERM_KEYS_FOR_CHECKOUT } from "@/lib/subscriptionPlanMath";
 import { resolveBillingCaller } from "@/lib/server/billingCaller";
+
+import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
 
 type Body = {
   /** eSewa redirect `data` query — base64 JSON decode client-side. */
@@ -119,7 +122,7 @@ export async function POST(req: NextRequest) {
 
     await pendingRef.update({
       status: "applied",
-      appliedAt: admin.firestore.FieldValue.serverTimestamp(),
+      appliedAt: serverTimestamp(),
     });
 
     return NextResponse.json({ ok: true, mirrorLocal: applied.mirrorLocal ?? null });

@@ -5,9 +5,10 @@
  */
 import "server-only";
 import type Stripe from "stripe";
-import * as admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
 import { getSubscriptionCurrentPeriodEndMs } from "@/lib/payments/stripeCheckoutFulfill";
 
+import { Timestamp } from "@/lib/server/pbBilling/fieldValue";
 export async function syncCompanyPlanExpiryFromStripe(args: {
   companyRef: admin.firestore.DocumentReference;
   stripeSubscriptionId: string;
@@ -18,7 +19,7 @@ export async function syncCompanyPlanExpiryFromStripe(args: {
   const endMs = await getSubscriptionCurrentPeriodEndMs(args.stripe, subId);
   if (endMs == null) return null;
   await args.companyRef.update({
-    planExpiry: admin.firestore.Timestamp.fromMillis(endMs),
+    planExpiry: Timestamp.fromMillis(endMs),
     planExpiryMs: endMs,
   });
   return endMs;

@@ -10,7 +10,7 @@ import { useCreateCompanyAvailability } from "@/hooks/useCreateCompanyAvailabili
 import { Button } from "@/components/ui/button";
 import { collection, query, where } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { embeddedClientUsesFirestoreCompanyList } from "@/lib/planSyncClientPolicy";
 import { registerCompanyPickerFirestoreDetach } from "@/lib/companyPickerFirestoreDetach";

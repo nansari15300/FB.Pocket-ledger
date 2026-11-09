@@ -4,7 +4,7 @@
  */
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import type { Company } from "@/hooks/useCompany";
 import { readCompanyInterCompanyCode, isUserCompanyOwner } from "@/lib/interCompany/interCompanyCompanyCode";
 import type {

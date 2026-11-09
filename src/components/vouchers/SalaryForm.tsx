@@ -106,7 +106,7 @@ import { VOUCHER_BUTTONS_CLASS, BTN_HISTORY_CLASS, BTN_PRINT_CLASS, BTN_CANCEL_C
 import { getPaymentOutRemaining, getTaxFromAllocation, getNetFromAllocation, getTaxableFromAllocation, getJournalStaffDrAmount, getJournalRemainingForStaff, getJournalTaxDrAmount, getJournalRemainingForTax, isSalaryBillWiseSourceVoucher, hasPaymentLinks, getAllocationTotal, buildBillWiseEntityTxnId, allocationEntityTxnId, OPENING_BALANCE_VOUCHER_ID } from "@/lib/payment-allocation-utils";
 import type { Allocation } from "@/lib/payment-allocation-utils";
 
-import { firestore, storage } from "@/lib/firebase";
+import { firestore, storage } from "@/lib/plClientSession";
 import { collection, query, where, serverTimestamp, doc, Timestamp } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";

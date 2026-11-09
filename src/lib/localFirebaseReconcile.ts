@@ -2,7 +2,7 @@
 
 import { collection, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import type { LocalCompanyDoc } from "@/lib/localCompanyStore";
 import type { ReconciliationShare, ReconciliationShareScope } from "@/lib/reconciliation/types";
 import { isRowInDateRange, shareDocDateRange } from "@/lib/reconciliation/ledgerSnapshot";

@@ -1,4 +1,5 @@
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import {
   ADMIN_PANEL_COMPANIES_COLLECTION,
   ADMIN_PANEL_COMPANY_NAME,
@@ -6,6 +7,8 @@ import {
   CLOUD_ADMIN_PANEL_TENANT_ID,
 } from "@/lib/adminPanelCompany/constants";
 import { seedAdminPanelCompanyDefaultMasters } from "@/lib/adminPanelCompany/seedDefaultMasters";
+
+import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
 
 /**
  * Ensure cloud Admin Panel Company + accounting settings exist so payment mirrors
@@ -22,7 +25,7 @@ export async function ensureCloudAdminPanelCompanyDoc(
     return true;
   }
 
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  const now = serverTimestamp();
   const batch = db.batch();
   batch.create(companyRef, {
     tenantId: CLOUD_ADMIN_PANEL_TENANT_ID,

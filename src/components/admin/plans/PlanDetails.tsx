@@ -4,7 +4,7 @@
 import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { useState, useEffect, useMemo, useRef, type ComponentProps } from "react";
 import { doc, Timestamp } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'

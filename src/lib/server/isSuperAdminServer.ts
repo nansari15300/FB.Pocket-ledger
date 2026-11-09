@@ -1,9 +1,17 @@
-import { getAdminDb } from "@/lib/firebaseAdmin";
-import { getSuperAdminEmails } from "@/lib/superAdminEmails";
+import "server-only";
 
-/** Admin API: SuperAdmin = users role, admin_config, env allowlist, ya hardcoded emails. */
+import { getSuperAdminEmails } from "@/lib/superAdminEmails";
+import { serverDb } from "@/lib/server/appDb";
+
+/**
+ * Admin API: SuperAdmin = `users` role, `app_settings/admin_config.superAdminEmails`, env allowlist,
+ * or the hardcoded emails.
+ *
+ * The document store is `serverDb()` — the Pocket Ledger Server (`pl_billing_docs`) — so this reads
+ * no Firebase data.
+ */
 export async function isSuperAdminServer(uid: string, email: string | undefined): Promise<boolean> {
-  const db = getAdminDb();
+  const db = serverDb();
   const normalize = (v: string | undefined | null) => String(v || "").trim().toLowerCase();
   const uidSnap = await db.collection("users").doc(uid).get();
   const roleFromUid = uidSnap.exists ? normalize(String((uidSnap.data() as { role?: string })?.role ?? "")) : "";

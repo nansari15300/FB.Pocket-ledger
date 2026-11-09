@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import { v4 as uuidv4 } from "uuid";
 import { type PlanId, normalizePlanIdForClient } from "@/config/plans";
 import { parseBillingDowngradeBlockedPlanIds } from "@/lib/billingFrozenPlanSnapshots";
@@ -10,6 +11,8 @@ import { classifyPlanChange, quoteDowngradeNewExpiry, daysLeftRounded } from "@/
 import { applyOwnerPlanMirrorBatched } from "@/lib/server/mirrorOwnerCompanyPlanBilling";
 import { persistAccountCanonicalPlanDoc } from "@/lib/server/accountCanonicalPlan";
 import { resolveBillingCaller } from "@/lib/server/billingCaller";
+
+import { deleteField, serverTimestamp, Timestamp } from "@/lib/server/pbBilling/fieldValue";
 
 type Body = {
   companyId?: string;
@@ -112,7 +115,7 @@ export async function POST(req: NextRequest) {
       const currentExpiryMs = resolvePlanExpiryMillis(cdata);
       const previousDaysLeft = daysLeftRounded(nowMs, currentExpiryMs);
       const tierSwitchMs = nowMs;
-      const tierSwitchTs = admin.firestore.Timestamp.fromMillis(tierSwitchMs);
+      const tierSwitchTs = Timestamp.fromMillis(tierSwitchMs);
       const planChangeHistory = {
         oldPlanId: currentPlanId,
         newPlanId: targetPlanId,
@@ -131,9 +134,9 @@ export async function POST(req: NextRequest) {
       const batch = db.batch();
       batch.update(companyRef, {
         planId: targetPlanId,
-        planExpiry: admin.firestore.FieldValue.delete(),
+        planExpiry: deleteField(),
         // Numeric mirror hatao — warna client pehle `planExpiryMs` padh kar purani paid expiry dikhata.
-        planExpiryMs: admin.firestore.FieldValue.delete(),
+        planExpiryMs: deleteField(),
         planUpgradedAt: tierSwitchTs,
         planUpgradedAtMs: tierSwitchMs,
         billingFrozenUsageLedger: [],
@@ -152,19 +155,19 @@ export async function POST(req: NextRequest) {
         planChangeTo: targetPlanId,
         planChangeHistory,
         planChangeOneTime: true,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp(),
       });
       const histRef = companyRef.collection("subscription_history").doc();
       batch.set(histRef, {
         ...planChangeHistory,
         source: "free_plan_select",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp(),
       });
       await batch.commit();
       const siblingMirror: Record<string, unknown> = {
         planId: targetPlanId,
-        planExpiry: admin.firestore.FieldValue.delete(),
-        planExpiryMs: admin.firestore.FieldValue.delete(),
+        planExpiry: deleteField(),
+        planExpiryMs: deleteField(),
         planUpgradedAt: tierSwitchTs,
         planUpgradedAtMs: tierSwitchMs,
         billingFrozenUsageLedger: [],
@@ -241,13 +244,13 @@ export async function POST(req: NextRequest) {
     const paymentRef = companyRef.collection("payments").doc(paymentDocId);
     const batch = db.batch();
     const paidSwitchMs = Date.now();
-    const paidSwitchTs = admin.firestore.Timestamp.fromMillis(paidSwitchMs);
+    const paidSwitchTs = Timestamp.fromMillis(paidSwitchMs);
 
     if (targetPlanId === "basic") {
       batch.update(companyRef, {
         planId: "basic",
-        planExpiry: admin.firestore.FieldValue.delete(),
-        planExpiryMs: admin.firestore.FieldValue.delete(),
+        planExpiry: deleteField(),
+        planExpiryMs: deleteField(),
         planUpgradedAt: paidSwitchTs,
         planUpgradedAtMs: paidSwitchMs,
         billingFrozenUsageLedger: [],
@@ -256,7 +259,7 @@ export async function POST(req: NextRequest) {
     } else if (newExpiryMs != null) {
       batch.update(companyRef, {
         planId: targetPlanId,
-        planExpiry: admin.firestore.Timestamp.fromMillis(newExpiryMs),
+        planExpiry: Timestamp.fromMillis(newExpiryMs),
         // `useCompany` / billing pehle `planExpiryMs` dekhte hain — sirf Timestamp se purani high-tier din chipak jati thi.
         planExpiryMs: newExpiryMs,
         planUpgradedAt: paidSwitchTs,
@@ -278,14 +281,14 @@ export async function POST(req: NextRequest) {
       planChangeHistory,
       ...(newExpiryMs != null ? { planExpiryMs: newExpiryMs } : {}),
       planChangeOneTime: true,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: serverTimestamp(),
     });
 
     const histRef = companyRef.collection("subscription_history").doc();
     batch.set(histRef, {
       ...planChangeHistory,
       source: "downgrade",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: serverTimestamp(),
     });
 
     await batch.commit();
@@ -294,8 +297,8 @@ export async function POST(req: NextRequest) {
     if (targetPlanId === "basic") {
       paidSiblingMirror = {
         planId: "basic",
-        planExpiry: admin.firestore.FieldValue.delete(),
-        planExpiryMs: admin.firestore.FieldValue.delete(),
+        planExpiry: deleteField(),
+        planExpiryMs: deleteField(),
         planUpgradedAt: paidSwitchTs,
         planUpgradedAtMs: paidSwitchMs,
         billingFrozenUsageLedger: [],
@@ -304,7 +307,7 @@ export async function POST(req: NextRequest) {
     } else if (newExpiryMs != null) {
       paidSiblingMirror = {
         planId: targetPlanId,
-        planExpiry: admin.firestore.Timestamp.fromMillis(newExpiryMs),
+        planExpiry: Timestamp.fromMillis(newExpiryMs),
         planExpiryMs: newExpiryMs,
         planUpgradedAt: paidSwitchTs,
         planUpgradedAtMs: paidSwitchMs,

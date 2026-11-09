@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { doc } from "@/lib/pbCompat/firestore";
 import { onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { billingRegionToDefaultCountry } from "@/lib/billingRegions";
 import type { BillingRegionId } from "@/lib/billingRegions";
 import { getDefaultCurrencyForCountry } from "@/lib/worldCurrencies";

@@ -16,7 +16,7 @@ import {
   doc,
 } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,

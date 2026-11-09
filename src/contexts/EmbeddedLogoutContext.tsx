@@ -25,7 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useSavedAccountSwitchFeature } from "@/hooks/useSavedAccountSwitchFeature";
-import { auth, signOutWithFirestoreTeardown } from "@/lib/firebase";
+import { auth, signOutWithFirestoreTeardown } from "@/lib/plClientSession";
 import { clearEmbeddedSessionUnlock } from "@/lib/embeddedDeviceLock";
 import { disableLocalGuest, isLocalGuestEnabled } from "@/lib/localGuestSession";
 import { pruneRememberedLoginEmailIfDisabled } from "@/lib/loginRememberEmail";

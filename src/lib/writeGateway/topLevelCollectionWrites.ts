@@ -4,7 +4,7 @@
  */
 import { serverTimestamp } from "@/lib/pbCompat/firestore";
 import { addDoc, collection } from "@/lib/writeGateway/firestoreMutationsInternal";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 
 /** Payment audit / webhook fallback row. */
 export async function appendPaymentsCollectionDoc(data: Record<string, unknown>): Promise<void> {

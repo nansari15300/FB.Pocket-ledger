@@ -68,7 +68,7 @@ import * as XLSX from 'xlsx';
 import { RunningBalanceFullChart } from "@/components/reports/RunningBalanceFullChart";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 import { doc } from "@/lib/pbCompat/firestore";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { PartyDetails } from "@/components/party/PartyDetails";
 import { useLiveMasterSelection } from "@/hooks/useLiveMasterSelection";

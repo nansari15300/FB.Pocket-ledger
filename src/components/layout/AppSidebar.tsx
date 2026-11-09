@@ -65,7 +65,7 @@ import { useAuth } from "@/hooks/useAuth";
 import usePermissions from "@/hooks/usePermissions";
 import { useCompany } from "@/hooks/useCompany";
 import { useVouchers } from "@/hooks/useVouchers";
-import { firestore, auth, signOutWithFirestoreTeardown } from "@/lib/firebase";
+import { firestore, auth, signOutWithFirestoreTeardown } from "@/lib/plClientSession";
 import { useEmbeddedLogout } from "@/contexts/EmbeddedLogoutContext";
 import type { Permission } from "@/lib/permissions";
 import { Button } from "../ui/button";

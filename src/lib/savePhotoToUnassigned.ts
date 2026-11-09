@@ -15,7 +15,7 @@
 
 import { collection, doc, serverTimestamp, Timestamp } from "@/lib/pbCompat/firestore";
 import { writeBatch } from "@/lib/writeGateway/pbWrites";
-import { firestore, isFirestoreBlockedForServerSession } from "@/lib/firebase";
+import { firestore, isFirestoreBlockedForServerSession } from "@/lib/plClientSession";
 import { uploadFileClient } from "@/lib/storageClient";
 import { incrementCompanyStorage } from "@/lib/storageUsageClient";
 import { isPocketBaseCompany, isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";

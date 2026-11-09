@@ -16,7 +16,7 @@ import { useCompany } from "@/hooks/useCompany";
 import { useDate } from "@/hooks/useDate";
 import { doc, Timestamp } from "@/lib/pbCompat/firestore";
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "@/lib/plClientSession";
 import { cn } from "@/lib/utils";
 import {
   NESTED_VOUCHER_LINK_DIALOG_CONTENT_CN,

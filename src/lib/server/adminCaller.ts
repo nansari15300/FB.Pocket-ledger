@@ -1,6 +1,7 @@
 import "server-only";
 
-import admin from "firebase-admin";
+import type admin from "@/lib/server/pbAdminTypes";
+
 import {
   PB_BEARER_PREFIX,
   pocketBaseServerUrlForApi,
@@ -52,7 +53,7 @@ export async function resolveSuperAdminCaller(req: Request): Promise<AdminCaller
         error: "Server billing is not linked: set PL_HOSTING_KEY in the app (Hosting settings > App link key).",
       };
     }
-    return { ok: true, uid: v.uid, email: v.email ?? undefined, db: pbBillingDb(), store: "server" };
+    return { ok: true, uid: v.uid, email: v.email ?? undefined, db: pbBillingDb() as admin.firestore.Firestore, store: "server" };
   }
 
   return { ok: false, status: 401, error: "Sign in with your Pocket Ledger Server admin account (Firebase login is no longer supported)." };
