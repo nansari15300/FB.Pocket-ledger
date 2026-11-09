@@ -1,6 +1,6 @@
 [package]
 name = "pocket-ledger-desktop"
-version = "1.1.80"
+version = "1.1.81"
 description = "Pocket Ledger desktop (Tauri v2) — Electron replacement"
 edition = "2021"
 publish = false

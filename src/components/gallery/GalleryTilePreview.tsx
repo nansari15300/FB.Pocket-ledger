@@ -137,7 +137,7 @@ export function GalleryTilePreview({ url, fileSize, size, className }: Props) {
 
   return (
     <div
-      className={cn("relative flex h-full w-full items-center justify-center bg-muted/30", className)}
+      className={cn("relative flex h-full w-full items-center justify-center overflow-hidden bg-zinc-800/90", className)}
       style={{ width: size, height: size }}
     >
       {isImage ? (
@@ -146,7 +146,7 @@ export function GalleryTilePreview({ url, fileSize, size, className }: Props) {
           src={src}
           alt=""
           draggable={false}
-          className="h-full w-full select-none object-contain"
+          className="h-full w-full select-none object-cover"
           onError={() => setFailed(true)}
         />
       ) : (

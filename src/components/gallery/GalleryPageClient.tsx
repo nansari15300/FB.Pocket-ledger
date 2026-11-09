@@ -2678,7 +2678,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
                 <div className="relative group flex flex-col gap-1" style={{ width: `${tileSize}px` }}>
                   <div
                     className={cn(
-                      "relative overflow-hidden rounded-lg bg-muted/30 cursor-pointer transition-shadow",
+                      "relative overflow-hidden rounded-lg bg-zinc-800/90 cursor-pointer transition-shadow",
                       isSelected ? "ring-2 ring-primary/50 shadow-md" : "group-hover:shadow-lg"
                     )}
                     style={{ width: `${tileSize}px`, height: `${tileSize}px` }}
@@ -3372,7 +3372,7 @@ export function GalleryPageContent() {
   }, [isEditVoucherOpen]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden px-0.5 pt-4 pb-0 sm:p-6 md:p-8">
+    <div data-pl-gallery-grey-shell className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-neutral-800 px-0 pt-2 pb-0 dark:bg-zinc-900 sm:px-2 sm:pt-3 sm:pb-4 md:px-3 md:pt-4 md:pb-5">
        {/* Mobile: tab buttons footer card ke andar. PC: yahan top me.
            PC: "Add File" tab pills ke baayein (mobile me ye footer card ke andar hi rehta hai). */}
        <div className="hidden sm:flex sm:w-full sm:items-center sm:gap-2">

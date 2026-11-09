@@ -5704,6 +5704,17 @@ body.theme-pro main {
   background-color: hsl(var(--background)) !important;
   background-image: none !important;
 }
+/* Gallery: poora page shell "light black" (files ke peeche ka area) — upar wale rule ko override.
+   Specificity: body.theme-pro main:has(...) > body.theme-pro main, isliye later + attribute selector. */
+body.theme-pro main:has([data-pl-gallery-grey-shell]),
+body[class*="theme-"] main:has([data-pl-gallery-grey-shell]) {
+  background-color: #262626 !important;
+  background-image: none !important;
+}
+body.theme-pro main:has([data-pl-gallery-grey-shell]) > [data-pl-gallery-grey-shell],
+body[class*="theme-"] main:has([data-pl-gallery-grey-shell]) > [data-pl-gallery-grey-shell] {
+  background-color: #262626 !important;
+}
 body.theme-pro main > div > div.border-b:first-of-type:not(.pl-ledger-header-ribbon-wrap):not([data-pl-mobile-detail-merged-header]),
 body.theme-pro main > div.h-full.flex,
 body.theme-pro main > div.grid.min-h-0,

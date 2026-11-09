@@ -362,19 +362,26 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
   const [paintRect, setPaintRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const previewFrameRef = useRef<HTMLDivElement | null>(null);
 
-  /** Canvas ke painted area (object-contain letterbox ke andar) ka frame-relative rect nikaalo. */  const measurePaintRect = useCallback(() => {
+  /** Canvas ke painted (object-contain letterboxed) area ka frame-relative rect nikaalo.
+      NOTE: canvas element ka hi getBoundingClientRect use karo — parent ke padding
+      (p-2) se offset na ho, warna overlay corners shift dikhte hain. */
+  const measurePaintRect = useCallback(() => {
     const frame = previewFrameRef.current;
     const cv = previewCanvasRef.current;
     if (!frame || !cv || !cv.width || !cv.height) return;
     const fr = frame.getBoundingClientRect();
-    const fw = fr.width || 1;
-    const fh = fr.height || 1;
+    const cr = cv.getBoundingClientRect();
+    const cw = cr.width || 1;
+    const ch = cr.height || 1;
+    const ox = cr.left - fr.left;
+    const oy = cr.top - fr.top;
     const iw = cv.width;
     const ih = cv.height;
-    const scale = Math.min(fw / iw, fh / ih);
+    // object-contain letterboxing
+    const scale = Math.min(cw / iw, ch / ih);
     const w = iw * scale;
     const h = ih * scale;
-    setPaintRect({ x: (fw - w) / 2, y: (fh - h) / 2, w, h });
+    setPaintRect({ x: ox + (cw - w) / 2, y: oy + (ch - h) / 2, w, h });
   }, []);
   const previewWrapRef = useRef<HTMLDivElement | null>(null);
   const cropDragRef = useRef<{
@@ -532,6 +539,26 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
         next.y = y0;
         next.w = x1 - x0;
         next.h = y1 - y0;
+      }
+      // DEBUG: verify ki ek drag me sirf ek hi corner ke coordinates badalte hain
+      if ((window as any).__PL_CROP_DEBUG__) {
+        // eslint-disable-next-line no-console
+        console.log("[crop-drag]", d.corner, {
+          start: s,
+          next,
+          frozen: {
+            nw: [next.x, next.y],
+            ne: [next.x + next.w, next.y],
+            sw: [next.x, next.y + next.h],
+            se: [next.x + next.w, next.y + next.h],
+          },
+          started: {
+            nw: [s.x, s.y],
+            ne: [s.x + s.w, s.y],
+            sw: [s.x, s.y + s.h],
+            se: [s.x + s.w, s.y + s.h],
+          },
+        });
       }
       setCrop(next);
       cropRef.current = next;
@@ -710,15 +737,25 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
   }, [crop, cropMode, mode, brightness, contrast, sharpness]);
 
   // Repaint whenever an edit changes or the review stage becomes active.
+  // NOTE: cropMode me canvas poori image dikhata hai (crop ke bina), isliye drag ke
+  // dauraan repaint/measure ki zaroorat nahi — isse layout shift nahi hoti.
   useEffect(() => {
     if (stage !== "review") return;
-    // requestAnimationFrame avoids painting before the canvas is in the DOM on APK.
     const id = requestAnimationFrame(() => {
       repaintPreview();
-      requestAnimationFrame(() => measurePaintRect());
+      if (!cropMode) {
+        requestAnimationFrame(() => measurePaintRect());
+      }
     });
     return () => cancelAnimationFrame(id);
-  }, [stage, repaintPreview, measurePaintRect]);
+  }, [stage, repaintPreview, measurePaintRect, cropMode]);
+
+  // Crop mode ON hote hi (aur image dims badalne par) ek baar measure karo.
+  useEffect(() => {
+    if (stage !== "review") return;
+    const id = requestAnimationFrame(() => measurePaintRect());
+    return () => cancelAnimationFrame(id);
+  }, [stage, cropMode, previewAspect, measurePaintRect]);
 
   // Window/screen resize par overlay ka painted rect dobara nikaalo.
   useEffect(() => {
