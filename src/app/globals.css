@@ -16427,6 +16427,28 @@ html body main [data-pl-gallery-company-footer][data-pl-gallery-company-footer][
   border-style: solid !important;
   border-color: rgb(147 197 253) !important; /* blue-300 */
 }
+/* Gallery tab body (file grid area) — koi box/border nahi. Themes `main .rounded-lg.border`
+   aur `main .border-2` ko black kar dete hain, jisse khali area ek bada dabba lagta tha. */
+html body[data-pl-gallery-company-shell],
+html body[data-pl-gallery-company-shell][data-pl-gallery-company-shell],
+html body[data-pl-gallery-unassigned-shell],
+html body[data-pl-gallery-unassigned-shell][data-pl-gallery-unassigned-shell],
+html body[data-pl-gallery-scroll],
+html body[data-pl-gallery-scroll][data-pl-gallery-scroll],
+html body .pl-card-3d[data-pl-gallery-company-shell][data-pl-gallery-company-shell][data-pl-gallery-company-shell],
+html body .pl-card-3d[data-pl-gallery-unassigned-shell][data-pl-gallery-unassigned-shell][data-pl-gallery-unassigned-shell],
+html body [data-pl-gallery-tab-body][data-pl-gallery-tab-body][data-pl-gallery-tab-body],
+html body main [data-pl-gallery-tab-body][data-pl-gallery-tab-body][data-pl-gallery-tab-body],
+html body [data-pl-gallery-scroll][data-pl-gallery-scroll][data-pl-gallery-scroll] {
+  border-width: 0 !important;
+  border-style: none !important;
+  border-color: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
 /* Filter bar is just a layout grid now — no secondary box/border. */
 :is(body[class*="theme-"], html body) [data-pl-gallery-filter-bar] {
   border-width: 0 !important;
