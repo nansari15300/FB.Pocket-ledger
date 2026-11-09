@@ -60,6 +60,7 @@ function sortMergedByField(merged: any[], orderByField: string): any[] {
  */
 import { isLocalFileRef } from "@/lib/localPendingFiles";
 import { parseFirestoreDateFieldToJsDate } from "@/lib/voucherDateNormalize";
+import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import {
   resolveUrlsAgainstAttachmentIntent,
   shouldPreserveClearedVoucherAttachments,
@@ -698,6 +699,13 @@ export async function pullCompanySubcollectionFromFirestoreToLocalDb(
   orderByField?: string,
   mergeOpts?: MergeRemoteLocalDocsOptions
 ): Promise<any[]> {
+  /**
+   * PocketBase company: the server copy lives in `pl_data`, never in Firestore. This module is a
+   * Firestore-specific downloader — running it for a server company asked Firebase (now dead) for
+   * rows and could bake an empty/foreign snapshot over the good SQLite mirror. Callers in a server
+   * company mode use `pbSync` / the mirror instead; returning `[]` leaves the mirror untouched.
+   */
+  if (isPocketBaseCompanyId(fsCompanyId) || isPocketBaseCompanyId(localCompanyId)) return [];
   const cryptoCtx: ServerBackupCryptoContext | null = company
     ? { encryptServerBackupSalt: company.encryptServerBackupSalt }
     : null;
@@ -744,6 +752,8 @@ export async function pullCompanyDocFromFirestoreToLocalDb(
   const path = String(collectionPath || "").trim();
   const id = String(docId || "").trim();
   if (!fsId || !localId || !path || !id) return null;
+  /** Server company: no Firestore row exists for this doc — the PB pull feeds the mirror. */
+  if (isPocketBaseCompanyId(fsId) || isPocketBaseCompanyId(localId)) return null;
 
   const op = String(options?.op || "").toLowerCase();
   if (op === "delete" || op === "deleted" || op === "remove" || op === "removed") {

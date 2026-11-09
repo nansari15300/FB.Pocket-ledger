@@ -23,6 +23,7 @@ import { firestore } from "@/lib/firebase";
 import { isPocketBaseCompanyId, notePocketBaseRootWrite, listPocketBaseCompanyIds } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import type { PbBatchOp, PbExpect, PbOpResult, PbWriteMode } from "@/lib/pocketbaseData/pbSync";
 import { isPocketBaseAppSessionActive } from "@/lib/pocketbaseData/pbAppSession";
+import { getValidPocketBaseAuth } from "@/lib/pocketbaseData/pbClient";
 import {
   makeUdocWrite,
   udocCollectionPath,
@@ -153,6 +154,20 @@ function callToPbOp(kind: "set" | "update" | "delete", pb: LedgerDocPath, args: 
   return { ...base, mode: "delete", data: { isDeleted: true, deletedAtMs: Date.now() } };
 }
 
+/** True when a server session exists: server-only sign-in, or a Google/Firebase login that minted a PB token. */
+function hasServerSession(): boolean {
+  try {
+    if (isPocketBaseAppSessionActive()) return true;
+  } catch {
+    /* fall through */
+  }
+  try {
+    return !!getValidPocketBaseAuth();
+  } catch {
+    return false;
+  }
+}
+
 function pocketBaseLedgerPath(ref: unknown): LedgerDocPath | null {
   const parsed = parseLedgerDocPath(ref);
   return parsed && isPocketBaseCompanyId(parsed.fsCompanyId) ? parsed : null;
@@ -233,7 +248,9 @@ export const setDoc: typeof firestoreSetDoc = (async (...args: unknown[]) => {
     await writePocketBaseLedgerDoc(pb, (args[1] as Record<string, unknown>) || {}, setOptionsMode(args[2]));
     return;
   }
-  const sessionRootId = isPocketBaseAppSessionActive() ? pocketBaseRootCompanyId(args[0]) : null;
+  // Company root of a PocketBase company: the server is the only copy (both logins). Firestore is
+  // authentication only — it must not hold a second, drifting copy of the company profile.
+  const sessionRootId = hasServerSession() ? pocketBaseRootCompanyId(args[0]) : null;
   if (sessionRootId) {
     const mode = setOptionsMode(args[2]);
     await writePocketBaseRootServerOnly(sessionRootId, (args[1] as Record<string, unknown>) || {}, mode === "merge" ? "merge" : "set");
@@ -258,7 +275,7 @@ export const updateDoc: typeof firestoreUpdateDoc = (async (...args: unknown[]) 
     await writePocketBaseLedgerDoc(pb, updateArgsToPatch(args), "update");
     return;
   }
-  const sessionRootId = isPocketBaseAppSessionActive() ? pocketBaseRootCompanyId(args[0]) : null;
+  const sessionRootId = hasServerSession() ? pocketBaseRootCompanyId(args[0]) : null;
   if (sessionRootId) {
     await writePocketBaseRootServerOnly(sessionRootId, updateArgsToPatch(args), "update");
     return;

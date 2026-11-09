@@ -128,6 +128,7 @@ import {
   pullPocketBaseCompanyRegistry,
 } from "@/lib/pocketbaseData/pbAppSession";
 import { companyUsesPocketBase, isPocketBaseCompanyId, isPocketBaseCompanyPruned } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { getValidPocketBaseAuth } from "@/lib/pocketbaseData/pbClient";
 import { prunePocketBaseCompaniesMissingOnServer } from "@/lib/pocketbaseData/pbRegistryPrune";
 
 /**
@@ -1753,8 +1754,11 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
 
         if (mirrorUser) {
           try {
-            // Server login (pl_users): the company list comes from Pocket Ledger Server, not Firestore.
-            const result = isPocketBaseSessionUser(user)
+            // The company list always comes from the Pocket Ledger Server. Firebase is authentication
+            // only now, so even a Google login (Firebase user object, but a PB token behind it) must
+            // not ask Firestore for the registry — that list would be stale/empty and could prune
+            // good local rows.
+            const result = getValidPocketBaseAuth()
               ? await pullPocketBaseCompanyRegistry()
               : await pullOnlineCompanyRegistryFromFirestore(
                   mirrorUser,

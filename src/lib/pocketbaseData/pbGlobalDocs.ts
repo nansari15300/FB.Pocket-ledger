@@ -6,7 +6,7 @@
  */
 
 import { isPocketBaseAppSessionActive } from "@/lib/pocketbaseData/pbAppSession";
-import { PocketBaseRequestError, pbRequest } from "@/lib/pocketbaseData/pbClient";
+import { getValidPocketBaseAuth, PocketBaseRequestError, pbRequest } from "@/lib/pocketbaseData/pbClient";
 import { decodeDocFromPocketBase, encodeWriteForPocketBase, type PbFieldOp } from "@/lib/pocketbaseData/pbSync";
 
 /** Top-level collections the general document store serves. */
@@ -36,13 +36,30 @@ function pathParts(ref: unknown): string[] {
   return String((ref as { path?: unknown } | null)?.path || "").split("/").filter(Boolean);
 }
 
-/** Document path when `ref` is a general doc served by the server in this (server) login, else null. */
-export function udocDocPath(ref: unknown): string | null {
+/**
+ * General-doc paths live on the Pocket Ledger Server for BOTH logins (Google/Firebase sign-in and
+ * the pl_users server sign-in). Firebase keeps only authentication (Google Sign-In + Drive) — no
+ * user profile, chat, settings or inter-company row is stored there any more.
+ *
+ * The only gate is a valid server session: without a server token every udoc call would answer
+ * 401, so the caller falls back to its Firestore path (first-run before the token is minted).
+ */
+function hasServerSession(): boolean {
   try {
-    if (!isPocketBaseAppSessionActive()) return null;
+    if (isPocketBaseAppSessionActive()) return true;
   } catch {
-    return null;
+    /* fall through */
   }
+  try {
+    return !!getValidPocketBaseAuth();
+  } catch {
+    return false;
+  }
+}
+
+/** Document path when `ref` is a general doc served by the server, else null. */
+export function udocDocPath(ref: unknown): string | null {
+  if (!hasServerSession()) return null;
   const p = pathParts(ref);
   if (!p.length || p.length % 2 !== 0 || !USER_GLOBAL_ROOTS.has(p[0])) return null;
   return p.join("/");
@@ -50,11 +67,7 @@ export function udocDocPath(ref: unknown): string | null {
 
 /** Collection path (for addDoc) when served by the general document store, else null. */
 export function udocCollectionPath(ref: unknown): string | null {
-  try {
-    if (!isPocketBaseAppSessionActive()) return null;
-  } catch {
-    return null;
-  }
+  if (!hasServerSession()) return null;
   const p = pathParts(ref);
   if (!p.length || p.length % 2 !== 1 || !USER_GLOBAL_ROOTS.has(p[0])) return null;
   return p.join("/");

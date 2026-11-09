@@ -7,16 +7,17 @@
 
 import {
   collection,
-  getDocs,
   getDocsFromServer,
   query,
   where,
   type Query,
 } from "@/lib/pbCompat/firestore";
+import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { auth, firestore, ensureEmbeddedFirestoreOnlineForCloudCompanyLoad } from "@/lib/firebase";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { isFirebaseLedgerDataSyncDisabled } from "@/lib/firebaseLedgerDataSyncDisabled";
 import { FIREBASE_LEDGER_COMPANY_REGISTRY_PULL_EVENT } from "@/lib/firebaseLedgerCompanySyncPrefs";
+import { getValidPocketBaseAuth } from "@/lib/pocketbaseData/pbClient";
 import {
   getLocalCompanyById,
   listLocalCompanies,
@@ -219,6 +220,14 @@ async function mirrorOnlineCompaniesFromFirestoreImpl(
   sharedOnlyIds: Set<string>;
   cloudAllowedIds: Set<string>;
 }> {
+  /**
+   * With a server session the registry comes from `pl_companies` (see `useCompany`), so this
+   * Firestore pull must not run: Firebase is authentication only and its `companies` list is
+   * historical. Returning empty keeps every local row (nothing is pruned here).
+   */
+  if (getValidPocketBaseAuth()) {
+    return { rows: [], ownedIds: new Set(), sharedOnlyIds: new Set(), cloudAllowedIds: new Set() };
+  }
   const ownedIds = new Set<string>();
   const sharedOnlyIds = new Set<string>();
   const byId = new Map<string, MirroredCompanyRow>();

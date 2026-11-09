@@ -35,7 +35,7 @@ import {
   listPocketBaseCompanyIds,
 } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { isPocketBaseAppSessionActive, readPocketBaseAppProfile } from "@/lib/pocketbaseData/pbAppSession";
-import { pbRequest } from "@/lib/pocketbaseData/pbClient";
+import { pbRequest, getValidPocketBaseAuth } from "@/lib/pocketbaseData/pbClient";
 import { USER_GLOBAL_ROOTS } from "@/lib/pocketbaseData/pbGlobalDocs";
 import { isSuperAdminEmail } from "@/lib/recovery/recoveryMode";
 import { isPocketBaseRealtimeLive } from "@/lib/pocketbaseData/pbRealtimeState";
@@ -519,22 +519,22 @@ async function pbGetQuerySnapshot(
   return { snap: makeQuerySnapshot(query, docs, prev), sig };
 }
 
-/** Root fields written by server routes (Firebase Admin) straight to Firestore. */
-function isFirestoreManagedRootKey(k: string): boolean {
-  return /^(plan|billing|stripe|demoPlan|subscription|autoDowngrade|previousPlan)/.test(k);
-}
+/** Keys that the old Firebase Admin server routes wrote straight into the Firestore root doc.
+ *  Nothing merges them from Firestore any more — the server owns them — but the list stays next to
+ *  the seam for anyone auditing the root snapshot shape. */
+const FIRESTORE_MANAGED_ROOT_KEYS_RE = /^(plan|billing|stripe|demoPlan|subscription|autoDowngrade|previousPlan)/;
 
 /**
- * Company root of a Pocket Ledger Server company: server copy (no plaintext passwords), plan /
- * billing keys overlaid from Firestore. Falls back to the Firestore read when the server copy is
- * not usable.
+ * Company root of a Pocket Ledger Server company — the SERVER COPY IS THE ONLY COPY.
+ * Plan / billing keys used to be overlaid from Firestore; server routes now write them straight
+ * into `pl_companies.data`, so nothing is merged in from Firebase any more.
  */
 /** Keys of this device's registry row that are not part of the company root doc. */
 const LOCAL_ONLY_ROOT_KEYS = ["password", "localCompanyUsers", "adminPassword"];
 
 /**
- * Server login (no Firebase session): server copy only; when it is not reachable, this device's
- * registry row (passwords removed); else a missing doc.
+ * Server copy only; when it is not reachable, this device's registry row (passwords removed);
+ * else a missing doc.
  */
 async function pbGetRootSnapshotServerOnly(ref: unknown, t: Extract<PbTarget, { kind: "root" }>): Promise<unknown> {
   const converter = (ref as { converter?: unknown }).converter || null;
@@ -560,29 +560,28 @@ async function pbGetRootSnapshotServerOnly(ref: unknown, t: Extract<PbTarget, { 
 
 async function pbGetRootSnapshot(fsFn: Fn, args: unknown[], t: Extract<PbTarget, { kind: "root" }>): Promise<unknown> {
   if (isPocketBaseAppSessionActive()) return pbGetRootSnapshotServerOnly(args[0], t);
-  if (isPocketBaseRootWritePending(t.companyId)) return fsFn(...args);
+  /**
+   * Server is the only copy of a PocketBase company root now (Firestore keeps authentication only).
+   * It used to be read from both places in parallel and merged, which is exactly what kept a
+   * stale Firestore copy alive. `fsFn` stays in the signature so the callers do not need a cast.
+   */
+  void fsFn;
   const ref = args[0];
-  const [pbRes, fsRes] = await Promise.allSettled([
-    import("@/lib/pocketbaseData/pbSync").then((m) => m.pbReadCompanyRoot(t.companyId)),
-    Promise.resolve().then(() => fsFn(...args)),
-  ]);
-  const pb = pbRes.status === "fulfilled" ? pbRes.value : null;
-  if (!pb || !pb.exists || !pb.data || isPocketBaseRootWritePending(t.companyId)) {
-    if (fsRes.status === "fulfilled") return fsRes.value;
-    throw fsRes.reason;
-  }
-  const data: AnyRec = { ...pb.data };
-  delete data.password;
-  if (fsRes.status === "fulfilled") {
-    const fsSnap = fsRes.value as { exists?: () => boolean; data?: () => unknown };
-    const fsData = fsSnap?.exists?.() ? (fsSnap.data?.() as AnyRec | undefined) : undefined;
-    if (fsData && typeof fsData === "object") {
-      for (const k of Object.keys(data)) if (isFirestoreManagedRootKey(k) && !(k in fsData)) delete data[k];
-      for (const k of Object.keys(fsData)) if (isFirestoreManagedRootKey(k)) data[k] = fsData[k];
-    }
-  }
   const converter = (ref as { converter?: unknown }).converter || null;
-  return makeDocSnapshot(ref, t.companyId, data, converter);
+  if (isPocketBaseRootWritePending(t.companyId)) {
+    const fresh = await pbGetRootSnapshotServerOnly(ref, t);
+    if (fresh) return fresh;
+  }
+  const pb = await import("@/lib/pocketbaseData/pbSync")
+    .then((m) => m.pbReadCompanyRoot(t.companyId))
+    .catch(() => null);
+  if (pb?.exists && pb.data) {
+    const data: AnyRec = { ...pb.data };
+    delete data.password;
+    return makeDocSnapshot(ref, t.companyId, data, converter);
+  }
+  // Server has no copy yet (brand-new company): the local registry row is the seed.
+  return pbGetRootSnapshotServerOnly(ref, t);
 }
 
 /* ------------------------------------------------------------------ */
@@ -604,14 +603,24 @@ type AdminTarget =
 
 /** Non-company document roots served by the server's general document store in a server login. */
 
+/**
+ * Non-company document roots live on the server for BOTH logins (Google/Firebase sign-in and the
+ * pl_users server sign-in). This must match `udocDocPath` in pbGlobalDocs, otherwise writes would
+ * go to the server and reads would still come from a now-stale Firestore copy.
+ */
 function globalModeFor(parts: string[]): GlobalMode | null {
+  if (!parts.length || !USER_GLOBAL_ROOTS.has(parts[0])) return null;
   if (isAdminServerDataActive()) return "admin";
   try {
-    if (!isPocketBaseAppSessionActive()) return null;
+    if (isPocketBaseAppSessionActive()) return "user";
+  } catch {
+    /* fall through */
+  }
+  try {
+    return getValidPocketBaseAuth() ? "user" : null;
   } catch {
     return null;
   }
-  return USER_GLOBAL_ROOTS.has(parts[0]) ? "user" : null;
 }
 
 function isAdminPanelPage(): boolean {
@@ -648,7 +657,8 @@ export async function adminServerSetDoc(path: string, data: Record<string, unkno
 export function isAdminServerDataActive(): boolean {
   if (!isAdminPanelPage()) return false;
   try {
-    if (!isPocketBaseAppSessionActive()) return false;
+    // Same gate as `globalModeFor`: a server token is enough (a Google login mints one too).
+    if (!isPocketBaseAppSessionActive() && !getValidPocketBaseAuth()) return false;
     return isSuperAdminEmail(readPocketBaseAppProfile()?.email);
   } catch {
     return false;
