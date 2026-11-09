@@ -4,7 +4,10 @@ import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { openDB } from "./offlineDb";
 import { ref, uploadBytes, getDownloadURL } from "@/lib/pocketbaseData/pbStorage";
-import { doc, getDoc, getDocFromCache, getDocFromServer, type DocumentReference } from "@/lib/pbCompat/firestore";
+import { doc, type DocumentReference } from "@/lib/pbCompat/firestore";
+// Seam imports: company docs of a PocketBase company must come from the server mirror, never
+// Firestore (Firebase is authentication only now).
+import { getDoc, getDocFromCache, getDocFromServer } from "@/lib/pocketbaseData/pbReadSeam";
 import { storage } from "@/lib/firebase";
 import { firestore } from "@/lib/firebase";
 import { writeEntity } from "@/lib/writeGateway";

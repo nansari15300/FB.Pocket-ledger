@@ -6,6 +6,7 @@ import { firestore } from "@/lib/firebase";
 import { useCompany } from "@/hooks/useCompany";
 import { isCloudBackedCompanyShape } from "@/lib/offlineFullWarmSync";
 import { pullCompanyDocFromFirestoreToLocalDb } from "@/lib/firestoreToLocalCompanyPull";
+import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import {
   FIREBASE_LEDGER_SYNC_MODE_CHANGED_EVENT,
 } from "@/lib/firebaseLedgerSyncMode";
@@ -78,6 +79,12 @@ export function FirebaseLedgerDeltaSyncManager() {
       (company as { authoritativeCompanyId?: string }).authoritativeCompanyId || localCompanyId
     ).trim();
     if (!fsCompanyId) return;
+    /**
+     * PocketBase company: the change feed lives in the server's `pl_change_log` and is delivered by
+     * the server SSE stream (`pbRealtime`) + `pbSync` pulls. Firestore has no `_pl_change_log` for
+     * these companies any more, so subscribing here would only open a dead watcher.
+     */
+    if (isPocketBaseCompanyId(fsCompanyId) || isPocketBaseCompanyId(localCompanyId)) return;
 
     const q = query(
       collection(firestore, `companies/${fsCompanyId}/_pl_change_log`),

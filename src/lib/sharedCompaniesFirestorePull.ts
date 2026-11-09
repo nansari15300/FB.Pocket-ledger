@@ -1,6 +1,8 @@
 "use client";
 
-import { collection, getDocs, getDocsFromServer, query, where } from "@/lib/pbCompat/firestore";
+import { collection, getDocsFromServer, query, where } from "@/lib/pbCompat/firestore";
+import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
+import { getValidPocketBaseAuth } from "@/lib/pocketbaseData/pbClient";
 import { auth, firestore, ensureEmbeddedFirestoreOnlineForCloudCompanyLoad } from "@/lib/firebase";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { ensureFreshIdToken } from "@/lib/ensureFreshIdToken";
@@ -72,6 +74,11 @@ async function pullSharedVariant(
 export async function pullSharedOnlineCompaniesFromFirestore(
   userEmail: string | null | undefined
 ): Promise<{ id: string; data: Record<string, unknown> }[]> {
+  /**
+   * With a server session the shared-company list comes from `pl_companies` (owner + member rows,
+   * see `pullPocketBaseCompanyRegistry`). Firestore only holds the historical Firebase list.
+   */
+  if (getValidPocketBaseAuth()) return [];
   const email =
     String(userEmail || "").trim() ||
     String(auth.currentUser?.email || "").trim();

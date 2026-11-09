@@ -1,5 +1,6 @@
-import { useReconciledPointGuard } from "@/components/vouchers/ReconciledPointGuardContext";
 "use client";
+
+import { useReconciledPointGuard } from "@/components/vouchers/ReconciledPointGuardContext";
 import { addDoc, updateDoc, deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
 import { STAFF_ENTITY_LABEL, STAFF_ENTITY_TYPE_KEY, STAFF_ENTITY_SEARCH_PLACEHOLDER, STAFF_ENTITY_ADD_BUTTON, staffEntityDisplayLabel } from "@/lib/staffEntityDisplayName";

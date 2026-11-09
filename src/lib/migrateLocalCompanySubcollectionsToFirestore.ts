@@ -10,6 +10,7 @@ import { firestore } from "@/lib/firebase";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { COMPANY_LOCAL_MIRROR_SUBCOLLECTIONS } from "@/lib/firestoreToLocalCompanyPull";
 import { isLocalFileRef } from "@/lib/localPendingFiles";
+import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { yieldToMain } from "@/lib/yieldToMain";
 
 const BATCH_MAX = 450;
@@ -127,6 +128,15 @@ export async function pushAllLocalCompanyDocsToFirestore(
   const errors: string[] = [];
   let pushed = 0;
   const sqliteCompanyId = String(options?.sqliteCompanyId || fsCompanyId).trim() || fsCompanyId;
+  /**
+   * A PocketBase company's rows already live on the server (`pl_data`). Pushing the SQLite mirror to
+   * Firestore would create a second, drifting copy of the whole ledger in a project that no longer
+   * serves data — and the next pull would then have to fight it. Upload to cloud for those companies
+   * goes through `forceUploadLocalCompanyToServer`, not this Firestore path.
+   */
+  if (isPocketBaseCompanyId(fsCompanyId) || isPocketBaseCompanyId(sqliteCompanyId)) {
+    return { pushed: 0, errors: [] };
+  }
   const cols = COMPANY_LOCAL_MIRROR_SUBCOLLECTIONS;
   const totalCols = cols.length;
   const stripMode: false | "local_only" | "all" = options?.omitAllAttachmentUrls

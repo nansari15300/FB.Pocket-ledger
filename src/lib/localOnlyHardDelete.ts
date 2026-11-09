@@ -6,7 +6,8 @@
  */
 
 import { deleteDoc } from "@/lib/writeGateway/pbWrites";
-import { doc, getDocFromCache } from "@/lib/pbCompat/firestore";
+import { doc } from "@/lib/pbCompat/firestore";
+import { getDocFromCache } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/firebase";
 import { getBrowserDbForCompanyId, scheduleBrowserDbPersistAfterWrite, flushPendingBrowserDbSave } from "@/lib/localSqlite";
 import { getLocalCompanyById } from "@/lib/localCompanyStore";

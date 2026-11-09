@@ -520,9 +520,7 @@ async function pbGetQuerySnapshot(
 }
 
 /** Keys that the old Firebase Admin server routes wrote straight into the Firestore root doc.
- *  Nothing merges them from Firestore any more — the server owns them — but the list stays next to
- *  the seam for anyone auditing the root snapshot shape. */
-const FIRESTORE_MANAGED_ROOT_KEYS_RE = /^(plan|billing|stripe|demoPlan|subscription|autoDowngrade|previousPlan)/;
+ *  Nothing merges them from Firestore any more — the server (`pl_companies.data`) owns them. */
 
 /**
  * Company root of a Pocket Ledger Server company — the SERVER COPY IS THE ONLY COPY.

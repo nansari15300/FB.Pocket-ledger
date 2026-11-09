@@ -1,7 +1,6 @@
-import { useReconciledPointGuard } from "@/components/vouchers/ReconciledPointGuardContext";
-
 "use client";
 
+import { useReconciledPointGuard } from "@/components/vouchers/ReconciledPointGuardContext";
 import { addDoc } from "@/lib/writeGateway/pbWrites";
 import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
 import * as React from "react";

@@ -1053,6 +1053,11 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
     setLocalRegistryEpoch((v) => v + 1);
   }, []);
   const scheduleCompanyFirestoreListenerRetry = useCallback((source: string) => {
+    /**
+     * PocketBase companies are served by the server mirror + SSE; there is no Firestore listener to
+     * retry, and asking Firebase to come back online would only create dead watchers.
+     */
+    if (getValidPocketBaseAuth()) return;
     // Firestore Target-ID collision par ek hi bounded retry schedule karo; tight loop se UI churn avoid.
     if (companyListenerRetryTimerRef.current) return;
     companyListenerRetryTimerRef.current = setTimeout(() => {
@@ -3127,7 +3132,9 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
       };
     }
 
-    void ensureEmbeddedFirestoreOnlineForCloudCompanyLoad();
+    // Company list comes from the server when signed in (`pl_companies`); only a session without a
+    // PB token still needs the embedded Firestore transport for the legacy cloud list.
+    if (!getValidPocketBaseAuth()) void ensureEmbeddedFirestoreOnlineForCloudCompanyLoad();
     setLoading(true);
     // Reset refs when user changes
     ownedSnapRef.current = null;

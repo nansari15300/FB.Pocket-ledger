@@ -10,13 +10,16 @@ import { isServerQuotaHoldActive, startServerQuotaHold } from "@/lib/serverQuota
 import { isPocketBaseOnlyAppSession } from "@/lib/pbOnlySessionMarker";
 import {
   doc,
-  getDoc,
-  setDoc,
   serverTimestamp,
   Timestamp,
   enableNetwork,
   deleteField,
 } from "@/lib/pbCompat/firestore";
+// Reads/writes of company docs go through the seam / write gateway so PocketBase companies hit the
+// server (`pl_data`), never Firestore. Importing `getDoc`/`setDoc` straight from pbCompat/ was a
+// leak: these call sites run for every company, including server ones.
+import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
+import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { firestoreRunTransaction as runTransaction } from "@/lib/writeGateway/firestoreMutationsInternal";
 import {
   firestore,
