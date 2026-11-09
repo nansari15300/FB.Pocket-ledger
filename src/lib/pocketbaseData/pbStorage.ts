@@ -2,47 +2,31 @@
 
 /**
  * Drop-in for `firebase/storage` (ref / uploadBytes / getDownloadURL / deleteObject / getBlob /
- * getMetadata / list). In a server login (pl_users) files live on the Pocket Ledger Server
- * (`pl_stored_files`, one row per storage path, public file URL like a Firebase download URL).
- * Without a server login the calls fall through to the real Firebase Storage (legacy logins).
+ * getMetadata / list) — Pocket Ledger Server only.
+ *
+ * Files live in `pl_stored_files` on the server, one row per storage path, with a public file URL.
+ * Firebase Storage is NOT used: an https Firebase signed URL painted in a desktop tab but stayed
+ * blank inside the Capacitor WebView, and keeping two file stores caused PC/APK preview splits.
  */
 
-import {
-  deleteObject as fbDeleteObject,
-  getBlob as fbGetBlob,
-  getDownloadURL as fbGetDownloadURL,
-  getMetadata as fbGetMetadata,
-  list as fbList,
-  ref as fbRef,
-  uploadBytes as fbUploadBytes,
-  type StorageReference,
-} from "@/lib/pbCompat/storage";
-import { isPocketBaseAppSessionActive } from "@/lib/pocketbaseData/pbAppSession";
-import { getValidPocketBaseAuth, pbFormRequest, pbRequest, pbQuote } from "@/lib/pocketbaseData/pbClient";
-
-export type { StorageReference };
-
-const COLL = "pl_stored_files";
-
-type PbRef = {
-  __pbStorage: true;
+/** Minimal shape of a storage reference — Pocket Ledger Server only, no Firebase Storage SDK. */
+export type StorageReference = {
   fullPath: string;
   name: string;
   bucket: string;
+};
+import { getValidPocketBaseAuth, pbFormRequest, pbRequest, pbQuote } from "@/lib/pocketbaseData/pbClient";
+
+type PbRef = StorageReference & {
+  __pbStorage: true;
   recordId?: string;
   toString(): string;
 };
 
+const COLL = "pl_stored_files";
+
 function isPbRef(r: unknown): r is PbRef {
   return !!r && typeof r === "object" && (r as { __pbStorage?: unknown }).__pbStorage === true;
-}
-
-function serverActive(): boolean {
-  try {
-    return isPocketBaseAppSessionActive();
-  } catch {
-    return false;
-  }
 }
 
 function normalizePath(p: string): { path: string; recordId?: string } {
@@ -71,7 +55,7 @@ function makePbRef(path: string, recordId?: string): PbRef {
 }
 
 export function ref(storage: unknown, path?: string): StorageReference {
-  if (!serverActive()) return (fbRef as unknown as (...a: unknown[]) => StorageReference)(storage, path);
+  void storage;
   const n = normalizePath(path || "");
   return makePbRef(n.path, n.recordId) as unknown as StorageReference;
 }
@@ -103,9 +87,7 @@ export async function uploadBytes(
   data: Blob | Uint8Array | ArrayBuffer,
   metadata?: { contentType?: string }
 ): Promise<{ ref: StorageReference; metadata: Record<string, unknown> }> {
-  if (!isPbRef(r)) {
-    return (fbUploadBytes as unknown as (...a: unknown[]) => Promise<{ ref: StorageReference; metadata: Record<string, unknown> }>)(r, data, metadata);
-  }
+  if (!isPbRef(r)) throw storageError("storage/invalid-argument", "Not a Pocket Ledger Server storage reference");
   const auth = getValidPocketBaseAuth();
   if (!auth) throw storageError("storage/unauthenticated", "Sign in to the Pocket Ledger Server first");
   const contentType = String(metadata?.contentType || (data as Blob).type || "application/octet-stream");
@@ -133,29 +115,32 @@ export async function uploadBytes(
 }
 
 export async function getDownloadURL(r: StorageReference): Promise<string> {
-  if (!isPbRef(r)) return fbGetDownloadURL(r);
+  if (!isPbRef(r)) throw storageError("storage/invalid-argument", "Not a Pocket Ledger Server storage reference");
   const row = await findRow(r);
   if (!row) throw storageError("storage/object-not-found", `Object does not exist: ${r.fullPath || r.recordId}`);
   return fileUrl(row);
 }
 
 export async function getBlob(r: StorageReference, maxDownloadSizeBytes?: number): Promise<Blob> {
-  if (!isPbRef(r)) return fbGetBlob(r, maxDownloadSizeBytes);
   const url = await getDownloadURL(r as unknown as StorageReference);
   const res = await fetch(url);
   if (!res.ok) throw storageError("storage/object-not-found", `Download failed (${res.status})`);
-  return res.blob();
+  const blob = await res.blob();
+  if (maxDownloadSizeBytes && blob.size > maxDownloadSizeBytes) {
+    throw storageError("storage/unauthorized", `File is larger than ${maxDownloadSizeBytes} bytes`);
+  }
+  return blob;
 }
 
 export async function deleteObject(r: StorageReference): Promise<void> {
-  if (!isPbRef(r)) return fbDeleteObject(r);
+  if (!isPbRef(r)) throw storageError("storage/invalid-argument", "Not a Pocket Ledger Server storage reference");
   const row = await findRow(r);
   if (!row) throw storageError("storage/object-not-found", `Object does not exist: ${r.fullPath}`);
   await pbRequest(`/api/collections/${COLL}/records/${row.id}`, { method: "DELETE", timeoutMs: 20_000 });
 }
 
 export async function getMetadata(r: StorageReference): Promise<Record<string, unknown>> {
-  if (!isPbRef(r)) return fbGetMetadata(r) as unknown as Promise<Record<string, unknown>>;
+  if (!isPbRef(r)) throw storageError("storage/invalid-argument", "Not a Pocket Ledger Server storage reference");
   const row = await findRow(r);
   if (!row) throw storageError("storage/object-not-found", `Object does not exist: ${r.fullPath}`);
   return {
@@ -173,9 +158,8 @@ export async function list(
   r: StorageReference,
   options?: { maxResults?: number; pageToken?: string }
 ): Promise<{ items: StorageReference[]; prefixes: StorageReference[]; nextPageToken?: string }> {
-  if (!isPbRef(r)) {
-    return (fbList as unknown as (...a: unknown[]) => Promise<{ items: StorageReference[]; prefixes: StorageReference[]; nextPageToken?: string }>)(r, options);
-  }
+  void options;
+  if (!isPbRef(r)) throw storageError("storage/invalid-argument", "Not a Pocket Ledger Server storage reference");
   const prefix = r.fullPath ? `${r.fullPath}/` : "";
   const filter = prefix ? `path ~ ${pbQuote(prefix)}` : "";
   const res = (await pbRequest(

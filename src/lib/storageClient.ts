@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * Client-side Firebase Storage helpers for static export / Capacitor.
- * Same logic as storage.ts but runs in browser (no server action).
- * Used by Gallery and other components when building for APK.
+ * Client-side file storage helpers for static export / Capacitor.
+ *
+ * Backed by the Pocket Ledger Server (`pl_stored_files`, via `pbStorage`). Firebase Storage is not
+ * used: its signed https URLs painted on the PC but not inside the Capacitor WebView, so a file
+ * added on one device could be a black tile on another.
  */
 import { ref, uploadBytes, getDownloadURL, deleteObject, getBlob } from "@/lib/pocketbaseData/pbStorage";
-import { storage } from "./firebase";
 import { format } from "date-fns";
 
 const slugify = (text: string = "") =>
@@ -72,7 +73,7 @@ export async function uploadFileClient(
   try {
     if (!companyId) throw new Error("Company ID is missing");
     const fullPath = generateUnassignedPath(companyId, companyName, fileData.name, uploadDate || new Date());
-    const fileRef = ref(storage, fullPath);
+    const fileRef = ref(null, fullPath);
     // Browser: use Uint8Array (Buffer is Node-only)
     const bytes = new Uint8Array(fileData.arrayBuffer);
     await uploadBytes(fileRef, bytes, { contentType: fileData.type });
@@ -87,7 +88,7 @@ export async function uploadFileClient(
 /** Client-side delete. Use in Gallery for static/APK build. */
 export async function deleteFileFromStorageClient(path: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const fileRef = ref(storage, path);
+    const fileRef = ref(null, path);
     await deleteObject(fileRef);
     return { success: true };
   } catch (error: any) {
@@ -118,8 +119,8 @@ export async function moveFilesToVoucherDateClient({
   const movePromises = files.map(async (file) => {
     try {
       const newPath = generateVoucherPath(companyId, companyName, voucherType, voucherDate, voucherId, file.fileName);
-      const oldFileRef = ref(storage, file.oldPath);
-      const newFileRef = ref(storage, newPath);
+      const oldFileRef = ref(null, file.oldPath);
+      const newFileRef = ref(null, newPath);
       const blob = await getBlob(oldFileRef);
       await uploadBytes(newFileRef, blob);
       const newUrl = await getDownloadURL(newFileRef);
@@ -128,7 +129,7 @@ export async function moveFilesToVoucherDateClient({
     } catch (error: any) {
       console.error(`Failed to move file from ${file.oldPath}:`, error);
       try {
-        const oldUrl = await getDownloadURL(ref(storage, file.oldPath));
+        const oldUrl = await getDownloadURL(ref(null, file.oldPath));
         return { oldPath: file.oldPath, newPath: file.oldPath, url: oldUrl, success: false, error: error.message };
       } catch (e) {
         return { oldPath: file.oldPath, newPath: file.oldPath, url: "", success: false, error: (e as Error).message };

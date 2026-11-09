@@ -11,7 +11,6 @@ import {
   persistentMultipleTabManager,
   persistentSingleTabManager,
 } from '@/lib/pbCompat/firestore';
-import { getStorage } from '@/lib/pbCompat/storage';
 import { setLogLevel } from '@/lib/pbCompat/app';
 import { detachCompanyPickerFirestoreListenersIfAny } from '@/lib/companyPickerFirestoreDetach';
 import { computeIsLocalOnlyMode } from '@/lib/dataSourceModeDefaults';
@@ -334,7 +333,9 @@ function initFirestoreInstance() {
 }
 
 const firestore = initFirestoreInstance();
-const storage = getStorage(app);
+
+/** Firebase Storage is retired: files live on the Pocket Ledger Server (`pl_stored_files`). */
+export const storage = null;
 
 if (firestoreBlockedForServerSession) {
   // Network off before anything can listen: queued writes / listeners never reach the server.
@@ -561,4 +562,4 @@ if (typeof window !== 'undefined') {
   }
 }
 
-export { app, auth, firestore, storage };
+export { app, auth, firestore };

@@ -88,6 +88,7 @@ import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { toast } from "sonner";
 import { compressImageForCompany, attachmentImageStillTooLargeToastFields } from "@/lib/attachmentCompressionUi";
 import { uploadFileClient, deleteFileFromStorageClient } from "@/lib/storageClient";
+import { uploadUnassignedFileToPocketLedgerServer } from "@/lib/uploadUnassignedFileToPocketLedgerServer";
 import { hardDeleteUnassignedDoc, hardDeleteUnassignedDocsBatch } from "@/lib/unassignedDocHardDelete";
 import { checkStorageLimit, incrementCompanyStorage, decrementCompanyStorage } from "@/lib/storageUsageClient";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -2130,17 +2131,27 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
       const compressedFile = idx >= 0 ? compressedFiles[idx] : null;
       if (!compressedFile) return;
       try {
-        const uploadResult = await uploadFileClient(
-          { name: compressedFile.name, type: compressedFile.type, arrayBuffer: await compressedFile.arrayBuffer() },
-          fsId,
-          company?.name,
-          new Date()
-        );
+        const serverUpload = await uploadUnassignedFileToPocketLedgerServer({
+          companyId: fsId,
+          file: compressedFile,
+          fileName: compressedFile.name,
+        });
+        const uploadResult = serverUpload
+          ? ({ success: true as const, url: serverUpload.url, path: serverUpload.path })
+          : await uploadFileClient(
+              { name: compressedFile.name, type: compressedFile.type, arrayBuffer: await compressedFile.arrayBuffer() },
+              fsId,
+              company?.name,
+              new Date()
+            );
         if (uploadResult.success) {
-          await incrementCompanyStorage(fsId, {
-            attachmentsBytes: compressedFile.size,
-            storageBytes: compressedFile.size,
-          });
+          if (!serverUpload) {
+            // Firebase Storage quota only — server uploads do not count against it.
+            await incrementCompanyStorage(fsId, {
+              attachmentsBytes: compressedFile.size,
+              storageBytes: compressedFile.size,
+            });
+          }
           const docRef = doc(collection(firestore, `companies/${fsId}/unassigned_documents`));
           const uploadedAt = serverTimestamp();
           const docData = {
@@ -2247,12 +2258,19 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
         }
 
         const fsId = firestoreCompanyIdForGallery(companyId, company);
-        const uploadResult = await uploadFileClient(
-          { name: compressed.name, type: compressed.type, arrayBuffer: await compressed.arrayBuffer() },
-          fsId,
-          company?.name,
-          new Date()
-        );
+        const serverUpload = await uploadUnassignedFileToPocketLedgerServer({
+          companyId: fsId,
+          file: compressed,
+          fileName: compressed.name,
+        });
+        const uploadResult = serverUpload
+          ? ({ success: true as const, url: serverUpload.url, path: serverUpload.path })
+          : await uploadFileClient(
+              { name: compressed.name, type: compressed.type, arrayBuffer: await compressed.arrayBuffer() },
+              fsId,
+              company?.name,
+              new Date()
+            );
         if (!uploadResult.success) {
           toast.error("Edit upload failed", { description: (uploadResult as any).error || "Try again." });
           return;
@@ -2268,8 +2286,9 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
         };
         await updateDoc(docRef, update);
 
-        // Storage stats: net delta only (old bytes free, new bytes added).
-        const delta = compressed.size - (target.size || 0);
+        // Storage stats: net delta only (old bytes free, new bytes added). Firebase quota only —
+        // a Pocket Ledger Server upload does not count against it.
+        const delta = serverUpload ? 0 : compressed.size - (target.size || 0);
         if (delta !== 0) {
           try {
             await incrementCompanyStorage(fsId, { attachmentsBytes: delta, storageBytes: delta });
@@ -2678,7 +2697,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
                 <div className="relative group flex flex-col gap-1" style={{ width: `${tileSize}px` }}>
                   <div
                     className={cn(
-                      "relative overflow-hidden rounded-lg bg-zinc-800/90 cursor-pointer transition-shadow",
+                      "relative overflow-hidden rounded-lg bg-zinc-200/80 dark:bg-zinc-700/60 cursor-pointer transition-shadow",
                       isSelected ? "ring-2 ring-primary/50 shadow-md" : "group-hover:shadow-lg"
                     )}
                     style={{ width: `${tileSize}px`, height: `${tileSize}px` }}

@@ -15,9 +15,11 @@
 
 import { collection, doc, serverTimestamp, Timestamp } from "@/lib/pbCompat/firestore";
 import { writeBatch } from "@/lib/writeGateway/pbWrites";
-import { firestore } from "@/lib/firebase";
+import { firestore, isFirestoreBlockedForServerSession } from "@/lib/firebase";
 import { uploadFileClient } from "@/lib/storageClient";
 import { incrementCompanyStorage } from "@/lib/storageUsageClient";
+import { isPocketBaseCompany, isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { uploadUnassignedFileToPocketLedgerServer } from "@/lib/uploadUnassignedFileToPocketLedgerServer";
 
 /** Same rule as the gallery: PocketBase-backed companies write to their authoritative id. */
 function firestoreCompanyIdForGallery(
@@ -25,6 +27,22 @@ function firestoreCompanyIdForGallery(
   company: { authoritativeCompanyId?: string } | null | undefined
 ): string {
   return String(company?.authoritativeCompanyId || companyId).trim() || companyId;
+}
+
+/**
+ * Pocket Ledger Server is the file server: a photo added on the web must become a `pbatt:` ref,
+ * exactly like one captured on the APK. Uploading it to Firebase Storage instead produced an https
+ * URL that the Capacitor WebView cannot paint (black tile) and could not open — the PC/APK split.
+ */
+async function uploadUnassignedToPocketLedgerServer(input: {
+  companyId: string;
+  file: File;
+}): Promise<{ url: string; path: string } | null> {
+  return uploadUnassignedFileToPocketLedgerServer({
+    companyId: input.companyId,
+    file: input.file,
+    fileName: input.file.name || "photo.jpg",
+  });
 }
 
 export type SavedPhotoResult = { ok: true; docId: string } | { ok: false; error: string };
@@ -42,25 +60,38 @@ export async function savePhotoToUnassigned(opts: {
 
   try {
     const fsId = firestoreCompanyIdForGallery(companyId, company);
-    const uploadResult = await uploadFileClient(
-      { name: file.name, type: file.type, arrayBuffer: await file.arrayBuffer() },
-      fsId,
-      companyName,
-      new Date()
-    );
+    // Pocket Ledger Server is the file server for server-backed companies: upload there first so
+    // the stored ref is `pbatt:` (paintable on every device). Firebase Storage is only the fallback
+    // for a company that is not on the server at all.
+    const useServer = isPocketBaseCompany(fsId, company) || isPocketBaseCompanyId(fsId) || isFirestoreBlockedForServerSession();
+    const serverUpload = useServer
+      ? await uploadUnassignedToPocketLedgerServer({ companyId: fsId, file })
+      : null;
+    const uploadResult = serverUpload
+      ? ({ success: true as const, url: serverUpload.url, path: serverUpload.path })
+      : await uploadFileClient(
+          { name: file.name, type: file.type, arrayBuffer: await file.arrayBuffer() },
+          fsId,
+          companyName,
+          new Date()
+        );
     if (uploadResult.success === true) {
       // uploaded — continue below
     } else {
       return { ok: false, error: uploadResult.error || "upload_failed" };
     }
 
-    try {
-      await incrementCompanyStorage(fsId, {
-        attachmentsBytes: file.size,
-        storageBytes: file.size,
-      });
-    } catch {
-      /* storage stats are advisory */
+    if (!serverUpload) {
+      // Firebase Storage only: those bytes count against the Firebase quota. A Pocket Ledger
+      // Server upload must not inflate it.
+      try {
+        await incrementCompanyStorage(fsId, {
+          attachmentsBytes: file.size,
+          storageBytes: file.size,
+        });
+      } catch {
+        /* storage stats are advisory */
+      }
     }
 
     const docRef = doc(collection(firestore, `companies/${fsId}/unassigned_documents`));
