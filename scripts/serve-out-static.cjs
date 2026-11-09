@@ -6,7 +6,15 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const handler = require("serve-handler");
-const { packagedStaticServeHeaders } = require("../electron/packagedStaticHeaders.cjs");
+/** serve-handler headers for static `out/` - *.mjs MIME for pdf.js worker (pehle electron/packagedStaticHeaders.cjs me tha). */
+function packagedStaticServeHeaders(_isPackaged) {
+  return [
+    {
+      source: "**/*.mjs",
+      headers: [{ key: "Content-Type", value: "text/javascript; charset=utf-8" }],
+    },
+  ];
+}
 
 const root = path.join(__dirname, "..");
 const outDir = path.join(root, "out");
