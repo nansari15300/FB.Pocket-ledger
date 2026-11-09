@@ -1024,11 +1024,14 @@ async function mirrorDocs(
       mergePreferNewer: true,
     });
     if (failedOut && result.failed) failedOut.n += result.failed;
-    if (!result.upserted) continue;
-    counts[coll] = result.upserted;
+    if (result.upserted) counts[coll] = result.upserted;
     // Open lists (dashboard, daybook, ledgers, vouchers, parties, items) re-read SQLite on this bump.
-    if (mirrorOpts?.notify !== false) {
-      notifyBrowserDbCollectionUpdated(companyId, coll, { source: "pl_server_pull", immediate: true });
+    // Always bump: a merge that skipped the write (local row already equal, or a delete tombstone the
+    // guard hid) still has to refresh the list, otherwise a remote delete leaves stale tiles on screen.
+    if (result.upserted || result.skipped) {
+      if (mirrorOpts?.notify !== false) {
+        notifyBrowserDbCollectionUpdated(companyId, coll, { source: "pl_server_pull", immediate: true });
+      }
     }
   }
   return counts;
@@ -1095,21 +1098,38 @@ export async function applyPocketBaseRealtimeRecord(
   }
   if (!(PB_DATA_COLLECTIONS as readonly string[]).includes(collection)) return "skipped";
 
-  const row = String(action || "").toLowerCase() === "delete" ? { ...rec, deleted: true } : rec;
+  // Server-side hard delete writes a tombstone (`deleted: true` + `_pbHardDeleted`), and PocketBase
+  // reports that as an "update" action, so `action` alone misses it. Never trust the client copy:
+  // re-read the row from the server so a delete on another device actually clears this device.
+  let source: Record<string, unknown> = rec;
+  try {
+    const { fetchPocketBaseRowByRecId } = await import("@/lib/pocketbaseData/pbSyncServerRow");
+    const fresh = await fetchPocketBaseRowByRecId(collection, rec);
+    if (fresh) source = fresh;
+  } catch {
+    /* offline: fall back to the event payload */
+  }
+
+  const actionLower = String(action || "").toLowerCase();
+  const hardDeleted = source[PB_HARD_DELETED] === true || source.deleted === true;
+  const row =
+    actionLower === "delete" || hardDeleted
+      ? { ...source, deleted: true, [PB_HARD_DELETED]: true }
+      : source;
   const byColl = new Map<string, Record<string, unknown>[]>();
   if (!groupRecords(collection, [row], byColl)) return "skipped";
-  const collections = await mirrorDocs(hit.appCompanyId, byColl);
-  if (Object.keys(collections).length) {
-    try {
-      await dispatchPbMirrorLivePatches(hit.appCompanyId, byColl, {
-        insertIfMissing: String(action || "").toLowerCase() !== "delete",
-      });
-    } catch {
-      /* collection bump already refreshed open lists */
-    }
+  await mirrorDocs(hit.appCompanyId, byColl);
+  // Live-patch open lists from SQLite even when the merge skipped the write — a remote delete must
+  // still reach the open Grid, otherwise stale tiles stay on screen until a manual refresh.
+  try {
+    await dispatchPbMirrorLivePatches(hit.appCompanyId, byColl, {
+      insertIfMissing: actionLower !== "delete" && !hardDeleted,
+    });
+  } catch {
+    /* collection bump already refreshed open lists */
   }
   // A voucher / document from another device may carry a new file: fetch it to this device (debounced).
-  if (String(action || "").toLowerCase() !== "delete") queuePbFilesForCompany(hit.appCompanyId);
+  if (actionLower !== "delete" && !hardDeleted) queuePbFilesForCompany(hit.appCompanyId);
   return "applied";
 }
 
