@@ -215,7 +215,7 @@ export function GalleryTilePreview({ url, fileSize, size, className }: Props) {
           src={src}
           alt=""
           draggable={false}
-          className="h-full w-full select-none object-cover"
+          className="absolute inset-0 h-full w-full select-none object-cover object-top"
           onError={() => setFailed(true)}
         />
       ) : (

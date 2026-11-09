@@ -671,6 +671,8 @@ interface FilePreviewProps {
   storagePath?: string;
   /** object-contain = full image visible at best quality; object-cover = crop to fill (default). */
   objectFit?: "cover" | "contain";
+  /** With objectFit cover: crop anchor. Default center keeps voucher forms unchanged; gallery tiles pass "top". */
+  objectPosition?: "top" | "center";
   /**
    * Hover par bada side-panel (zoom) — default off: thumbnail click = open file; chaho to `true` se purana hover zoom wapas.
    */
@@ -729,6 +731,7 @@ export function FilePreview({
   allowPreviewWhenDisabled = false,
   storagePath,
   objectFit = "cover",
+  objectPosition = "center",
   enableHoverFullPreview = false,
   showFormatBadge = true,
   flushFrame = false,
@@ -3284,7 +3287,7 @@ export function FilePreview({
               alt={viewFileInfo.name?.startsWith(LOCAL_FILE_PREFIX) ? "Attachment" : viewFileInfo.name}
               className={cn(
                 "absolute inset-0 h-full w-full",
-                objectFit === "contain" ? "object-contain" : "object-cover"
+                objectFit === "contain" ? "object-contain" : objectPosition === "top" ? "object-cover object-top" : "object-cover"
               )}
               onLoad={() => applyThumbSizeAfterImagePaint(viewFileInfo.url)}
               onError={() => {
@@ -3313,7 +3316,7 @@ export function FilePreview({
               alt={viewFileInfo.name?.startsWith(LOCAL_FILE_PREFIX) ? "Attachment" : viewFileInfo.name}
               fill
               sizes={`${layoutMaxEdge}px`}
-              className={objectFit === "contain" ? "object-contain" : "object-cover"}
+              className={objectFit === "contain" ? "object-contain" : objectPosition === "top" ? "object-cover object-top" : "object-cover"}
               unoptimized
               onLoad={() => applyThumbSizeAfterImagePaint(viewFileInfo.url)}
               onError={() => {
@@ -3383,7 +3386,7 @@ export function FilePreview({
                 alt={viewFileInfo.name}
                 className={cn(
                   "absolute inset-0 h-full w-full",
-                  objectFit === "contain" ? "object-contain" : "object-cover"
+                  objectFit === "contain" ? "object-contain" : objectPosition === "top" ? "object-cover object-top" : "object-cover"
                 )}
                 onError={() => {
                   const bad = viewPdfThumbnail;
@@ -3405,7 +3408,7 @@ export function FilePreview({
                 alt={viewFileInfo.name}
                 fill
                 sizes={`${layoutMaxEdge}px`}
-                className={objectFit === "contain" ? "object-contain" : "object-cover"}
+                className={objectFit === "contain" ? "object-contain" : objectPosition === "top" ? "object-cover object-top" : "object-cover"}
                 unoptimized
                 onError={() => {
                   const bad = viewPdfThumbnail;

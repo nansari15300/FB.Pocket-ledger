@@ -1120,6 +1120,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                               enableHoverFullPreview={false}
                               holdAttachmentClipboard={false}
                               flushFrame
+                              objectPosition="top"
                             />
                             {!item.isAvatar && (
                               <DropdownMenu>
@@ -2697,7 +2698,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
                 <div className="relative group flex flex-col gap-1" style={{ width: `${tileSize}px` }}>
                   <div
                     className={cn(
-                      "relative overflow-hidden rounded-lg bg-zinc-200/80 dark:bg-zinc-700/60 cursor-pointer transition-shadow",
+                      "relative overflow-hidden rounded-lg bg-muted/30 cursor-pointer transition-shadow",
                       isSelected ? "ring-2 ring-primary/50 shadow-md" : "group-hover:shadow-lg"
                     )}
                     style={{ width: `${tileSize}px`, height: `${tileSize}px` }}
