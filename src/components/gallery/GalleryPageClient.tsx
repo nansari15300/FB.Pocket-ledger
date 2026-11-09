@@ -1276,7 +1276,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
             </Button>
             {/* Sab ek hi row — narrow screen par sirf wrap, kuch cut nahi. Arrow upar fixed hai. */}
             <div className="flex w-full min-w-0 flex-wrap items-center gap-[5px] pr-9">
-              <div className="min-w-0 shrink-0 basis-[170px] pr-1">
+              <div className="min-w-[110px] max-w-[200px] shrink-0 grow-0 basis-[150px] pr-1">
                 <div className="truncate text-sm font-semibold leading-tight">
                   {showAvatarsOnly ? "Account Avatars" : "Company File Gallery"}
                 </div>
@@ -1298,7 +1298,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
               {!mounted && <Skeleton className="h-8 w-[180px] shrink-0 rounded-md" />}
               {mounted ? (
                 <>
-                  <div className="min-w-[110px] flex-1 basis-[130px]">
+                  <div className="min-w-[96px] flex-1 basis-[100px]">
                     <Combobox
                       options={[{ id: "all", label: "All Accounts" }, ...CATEGORIES].map((c) => ({ value: c.id, label: c.label }))}
                       value={selectedAccountType}
@@ -1307,7 +1307,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                       triggerClassName="h-8 text-xs"
                     />
                   </div>
-                  <div className="min-w-[125px] flex-1 basis-[150px]">
+                  <div className="min-w-[104px] flex-1 basis-[120px]">
                     <Combobox
                       options={allEntityOptions}
                       value={selectedEntityId}
@@ -1341,7 +1341,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                     )}
                     Full preview
                   </Button>
-                  <div className="min-w-[125px] flex-1 basis-[140px]">
+                  <div className="min-w-[96px] flex-1 basis-[110px]">
                     <Combobox
                       options={[{ value: "all", label: "All Users" }, ...userOptions]}
                       value={selectedUserId}
@@ -1351,7 +1351,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                     />
                   </div>
                   {!showAvatarsOnly && (
-                    <div className="relative min-w-[140px] flex-1 basis-[160px]">
+                    <div className="relative min-w-[120px] flex-1 basis-[140px]">
                       <Search
                         className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-blue-900/70"
                         aria-hidden
