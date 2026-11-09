@@ -79,28 +79,39 @@ export function useLivePlans(): Record<PlanId, Plan> {
   }, []);
 
   useEffect(() => {
-    const unsub = onSnapshot(
-      doc(firestore, "app_settings", "plans"),
-      (docSnap) => {
-        if (!docSnap.exists()) {
+    let unsub: () => void = () => {};
+    try {
+      unsub = onSnapshot(
+        doc(firestore, "app_settings", "plans"),
+        (docSnap) => {
+          if (!docSnap.exists()) {
+            const cached = readCachedPlansRecord();
+            setPlans(cached ?? defaultPlansRecordFallback());
+            // Purana online data overwrite mat karo — DEFAULT ko cache me mat likho.
+            return;
+          }
+          firestorePlansAppliedRef.current = true;
+          const data = docSnap.data() as Record<string, unknown>;
+          const list = mergeAppSettingsPlansDoc(data);
+          const merged = {} as Record<PlanId, Plan>;
+          for (const p of list) merged[p.id as PlanId] = p;
+          setPlans(merged);
+          writeCachedPlansRecord(merged);
+        },
+        () => {
           const cached = readCachedPlansRecord();
-          setPlans(cached ?? defaultPlansRecordFallback());
-          // Purana online data overwrite mat karo — DEFAULT ko cache me mat likho.
-          return;
+          if (cached) setPlans(cached);
+          else setPlans(defaultPlansRecordFallback());
         }
-        firestorePlansAppliedRef.current = true;
-        const data = docSnap.data() as Record<string, unknown>;
-        const list = mergeAppSettingsPlansDoc(data);
-        const merged = {} as Record<PlanId, Plan>;
-        for (const p of list) merged[p.id as PlanId] = p;
-        setPlans(merged);
-        writeCachedPlansRecord(merged);
-      },
-      () => {
-        const cached = readCachedPlansRecord();
-        if (cached) setPlans(cached);
+      );
+    } catch (e) {
+      try {
+        console.debug("[useLivePlans] onSnapshot unavailable; using defaults", e);
+      } catch {
+        /* ignore */
       }
-    );
+      setPlans(readCachedPlansRecord() ?? defaultPlansRecordFallback());
+    }
     return () => unsub();
   }, []);
 

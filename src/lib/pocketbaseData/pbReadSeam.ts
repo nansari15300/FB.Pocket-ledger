@@ -16,13 +16,61 @@
  * Anything the seam cannot evaluate (collection groups, deeper paths) goes to Firestore.
  */
 
-/** Firebase client leaf removed — non-PB paths must fail loudly. */
+/** Unauthenticated / non-PB paths: empty snapshots (no throw). Writes still throw in the write gateway. */
 type Fn = (...a: unknown[]) => unknown;
-const leafReadGone: Fn = () => {
-  throw new Error("[pl] PocketBase-only: Firebase read/fallback removed for this path");
-};
-const leafOnSnapshotGone: Fn = () => {
-  throw new Error("[pl] PocketBase-only: Firebase onSnapshot fallback removed for this path");
+
+function refIdOf(ref: unknown): string {
+  const o = ref as AnyRec | null;
+  if (!o || typeof o !== "object") return "";
+  if (typeof o.id === "string" && o.id) return o.id;
+  const path = String((o as { path?: unknown }).path || "");
+  const parts = path.split("/").filter(Boolean);
+  return parts.length ? parts[parts.length - 1]! : "";
+}
+
+function looksLikeQueryTarget(target: unknown): boolean {
+  const o = target as AnyRec | null;
+  if (!o || typeof o !== "object") return false;
+  if ((o as { __plQuery?: unknown }).__plQuery) return true;
+  if (o.type === "query" || o.type === "collection") return true;
+  if (typeof o.kind === "string" && (o.kind === "query" || o.kind === "collection")) return true;
+  return false;
+}
+
+/** Missing/unauthenticated doc read — non-existent snapshot (exists() === false). */
+function emptyMissingDocSnapshot(ref: unknown): AnyRec {
+  return makeDocSnapshot(ref, refIdOf(ref), null);
+}
+
+/** Missing/unauthenticated query read — empty QuerySnapshot. */
+function emptyMissingQuerySnapshot(query: unknown): AnyRec {
+  return makeQuerySnapshot(query, [], null);
+}
+
+const leafReadGone: Fn = (...args: unknown[]) => Promise.resolve(emptyMissingDocSnapshot(args[0]));
+const leafQueryGone: Fn = (...args: unknown[]) => Promise.resolve(emptyMissingQuerySnapshot(args[0]));
+
+/** No PB token/mode: emit empty snapshot on microtask; return no-op unsubscribe (never throw). */
+const leafOnSnapshotGone: Fn = (...args: unknown[]) => {
+  const obs = observerFrom(args);
+  const target = args[0];
+  let closed = false;
+  queueMicrotask(() => {
+    if (closed) return;
+    try {
+      if (looksLikeQueryTarget(target)) obs.next?.(emptyMissingQuerySnapshot(target));
+      else obs.next?.(emptyMissingDocSnapshot(target));
+    } catch (e) {
+      try {
+        console.debug("[pl] empty onSnapshot emit skipped", e);
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+  return () => {
+    closed = true;
+  };
 };
 import { Timestamp } from "@/lib/pbCompat/firestore";
 import { PbDocumentReference, type Converter } from "@/lib/pocketbaseData/pbRef";
@@ -1086,7 +1134,7 @@ export const getDoc = wrapDocRead(leafReadGone, true) as unknown as <T = AnyRec>
 }>;
 export const getDocFromServer = wrapDocRead(leafReadGone, true) as unknown as typeof getDoc;
 export const getDocFromCache = wrapDocRead(leafReadGone, false) as unknown as typeof getDoc;
-export const getDocs = wrapQueryRead(leafReadGone) as unknown as <T = AnyRec>(q: unknown) => Promise<{
+export const getDocs = wrapQueryRead(leafQueryGone) as unknown as <T = AnyRec>(q: unknown) => Promise<{
   docs: Array<{
     id: string;
     ref: any;
@@ -1104,8 +1152,8 @@ export const getDocs = wrapQueryRead(leafReadGone) as unknown as <T = AnyRec>(q:
   metadata: { fromCache: boolean; hasPendingWrites: boolean };
   [k: string]: any;
 }>;
-export const getDocsFromServer = wrapQueryRead(leafReadGone) as unknown as typeof getDocs;
-export const getDocsFromCache = wrapQueryRead(leafReadGone) as unknown as typeof getDocs;
+export const getDocsFromServer = wrapQueryRead(leafQueryGone) as unknown as typeof getDocs;
+export const getDocsFromCache = wrapQueryRead(leafQueryGone) as unknown as typeof getDocs;
 
 export const getCountFromServer = ((...args: unknown[]) => {
   const t = noPocketBaseCompanies() ? null : pbTargetOf(args[0]);
@@ -1118,7 +1166,7 @@ export const getCountFromServer = ((...args: unknown[]) => {
       });
     }
   }
-  if (!t || t.kind !== "query") return leafReadGone(...args);
+  if (!t || t.kind !== "query") return Promise.resolve({ data: () => ({ count: 0 }) });
   return pbGetQuerySnapshot(args[0], t, null).then((r) => {
     const count = r.snap.size as number;
     return { data: () => ({ count }) };
@@ -1146,7 +1194,7 @@ function observerFrom(args: unknown[]): Observer {
 
 /** `onSnapshot`: PocketBase company targets re-read the local mirror on every change bump. */
 export const onSnapshot = ((...args: unknown[]) => {
-  if (typeof window === "undefined") return leafOnSnapshotGone(...args);
+  if (typeof window === "undefined") return () => {};
   const t = noPocketBaseCompanies() ? null : pbTargetOf(args[0]);
   if (!t) {
     const at = adminTargetOf(args[0]);
