@@ -303,7 +303,6 @@ async function compressPickedImage(file: File): Promise<File> {
 
 /** Small labelled range row used in the editor panel. */
 function EditSlider({
-  icon,
   label,
   value,
   min,
@@ -311,7 +310,6 @@ function EditSlider({
   onChange,
   disabled,
 }: {
-  icon: React.ReactNode;
   label: string;
   value: number;
   min: number;
@@ -320,25 +318,18 @@ function EditSlider({
   disabled?: boolean;
 }) {
   return (
-    <div className={cn("flex items-center gap-2", disabled && "opacity-40")}>
-      <span className="flex w-[74px] shrink-0 items-center gap-1 text-[11px] font-medium text-foreground">
-        {icon}
-        {label}
-      </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={1}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="pl-range min-w-0 flex-1 cursor-pointer"
-        aria-label={label}
-      />
-      <span className="w-8 shrink-0 text-right text-[11px] font-semibold tabular-nums text-foreground/70">{value}</span>
-    </div>
-  );
+    <input
+      type="range"
+      min={min}
+      max={max}
+      step={1}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(Number(e.target.value))}
+      className={cn("pl-range block w-full min-w-0 cursor-pointer", disabled && "opacity-40")}
+      style={{ height: 18, width: "100%", minWidth: 0, margin: 0, padding: 0, border: 0, outline: "none", background: "transparent", boxShadow: "none" }}
+      aria-label={label}
+    />  );
 }
 
 export function UnassignedCameraCapture({ onCapture, bottomClass, className, wrapperStyle, demoHostOnly = false, openRequest = null, preserveName = null }: UnassignedCameraCaptureProps) {
@@ -360,6 +351,17 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
   const [sharpness, setSharpness] = useState(50);
   const [crop, setCrop] = useState<CropRect>(DEFAULT_CROP);
   const [panelOpen, setPanelOpen] = useState(false);
+  /** Interactive crop: true hone par preview par draggable box dikhta hai. */
+  const [cropMode, setCropMode] = useState(false);
+  const previewWrapRef = useRef<HTMLDivElement | null>(null);
+  const cropDragRef = useRef<{
+    corner: "nw" | "ne" | "sw" | "se" | "move";
+    startX: number;
+    startY: number;
+    start: CropRect;
+    boxW: number;
+    boxH: number;
+  } | null>(null);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -374,6 +376,63 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
     setSharpness(50);
     setCrop(DEFAULT_CROP);
     setPanelOpen(false);
+    setCropMode(false);
+  }, []);
+
+  /** Interactive crop — pointer drag se crop rect update. */
+  const startCropDrag = useCallback(
+    (e: React.PointerEvent, corner: "nw" | "ne" | "sw" | "se" | "move") => {
+      const wrap = previewWrapRef.current;
+      if (!wrap) return;
+      const rect = wrap.getBoundingClientRect();
+      cropDragRef.current = {
+        corner,
+        startX: e.clientX,
+        startY: e.clientY,
+        start: { ...crop },
+        boxW: rect.width || 1,
+        boxH: rect.height || 1,
+      };
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    },
+    [crop]
+  );
+
+  useEffect(() => {
+    const MIN = 0.08;
+    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+    const onMove = (e: PointerEvent) => {
+      const d = cropDragRef.current;
+      if (!d) return;
+      const dx = (e.clientX - d.startX) / d.boxW;
+      const dy = (e.clientY - d.startY) / d.boxH;
+      const s = d.start;
+      let next: CropRect = { ...s };
+
+      if (d.corner === "move") {
+        next.x = clamp(s.x + dx, 0, 1 - s.w);
+        next.y = clamp(s.y + dy, 0, 1 - s.h);
+      } else {
+        let x0 = s.x, y0 = s.y, x1 = s.x + s.w, y1 = s.y + s.h;
+        if (d.corner === "nw" || d.corner === "sw") x0 = clamp(s.x + dx, 0, x1 - MIN);
+        if (d.corner === "ne" || d.corner === "se") x1 = clamp(s.x + s.w + dx, x0 + MIN, 1);
+        if (d.corner === "nw" || d.corner === "ne") y0 = clamp(s.y + dy, 0, y1 - MIN);
+        if (d.corner === "sw" || d.corner === "se") y1 = clamp(s.y + s.h + dy, y0 + MIN, 1);
+        next = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      }
+      setCrop(next);
+    };
+    const onUp = () => {
+      cropDragRef.current = null;
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
   }, []);
 
   const closeAll = useCallback(() => {
@@ -509,13 +568,21 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
     void v.play().catch(() => undefined);
   }, [stage]);
 
-  /** Draw the source canvas into the on-screen preview canvas (crop + edits). */
+  /** Draw the source canvas into the on-screen preview canvas.
+   *  cropMode ON => poori image (taaki crop box uske upar set ho), OFF => cropped + edits. */
   const repaintPreview = useCallback(() => {
     const src = canvasRef.current;
     const dst = previewCanvasRef.current;
     if (!src || !dst) return;
     const ctx = dst.getContext("2d");
     if (!ctx) return;
+    if (cropMode) {
+      dst.width = src.width;
+      dst.height = src.height;
+      ctx.drawImage(src, 0, 0);
+      applyEdits(ctx, src.width, src.height, { mode, brightness, contrast, sharpness });
+      return;
+    }
     const sx = Math.round(crop.x * src.width);
     const sy = Math.round(crop.y * src.height);
     const sw = Math.max(1, Math.round(crop.w * src.width));
@@ -524,7 +591,7 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
     dst.height = sh;
     ctx.drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh);
     applyEdits(ctx, sw, sh, { mode, brightness, contrast, sharpness });
-  }, [crop, mode, brightness, contrast, sharpness]);
+  }, [crop, cropMode, mode, brightness, contrast, sharpness]);
 
   // Repaint whenever an edit changes or the review stage becomes active.
   useEffect(() => {
@@ -648,41 +715,47 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
         .pl-range {
           -webkit-appearance: none;
           appearance: none;
-          height: 22px;
+          height: 18px;
+          width: 100%;
           background: transparent;
+          border: 0;
           outline: none;
+          box-shadow: none;
         }
         .pl-range::-webkit-slider-runnable-track {
-          height: 12px;
+          width: 100%;
+          height: 18px;
+          border: 0;
           border-radius: 999px;
-          background: color-mix(in oklab, var(--primary) 16%, var(--muted));
-          box-shadow: inset 0 1px 2px rgba(0,0,0,0.08);
+          background: #93c5fd;
         }
         .pl-range::-webkit-slider-thumb {
           -webkit-appearance: none;
           appearance: none;
-          height: 22px;
-          width: 22px;
-          margin-top: -5px;
+          height: 18px;
+          width: 18px;
+          margin-top: 0;
+          border: 0;
           border-radius: 999px;
-          background: var(--primary);
-          border: 3px solid var(--background);
-          box-shadow: 0 2px 6px rgba(0,0,0,0.22);
+          background: #22c55e;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.18);
           transition: transform 120ms ease;
         }
         .pl-range:active::-webkit-slider-thumb { transform: scale(1.08); }
         .pl-range::-moz-range-track {
-          height: 12px;
+          width: 100%;
+          height: 18px;
+          border: 0;
           border-radius: 999px;
-          background: color-mix(in oklab, var(--primary) 16%, var(--muted));
+          background: #93c5fd;
         }
         .pl-range::-moz-range-thumb {
-          height: 22px;
-          width: 22px;
+          height: 18px;
+          width: 18px;
+          border: 0;
           border-radius: 999px;
-          background: var(--primary);
-          border: 3px solid var(--background);
-          box-shadow: 0 2px 6px rgba(0,0,0,0.22);
+          background: #22c55e;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.18);
         }
       `}</style>
       {/* Camera viewfinder / review overlay — fullscreen, fixed. */}
@@ -713,12 +786,105 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
               autoPlay
               className={stage === "live" ? "h-full w-full object-contain" : "hidden"}
             />
-            {/* APK fix: a real <canvas> preview (not blob: <img>) so the WebView always paints it. */}
-            <canvas
-              ref={previewCanvasRef}
-              className={stage === "review" ? "block max-h-full max-w-full object-contain" : "hidden"}
-              aria-label="Scanned document preview"
-            />
+            {/* APK fix: a real <canvas> preview (not blob: <img>) so the WebView always paints it.
+                Wrapper inline-block hai taaki crop overlay exactly canvas ke bounds par baithe. */}
+            <div
+              className={stage === "review" ? "relative inline-block max-h-full max-w-full" : "hidden"}
+              style={{ touchAction: "none" }}
+              ref={previewWrapRef}
+            >
+              <canvas
+                ref={previewCanvasRef}
+                className="block h-auto w-auto max-h-[calc(100dvh-16rem)] max-w-full object-contain"
+                aria-label="Scanned document preview"
+              />
+              {/* Interactive crop overlay — cropMode active hone par */}
+              {cropMode && (
+                <div className="pointer-events-none absolute inset-0">
+                  {/* darkened outside area (simple 4 rectangles) */}
+                  <div className="absolute inset-x-0 top-0 bg-black/50" style={{ height: `${crop.y * 100}%` }} />
+                  <div className="absolute inset-x-0 bottom-0 bg-black/50" style={{ height: `${(1 - crop.y - crop.h) * 100}%` }} />
+                  <div className="absolute left-0 bg-black/50" style={{ top: `${crop.y * 100}%`, height: `${crop.h * 100}%`, width: `${crop.x * 100}%` }} />
+                  <div className="absolute right-0 bg-black/50" style={{ top: `${crop.y * 100}%`, height: `${crop.h * 100}%`, width: `${(1 - crop.x - crop.w) * 100}%` }} />
+                  {/* crop box — visible double border (dark + white) + grid + corner grips */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: `${crop.x * 100}%`,
+                      top: `${crop.y * 100}%`,
+                      width: `${crop.w * 100}%`,
+                      height: `${crop.h * 100}%`,
+                      boxShadow: "inset 0 0 0 2px rgba(255,255,255,0.95), 0 0 0 2px rgba(0,0,0,0.55)",
+                    }}
+                  >
+                    {/* rule-of-thirds lines */}
+                    <div style={{ position: "absolute", top: 0, bottom: 0, left: "33.33%", width: 1, background: "rgba(255,255,255,0.7)" }} />
+                    <div style={{ position: "absolute", top: 0, bottom: 0, left: "66.66%", width: 1, background: "rgba(255,255,255,0.7)" }} />
+                    <div style={{ position: "absolute", left: 0, right: 0, top: "33.33%", height: 1, background: "rgba(255,255,255,0.7)" }} />
+                    <div style={{ position: "absolute", left: 0, right: 0, top: "66.66%", height: 1, background: "rgba(255,255,255,0.7)" }} />
+
+                    {/* 4 corner L-grips — box ke andar, primary colour + white halo */}
+                    {(["nw", "ne", "sw", "se"] as const).map((corner) => (
+                      <div
+                        key={corner}
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          startCropDrag(e, corner);
+                        }}
+                        style={{
+                          position: "absolute",
+                          zIndex: 20,
+                          height: 44,
+                          width: 44,
+                          touchAction: "none",
+                          cursor: "grab",
+                          pointerEvents: "auto",
+                          ...(corner === "nw" || corner === "sw" ? { left: 0 } : { right: 0 }),
+                          ...(corner === "nw" || corner === "ne" ? { top: 0 } : { bottom: 0 }),
+                        }}
+                      >
+                        {/* visible L bracket — 6px primary + white halo */}
+                        <div
+                          style={{
+                            position: "absolute",
+                            height: 22,
+                            width: 22,
+                            borderColor: "#2563eb",
+                            borderStyle: "solid",
+                            borderTopWidth: corner === "nw" || corner === "ne" ? 6 : 0,
+                            borderBottomWidth: corner === "sw" || corner === "se" ? 6 : 0,
+                            borderLeftWidth: corner === "nw" || corner === "sw" ? 6 : 0,
+                            borderRightWidth: corner === "ne" || corner === "se" ? 6 : 0,
+                            top: corner === "nw" || corner === "ne" ? 4 : undefined,
+                            bottom: corner === "sw" || corner === "se" ? 4 : undefined,
+                            left: corner === "nw" || corner === "sw" ? 4 : undefined,
+                            right: corner === "ne" || corner === "se" ? 4 : undefined,
+                            filter: "drop-shadow(0 0 2px rgba(255,255,255,1)) drop-shadow(0 0 3px rgba(0,0,0,0.5))",
+                            pointerEvents: "none",
+                          }}
+                        />
+                      </div>
+                    ))}
+                    {/* full box drag — inside area */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        cursor: "move",
+                        touchAction: "none",
+                        pointerEvents: "auto",
+                      }}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        startCropDrag(e, "move");
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {stage === "review" && (
@@ -776,45 +942,64 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
                         <span className="truncate">{p.label}</span>
                       </button>
                     ))}
-                    {/* Crop section ka label — presets ke saath same grid box */}
-                    <div className="flex h-8 min-w-0 items-center justify-center gap-1 rounded-lg border border-dashed border-border px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {/* Crop toggle — click se interactive crop box preview par on/off */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCropMode((v) => {
+                          const next = !v;
+                          // Pehli baar ON: Full crop ko thoda inset karo taaki
+                          // crop box ke chaaron L-grips screen par clearly dikhein.
+                          if (next && crop.x === 0 && crop.y === 0 && crop.w === 1 && crop.h === 1) {
+                            setCrop({ x: 0.08, y: 0.08, w: 0.84, h: 0.84 });
+                          }
+                          return next;
+                        });
+                      }}
+                      disabled={saving}
+                      title="Crop area ko drag karke adjust karo"
+                      className={cn(
+                        "flex h-8 min-w-0 items-center justify-center gap-1 rounded-lg border px-1 text-[11px] font-semibold uppercase tracking-wide transition-colors",
+                        cropMode
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-muted/50 text-foreground hover:bg-muted"
+                      )}
+                    >
                       <Maximize2 className="h-3 w-3 shrink-0" />
                       <span className="truncate">Crop</span>
-                    </div>
+                    </button>
                   </div>
                 </div>
               )}
 
-              {/* Adjust panel: brightness / contrast / sharpness */}
+              {/* Adjust panel: sliders ek grid me, beech me ek hi full-height divider */}
               {panelOpen && (
-                <div className="mx-2 mt-2 space-y-2 rounded-xl border border-border bg-muted/30 px-3 py-2.5">
-                  <EditSlider
-                    icon={<Sun className="h-3 w-3 shrink-0" />}
-                    label="Brightness"
-                    value={brightness}
-                    min={0}
-                    max={100}
-                    onChange={setBrightness}
-                    disabled={saving}
-                  />
-                  <EditSlider
-                    icon={<Contrast className="h-3 w-3 shrink-0" />}
-                    label="Contrast"
-                    value={contrast}
-                    min={0}
-                    max={100}
-                    onChange={setContrast}
-                    disabled={saving}
-                  />
-                  <EditSlider
-                    icon={<Sparkles className="h-3 w-3 shrink-0" />}
-                    label="Sharpness"
-                    value={sharpness}
-                    min={0}
-                    max={100}
-                    onChange={setSharpness}
-                    disabled={saving}
-                  />
+                <div className="mx-2 mt-2 rounded-xl border border-border bg-muted/30 px-3 py-2.5">
+                  <div
+                    className="grid items-center gap-x-2 gap-y-3"
+                    style={{ gridTemplateColumns: "78px minmax(0, 1fr) 30px" }}
+                  >
+                    <span className="flex min-w-0 items-center gap-1 text-[11px] font-bold italic text-foreground">
+                      <Sun className="h-3 w-3 shrink-0" />
+                      <span className="truncate">Brightness</span>
+                    </span>
+                    <EditSlider label="Brightness" value={brightness} min={0} max={100} onChange={setBrightness} disabled={saving} />
+                    <span className="text-right text-[11px] font-semibold tabular-nums text-foreground/70">{brightness}</span>
+
+                    <span className="flex min-w-0 items-center gap-1 text-[11px] font-bold italic text-foreground">
+                      <Contrast className="h-3 w-3 shrink-0" />
+                      <span className="truncate">Contrast</span>
+                    </span>
+                    <EditSlider label="Contrast" value={contrast} min={0} max={100} onChange={setContrast} disabled={saving} />
+                    <span className="text-right text-[11px] font-semibold tabular-nums text-foreground/70">{contrast}</span>
+
+                    <span className="flex min-w-0 items-center gap-1 text-[11px] font-bold italic text-foreground">
+                      <Sparkles className="h-3 w-3 shrink-0" />
+                      <span className="truncate">Sharpness</span>
+                    </span>
+                    <EditSlider label="Sharpness" value={sharpness} min={0} max={100} onChange={setSharpness} disabled={saving} />
+                    <span className="text-right text-[11px] font-semibold tabular-nums text-foreground/70">{sharpness}</span>
+                  </div>
                 </div>
               )}
 
