@@ -55,6 +55,7 @@ import {
   AlignJustify,
   Search,
   Edit,
+  ScanLine,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -101,7 +102,7 @@ import { openAttachmentInApp } from "@/lib/openAttachmentInApp";
 import { getAttachmentFormatLabel, getAttachmentFormatLabelFromHints } from "@/lib/attachmentFormatLabel";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { canSyncCompanyToServer } from "@/lib/localVoucherOutbox";
-import { getPendingFiles, isLocalFileRef, LOCAL_FILE_PREFIX } from "@/lib/localPendingFiles";
+import { getPendingFiles, isLocalFileRef, getBlobFromLocalFileRef, LOCAL_FILE_PREFIX } from "@/lib/localPendingFiles";
 import { usePrewarmVisibleAttachments } from "@/hooks/usePrewarmVisibleAttachments";
 import { companyUsesLocalAttachmentSourcesOnly } from "@/lib/staticAttachmentDisplayUrl";
 import { FIREBASE_LEDGER_COMPANY_SYNC_PREFS_CHANGED_EVENT } from "@/lib/firebaseLedgerCompanySyncPrefs";
@@ -1706,6 +1707,29 @@ type UploadingFile = {
 
 const LOCAL_UNASSIGNED_DOCS_KEY = "local_unassigned_documents_v1";
 
+/** Editor sirf images ke liye hai — local `local:<uuid>` refs ko blob me kholna padta hai. */
+async function resolveUnassignedEditSource(file: UnassignedFile): Promise<string | Blob | null> {
+  const url = String(file.url || "");
+  if (!url) return null;
+  if (url.startsWith("local:")) {
+    try {
+      return await getBlobFromLocalFileRef(url);
+    } catch {
+      return null;
+    }
+  }
+  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:") || url.startsWith("blob:")) {
+    return url;
+  }
+  return null;
+}
+
+function isPdfUnassignedFile(file: UnassignedFile): boolean {
+  if ((file as any).type === "pdf") return true;
+  const clean = getCleanName(file.name || "").toLowerCase();
+  return /\.pdf$/i.test(clean) && (file as any).type !== "image";
+}
+
 function createLocalEntityId(prefix: string): string {
   // Local-only mode me stable client-side IDs use karo taaki CRUD consistent rahe.
   const rand =
@@ -1813,6 +1837,12 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
   const [isBatchDeleting, setIsBatchDeleting] = useState(false);
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [fileToRename, setFileToRename] = useState<UnassignedFile | null>(null);
+  /** 3-dot → "Edit file": camera editor me existing image kholne ke liye. */
+  const [fileToEdit, setFileToEdit] = useState<UnassignedFile | null>(null);
+  // async resolve — local refs blobs me badalne padte hain
+  const editorSourceRef = useRef<string | Blob | null>(null);
+  const [editorPrimed, setEditorPrimed] = useState(0);
+  const [editorRequest, setEditorRequest] = useState<{ key: number; urlOrBlob: string | Blob } | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -2188,8 +2218,104 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
     else setRenameValue("");
   }, [fileToRename]);
 
-  const handleRenameFile = async () => {
-    if (!fileToRename || !companyId || !renameValue.trim()) return;
+  /**
+   * "Edit file" (3-dot menu → existing image): camera editor me existing photo khulti hai;
+   * Save hone par (a) local-only company ke liye localStorage entry replace, aur
+   * (b) online company ke liye naya URI upload karke wahi unassigned doc update hota hai.
+   */
+  const handleEditedUnassignedFile = useCallback(
+    async (target: UnassignedFile, edited: File) => {
+      if (!companyId || !user) {
+        toast.error("Cannot save edits", { description: "Select a company and sign in first." });
+        return;
+      }
+      try {
+        const compressed = (await compressImageForCompany(edited, companyId)).file;
+        const deviceOnly = isLocalOnlyMode() && !(await canSyncCompanyToServer(companyId));
+
+        if (deviceOnly) {
+          const url = await fileToDataUrl(compressed);
+          const next = readLocalUnassignedDocs().map((f) =>
+            f.id === target.id
+              ? { ...f, url, name: compressed.name, path: "", size: compressed.size, type: "image" as const }
+              : f
+          );
+          writeLocalUnassignedDocs(next);
+          setUnassignedFiles(next);
+          toast.success("File updated");
+          return;
+        }
+
+        const fsId = firestoreCompanyIdForGallery(companyId, company);
+        const uploadResult = await uploadFileClient(
+          { name: compressed.name, type: compressed.type, arrayBuffer: await compressed.arrayBuffer() },
+          fsId,
+          company?.name,
+          new Date()
+        );
+        if (!uploadResult.success) {
+          toast.error("Edit upload failed", { description: (uploadResult as any).error || "Try again." });
+          return;
+        }
+
+        const docRef = doc(firestore, `companies/${fsId}/unassigned_documents`, target.id);
+        const update = {
+          url: uploadResult.url,
+          path: uploadResult.path,
+          name: compressed.name,
+          size: compressed.size,
+          type: "image" as const,
+        };
+        await updateDoc(docRef, update);
+
+        // Storage stats: net delta only (old bytes free, new bytes added).
+        const delta = compressed.size - (target.size || 0);
+        if (delta !== 0) {
+          try {
+            await incrementCompanyStorage(fsId, { attachmentsBytes: delta, storageBytes: delta });
+          } catch {
+            /* stats are advisory */
+          }
+        }
+
+        // Local mirror first so the grid repaints the edited photo immediately.
+        try {
+          const { upsertCompanyDocInBrowserDb } = await import("@/lib/localCompanyDocMirror");
+          await upsertCompanyDocInBrowserDb(fsId, "unassigned_documents", target.id, {
+            ...update,
+            id: target.id,
+            uploadedAt: target.uploadedAt as any,
+            uploadedBy: target.uploadedBy,
+            status: target.status,
+          }, { force: true, notify: true, skipPlanMutationGate: true, skipCloudSyncEnqueue: true });
+        } catch {
+          /* next pull repairs the mirror */
+        }
+        try {
+          const { flushBrowserDbToIndexedDB } = await import("@/lib/localSqlite");
+          await flushBrowserDbToIndexedDB();
+        } catch {
+          /* pagehide flush is the fallback */
+        }
+
+        // Old uploaded bytes are no longer referenced by this doc.
+        if (target.path) {
+          void deleteFileFromStorageClient(target.path).catch(() => {});
+        }
+
+        setUnassignedFiles((prev) =>
+          prev.map((f) => (f.id === target.id ? { ...f, ...update } : f))
+        );
+        toast.success("File updated");
+      } catch (error) {
+        console.error("Error editing file:", error);
+        toast.error("Could not save the edited file");
+      }
+    },
+    [companyId, user, company]
+  );
+
+  const handleRenameFile = async () => {    if (!fileToRename || !companyId || !renameValue.trim()) return;
     const newName = renameValue.trim();
     if (newName === getCleanName(fileToRename.name)) {
       setFileToRename(null);
@@ -2613,6 +2739,27 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
                         >
                           <Edit className="h-3.5 w-3.5 mr-2" /> Rename
                         </DropdownMenuItem>
+                        {/* Crop / filters / B&W — existing image camera editor me kholta hai */}
+                        {!isPdfUnassignedFile(file) && (
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              markDropdownMenuAction();
+                              setFileToEdit(file);
+                              void (async () => {
+                                const source = await resolveUnassignedEditSource(file);
+                                if (!source) {
+                                  setFileToEdit(null);
+                                  toast.error("Could not load this file for editing");
+                                  return;
+                                }
+                                setEditorRequest({ key: Date.now(), urlOrBlob: source });
+                                setEditorPrimed((n) => n + 1);
+                              })();
+                            }}
+                          >
+                            <ScanLine className="h-3.5 w-3.5 mr-2" /> Edit file
+                          </DropdownMenuItem>
+                        )}
                         {ATTACHABLE_VOUCHER_TYPES.map((type) => (
                           <DropdownMenuItem
                             key={type.id}
@@ -2998,6 +3145,22 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
 
       {/* Mobile / APK camera FAB — sirf jab card hidden ho tab yahan (bottom se 1 inch).
           Card khula ho to camera card ke upar wale wrapper me hai. */}
+      {/* "Edit file" host: 3-dot menu se khula editor. invisible — sirf overlay dikhata hai. */}
+      <UnassignedCameraCapture
+        key={`ua-editor-${editorPrimed}`}
+        onCapture={async (edited) => {
+          const target = fileToEdit;
+          if (!target) return;
+          await handleEditedUnassignedFile(target, edited);
+          setFileToEdit(null);
+          setEditorRequest(null);
+          setEditorPrimed(0);
+        }}
+        demoHostOnly
+        openRequest={editorRequest}
+        preserveName={fileToEdit ? getCleanName(fileToEdit.name) : null}
+      />
+
       {isMobile && !unassignedFooterExpanded && typeof document !== "undefined" &&
         createPortal(
           <UnassignedCameraCapture

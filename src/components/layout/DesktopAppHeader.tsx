@@ -134,8 +134,7 @@ import { updateCompanyRootFirestore } from "@/lib/writeGateway/companyRootFirest
 /** Electron desktop: header quick-action buttons strip collapsed — `main.js` View menu se bhi toggle */
 const PL_DESKTOP_QUICK_ACTIONS_KEY = "pl-desktop-header-quick-actions-collapsed";
 
-/** Static export trailingSlash: URL /party/ vs /party — normalize for route checks */
-function pathRoot(pathname: string | null, segment: string): boolean {
+/** Static export trailingSlash: URL /party/ vs /party — normalize for route checks */function pathRoot(pathname: string | null, segment: string): boolean {
   const p = (pathname ?? "").replace(/\/$/, "") || "/";
   return p === `/${segment}`;
 }

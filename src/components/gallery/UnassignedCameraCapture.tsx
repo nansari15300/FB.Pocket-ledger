@@ -22,7 +22,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RotateCcw, Check, X, Loader2, ScanText, Sun, Contrast, Sparkles, Maximize2 } from "lucide-react";
+import { RotateCcw, Check, X, Loader2, ScanText, Sun, Contrast, Sparkles, Maximize2, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -53,6 +53,65 @@ type CropRect = { x: number; y: number; w: number; h: number };
 
 const DEFAULT_CROP: CropRect = { x: 0, y: 0, w: 1, h: 1 };
 
+/**
+ * Header ka "Camera demo" button isi window event ko dispatch karta hai; camera FAB
+ * listener laga kar sample photo ke saath editor khol deta hai — bina asli camera ke,
+ * taaki phone par crop / adjust / mode turant test ho sake.
+ */
+export const PL_CAMERA_DEMO_EVENT = "pl:camera:open-demo";
+
+/** A synthetic "photo" so the editor can be exercised without a camera. */
+function makeDemoSourceCanvas(): HTMLCanvasElement {
+  const w = 900;
+  const h = 1200;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas_unavailable");
+
+  // Paper-ish tint with a gradient so brightness/contrast sliders are visible.
+  const grad = ctx.createLinearGradient(0, 0, w, h);
+  grad.addColorStop(0, "#f4efe4");
+  grad.addColorStop(1, "#ddd6c6");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+
+  // Border box like a document sheet
+  ctx.strokeStyle = "#8a8378";
+  ctx.lineWidth = 6;
+  ctx.strokeRect(60, 60, w - 120, h - 120);
+
+  ctx.fillStyle = "#2c2a26";
+  ctx.font = "bold 54px system-ui, sans-serif";
+  ctx.fillText("INVOICE", 110, 190);
+
+  ctx.font = "30px system-ui, sans-serif";
+  const lines = [
+    "Demo document for camera editor",
+    "",
+    "Bill No:  DEMO-2026-0091",
+    "Date:    2083-07-23 BS",
+    "Party:   Ritita Home Making",
+    "",
+    "Item                     Qty     Amount",
+    "--------------------------------------",
+    "Cement Bag                12      9,600",
+    "Paint White               4       2,400",
+    "Labour                    1       1,800",
+    "--------------------------------------",
+    "Total                            13,800",
+  ];
+  lines.forEach((line, i) => ctx.fillText(line, 110, 280 + i * 54));
+
+  // A few colored marks — makes the "Color" mode visibly different from B&W.
+  ctx.fillStyle = "#c0392b";
+  ctx.fillRect(110, h - 300, 260, 26);
+  ctx.fillStyle = "#1e6feb";
+  ctx.fillRect(110, h - 250, 180, 26);
+  return canvas;
+}
+
 export type UnassignedCameraCaptureProps = {
   /** Receives the "scanned" photo as a File; the gallery uploads it like a dropped file. */
   onCapture: (file: File) => void | Promise<void>;
@@ -62,6 +121,15 @@ export type UnassignedCameraCaptureProps = {
   className?: string;
   /** Optional inline style for the floating trigger (dashboard: Add New ke saath same row). */
   wrapperStyle?: React.CSSProperties;
+  /** Demo-only host (PC header): editor रेंडर होता है, floating FAB छुपा रहता है. */
+  demoHostOnly?: boolean;
+  /**
+   * Existing image ko editor me kholna (3-dot → Edit file). Jab bhi ye `openRequest.key`
+   * badalta hai, editor us URL/Blob ko source bana kar review stage khol deta hai.
+   */
+  openRequest?: { key: number; urlOrBlob: string | Blob } | null;
+  /** Existing file edit ke liye — save par naya Scan_… naam nahi, yahi naam rakho. */
+  preserveName?: string | null;
 };
 
 /** Grab a frame from the <video> into a canvas (capped at 1600px long edge). */
@@ -120,9 +188,9 @@ function blurredCopy(src: ImageData, radius: number): ImageData {
 /**
  * Apply the editor settings to a canvas in place.
  *   mode        color | scan | bw
- *   brightness  -100..100  (lightness)
- *   contrast    -100..100  (extra contrast on top of mode baseline)
- *   sharpness   0..100     (unsharp mask)
+ *   brightness  0..100  (50 = neutral, lightness)
+ *   contrast    0..100  (50 = neutral, extra contrast on top of mode baseline)
+ *   sharpness   0..100  (50 = neutral, unsharp mask; chhota = soft, bada = sharp)
  */
 function applyEdits(
   ctx: CanvasRenderingContext2D,
@@ -134,9 +202,14 @@ function applyEdits(
   const img = ctx.getImageData(0, 0, w, h);
   const d = img.data;
 
-  const bright = (opts.brightness / 100) * 55;
+  // Sliders 0..100 aate hain; 50 = neutral (koi effect nahi).
+  const bSigned = (opts.brightness - 50) / 50; // -1 .. +1
+  const cSigned = (opts.contrast - 50) / 50;   // -1 .. +1
+  const sNorm = opts.sharpness / 50;           // 0 (50) .. 2 (100) .. 1 (50)
+
+  const bright = bSigned * 55;
   const modeContrast = opts.mode === "color" ? 1.0 : opts.mode === "scan" ? 1.35 : 2.6;
-  const userContrast = Math.pow(1.6, opts.contrast / 100);
+  const userContrast = Math.pow(1.6, cSigned);
   const C = modeContrast * userContrast;
 
   for (let i = 0; i < d.length; i += 4) {
@@ -162,9 +235,10 @@ function applyEdits(
   }
   ctx.putImageData(img, 0, 0);
 
-  // Unsharp mask: result = original + amount * (original - blur)
-  if (opts.sharpness > 0) {
-    const amount = (opts.sharpness / 100) * 1.2;
+  // Unsharp mask: result = original + amount * (original - blur).
+  // 50 = neutral baseline (subtle sharpening), 0 = soft, 100 = maximum.
+  {
+    const amount = (opts.sharpness / 100) * 1.6;
     if (amount > 0.02) {
       const orig = ctx.getImageData(0, 0, w, h);
       const blur = blurredCopy(orig, 1);
@@ -182,14 +256,16 @@ function applyEdits(
 }
 
 /** Encode a canvas as a File with a scan-looking name. */
-async function canvasToScanFile(canvas: HTMLCanvasElement, quality = 0.85): Promise<File> {
+async function canvasToScanFile(canvas: HTMLCanvasElement, quality = 0.85, fileName?: string): Promise<File> {
   const blob = await new Promise<Blob | null>((resolve) =>
     canvas.toBlob((b) => resolve(b), "image/jpeg", quality)
   );
   if (!blob) throw new Error("encode_failed");
   const stamp = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
-  const name = `Scan_${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}_${pad(
+  const name = fileName
+    ? fileName
+    : `Scan_${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}_${pad(
     stamp.getHours()
   )}${pad(stamp.getMinutes())}${pad(stamp.getSeconds())}.jpg`;
   return new File([blob], name, { type: "image/jpeg", lastModified: stamp.getTime() });
@@ -245,7 +321,7 @@ function EditSlider({
 }) {
   return (
     <div className={cn("flex items-center gap-2", disabled && "opacity-40")}>
-      <span className="flex w-[74px] shrink-0 items-center gap-1 text-[11px] font-medium text-white/85">
+      <span className="flex w-[74px] shrink-0 items-center gap-1 text-[11px] font-medium text-foreground">
         {icon}
         {label}
       </span>
@@ -257,30 +333,31 @@ function EditSlider({
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-white/25 accent-white"
+        className="pl-range min-w-0 flex-1 cursor-pointer"
         aria-label={label}
       />
-      <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-white/60">{value}</span>
+      <span className="w-8 shrink-0 text-right text-[11px] font-semibold tabular-nums text-foreground/70">{value}</span>
     </div>
   );
 }
 
-export function UnassignedCameraCapture({ onCapture, bottomClass, className, wrapperStyle }: UnassignedCameraCaptureProps) {
+export function UnassignedCameraCapture({ onCapture, bottomClass, className, wrapperStyle, demoHostOnly = false, openRequest = null, preserveName = null }: UnassignedCameraCaptureProps) {
   const [stage, setStage] = useState<Stage>("idle");
-  const [, setPreviewVersion] = useState(0);
   const [saving, setSaving] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileRef = useRef<File | null>(null);
+  /** Existing file edit mode me original naam barqarar rakhta hai (naya "Scan_…" naam nahi). */
+  const preserveNameRef = useRef<string | null>(null);
   const nativeInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Editor state
+  // Editor state — sliders 0..100 hain, 50 = neutral (koi change nahi).
   const [mode, setMode] = useState<ColorMode>("scan");
-  const [brightness, setBrightness] = useState(0);
-  const [contrast, setContrast] = useState(0);
-  const [sharpness, setSharpness] = useState(35);
+  const [brightness, setBrightness] = useState(50);
+  const [contrast, setContrast] = useState(50);
+  const [sharpness, setSharpness] = useState(50);
   const [crop, setCrop] = useState<CropRect>(DEFAULT_CROP);
   const [panelOpen, setPanelOpen] = useState(false);
 
@@ -292,9 +369,9 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
 
   const resetEdits = useCallback(() => {
     setMode("scan");
-    setBrightness(0);
-    setContrast(0);
-    setSharpness(35);
+    setBrightness(50);
+    setContrast(50);
+    setSharpness(50);
     setCrop(DEFAULT_CROP);
     setPanelOpen(false);
   }, []);
@@ -302,11 +379,11 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
   const closeAll = useCallback(() => {
     stopStream();
     fileRef.current = null;
+    preserveNameRef.current = null;
     canvasRef.current = null;
     setStage("idle");
     setSaving(false);
     resetEdits();
-    setPreviewVersion((v) => v + 1);
   }, [stopStream, resetEdits]);
 
   // Tear the camera down if the component unmounts mid-shot.
@@ -316,6 +393,88 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
     setStage("idle");
     nativeInputRef.current?.click();
   }, []);
+
+  /** Demo route: sample document + editor, without touching the real camera. */
+  const openDemoEditor = useCallback(() => {
+    try {
+      stopStream();
+      canvasRef.current = makeDemoSourceCanvas();
+      fileRef.current = null;
+      resetEdits();
+      setMode("color");
+      setStage("review");
+    } catch {
+      toast.error("Demo editor could not start.");
+    }
+  }, [stopStream, resetEdits]);
+
+  // Header ka "Camera demo" button (PC + mobile) — window event se editor kholta hai.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onDemo = () => openDemoEditor();
+    window.addEventListener(PL_CAMERA_DEMO_EVENT, onDemo);
+    return () => window.removeEventListener(PL_CAMERA_DEMO_EVENT, onDemo);
+  }, [openDemoEditor]);
+
+  /**
+   * 3-dot → "Edit file": existing photo (ya URL/Blob) ko source canvas me daal kar editor
+   * kholta hai. Har naye `key` par dubara chalta hai, isliye same file ko lagatar edit
+   * karne par bhi editor dobara khulta hai.
+   */
+  const lastOpenRequestKeyRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!openRequest) return;
+    if (lastOpenRequestKeyRef.current === openRequest.key) return;
+    lastOpenRequestKeyRef.current = openRequest.key;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        stopStream();
+        const MAX_EDGE = 1600;
+        let bitmap: ImageBitmap;
+        const src = openRequest.urlOrBlob;
+        if (src instanceof Blob) {
+          bitmap = await createImageBitmap(src);
+        } else if (src.startsWith("data:")) {
+          const res = await fetch(src);
+          bitmap = await createImageBitmap(await res.blob());
+        } else {
+          const res = await fetch(src);
+          bitmap = await createImageBitmap(await res.blob());
+        }
+        if (cancelled) {
+          bitmap.close?.();
+          return;
+        }
+        const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+        const w = Math.max(1, Math.round(bitmap.width * scale));
+        const h = Math.max(1, Math.round(bitmap.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("canvas_unavailable");
+        ctx.drawImage(bitmap, 0, 0, w, h);
+        bitmap.close?.();
+        canvasRef.current = canvas;
+        fileRef.current = null;
+        preserveNameRef.current = preserveName;
+        resetEdits();
+        setMode("color");
+        setStage("review");
+      } catch {
+        if (!cancelled) {
+          toast.error("Could not open file for editing");
+          setStage("idle");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [openRequest, preserveName, stopStream, resetEdits]);
 
   const startCamera = useCallback(async () => {
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
@@ -384,7 +543,6 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
       resetEdits();
       stopStream();
       setStage("review");
-      setPreviewVersion((n) => n + 1);
     } catch {
       toast.error("Could not capture photo. Try again.");
     }
@@ -414,12 +572,20 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
         if (!ctx) throw new Error("canvas_unavailable");
         ctx.drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh);
         applyEdits(ctx, sw, sh, { mode, brightness, contrast, sharpness });
-        fileRef.current = await canvasToScanFile(out);
+        fileRef.current = await canvasToScanFile(
+          out,
+          0.85,
+          preserveNameRef.current || undefined
+        );
       }
       const file = fileRef.current;
       if (!file) throw new Error("no_photo");
       await onCapture(file);
-      toast.success("Photo added", { description: "Saved to Unassigned Documents." });
+      toast.success(preserveNameRef.current ? "File updated" : "Photo added", {
+        description: preserveNameRef.current
+          ? undefined
+          : "Saved to Unassigned Documents.",
+      });
       closeAll();
     } catch {
       toast.error("Save failed", { description: "Photo could not be saved. Try again." });
@@ -450,7 +616,6 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
         fileRef.current = null;
         resetEdits();
         setStage("review");
-        setPreviewVersion((n) => n + 1);
       } catch {
         toast.error("Could not open photo.");
         setStage("idle");
@@ -478,10 +643,52 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
 
   return (
     <>
+      {/* Thick, scrollbar-jaisa slider styling (light + fresh). */}
+      <style>{`
+        .pl-range {
+          -webkit-appearance: none;
+          appearance: none;
+          height: 22px;
+          background: transparent;
+          outline: none;
+        }
+        .pl-range::-webkit-slider-runnable-track {
+          height: 12px;
+          border-radius: 999px;
+          background: color-mix(in oklab, var(--primary) 16%, var(--muted));
+          box-shadow: inset 0 1px 2px rgba(0,0,0,0.08);
+        }
+        .pl-range::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          height: 22px;
+          width: 22px;
+          margin-top: -5px;
+          border-radius: 999px;
+          background: var(--primary);
+          border: 3px solid var(--background);
+          box-shadow: 0 2px 6px rgba(0,0,0,0.22);
+          transition: transform 120ms ease;
+        }
+        .pl-range:active::-webkit-slider-thumb { transform: scale(1.08); }
+        .pl-range::-moz-range-track {
+          height: 12px;
+          border-radius: 999px;
+          background: color-mix(in oklab, var(--primary) 16%, var(--muted));
+        }
+        .pl-range::-moz-range-thumb {
+          height: 22px;
+          width: 22px;
+          border-radius: 999px;
+          background: var(--primary);
+          border: 3px solid var(--background);
+          box-shadow: 0 2px 6px rgba(0,0,0,0.22);
+        }
+      `}</style>
       {/* Camera viewfinder / review overlay — fullscreen, fixed. */}
       {stage !== "idle" && (
-        <div className="fixed inset-0 z-[80] flex flex-col bg-black">
-          <div className="flex items-center justify-between px-3 py-2 text-white">
+        <div className="fixed inset-0 z-[80] flex flex-col bg-background text-foreground">
+          <div className="flex items-center justify-between px-3 py-2">
             <span className="text-sm font-semibold">
               {stage === "review" ? "Edit scan" : "Scan document"}
             </span>
@@ -489,7 +696,7 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
               type="button"
               size="icon"
               variant="ghost"
-              className="h-9 w-9 text-white hover:bg-white/15"
+              className="h-9 w-9"
               aria-label="Close camera"
               onClick={closeAll}
             >
@@ -497,8 +704,8 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
             </Button>
           </div>
 
-          <div className="relative flex min-h-0 flex-1 items-center justify-center p-2">
-            {stage === "starting" && <Loader2 className="h-8 w-8 animate-spin text-white" />}
+          <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted p-2">
+            {stage === "starting" && <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />}
             <video
               ref={videoRef}
               playsInline
@@ -515,92 +722,92 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
           </div>
 
           {stage === "review" && (
-            <div className="shrink-0 border-t border-white/15 bg-black/85">
-              {/* Mode row */}
-              <div className="flex items-center justify-center gap-1.5 px-3 pt-2.5">
-                {([
-                  { key: "color", label: "Color", icon: <Sun className="h-3.5 w-3.5" /> },
-                  { key: "scan", label: "Scan", icon: <ScanText className="h-3.5 w-3.5" /> },
-                  { key: "bw", label: "B&W", icon: <Contrast className="h-3.5 w-3.5" /> },
-                ] as const).map((m) => (
-                  <button
-                    key={m.key}
-                    type="button"
-                    onClick={() => setMode(m.key)}
-                    disabled={saving}
-                    className={cn(
-                      "flex flex-1 items-center justify-center gap-1.5 rounded-full border px-2 py-1.5 text-xs font-medium transition-colors",
-                      mode === m.key
-                        ? "border-white bg-white text-black"
-                        : "border-white/30 bg-white/5 text-white hover:bg-white/15"
-                    )}
-                  >
-                    {m.icon}
-                    {m.label}
-                  </button>
-                ))}
-              </div>
+            <div
+              data-pl-camera-editor
+              className="max-h-[62dvh] shrink-0 overflow-y-auto overscroll-contain border-t border-border bg-background"
+            >
+              {/* Mode + crop controls — Adjust khula ho to ye dono rows chhup jaati hain */}
+              {!panelOpen && (
+                <div className="px-2 pt-2">
+                  <div className="grid grid-cols-4 gap-1">
+                    {([
+                      { key: "color", label: "Color", icon: <Sun className="h-3.5 w-3.5 shrink-0" /> },
+                      { key: "scan", label: "Scan", icon: <ScanText className="h-3.5 w-3.5 shrink-0" /> },
+                      { key: "bw", label: "B&W", icon: <Contrast className="h-3.5 w-3.5 shrink-0" /> },
+                    ] as const).map((m) => (
+                      <button
+                        key={m.key}
+                        type="button"
+                        onClick={() => setMode(m.key)}
+                        disabled={saving}
+                        className={cn(
+                          "flex h-8 min-w-0 items-center justify-center gap-1 rounded-lg border px-1 text-[11px] font-medium transition-colors",
+                          mode === m.key
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-muted/50 text-foreground hover:bg-muted"
+                        )}
+                      >
+                        {m.icon}
+                        <span className="truncate">{m.label}</span>
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setPanelOpen(true)}
+                      className="flex h-8 min-w-0 items-center justify-center gap-1 rounded-lg border border-primary bg-primary px-1 text-[11px] text-primary-foreground transition-colors"
+                    >
+                      <Sparkles className="h-3 w-3 shrink-0" />
+                      <span className="truncate">Adjust</span>
+                    </button>
 
-              {/* Crop / resize presets */}
-              <div className="flex items-center justify-center gap-1.5 px-3 pt-1.5">
-                <span className="flex items-center gap-1 pr-1 text-[10px] uppercase tracking-wide text-white/50">
-                  <Maximize2 className="h-3 w-3" />
-                  Crop
-                </span>
-                {cropPresets.map((p) => (
-                  <button
-                    key={p.key}
-                    type="button"
-                    onClick={() => setCrop(p.rect)}
-                    disabled={saving}
-                    className={cn(
-                      "rounded-full border px-2.5 py-0.5 text-[11px] transition-colors",
-                      activeCropKey === p.key
-                        ? "border-white/80 bg-white/90 text-black"
-                        : "border-white/25 text-white/80 hover:bg-white/15"
-                    )}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setPanelOpen((v) => !v)}
-                  className={cn(
-                    "ml-auto flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] transition-colors",
-                    panelOpen
-                      ? "border-white/80 bg-white/90 text-black"
-                      : "border-white/25 text-white/80 hover:bg-white/15"
-                  )}
-                >
-                  <Sparkles className="h-3 w-3" />
-                  Adjust
-                </button>
-              </div>
+                    {cropPresets.map((p) => (
+                      <button
+                        key={p.key}
+                        type="button"
+                        onClick={() => setCrop(p.rect)}
+                        disabled={saving}
+                        className={cn(
+                          "flex h-8 min-w-0 items-center justify-center rounded-lg border px-1 text-[11px] transition-colors",
+                          activeCropKey === p.key
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border text-muted-foreground hover:bg-muted"
+                        )}
+                      >
+                        <span className="truncate">{p.label}</span>
+                      </button>
+                    ))}
+                    {/* Crop section ka label — presets ke saath same grid box */}
+                    <div className="flex h-8 min-w-0 items-center justify-center gap-1 rounded-lg border border-dashed border-border px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <Maximize2 className="h-3 w-3 shrink-0" />
+                      <span className="truncate">Crop</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Adjust panel: brightness / contrast / sharpness */}
               {panelOpen && (
-                <div className="mt-2 space-y-2.5 rounded-t-xl border-t border-white/10 bg-white/5 px-4 pb-1 pt-3">
+                <div className="mx-2 mt-2 space-y-2 rounded-xl border border-border bg-muted/30 px-3 py-2.5">
                   <EditSlider
-                    icon={<Sun className="h-3.5 w-3.5" />}
+                    icon={<Sun className="h-3 w-3 shrink-0" />}
                     label="Brightness"
                     value={brightness}
-                    min={-100}
+                    min={0}
                     max={100}
                     onChange={setBrightness}
                     disabled={saving}
                   />
                   <EditSlider
-                    icon={<Contrast className="h-3.5 w-3.5" />}
+                    icon={<Contrast className="h-3 w-3 shrink-0" />}
                     label="Contrast"
                     value={contrast}
-                    min={-100}
+                    min={0}
                     max={100}
                     onChange={setContrast}
                     disabled={saving}
                   />
                   <EditSlider
-                    icon={<Sparkles className="h-3.5 w-3.5" />}
+                    icon={<Sparkles className="h-3 w-3 shrink-0" />}
                     label="Sharpness"
                     value={sharpness}
                     min={0}
@@ -611,24 +818,42 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
                 </div>
               )}
 
-              <div className="flex items-center justify-center gap-4 px-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-2.5">
+              <div className="flex items-center gap-2 px-2 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-2">
+                {panelOpen ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 min-w-0 flex-1 gap-1.5 rounded-full px-3 text-sm"
+                    onClick={() => setPanelOpen(false)}
+                    disabled={saving}
+                    data-pl-adjust-back
+                  >
+                    <ChevronLeft className="h-4 w-4 shrink-0" />
+                    Back
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 min-w-0 flex-1 gap-1.5 rounded-full px-3 text-sm"
+                    onClick={retake}
+                    disabled={saving}
+                  >
+                    <RotateCcw className="h-4 w-4 shrink-0" />
+                    Retry
+                  </Button>
+                )}
                 <Button
                   type="button"
-                  variant="outline"
-                  className="h-11 gap-2 rounded-full border-white/50 bg-transparent px-5 text-white hover:bg-white/15"
-                  onClick={retake}
-                  disabled={saving}
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  Retry
-                </Button>
-                <Button
-                  type="button"
-                  className="h-11 gap-2 rounded-full px-6"
+                  className="h-10 min-w-0 flex-1 gap-1.5 rounded-full px-3 text-sm"
                   onClick={() => void save()}
                   disabled={saving}
                 >
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4 shrink-0" />
+                  )}
                   Save
                 </Button>
               </div>
@@ -640,7 +865,7 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
               <Button
                 type="button"
                 onClick={() => void shoot()}
-                className="h-16 w-16 rounded-full border-4 border-white bg-white/25 hover:bg-white/35"
+                className="h-16 w-16 rounded-full border-4 border-primary bg-primary/20 hover:bg-primary/30"
                 aria-label="Take photo"
               />
             </div>
@@ -658,24 +883,27 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
       />
 
       {/* Floating trigger. `className` lets a host pin it to its own container
-          (e.g. 5px above the footer card); without it, it floats on the page. */}
-      <Button
-        type="button"
-        size="icon"
-        aria-label="Scan with camera"
-        onClick={() => void startCamera()}
-        className={
-          className ??
-          cn(
-            // Sirf square icon dikhta hai — koi circular ring/background nahi.
-            "fixed right-3 z-[59] h-12 w-12 border-0 bg-transparent p-0 shadow-none hover:bg-transparent active:bg-transparent focus-visible:ring-0",
-            bottomClass ?? "bottom-[calc(9.5rem+env(safe-area-inset-bottom,0px))]"
-          )
-        }
-        style={wrapperStyle}
-      >
-        <CameraScanIcon className="block !h-full !w-full shrink-0 object-contain" />
-      </Button>
+          (e.g. 5px above the footer card); without it, it floats on the page.
+          `demoHostOnly` (PC header) keeps the editor mounted but hides this FAB. */}
+      {!demoHostOnly && (
+        <Button
+          type="button"
+          size="icon"
+          aria-label="Scan with camera"
+          onClick={() => void startCamera()}
+          className={
+            className ??
+            cn(
+              // Sirf square icon dikhta hai — koi circular ring/background nahi.
+              "fixed right-3 z-[59] h-12 w-12 border-0 bg-transparent p-0 shadow-none hover:bg-transparent active:bg-transparent focus-visible:ring-0",
+              bottomClass ?? "bottom-[calc(9.5rem+env(safe-area-inset-bottom,0px))]"
+            )
+          }
+          style={wrapperStyle}
+        >
+          <CameraScanIcon className="block !h-full !w-full shrink-0 object-contain" />
+        </Button>
+      )}
     </>
   );
 }
