@@ -16,6 +16,7 @@ import { savePhotoToUnassigned } from "@/lib/savePhotoToUnassigned";
 import { useLocationSearchParams } from "@/hooks/useLocationSearchParams";
 import { useReportList } from "@/contexts/ReportListContext";
 import { useDashboard } from "@/hooks/useDashboard";
+import { withoutWebAppBasePath } from "@/lib/webAppBasePath";
 
 function isCompanySelectOrCreatePath(pathname: string | null): boolean {
   if (!pathname) return false;
@@ -52,10 +53,11 @@ export function MobileFloatingButton() {
     [companyId, user?.uid, company]
   );
   /** Recent tab: fixed violet strip (Change date / Unapproved) + footer — `bottom-20` par FAB Unapproved par chadh jata tha. */
-  const isDashboardPath = (pathname?.replace(/\/+$/, "") || "") === "/dashboard";
+  const normalizedPathname = withoutWebAppBasePath(pathname || "/").replace(/\/+$/, "") || "/";
+  /** `usePathname()` basePath nahi hatata — hosted web `/app/dashboard` aata hai, isliye normalize. */
+  const isDashboardPath = normalizedPathname === "/dashboard";
   const liftFabAboveRecentStrip =
     isMobile && isDashboardPath && visibleCard === "recent-transactions";
-  const normalizedPathname = pathname?.replace(/\/+$/, "") || "/";
   const isSelectedReportPage =
     normalizedPathname.startsWith("/reports/") ||
     (normalizedPathname === "/reports" && Boolean(searchParams.get("report")));

@@ -18,6 +18,7 @@ import { RotateCcw, Check, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { publicAssetUrl } from "@/lib/webAppBasePath";
 
 /**
  * App ke andar ka camera trigger icon (dashboard FAB + gallery tabs) — user ki di hui
@@ -27,7 +28,7 @@ function CameraScanIcon({ className }: { className?: string }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element -- chhota static public icon
     <img
-      src="/icons/camera-lens.png"
+      src={publicAssetUrl("/icons/camera-lens.png")}
       alt=""
       aria-hidden
       draggable={false}
