@@ -686,7 +686,23 @@ export async function openAttachmentInApp(
 
   if (embeddedInstantHttps) {
     if (kind === "image" || isDataImage || pathLooksImage(pathOnly)) {
-      showInAppImagePreview(u, () => {}, { title: opts?.title ?? "Image" });
+      // A Firebase signed URL paints in a desktop tab but stays blank in the Capacitor WebView
+      // (sandboxed storage / offline). Resolve the bytes first and open the object URL, with the
+      // raw URL only as a last resort.
+      void (async () => {
+        try {
+          const { fetchAttachmentRefBlob } = await import("@/lib/attachmentRefBlobFetch");
+          const blob = await fetchAttachmentRefBlob(u);
+          if (blob && blob.size > 0) {
+            const src = URL.createObjectURL(blob);
+            showInAppImagePreview(src, () => URL.revokeObjectURL(src), { title: opts?.title ?? "Image" });
+            return;
+          }
+        } catch {
+          /* fall through to the direct URL */
+        }
+        showInAppImagePreview(u, () => {}, { title: opts?.title ?? "Image" });
+      })();
       void getRemoteAttachmentBlobPreferOfflineCache(u, undefined, {
         awaitDiskWrite: false,
         ...explicitOpenFetch,

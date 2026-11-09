@@ -20,6 +20,8 @@ import { FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAttachmentFormatLabel } from "@/lib/attachmentFormatLabel";
 import { isLocalFileRef, getBlobFromLocalFileRef } from "@/lib/localPendingFiles";
+import { isPbAttachmentRef, resolvePbAttachmentDisplay } from "@/lib/pocketbaseData/pbAttachments";
+import { fetchAttachmentRefBlob } from "@/lib/attachmentRefBlobFetch";
 
 type Props = {
   /** Attachment URL: `local:uuid`, https URL, blob:, or data: */
@@ -68,10 +70,56 @@ export function GalleryTilePreview({ url, fileSize, size, className }: Props) {
 
     if (!cleanUrl) return;
 
-    const direct = cleanUrl.startsWith("blob:") || cleanUrl.startsWith("data:") || /^https?:\/\//i.test(cleanUrl);
+    // Inline refs paint directly; https URLs go through the bytes resolver below (a Firebase signed
+    // URL loads in a desktop tab but fails inside the Capacitor WebView).
+    const direct = cleanUrl.startsWith("blob:") || cleanUrl.startsWith("data:");
     if (direct) {
       setSrc(cleanUrl);
       return;
+    }
+
+    // `pbatt:<recordId>/<fileName>` (a file uploaded from another device) and plain https/Firebase
+    // URLs are NOT directly paintable in the Capacitor WebView: `pbatt:` is not a URL scheme at all,
+    // and a Firebase signed URL fails offline / under sandboxed storage. Download the bytes through
+    // the local-first resolver and paint the object URL instead (this is why a PC upload showed a
+    // black tile on APK while the PC itself was fine).
+    if (isPbAttachmentRef(cleanUrl) || /^https?:\/\//i.test(cleanUrl)) {
+      void (async () => {
+        try {
+          const blob = isPbAttachmentRef(cleanUrl)
+            ? (await resolvePbAttachmentDisplay(cleanUrl)).blob
+            : await fetchAttachmentRefBlob(cleanUrl);
+          if (cancelledRef.current) return;
+          if (!blob || blob.size <= 0) {
+            setFailed(true);
+            return;
+          }
+          const blobType = blob.type || "";
+          if (blobType === "application/pdf") {
+            setFailed(true);
+            return;
+          }
+          if (!blobType || blobType.includes("octet-stream")) {
+            const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+            const isPdfMagic = head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46; // %PDF
+            if (isPdfMagic) {
+              setFailed(true);
+              return;
+            }
+          }
+          if (cancelledRef.current) return;
+          const objectUrl = URL.createObjectURL(blob);
+          objectUrlRef.current = objectUrl;
+          setResolvedBlobType(blobType || "image/jpeg");
+          setSrc(objectUrl);
+        } catch {
+          if (!cancelledRef.current) setFailed(true);
+        }
+      })();
+
+      return () => {
+        cancelledRef.current = true;
+      };
     }
 
     if (!isLocalFileRef(cleanUrl)) {
