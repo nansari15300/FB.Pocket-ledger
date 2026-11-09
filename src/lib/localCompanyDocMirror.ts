@@ -1465,11 +1465,18 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
           }
           const livePullPaused = isPlServerLivePullPaused(companyId);
           const incomingWinsTimestampTie = options?.mergePreferNewerTieBreak === "incoming";
+          // A remote tombstone always beats a local live row, even when both carry the same edit
+          // time. The delete op sends `data: {}` (server deep-merges it onto the stored document),
+          // so a file deleted on another device keeps exactly the timestamps it had when it was
+          // uploaded — the mirror saw a tie, "local wins on a tie" skipped the write, and the tile
+          // stayed until it was deleted by hand.
+          const remoteTombstoneOverLiveLocal = incomingDeleted && !existingDeleted;
           if (
             existingMs === incomingMs &&
             incomingWinsTimestampTie &&
             mirrorDocsEqualForTimestampTie(existing, payload) &&
-            !voucherApprovalDiffers
+            !voucherApprovalDiffers &&
+            !remoteTombstoneOverLiveLocal
           ) {
             skipped += 1;
             if (collectionName === "vouchers") {
@@ -1498,7 +1505,8 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
             !incomingWinsTimestampTie &&
             (tiePrefersLocal || livePullPaused) &&
             !voucherApprovalDiffers &&
-            !voucherServerFileOnTie
+            !voucherServerFileOnTie &&
+            !remoteTombstoneOverLiveLocal
           ) {
             skipped += 1;
             mirrorMergeSkipLog({

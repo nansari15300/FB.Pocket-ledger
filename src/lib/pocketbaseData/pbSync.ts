@@ -1273,7 +1273,13 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
       const chunk = all.slice(i, i + 40);
       const f = `${cf} && (${chunk.map((id) => `id = ${pbQuote(id)}`).join(" || ")})`;
       const recs = await pbListAll<PbRecord>(coll, f);
-      changed += groupRecords(coll, recs, byColl, { skipOwnDevice: true });
+      // No `skipOwnDevice` on a pull. That filter exists for realtime echoes (we already applied our
+      // own write locally), but a pull is how a device catches up on the server's truth — including
+      // a delete another device wrote while this app was closed. Skipping rows whose `deviceId`
+      // happens to match ours (reinstall, shared profile, company switched between devices) silently
+      // dropped the tombstone, so the tile stayed on screen until it was deleted by hand.
+      // Local-vs-server conflicts are already resolved by `mergePreferNewer` (delete always wins).
+      changed += groupRecords(coll, recs, byColl);
     }
   }
   const failedOut = { n: 0 };

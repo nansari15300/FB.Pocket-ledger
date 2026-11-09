@@ -106,6 +106,22 @@ export function VoucherOutboxFlushManager() {
       pullPocketBaseCompaniesInBackground({ force: true, visible: true });
     };
     window.addEventListener(SELECTED_COMPANY_CHANGED_EVENT, onSelectedCompany);
+    /**
+     * Startup catch-up pull — must NOT wait behind the flush.
+     *
+     * Realtime SSE is the primary sync path, but it only works while the app is running. Anything
+     * changed on another device while this app was closed (a file added, or — the case that kept
+     * biting — a file deleted on the PC) is only in the server change log. Previously the startup
+     * pull was chained to a successful outbox flush and then throttled by `lastPullAllAt`, so a
+     * cold start could paint the previous session's SQLite mirror before the delete arrived.
+     * Force it, immediately, once per app start.
+     */
+    void Promise.all([import("@/lib/pocketbaseData/pbSync"), import("@/lib/pocketbaseData/pbCompanyRegistry")])
+      .then(([sync, reg]) => {
+        if (!reg.listActivePocketBaseCompanyIds().length) return;
+        return sync.pullAllPocketBaseCompaniesThrottled(0, { force: true });
+      })
+      .catch(() => {});
     if (typeof navigator !== "undefined" && navigator.onLine && !isFirebaseLedgerDataSyncDisabled()) scheduleFlush(FLUSH_AFTER_ONLINE_MS);
     /**
      * Refresh / tab close: fire the queued writes immediately. Without this a refresh 1-2s after an
