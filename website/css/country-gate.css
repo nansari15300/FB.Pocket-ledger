@@ -480,3 +480,9 @@ html[data-theme="dark"] .pl-country-chrome {
   .pl-gate .pl-gate-shell .pl-gate-main { padding: 16px; }
   .pl-gate .pl-gate-shell .pl-gate-row { grid-template-columns: 1fr; }
 }
+
+/* Divider line between the picker header and the page (same look as .site-header on other pages). */
+.pl-gate-head { border-bottom: 1px solid var(--line, #d7e0ea); }
+html.dark .pl-gate-head { border-bottom-color: #5a5a5a; }
+html[data-theme="gray"] .pl-gate-head { border-bottom-color: #bdbdbd; }
+html[data-theme="dark"] .pl-gate-head { border-bottom-color: #273142; }

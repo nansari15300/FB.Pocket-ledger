@@ -27,6 +27,25 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { publicAssetUrl } from "@/lib/webAppBasePath";
+import {
+  type CropQuad,
+  type CropHandle,
+  type CropCorner,
+  type CropEdge,
+  DEFAULT_CROP_QUAD,
+  CROP_CORNERS,
+  CROP_EDGES,
+  rectToCropQuad,
+  cloneCropQuad,
+  cropQuadsEqual,
+  isFullCropQuad,
+  edgeMidpoint,
+  cornerArrowAngle,
+  edgeArrowAngle,
+  resizeCursorForAngle,
+  applyCropDrag,
+  warpCropQuadToCanvas,
+} from "@/lib/perspectiveWarp";
 
 /**
  * App ke andar ka camera trigger icon (dashboard FAB + gallery tabs) — user ki di hui
@@ -48,10 +67,105 @@ function CameraScanIcon({ className }: { className?: string }) {
 type Stage = "idle" | "starting" | "live" | "review";
 type ColorMode = "color" | "scan" | "bw";
 
-/** Crop rectangles are normalized 0..1 relative to the source bitmap. */
-type CropRect = { x: number; y: number; w: number; h: number };
+/** Crop quads are normalized 0..1 relative to the source bitmap (free 4-corner). */
+const DEFAULT_CROP = DEFAULT_CROP_QUAD;
 
-const DEFAULT_CROP: CropRect = { x: 0, y: 0, w: 1, h: 1 };
+const CORNER_LABELS: Record<CropCorner, string> = {
+  nw: "Top-left corner",
+  ne: "Top-right corner",
+  se: "Bottom-right corner",
+  sw: "Bottom-left corner",
+};
+const EDGE_LABELS: Record<CropEdge, string> = {
+  n: "Top edge",
+  e: "Right edge",
+  s: "Bottom edge",
+  w: "Left edge",
+};
+
+function CropHandleArrow({ angleRad }: { angleRad: number }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      aria-hidden
+      style={{
+        display: "block",
+        transform: `rotate(${(angleRad * 180) / Math.PI}deg)`,
+        filter: "drop-shadow(0 0 1px rgba(0,0,0,0.85))",
+      }}
+    >
+      <path
+        d="M2.2 8h11.6M2.2 8l3.1-3.1M2.2 8l3.1 3.1M13.8 8l-3.1-3.1M13.8 8l-3.1 3.1"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CropDragHandle({
+  x,
+  y,
+  angle,
+  cursor,
+  label,
+  zIndex,
+  onPointerDown,
+}: {
+  x: number;
+  y: number;
+  angle: number;
+  cursor: string;
+  label: string;
+  zIndex: number;
+  onPointerDown: (e: React.PointerEvent) => void;
+}) {
+  return (
+    <div
+      role="slider"
+      aria-label={label}
+      title={label}
+      onPointerDown={onPointerDown}
+      style={{
+        position: "absolute",
+        left: `${x * 100}%`,
+        top: `${y * 100}%`,
+        width: 44,
+        height: 44,
+        transform: "translate(-50%, -50%)",
+        pointerEvents: "auto",
+        touchAction: "none",
+        cursor,
+        zIndex,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        userSelect: "none",
+      }}
+    >
+      <div
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: 999,
+          background: "#2563eb",
+          border: "2px solid #fff",
+          boxShadow: "0 0 0 1px rgba(0,0,0,0.35), 0 1px 3px rgba(0,0,0,0.45)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <CropHandleArrow angleRad={angle} />
+      </div>
+    </div>
+  );
+}
 
 /**
  * Header ka "Camera demo" button isi window event ko dispatch karta hai; camera FAB
@@ -349,8 +463,8 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
   const [brightness, setBrightness] = useState(50);
   const [contrast, setContrast] = useState(50);
   const [sharpness, setSharpness] = useState(50);
-  const [crop, setCrop] = useState<CropRect>(DEFAULT_CROP);
-  const cropRef = useRef<CropRect>(crop);
+  const [crop, setCrop] = useState<CropQuad>(DEFAULT_CROP);
+  const cropRef = useRef<CropQuad>(crop);
   useEffect(() => {
     cropRef.current = crop;
   }, [crop]);
@@ -385,10 +499,10 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
   }, []);
   const previewWrapRef = useRef<HTMLDivElement | null>(null);
   const cropDragRef = useRef<{
-    corner: "nw" | "ne" | "sw" | "se" | "move";
+    handle: CropHandle;
     startX: number;
     startY: number;
-    start: CropRect;
+    start: CropQuad;
     boxW: number;
     boxH: number;
   } | null>(null);
@@ -465,18 +579,18 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
       ny = Math.max(0, Math.min(1 - nh, ny + inset));
       nw = Math.min(1 - nx, Math.max(0.12, nw - inset * 2));
       nh = Math.min(1 - ny, Math.max(0.12, nh - inset * 2));
-      setCrop({ x: nx, y: ny, w: nw, h: nh });
+      setCrop(rectToCropQuad({ x: nx, y: ny, w: nw, h: nh }));
       toast.success("Auto 90° crop lagaya");
     } catch {
       toast.error("Auto crop failed");
     }
   }, []);
 
-  /** Interactive crop — pointer drag se crop rect update.
-      Char corners 100% independent: har corner SIRF apne do edges badalta hai,
-      baaki 3 corners apni jagah se hilte nahi. */
+  /** Interactive crop — pointer drag updates a free quadrilateral.
+      Corners move independently; side handles slide that edge along its normal;
+      interior drag moves the whole quad, clamped to the image. */
   const startCropDrag = useCallback(
-    (e: React.PointerEvent, corner: "nw" | "ne" | "sw" | "se" | "move") => {
+    (e: React.PointerEvent, handle: CropHandle) => {
       const wrap = previewWrapRef.current;
       if (!wrap) return;
       // Agar pehle se drag chal raha hai to naya drag shuru na karo (multi-touch guard)
@@ -485,13 +599,12 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
       e.stopPropagation();
       const rect = wrap.getBoundingClientRect();
       // cropRef se current value lo -> callback ka `crop` dependency hat gaya,
-      // isliye har re-render par naya handler nahi banta (dono corners na hilein).
-      const c = cropRef.current;
+      // isliye har re-render par naya handler nahi banta.
       cropDragRef.current = {
-        corner,
+        handle,
         startX: e.clientX,
         startY: e.clientY,
-        start: { x: c.x, y: c.y, w: c.w, h: c.h },
+        start: cloneCropQuad(cropRef.current),
         boxW: rect.width || 1,
         boxH: rect.height || 1,
       };
@@ -502,64 +615,12 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
   );
 
   useEffect(() => {
-    const MIN = 0.08;
-    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
     const onMove = (e: PointerEvent) => {
       const d = cropDragRef.current;
       if (!d) return;
       const dx = (e.clientX - d.startX) / d.boxW;
       const dy = (e.clientY - d.startY) / d.boxH;
-      const s = d.start;
-      const next: CropRect = { ...s };
-
-      if (d.corner === "move") {
-        // Poora box shift — koi edge resize nahi
-        next.x = clamp(s.x + dx, 0, 1 - s.w);
-        next.y = clamp(s.y + dy, 0, 1 - s.h);
-      } else {
-        // 4 corners, 4 independent edges:
-        //   nw -> x0, y0        ne -> x1, y0
-        //   sw -> x0, y1        se -> x1, y1
-        // Har corner SIRF apne (x, y) edges badalta hai; baaki 3 corners frozen.
-        let x0 = s.x;
-        let y0 = s.y;
-        let x1 = s.x + s.w;
-        let y1 = s.y + s.h;
-        if (d.corner === "nw" || d.corner === "sw") {
-          x0 = clamp(s.x + dx, 0, x1 - MIN);
-        } else {
-          x1 = clamp(s.x + s.w + dx, x0 + MIN, 1);
-        }
-        if (d.corner === "nw" || d.corner === "ne") {
-          y0 = clamp(s.y + dy, 0, y1 - MIN);
-        } else {
-          y1 = clamp(s.y + s.h + dy, y0 + MIN, 1);
-        }
-        next.x = x0;
-        next.y = y0;
-        next.w = x1 - x0;
-        next.h = y1 - y0;
-      }
-      // DEBUG: verify ki ek drag me sirf ek hi corner ke coordinates badalte hain
-      if ((window as any).__PL_CROP_DEBUG__) {
-        // eslint-disable-next-line no-console
-        console.log("[crop-drag]", d.corner, {
-          start: s,
-          next,
-          frozen: {
-            nw: [next.x, next.y],
-            ne: [next.x + next.w, next.y],
-            sw: [next.x, next.y + next.h],
-            se: [next.x + next.w, next.y + next.h],
-          },
-          started: {
-            nw: [s.x, s.y],
-            ne: [s.x + s.w, s.y],
-            sw: [s.x, s.y + s.h],
-            se: [s.x + s.w, s.y + s.h],
-          },
-        });
-      }
+      const next = applyCropDrag(d.start, d.handle, dx, dy);
       setCrop(next);
       cropRef.current = next;
     };
@@ -725,13 +786,9 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
       setPreviewAspect(src.width / Math.max(1, src.height));
       return;
     }
-    const sx = Math.round(crop.x * src.width);
-    const sy = Math.round(crop.y * src.height);
-    const sw = Math.max(1, Math.round(crop.w * src.width));
-    const sh = Math.max(1, Math.round(crop.h * src.height));
-    dst.width = sw;
-    dst.height = sh;
-    ctx.drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh);
+    warpCropQuadToCanvas(src, crop, dst);
+    const sw = dst.width;
+    const sh = dst.height;
     applyEdits(ctx, sw, sh, { mode, brightness, contrast, sharpness });
     setPreviewAspect(sw / Math.max(1, sh));
   }, [crop, cropMode, mode, brightness, contrast, sharpness]);
@@ -796,18 +853,11 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
     try {
       const src = canvasRef.current;
       if (src) {
-        // Render the cropped + edited result at full source resolution.
-        const sx = Math.round(crop.x * src.width);
-        const sy = Math.round(crop.y * src.height);
-        const sw = Math.max(1, Math.round(crop.w * src.width));
-        const sh = Math.max(1, Math.round(crop.h * src.height));
-        const out = document.createElement("canvas");
-        out.width = sw;
-        out.height = sh;
+        // Warp the (possibly skewed) quad into an upright rectangle, then apply edits.
+        const out = warpCropQuadToCanvas(src, crop);
         const ctx = out.getContext("2d");
         if (!ctx) throw new Error("canvas_unavailable");
-        ctx.drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh);
-        applyEdits(ctx, sw, sh, { mode, brightness, contrast, sharpness });
+        applyEdits(ctx, out.width, out.height, { mode, brightness, contrast, sharpness });
         fileRef.current = await canvasToScanFile(
           out,
           0.85,
@@ -862,20 +912,14 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
 
   const cropPresets = useMemo(
     () => [
-      { key: "full", label: "Full", rect: DEFAULT_CROP },
-      { key: "doc", label: "Document", rect: { x: 0.06, y: 0.06, w: 0.88, h: 0.88 } },
-      { key: "tight", label: "Tight", rect: { x: 0.14, y: 0.1, w: 0.72, h: 0.8 } },
+      { key: "full", label: "Full", quad: DEFAULT_CROP },
+      { key: "doc", label: "Document", quad: rectToCropQuad({ x: 0.06, y: 0.06, w: 0.88, h: 0.88 }) },
+      { key: "tight", label: "Tight", quad: rectToCropQuad({ x: 0.14, y: 0.1, w: 0.72, h: 0.8 }) },
     ],
     []
   );
   const activeCropKey =
-    cropPresets.find(
-      (p) =>
-        Math.abs(p.rect.x - crop.x) < 1e-6 &&
-        Math.abs(p.rect.y - crop.y) < 1e-6 &&
-        Math.abs(p.rect.w - crop.w) < 1e-6 &&
-        Math.abs(p.rect.h - crop.h) < 1e-6
-    )?.key ?? "full";
+    cropPresets.find((p) => cropQuadsEqual(p.quad, crop))?.key ?? null;
 
   return (
     <>
@@ -985,7 +1029,7 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
                   {/* Top bar — Auto 90° */}
                   <div
                     className="pointer-events-auto absolute inset-x-0 top-0 flex items-center justify-end gap-1 px-1.5 py-1.5"
-                    style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))" }}
+                    style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))", zIndex: 4 }}
                   >
                     <button
                       type="button"
@@ -995,80 +1039,58 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
                       Auto 90°
                     </button>
                   </div>
-                  {/* darkened outside area (simple 4 rectangles) */}
-                  <div className="absolute inset-x-0 top-0 bg-black/50" style={{ height: `${crop.y * 100}%` }} />
-                  <div className="absolute inset-x-0 bottom-0 bg-black/50" style={{ height: `${(1 - crop.y - crop.h) * 100}%` }} />
-                  <div className="absolute left-0 bg-black/50" style={{ top: `${crop.y * 100}%`, height: `${crop.h * 100}%`, width: `${crop.x * 100}%` }} />
-                  <div className="absolute right-0 bg-black/50" style={{ top: `${crop.y * 100}%`, height: `${crop.h * 100}%`, width: `${(1 - crop.x - crop.w) * 100}%` }} />
-                  {/* crop box — visible double border (dark + white) + grid + corner grips */}
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: `${crop.x * 100}%`,
-                      top: `${crop.y * 100}%`,
-                      width: `${crop.w * 100}%`,
-                      height: `${crop.h * 100}%`,
-                      boxShadow: "inset 0 0 0 2px rgba(255,255,255,0.95), 0 0 0 2px rgba(0,0,0,0.55)",
-                    }}
+                  <svg
+                    viewBox="0 0 1 1"
+                    preserveAspectRatio="none"
+                    className="absolute inset-0 h-full w-full"
+                    style={{ zIndex: 1 }}
+                    aria-hidden
                   >
-                    {/* rule-of-thirds lines */}
-                    <div style={{ position: "absolute", top: 0, bottom: 0, left: "33.33%", width: 1, background: "rgba(255,255,255,0.7)" }} />
-                    <div style={{ position: "absolute", top: 0, bottom: 0, left: "66.66%", width: 1, background: "rgba(255,255,255,0.7)" }} />
-                    <div style={{ position: "absolute", left: 0, right: 0, top: "33.33%", height: 1, background: "rgba(255,255,255,0.7)" }} />
-                    <div style={{ position: "absolute", left: 0, right: 0, top: "66.66%", height: 1, background: "rgba(255,255,255,0.7)" }} />
-
-                    {/* 4 corner L-grips — box ke andar, primary colour + white halo */}
-                    {(["nw", "ne", "sw", "se"] as const).map((corner) => (
-                      <div
-                        key={corner}
-                        onPointerDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          startCropDrag(e, corner);
-                        }}
-                        style={{
-                          position: "absolute",
-                          zIndex: 20,
-                          height: 44,
-                          width: 44,
-                          touchAction: "none",
-                          cursor: "grab",
-                          pointerEvents: "auto",
-                          ...(corner === "nw" || corner === "sw" ? { left: 0 } : { right: 0 }),
-                          ...(corner === "nw" || corner === "ne" ? { top: 0 } : { bottom: 0 }),
-                        }}
-                      >
-                        {/* visible L bracket — 6px primary + white halo */}
-                        <div
-                          style={{
-                            position: "absolute",
-                            height: 22,
-                            width: 22,
-                            borderColor: "#2563eb",
-                            borderStyle: "solid",
-                            borderTopWidth: corner === "nw" || corner === "ne" ? 6 : 0,
-                            borderBottomWidth: corner === "sw" || corner === "se" ? 6 : 0,
-                            borderLeftWidth: corner === "nw" || corner === "sw" ? 6 : 0,
-                            borderRightWidth: corner === "ne" || corner === "se" ? 6 : 0,
-                            top: corner === "nw" || corner === "ne" ? 4 : undefined,
-                            bottom: corner === "sw" || corner === "se" ? 4 : undefined,
-                            left: corner === "nw" || corner === "sw" ? 4 : undefined,
-                            right: corner === "ne" || corner === "se" ? 4 : undefined,
-                            filter: "drop-shadow(0 0 2px rgba(255,255,255,1)) drop-shadow(0 0 3px rgba(0,0,0,0.5))",
-                            pointerEvents: "none",
-                          }}
-                        />
-                      </div>
-                    ))}
-                    {/* full box drag — inside area */}
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        cursor: "move",
-                        touchAction: "none",
-                        pointerEvents: "auto",
-                      }}
+                    <path
+                      d={`M0,0H1V1H0Z M${crop.nw.x},${crop.nw.y}L${crop.ne.x},${crop.ne.y}L${crop.se.x},${crop.se.y}L${crop.sw.x},${crop.sw.y}Z`}
+                      fill="rgba(0,0,0,0.5)"
+                      fillRule="evenodd"
+                      style={{ pointerEvents: "none" }}
+                    />
+                    {[1 / 3, 2 / 3].map((t) => {
+                      const acrossA = {
+                        x: crop.nw.x + (crop.ne.x - crop.nw.x) * t,
+                        y: crop.nw.y + (crop.ne.y - crop.nw.y) * t,
+                      };
+                      const acrossB = {
+                        x: crop.sw.x + (crop.se.x - crop.sw.x) * t,
+                        y: crop.sw.y + (crop.se.y - crop.sw.y) * t,
+                      };
+                      const downA = {
+                        x: crop.nw.x + (crop.sw.x - crop.nw.x) * t,
+                        y: crop.nw.y + (crop.sw.y - crop.nw.y) * t,
+                      };
+                      const downB = {
+                        x: crop.ne.x + (crop.se.x - crop.ne.x) * t,
+                        y: crop.ne.y + (crop.se.y - crop.ne.y) * t,
+                      };
+                      return (
+                        <g key={t}>
+                          <line x1={acrossA.x} y1={acrossA.y} x2={acrossB.x} y2={acrossB.y} stroke="rgba(255,255,255,0.7)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                          <line x1={downA.x} y1={downA.y} x2={downB.x} y2={downB.y} stroke="rgba(255,255,255,0.7)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                        </g>
+                      );
+                    })}
+                    <polygon
+                      points={`${crop.nw.x},${crop.nw.y} ${crop.ne.x},${crop.ne.y} ${crop.se.x},${crop.se.y} ${crop.sw.x},${crop.sw.y}`}
+                      fill="transparent"
+                      stroke="rgba(0,0,0,0.55)"
+                      strokeWidth="4"
+                      vectorEffect="non-scaling-stroke"
+                      style={{ pointerEvents: "none" }}
+                    />
+                    <polygon
+                      points={`${crop.nw.x},${crop.nw.y} ${crop.ne.x},${crop.ne.y} ${crop.se.x},${crop.se.y} ${crop.sw.x},${crop.sw.y}`}
+                      fill="transparent"
+                      stroke="rgba(255,255,255,0.95)"
+                      strokeWidth="2"
+                      vectorEffect="non-scaling-stroke"
+                      style={{ pointerEvents: "auto", cursor: "move", touchAction: "none" }}
                       onPointerDown={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -1080,7 +1102,46 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
                         autoDetectDocument();
                       }}
                     />
-                  </div>
+                  </svg>
+                  {CROP_EDGES.map((edge) => {
+                    const mid = edgeMidpoint(crop, edge);
+                    const angle = edgeArrowAngle(crop, edge);
+                    return (
+                      <CropDragHandle
+                        key={edge}
+                        x={mid.x}
+                        y={mid.y}
+                        angle={angle}
+                        cursor={resizeCursorForAngle(angle)}
+                        label={EDGE_LABELS[edge]}
+                        zIndex={20}
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          startCropDrag(e, edge);
+                        }}
+                      />
+                    );
+                  })}
+                  {CROP_CORNERS.map((corner) => {
+                    const angle = cornerArrowAngle(crop, corner);
+                    return (
+                      <CropDragHandle
+                        key={corner}
+                        x={crop[corner].x}
+                        y={crop[corner].y}
+                        angle={angle}
+                        cursor={resizeCursorForAngle(angle)}
+                        label={CORNER_LABELS[corner]}
+                        zIndex={21}
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          startCropDrag(e, corner);
+                        }}
+                      />
+                    );
+                  })}
                 </div>
               )}
               </div>
@@ -1130,7 +1191,7 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
                       <button
                         key={p.key}
                         type="button"
-                        onClick={() => setCrop(p.rect)}
+                        onClick={() => setCrop(p.quad)}
                         disabled={saving}
                         className={cn(
                           "flex h-8 min-w-0 items-center justify-center rounded-lg border px-1 text-[11px] transition-colors",
@@ -1149,9 +1210,9 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
                         setCropMode((v) => {
                           const next = !v;
                           // Pehli baar ON: Full crop ko thoda inset karo taaki
-                          // crop box ke chaaron L-grips screen par clearly dikhein.
-                          if (next && crop.x === 0 && crop.y === 0 && crop.w === 1 && crop.h === 1) {
-                            setCrop({ x: 0.08, y: 0.08, w: 0.84, h: 0.84 });
+                          // chaaron corner handles screen par clearly dikhein.
+                          if (next && isFullCropQuad(crop)) {
+                            setCrop(rectToCropQuad({ x: 0.08, y: 0.08, w: 0.84, h: 0.84 }));
                           }
                           return next;
                         });

@@ -71,8 +71,11 @@
     }
   }
 
+  /** Country = the address only (country subdomain, else ?c=xx). No country = the global site.
+   *  The saved "pl-country" is NOT applied here: a country opens only when the user picks it
+   *  (goCountry) or opens a country address. countryFromStore() = last pick, for pre-select only. */
   function detect() {
-    return countryFromHost() || countryFromQuery() || countryFromStore();
+    return countryFromHost() || countryFromQuery();
   }
 
   function remember(cc) {
@@ -326,7 +329,6 @@
     bar.setAttribute("role", "region");
     bar.setAttribute("aria-label", "Country site");
     if (rec) {
-      remember(rec.cc);
       document.documentElement.setAttribute("data-pl-country", rec.cc);
       bar.innerHTML =
         '<div class="pl-country-chrome-inner">' +
@@ -337,19 +339,30 @@
           "</div>" +
         "</div>";
     } else {
+      document.documentElement.setAttribute("data-pl-country", "global");
       bar.innerHTML =
         '<div class="pl-country-chrome-inner">' +
-          '<div class="pl-country-chrome-text"><strong>Pocket Ledger</strong><span>Choose a country to open that country’s site</span></div>' +
-          '<a class="pl-country-chrome-link" href="/">Choose country</a>' +
+          '<div class="pl-country-chrome-text">' +
+            '<strong data-i18n="global_site">' + escapeHtml(tr("global_site", "Global site")) + "</strong>" +
+            '<span data-i18n="global_site_hint">' + escapeHtml(tr("global_site_hint", "pocket-ledger.com - pick a country to open that country's site")) + "</span>" +
+          "</div>" +
+          '<a class="pl-country-chrome-link" href="/" data-i18n="choose_country">' + escapeHtml(tr("choose_country", "Choose country")) + "</a>" +
         "</div>";
     }
     document.body.insertBefore(bar, document.body.firstChild);
     rewriteHomeLinks(rec);
   }
 
+  /** UI text from i18n-web.js when loaded (falls back to English). */
+  function tr(key, fallback) {
+    var v = global.PLt ? global.PLt(key) : "";
+    return v && v !== key ? v : fallback;
+  }
+
+  /** Country site home = /home/?c=xx. Global site home = the country picker (/). */
   function homeUrl(rec, hash) {
-    var q = rec ? "?c=" + encodeURIComponent(rec.cc) : "";
-    return "/home/" + q + (hash ? "#" + hash : "");
+    if (!rec) return "/" + (hash ? "#" + hash : "");
+    return "/home/?c=" + encodeURIComponent(rec.cc) + (hash ? "#" + hash : "");
   }
 
   /* Features / Videos / Pricing are their own pages now (were /home/#… sections). */
@@ -375,6 +388,14 @@
       }
       if (href === "../#pricing" || href === "./#pricing" || href === "/#pricing" || href === "/home/#pricing" || href === "/pricing/") {
         a.setAttribute("href", pageUrl(rec, "pricing"));
+      }
+      // Inside a country site every page link keeps ?c=xx (global site: links stay plain).
+      if (rec) {
+        ["downloads", "about-company", "terms"].forEach(function (page) {
+          if (href === "/" + page + "/" || href === "../" + page + "/" || href === "./" + page + "/") {
+            a.setAttribute("href", pageUrl(rec, page));
+          }
+        });
       }
     });
   }

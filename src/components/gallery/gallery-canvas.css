@@ -104,3 +104,12 @@ html body[class*="theme-"] [data-pl-gallery-unassigned-footer] {
   position: relative;
   z-index: 2;
 }
+
+
+/* Same 1px green as the file tiles. Theme .pl-card-3d.border (and the
+   cards' inline blue borderColor) lose to this !important. */
+html body[class*="theme-"] [data-pl-gallery-company-footer][data-pl-gallery-company-footer],
+html body[class*="theme-"] [data-pl-gallery-unassigned-footer][data-pl-gallery-unassigned-footer] {
+  border: 1px solid #22c55e !important;
+  box-sizing: border-box;
+}

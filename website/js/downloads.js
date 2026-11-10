@@ -115,7 +115,7 @@
       btn.removeAttribute("data-track-platform");
       meta.textContent = isLocalHost()
         ? "Not staged yet — run npm run website:stage-releases"
-        : "Not published yet on this country's Pocket Ledger Server";
+        : (isGlobalSite() ? "Not published yet" : "Not published yet on this country's Pocket Ledger Server");
       return;
     }
     btn.classList.remove("is-disabled");
@@ -135,7 +135,7 @@
     if (item.version) bits.push("v" + item.version);
     if (item.sizeLabel) bits.push(item.sizeLabel);
     if (source === "local") bits.push("local path");
-    if (source === "country") bits.push("country server");
+    if (source === "country") bits.push(isGlobalSite() ? "latest release" : "country server");
     meta.textContent = bits.join(" · ");
   }
 
@@ -410,6 +410,11 @@
     return cachedSettings;
   }
 
+  /** Global site (no country in the address): files come from the default server, shown as "Latest release". */
+  function isGlobalSite() {
+    return !(window.PLCountry && typeof window.PLCountry.isCountrySite === "function" && window.PLCountry.isCountrySite());
+  }
+
   function countryLatestUrl() {
     if (window.PLCountry && typeof window.PLCountry.countryReleasesUrl === "function") {
       return String(window.PLCountry.countryReleasesUrl() || "").trim();
@@ -444,6 +449,8 @@
     if (note) {
       if (source === "local" && data.date) {
         note.textContent = "Local staged build · " + data.date;
+      } else if (source === "country" && data.date && isGlobalSite()) {
+        note.textContent = "Latest release · " + data.date;
       } else if (source === "country" && data.date) {
         var origin = "";
         try {
@@ -457,7 +464,7 @@
       } else {
         note.textContent = isLocalHost()
           ? "No local EXE/APK staged yet."
-          : "No published installer yet on this country's server.";
+          : (isGlobalSite() ? "No published installer yet." : "No published installer yet on this country's server.");
       }
     }
     var entriesWindows = keptEntries(data, "windows");

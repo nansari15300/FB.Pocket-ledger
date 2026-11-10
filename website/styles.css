@@ -96,6 +96,8 @@ img { max-width: 100%; display: block; }
  * #marketingSettingsBtn: old "Admin Panel" button (moved to Server UI); never show it. */
 #marketingLoginBtn[hidden],
 #marketingLogoutBtn[hidden],
+#downloadSignInBtn[hidden],
+#downloadSignOutBtn[hidden],
 .btn.is-auth-hidden,
 #marketingSettingsBtn {
   display: none !important;
