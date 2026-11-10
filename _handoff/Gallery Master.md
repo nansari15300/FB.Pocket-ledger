@@ -28,4 +28,5 @@ Gallery page: UI, file preview, tiles, bugs, नए features।
 - वजह: edit का update server पर पहुँचता है, पर उसमें lastEditedAt/updatedAt नहीं होता। दूसरे PC पर localCompanyDocMirror.ts (~1419-1529, mergePreferNewer) अपनी पुरानी row को newer/equal मानकर रख लेता है।
 - Rename (GalleryPageClient.tsx ~2378) में भी यही bug है।
 - Fix plan (हाँ का इंतज़ार): handleEditedUnassignedFile, rename और upload docData में lastEditedAt/updatedAt = Timestamp.fromMillis(pbServerTime()) जोड़ना। General fix writeGateway/mirror में होगा, जो दूसरी bots के हिस्से में है।
-- Code में कोई बदलाव नहीं किया।
+- Code में कोई बदलाव नहीं किया।- 2026-11-10 17:34: user की हाँ के बाद fix लगाया (सिर्फ़ GalleryPageClient.tsx): galleryEditTimestamp() helper (pbServerTime), upload docData में createdAt/lastEditedAt/updatedAt, edit update और rename में lastEditedAt/updatedAt। tsc ठीक है। Commit नहीं किया।
+- बाकी काम: दो PC पर test करना। Edit के बाद पुरानी file तुरंत delete होती है, उसे नहीं बदला। General fix sync bots के पास है।

@@ -1711,6 +1711,20 @@ type UploadingFile = {
 
 const LOCAL_UNASSIGNED_DOCS_KEY = "local_unassigned_documents_v1";
 
+/**
+ * Edit time for unassigned-document writes, on the server clock. The other device's mirror merge
+ * keeps its local row unless the incoming row has a newer lastEditedAt/updatedAt, so a write without
+ * these fields (edit / rename) never reached the other PC.
+ */
+async function galleryEditTimestamp(): Promise<Timestamp> {
+  try {
+    const { pbServerTime } = await import("@/lib/pocketbaseData/pbSync");
+    return Timestamp.fromMillis(pbServerTime());
+  } catch {
+    return Timestamp.now();
+  }
+}
+
 /** Editor sirf images ke liye hai — `local:` / `pbatt:` / https refs ko blob ya URL me kholna padta hai. */
 async function resolveUnassignedEditSource(
   file: UnassignedFile,
@@ -2174,10 +2188,12 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
           }
           const docRef = doc(collection(firestore, `companies/${fsId}/unassigned_documents`));
           const uploadedAt = serverTimestamp();
+          const editedAt = await galleryEditTimestamp();
           const docData = {
             url: uploadResult.url, path: uploadResult.path, name: compressedFile.name,
             type: compressedFile.type.startsWith("image/") ? 'image' : 'pdf',
-            size: compressedFile.size, uploadedAt, uploadedBy: user.uid, status: 'FREE'
+            size: compressedFile.size, uploadedAt, uploadedBy: user.uid, status: 'FREE',
+            createdAt: editedAt, lastEditedAt: editedAt, updatedAt: editedAt,
           };
           batch.set(docRef, docData);
           batchOperationsCount++;
@@ -2297,12 +2313,15 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
         }
 
         const docRef = doc(firestore, `companies/${fsId}/unassigned_documents`, target.id);
+        const editedAt = await galleryEditTimestamp();
         const update = {
           url: uploadResult.url,
           path: uploadResult.path,
           name: compressed.name,
           size: compressed.size,
           type: "image" as const,
+          lastEditedAt: editedAt,
+          updatedAt: editedAt,
         };
         await updateDoc(docRef, update);
 
@@ -2375,7 +2394,8 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
         return;
       }
       const fsId = firestoreCompanyIdForGallery(companyId, company);
-      await updateDoc(doc(firestore, `companies/${fsId}/unassigned_documents`, fileToRename.id), { name: newName });
+      const editedAt = await galleryEditTimestamp();
+      await updateDoc(doc(firestore, `companies/${fsId}/unassigned_documents`, fileToRename.id), { name: newName, lastEditedAt: editedAt, updatedAt: editedAt });
       toast.success("File renamed successfully");
       setFileToRename(null);
     } catch (error) {
