@@ -2634,7 +2634,7 @@
     },
   };
 
-  /* ---------------- Users (new: /api/pl/web-users, main admin only) ---------------- */
+  /* ---------------- Users (/api/pl/web-users*, main admin only) ---------------- */
   VIEWS.users = {
     pfx: "usr",
     html:
@@ -2654,13 +2654,16 @@
       "</div>" +
       '<div class="plws-card">' +
         '<div class="plws-card-head"><h3 class="plws-h3">Website users</h3><button type="button" class="btn btn-secondary btn-sm" id="plws-usr-refreshBtn">Refresh</button></div>' +
-        '<p class="plws-hint">Per section: View off = hidden, View on = read only, View + Edit on = full access. The main admin always has full access.</p>' +
-        '<div class="release-table-wrap"><table class="release-table plws-usr-table"><thead id="plws-usr-head"></thead><tbody id="plws-usr-list"></tbody></table></div>' +
-        '<p class="release-table-empty" id="plws-usr-empty" hidden>No website users yet.</p>' +
+        '<p class="plws-hint">View off = section hidden. View on = read only. View + Edit on = full access. The main admin always has full access.</p>' +
+        '<div class="release-table-wrap"><table class="release-table plws-usr-table">' +
+          "<thead><tr><th>Email</th><th>Permissions</th><th>Status</th><th class=\"col-action\">Actions</th></tr></thead>" +
+          '<tbody id="plws-usr-list"></tbody></table></div>' +
+        '<p class="release-table-empty" id="plws-usr-empty" hidden>No website users or pending invites yet.</p>' +
       "</div>" +
       '<div class="plws-card" id="plws-usr-auditCard" hidden>' +
         '<details class="plws-audit"><summary class="plws-h3">Recent activity</summary>' +
-        '<div class="release-table-wrap"><table class="release-table plws-audit-table"><thead><tr><th>Time</th><th>By</th><th>Action</th><th>Target</th></tr></thead><tbody id="plws-usr-audit"></tbody></table></div>' +
+        '<div class="plws-audit-tools"><button type="button" class="btn btn-danger btn-sm" id="plws-usr-auditDelSel" disabled>Delete selected</button></div>' +
+        '<div class="release-table-wrap"><table class="release-table plws-audit-table"><thead id="plws-usr-auditHead"></thead><tbody id="plws-usr-audit"></tbody></table></div>' +
         '<p class="release-table-empty" id="plws-usr-auditEmpty" hidden>No activity yet.</p>' +
         "</details>" +
       "</div>" +
@@ -2674,73 +2677,114 @@
     init: function (root, $, W, ctx, setStatus) {
       var NOT_YET = "Website user management is not available on this server yet (the web-users routes are missing). Please try again after the server update.";
       var users = [];
+      var invites = [];
 
+      function el(tag, cls, text) {
+        var n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text != null) n.textContent = text;
+        return n;
+      }
       function permValue(v) { return v === "view" || v === "edit" ? v : "none"; }
+      function friendly(err) {
+        if (err && err.status === 404) return NOT_YET;
+        if (err && err.status === 403) return "Only the main admin can manage website users.";
+        return (err && err.message) || String(err);
+      }
+      function fmtTime(v) {
+        if (v == null || v === "") return "";
+        var d = typeof v === "number" ? new Date(v < 1e12 ? v * 1000 : v) : new Date(String(v).replace(" ", "T"));
+        if (isNaN(d.getTime())) return String(v);
+        try { return d.toLocaleString(); } catch (_) { return d.toISOString(); }
+      }
 
-      /* One switch: <button role="switch" aria-checked>. Space / Enter work because it is a button. */
+      /* One switch: <button role="switch" aria-checked> (Space / Enter work because it is a button). */
       function makeSwitch(label) {
-        var b = document.createElement("button");
+        var b = el("button", "plws-sw");
         b.type = "button";
-        b.className = "plws-sw";
         b.setAttribute("role", "switch");
         b.setAttribute("aria-checked", "false");
         b.setAttribute("aria-label", label);
+        b.title = label;
         b.innerHTML = '<span class="plws-sw-knob" aria-hidden="true"></span>';
         return b;
       }
 
-      /* Row: section name + View switch + Edit switch. Value lives in data-perm (none | view | edit). */
+      /* Table row: section name | View switch | Edit switch. Value lives in tr[data-perm] (none | view | edit). */
       function permRow(section, value, locked) {
-        var row = document.createElement("div");
-        row.className = "plws-perm-row";
-        row.setAttribute("data-section", section);
-        var name = document.createElement("span");
-        name.className = "plws-perm-name";
-        name.textContent = SECTION_LABEL[section];
-        var viewLab = document.createElement("span");
-        viewLab.className = "plws-sw-field";
-        var viewSw = makeSwitch(SECTION_LABEL[section] + " - View");
-        viewLab.appendChild(viewSw);
-        viewLab.appendChild(document.createTextNode("View"));
-        var editLab = document.createElement("span");
-        editLab.className = "plws-sw-field";
-        var editSw = makeSwitch(SECTION_LABEL[section] + " - Edit");
-        editLab.appendChild(editSw);
-        editLab.appendChild(document.createTextNode("Edit"));
-        row.appendChild(name);
-        row.appendChild(viewLab);
-        row.appendChild(editLab);
-
+        var tr = el("tr", "plws-perm-row");
+        tr.setAttribute("data-section", section);
+        var name = SECTION_LABEL[section];
+        tr.appendChild(el("th", "plws-perm-name", name)).setAttribute("scope", "row");
+        var viewSw = makeSwitch(name + " View");
+        var editSw = makeSwitch(name + " Edit");
+        var tdV = el("td", "plws-perm-cell");
+        var tdE = el("td", "plws-perm-cell");
+        tdV.appendChild(viewSw);
+        tdE.appendChild(editSw);
+        tr.appendChild(tdV);
+        tr.appendChild(tdE);
+        var first = true;
+        /* App ui/Switch motion: knob stretches across and settles (400ms keyframes), also when Edit is forced off. */
+        function motion(sw, on) {
+          var was = sw.classList.contains("on");
+          sw.classList.toggle("on", on);
+          if (first || was === on) return;
+          if (sw.__plwsMotion) clearTimeout(sw.__plwsMotion);
+          sw.classList.remove("plws-sw-to-on", "plws-sw-to-off");
+          void sw.offsetWidth; // restart the keyframes
+          sw.classList.add(on ? "plws-sw-to-on" : "plws-sw-to-off");
+          sw.__plwsMotion = setTimeout(function () {
+            sw.classList.remove("plws-sw-to-on", "plws-sw-to-off");
+            sw.__plwsMotion = null;
+          }, 400);
+        }
         function paint(v) {
           v = permValue(v);
-          row.setAttribute("data-perm", v);
+          tr.setAttribute("data-perm", v);
           var viewOn = v !== "none";
           var editOn = v === "edit";
           viewSw.setAttribute("aria-checked", viewOn ? "true" : "false");
           editSw.setAttribute("aria-checked", editOn ? "true" : "false");
-          viewSw.classList.toggle("on", viewOn);
-          editSw.classList.toggle("on", editOn);
+          viewSw.setAttribute("data-state", viewOn ? "checked" : "unchecked");
+          editSw.setAttribute("data-state", editOn ? "checked" : "unchecked");
+          motion(viewSw, viewOn);
+          motion(editSw, editOn);
           viewSw.disabled = !!locked;
           editSw.disabled = !!locked || !viewOn; // Edit needs View
-          editLab.classList.toggle("is-off", !viewOn);
+          tdE.classList.toggle("is-off", !viewOn);
+          first = false;
         }
         viewSw.onclick = function () {
           if (viewSw.disabled) return;
-          paint(row.getAttribute("data-perm") === "none" ? "view" : "none"); // View off forces Edit off
+          paint(tr.getAttribute("data-perm") === "none" ? "view" : "none"); // View off forces Edit off
         };
         editSw.onclick = function () {
           if (editSw.disabled) return;
-          paint(row.getAttribute("data-perm") === "edit" ? "view" : "edit");
+          paint(tr.getAttribute("data-perm") === "edit" ? "view" : "edit");
         };
         paint(value);
-        return row;
+        return tr;
       }
 
-      function permBlock(perms, locked) {
-        var box = document.createElement("div");
-        box.className = "plws-perm-block";
-        SECTIONS.forEach(function (s) { box.appendChild(permRow(s, locked ? "edit" : perms && perms[s], locked)); });
-        return box;
+      /* Permissions table: header Section | View | Edit once, rows = sections with switches only. */
+      /* mode: "edit" = switches work, "main" = all on and locked (main admin), "ro" = real values, locked (pending invite). */
+      function permTable(perms, mode, compact) {
+        var locked = mode === "main" || mode === "ro";
+        var table = el("table", "plws-perm-table" + (compact ? " is-compact" : ""));
+        var thead = el("thead");
+        var h = el("tr");
+        ["Section", "View", "Edit"].forEach(function (txt, i) {
+          var th = el("th", i ? "plws-perm-cell" : "", txt);
+          th.setAttribute("scope", "col");
+          h.appendChild(th);
+        });
+        thead.appendChild(h);
+        var tbody = el("tbody");
+        SECTIONS.forEach(function (s) { tbody.appendChild(permRow(s, mode === "main" ? "edit" : perms && perms[s], locked)); });
+        table.appendChild(thead);
+        table.appendChild(tbody);
+        return table;
       }
 
       function readPerms(container, base) {
@@ -2753,24 +2797,15 @@
         return out;
       }
 
-      function fmtTime(v) {
-        if (v == null || v === "") return "";
-        var d = typeof v === "number" ? new Date(v < 1e12 ? v * 1000 : v) : new Date(String(v).replace(" ", "T"));
-        if (isNaN(d.getTime())) return String(v);
-        try { return d.toLocaleString(); } catch (_) { return d.toISOString(); }
+      function confirmDanger(title, message, okLabel) {
+        return W.confirm({ title: title, message: message, confirmLabel: okLabel, danger: true });
       }
 
-      function friendly(err) {
-        if (err && err.status === 404) return NOT_YET;
-        if (err && err.status === 403) return "Only the main admin can manage website users.";
-        return (err && err.message) || String(err);
-      }
-
-      // invite form
+      // ---- invite form
       var invitePerms = $("invitePerms");
       function resetInvitePerms() {
         invitePerms.innerHTML = "";
-        invitePerms.appendChild(permBlock({ downloads: "view" }, false));
+        invitePerms.appendChild(permTable({ downloads: "view" }, "edit", false));
       }
       resetInvitePerms();
 
@@ -2789,7 +2824,7 @@
           $("inviteEmail").value = "";
           resetInvitePerms();
           setStatus("Invite link created for " + email + ". Copy it and send it to them. It works once, within 24 hours.", true);
-          loadUsers(true);
+          refreshAll(true);
         }).catch(function (err) {
           setStatus(friendly(err), false);
         }).then(function () { btn.disabled = false; });
@@ -2799,139 +2834,138 @@
         var input = $("link");
         var text = input.value;
         function okCopy() { setStatus("Link copied.", true); }
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(okCopy, function () {
-            input.select();
-            try { document.execCommand("copy"); okCopy(); } catch (_) { setStatus("Copy failed. Select the link and copy it by hand.", false); }
-          });
-        } else {
+        function manual() {
           input.select();
           try { document.execCommand("copy"); okCopy(); } catch (_) { setStatus("Copy failed. Select the link and copy it by hand.", false); }
         }
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(okCopy, manual);
+        else manual();
       };
 
-      // list
-      function renderHead() {
-        var tr = document.createElement("tr");
-        ["Email", "Permissions", "Status", ""].forEach(function (h, i, arr) {
-          var th = document.createElement("th");
-          th.textContent = h;
-          if (i === arr.length - 1) th.className = "col-action";
-          tr.appendChild(th);
-        });
-        var head = $("head");
-        head.innerHTML = "";
-        head.appendChild(tr);
+      // ---- users + pending invites table
+      function userEmail(u) { return String(u.email || u.username || u.name || u.id || ""); }
+
+      function emailCell(main, metaText) {
+        var td = el("td", "plws-usr-email-td");
+        td.appendChild(el("div", "plws-usr-email-cell", main));
+        if (metaText) td.appendChild(el("div", "plws-usr-meta", metaText));
+        return td;
       }
 
-      function userEmail(u) { return String(u.email || u.username || u.name || u.id || ""); }
+      function actionBtn(label, cls, onClick) {
+        var b = el("button", "btn btn-sm " + cls, label);
+        b.type = "button";
+        b.onclick = function () { onClick(b); };
+        return b;
+      }
+
+      function userRowEl(u) {
+        var tr = el("tr", "plws-usr-row");
+        var isMain = u.role === "main_admin";
+        var lastLogin = u.lastLogin || u.last_login || u.lastLoginAt;
+        var meta = [];
+        meta.push("Last login: " + (lastLogin ? fmtTime(lastLogin) : "never"));
+        if (u.created) meta.push("Created: " + fmtTime(u.created));
+        tr.appendChild(emailCell(userEmail(u) + (isMain ? " (main admin)" : ""), meta.join(" \u00b7 ")));
+
+        var perms = u.web_perms && typeof u.web_perms === "object" ? u.web_perms : {};
+        var tdP = el("td", "plws-usr-perms-td");
+        tdP.appendChild(permTable(perms, isMain ? "main" : "edit", true));
+        tr.appendChild(tdP);
+
+        var tdS = el("td", "plws-usr-status-td");
+        var lab = el("label", "plws-inline-check");
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = !!u.disabled;
+        cb.disabled = isMain;
+        lab.appendChild(cb);
+        lab.appendChild(document.createTextNode("Disabled"));
+        tdS.appendChild(el("div", "plws-usr-state " + (u.disabled ? "is-bad" : "is-ok"), isMain ? "Main admin" : u.disabled ? "Disabled" : "Active"));
+        if (!isMain) tdS.appendChild(lab);
+        tr.appendChild(tdS);
+
+        var tdA = el("td", "col-action plws-usr-actions");
+        if (!isMain) {
+          tdA.appendChild(actionBtn("Save", "btn-primary", function (b) {
+            b.disabled = true;
+            setStatus("Saving " + userEmail(u) + ".", true);
+            ctx.api("POST", "/api/pl/web-users/update", { id: u.id, web_perms: readPerms(tdP, perms), disabled: cb.checked })
+              .then(function () { setStatus("Saved " + userEmail(u) + ".", true); refreshAll(true); })
+              .catch(function (err) { setStatus(friendly(err), false); })
+              .then(function () { b.disabled = false; });
+          }));
+          tdA.appendChild(actionBtn("Delete", "btn-danger", function (b) {
+            confirmDanger("Delete user?", "Delete " + userEmail(u) + "? They will no longer be able to sign in to the Server UI.", "Delete").then(function (ok) {
+              if (!ok) return;
+              b.disabled = true;
+              setStatus("Deleting " + userEmail(u) + ".", true);
+              ctx.api("POST", "/api/pl/web-users/delete", { id: u.id })
+                .then(function () { setStatus("Deleted " + userEmail(u) + ".", true); refreshAll(true); })
+                .catch(function (err) {
+                  setStatus(err && err.status === 404 ? "Delete not available on the server yet." : friendly(err), false);
+                  b.disabled = false;
+                });
+            });
+          }));
+        }
+        tr.appendChild(tdA);
+        return tr;
+      }
+
+      function inviteRowEl(inv) {
+        var tr = el("tr", "plws-usr-row is-pending");
+        tr.appendChild(emailCell(String(inv.email || ""), "Invited" + (inv.created ? ": " + fmtTime(inv.created) : "")));
+        var tdP = el("td", "plws-usr-perms-td");
+        tdP.appendChild(permTable(inv.web_perms || {}, "ro", true)); // read only: shows what the invite grants
+        tdP.querySelector("table").classList.add("is-readonly");
+        tr.appendChild(tdP);
+        var tdS = el("td", "plws-usr-status-td");
+        var expired = inv.expires && new Date(inv.expires).getTime() < Date.now();
+        tdS.appendChild(el("div", "plws-usr-state " + (expired ? "is-bad" : "is-warn"),
+          (expired ? "Expired" : "Pending") + (inv.expires ? " (expires " + fmtTime(inv.expires) + ")" : "")));
+        tr.appendChild(tdS);
+        var tdA = el("td", "col-action plws-usr-actions");
+        tdA.appendChild(actionBtn("Revoke", "btn-danger", function (b) {
+          confirmDanger("Revoke invite?", "Revoke the invite for " + (inv.email || "this email") + "? The link will stop working.", "Revoke").then(function (ok) {
+            if (!ok) return;
+            b.disabled = true;
+            setStatus("Revoking invite.", true);
+            ctx.api("POST", "/api/pl/web-users/revoke-invite", { id: inv.id })
+              .then(function () { setStatus("Invite revoked for " + (inv.email || "") + ".", true); refreshAll(true); })
+              .catch(function (err) { setStatus(friendly(err), false); b.disabled = false; });
+          });
+        }));
+        tr.appendChild(tdA);
+        return tr;
+      }
 
       function renderUsers() {
         var body = $("list");
         body.innerHTML = "";
-        $("empty").hidden = users.length > 0;
-        users.forEach(function (u) {
-          var tr = document.createElement("tr");
-          var isMain = u.role === "main_admin";
-          var tdE = document.createElement("td");
-          var em = document.createElement("div");
-          em.className = "plws-usr-email-cell";
-          em.textContent = userEmail(u) + (isMain ? " (main admin)" : "");
-          if (u.pending || u.status === "invited") em.textContent += " \u00b7 invited";
-          tdE.appendChild(em);
-          var lastLogin = u.lastLogin || u.last_login || u.lastLoginAt;
-          var meta = [];
-          if (lastLogin) meta.push("Last login: " + fmtTime(lastLogin));
-          else if (u.created || "lastLogin" in u) meta.push("Last login: never");
-          if (u.created) meta.push("Created: " + fmtTime(u.created));
-          if (meta.length) {
-            var mt = document.createElement("div");
-            mt.className = "plws-usr-meta";
-            mt.textContent = meta.join(" \u00b7 ");
-            tdE.appendChild(mt);
-          }
-          tr.appendChild(tdE);
-          var perms = u.web_perms && typeof u.web_perms === "object" ? u.web_perms : {};
-          var tdP = document.createElement("td");
-          tdP.appendChild(permBlock(perms, isMain));
-          tr.appendChild(tdP);
-          var tdS = document.createElement("td");
-          var lab = document.createElement("label");
-          lab.className = "plws-inline-check";
-          var cb = document.createElement("input");
-          cb.type = "checkbox";
-          cb.checked = !!u.disabled;
-          cb.disabled = isMain;
-          lab.appendChild(cb);
-          lab.appendChild(document.createTextNode("Disabled"));
-          tdS.appendChild(lab);
-          tr.appendChild(tdS);
-          var tdA = document.createElement("td");
-          tdA.className = "col-action";
-          if (!isMain) {
-            var save = document.createElement("button");
-            save.type = "button";
-            save.className = "btn btn-primary btn-sm";
-            save.textContent = "Save";
-            save.onclick = function () {
-              save.disabled = true;
-              setStatus("Saving " + userEmail(u) + ".", true);
-              ctx.api("POST", "/api/pl/web-users/update", { id: u.id, web_perms: readPerms(tr, perms), disabled: cb.checked })
-                .then(function () {
-                  setStatus("Saved " + userEmail(u) + ".", true);
-                  loadUsers(true);
-                  loadAudit();
-                })
-                .catch(function (err) { setStatus(friendly(err), false); })
-                .then(function () { save.disabled = false; });
-            };
-            tdA.appendChild(save);
-          }
-          tr.appendChild(tdA);
-          body.appendChild(tr);
-        });
+        users.forEach(function (u) { body.appendChild(userRowEl(u)); });
+        invites.forEach(function (inv) { body.appendChild(inviteRowEl(inv)); });
+        $("empty").hidden = users.length + invites.length > 0;
       }
 
       function loadUsers(quiet) {
         if (!quiet) setStatus("Loading.", true);
         return ctx.api("GET", "/api/pl/web-users").then(function (res) {
-          var list = Array.isArray(res) ? res : (res && (res.items || res.users || res.list)) || [];
+          var list = Array.isArray(res) ? res : (res && (res.users || res.items || res.list)) || [];
           users = Array.isArray(list) ? list : [];
+          invites = res && Array.isArray(res.invites) ? res.invites : [];
           renderUsers();
           if (!quiet) setStatus("Ready.", true);
         }).catch(function (err) {
           users = [];
+          invites = [];
           renderUsers();
           $("empty").hidden = true;
           setStatus(friendly(err), false);
         });
       }
 
-      function loadLegacy() {
-        return ctx.api("GET", SITE + "/admin/admins").then(function (data) {
-          var body = $("legacy");
-          body.innerHTML = "";
-          var owners = Array.isArray(data && data.owners) ? data.owners : [];
-          var emails = Array.isArray(data && data.emails) ? data.emails : [];
-          function row(email, role) {
-            var tr = document.createElement("tr");
-            var a = document.createElement("td");
-            a.textContent = email;
-            var b = document.createElement("td");
-            b.textContent = role;
-            tr.appendChild(a);
-            tr.appendChild(b);
-            body.appendChild(tr);
-          }
-          owners.forEach(function (e) { row(e, "Owner"); });
-          emails.forEach(function (e) { row(e, "Old admin (no access)"); });
-          $("legacyEmpty").hidden = owners.length + emails.length > 0;
-        }).catch(function () {
-          $("legacyEmpty").hidden = false;
-          $("legacyEmpty").textContent = "Could not load the old list.";
-        });
-      }
-
+      // ---- recent activity. Add an actions column later by pushing to AUDIT_COLS ({ head, cell(item) -> Node|string, cls }).
       function pick(o, keys) {
         for (var i = 0; i < keys.length; i++) {
           var v = o[keys[i]];
@@ -2939,26 +2973,133 @@
         }
         return "";
       }
+      var auditSelected = {};
+      function auditSelCount() { return Object.keys(auditSelected).length; }
+      function updateAuditTools() {
+        var n = auditSelCount();
+        var b = $("auditDelSel");
+        b.disabled = n === 0;
+        b.textContent = n ? "Delete selected (" + n + ")" : "Delete selected";
+        var all = $("auditHead").querySelector("input[type=checkbox]");
+        var boxes = $("audit").querySelectorAll("input[type=checkbox]");
+        if (all) {
+          all.checked = boxes.length > 0 && n === boxes.length;
+          all.indeterminate = n > 0 && n < boxes.length;
+        }
+      }
+
+      /* Deletes audit records in chunks of 200 ({ ids: [...] }). */
+      function deleteAudit(ids) {
+        var done = 0;
+        function next(i) {
+          if (i >= ids.length) return Promise.resolve(done);
+          var chunk = ids.slice(i, i + 200);
+          return ctx.api("POST", "/api/pl/web-users/audit/delete", chunk.length === 1 ? { id: chunk[0] } : { ids: chunk }).then(function (res) {
+            done += res && typeof res.deleted === "number" ? res.deleted : chunk.length;
+            return next(i + 200);
+          });
+        }
+        return next(0);
+      }
+      function auditDeleteFlow(ids, title, message) {
+        return confirmDanger(title, message, "Delete").then(function (ok) {
+          if (!ok) return;
+          setStatus("Deleting activity.", true);
+          return deleteAudit(ids).then(function (n) {
+            auditSelected = {};
+            setStatus("Deleted " + n + " activity record(s).", true);
+            loadAudit();
+          }).catch(function (err) {
+            setStatus(err && err.status === 404 ? "Deleting activity is not available on the server yet." : friendly(err), false);
+            loadAudit();
+          });
+        });
+      }
+
+      /* Columns: { head: string|function()->Node, cell(item) -> Node|string, cls } */
+      var AUDIT_COLS = [
+        { head: function () {
+          var cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.setAttribute("aria-label", "Select all shown");
+          cb.onchange = function () {
+            Array.prototype.forEach.call($("audit").querySelectorAll("input[type=checkbox]"), function (x) {
+              x.checked = cb.checked;
+              if (cb.checked) auditSelected[x.getAttribute("data-id")] = true;
+              else delete auditSelected[x.getAttribute("data-id")];
+            });
+            updateAuditTools();
+          };
+          return cb;
+        }, cell: function (it) {
+          if (!it.id) return "";
+          var cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.setAttribute("data-id", it.id);
+          cb.setAttribute("aria-label", "Select this record");
+          cb.checked = !!auditSelected[it.id];
+          cb.onchange = function () {
+            if (cb.checked) auditSelected[it.id] = true;
+            else delete auditSelected[it.id];
+            updateAuditTools();
+          };
+          return cb;
+        }, cls: "plws-check-col" },
+        { head: "Time", cell: function (it) { return fmtTime(it.created || it.time || it.at || it.ts || it.date) || "\u2014"; }, cls: "plws-nowrap" },
+        { head: "By", cell: function (it) { return pick(it, ["actor", "actorEmail", "by", "email"]) || "\u2014"; } },
+        { head: "Action", cell: function (it) {
+          var a = pick(it, ["action", "event", "type"]) || "\u2014";
+          return it.section ? a + " (" + it.section + ")" : a;
+        } },
+        { head: "Target", cell: function (it) { return pick(it, ["target"]) || ""; } },
+        { head: "Actions", cell: function (it) {
+          if (!it.id) return "";
+          return actionBtn("Delete", "btn-danger", function () {
+            auditDeleteFlow([it.id], "Delete activity record?", "Delete this activity record permanently?");
+          });
+        }, cls: "col-action" },
+      ];
+
+      $("auditDelSel").onclick = function () {
+        var ids = Object.keys(auditSelected);
+        if (!ids.length) return;
+        auditDeleteFlow(ids, "Delete selected activity?", "Delete " + ids.length + " activity record(s) permanently?");
+      };
+
+      function renderAuditHead() {
+        var tr = el("tr");
+        AUDIT_COLS.forEach(function (c) {
+          var th = el("th", c.cls || "");
+          if (typeof c.head === "function") th.appendChild(c.head());
+          else th.textContent = c.head;
+          tr.appendChild(th);
+        });
+        var head = $("auditHead");
+        head.innerHTML = "";
+        head.appendChild(tr);
+      }
 
       function loadAudit() {
         return ctx.api("GET", "/api/pl/web-users/audit").then(function (res) {
           var items = Array.isArray(res) ? res : (res && (res.items || res.list)) || [];
           var body = $("audit");
           body.innerHTML = "";
+          var present = {};
           items.forEach(function (it) {
             if (!it || typeof it !== "object") return;
-            var tr = document.createElement("tr");
-            var t = it.time || it.at || it.ts || it.created || it.date;
-            [fmtTime(t) || "\u2014",
-              pick(it, ["actor", "actorEmail", "by", "email", "user"]) || "\u2014",
-              pick(it, ["action", "event", "type"]) || "\u2014",
-              pick(it, ["target", "targetEmail", "subject", "detail", "details"]) || ""].forEach(function (txt) {
-              var td = document.createElement("td");
-              td.textContent = txt;
+            if (it.id) present[it.id] = true;
+            var tr = el("tr");
+            AUDIT_COLS.forEach(function (c) {
+              var td = el("td", c.cls || "");
+              var v = c.cell(it);
+              if (v && typeof v === "object" && v.nodeType) td.appendChild(v);
+              else td.textContent = v;
               tr.appendChild(td);
             });
             body.appendChild(tr);
           });
+          Object.keys(auditSelected).forEach(function (id) { if (!present[id]) delete auditSelected[id]; });
+          updateAuditTools();
           $("auditEmpty").hidden = body.children.length > 0;
           $("auditCard").hidden = false;
         }).catch(function (err) {
@@ -2970,10 +3111,35 @@
         });
       }
 
-      $("refreshBtn").onclick = function () { loadUsers(false); loadAudit(); loadLegacy(); };
-      renderHead();
-      loadUsers(false);
-      loadAudit();
+      function loadLegacy() {
+        return ctx.api("GET", SITE + "/admin/admins").then(function (data) {
+          var body = $("legacy");
+          body.innerHTML = "";
+          var owners = Array.isArray(data && data.owners) ? data.owners : [];
+          var emails = Array.isArray(data && data.emails) ? data.emails : [];
+          function row(email, role) {
+            var tr = el("tr");
+            tr.appendChild(el("td", "", email));
+            tr.appendChild(el("td", "", role));
+            body.appendChild(tr);
+          }
+          owners.forEach(function (e) { row(e, "Owner"); });
+          emails.forEach(function (e) { row(e, "Old admin (no access)"); });
+          $("legacyEmpty").hidden = owners.length + emails.length > 0;
+        }).catch(function () {
+          $("legacyEmpty").hidden = false;
+          $("legacyEmpty").textContent = "Could not load the old list.";
+        });
+      }
+
+      function refreshAll(quiet) {
+        loadUsers(quiet);
+        loadAudit();
+      }
+
+      $("refreshBtn").onclick = function () { refreshAll(false); loadLegacy(); };
+      renderAuditHead();
+      refreshAll(false);
       loadLegacy();
     },
   };
@@ -3108,6 +3274,6 @@
     return container.__plws;
   }
 
-  window.WebSettings = { mount: mount, __plws: true, version: "20261110-2" };
+  window.WebSettings = { mount: mount, __plws: true, version: "20261110-7" };
   window.PLWebSettings = window.WebSettings;
 })();

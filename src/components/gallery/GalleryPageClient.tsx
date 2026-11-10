@@ -105,6 +105,7 @@ import { getAttachmentFormatLabel, getAttachmentFormatLabelFromHints } from "@/l
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { canSyncCompanyToServer } from "@/lib/localVoucherOutbox";
 import { getPendingFiles, isLocalFileRef, getBlobFromLocalFileRef, LOCAL_FILE_PREFIX } from "@/lib/localPendingFiles";
+import { isPbAttachmentRef, resolvePbAttachmentDisplay } from "@/lib/pocketbaseData/pbAttachments";
 import { usePrewarmVisibleAttachments } from "@/hooks/usePrewarmVisibleAttachments";
 import { companyUsesLocalAttachmentSourcesOnly } from "@/lib/staticAttachmentDisplayUrl";
 import { FIREBASE_LEDGER_COMPANY_SYNC_PREFS_CHANGED_EVENT } from "@/lib/firebaseLedgerCompanySyncPrefs";
@@ -1710,8 +1711,11 @@ type UploadingFile = {
 
 const LOCAL_UNASSIGNED_DOCS_KEY = "local_unassigned_documents_v1";
 
-/** Editor sirf images ke liye hai — local `local:<uuid>` refs ko blob me kholna padta hai. */
-async function resolveUnassignedEditSource(file: UnassignedFile): Promise<string | Blob | null> {
+/** Editor sirf images ke liye hai — `local:` / `pbatt:` / https refs ko blob ya URL me kholna padta hai. */
+async function resolveUnassignedEditSource(
+  file: UnassignedFile,
+  companyId?: string
+): Promise<string | Blob | null> {
   const url = String(file.url || "");
   if (!url) return null;
   if (url.startsWith("local:")) {
@@ -1721,7 +1725,21 @@ async function resolveUnassignedEditSource(file: UnassignedFile): Promise<string
       return null;
     }
   }
-  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:") || url.startsWith("blob:")) {
+  if (url.startsWith("data:") || url.startsWith("blob:")) {
+    return url;
+  }
+  // Pocket Ledger Server uploads store `pbatt:<recordId>/<fileName>`, not an https URL.
+  // The grid already previews these via resolvePbAttachmentDisplay; the editor must too.
+  if (isPbAttachmentRef(url)) {
+    try {
+      const { blob } = await resolvePbAttachmentDisplay(url);
+      if (blob && blob.size > 0) return blob;
+    } catch {
+      return null;
+    }
+    return null;
+  }
+  if (url.startsWith("http://") || url.startsWith("https://")) {
     return url;
   }
   return null;
@@ -2767,7 +2785,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
                               markDropdownMenuAction();
                               setFileToEdit(file);
                               void (async () => {
-                                const source = await resolveUnassignedEditSource(file);
+                                const source = await resolveUnassignedEditSource(file, companyId);
                                 if (!source) {
                                   setFileToEdit(null);
                                   toast.error("Could not load this file for editing");

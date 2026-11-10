@@ -62,45 +62,95 @@
 .plws .plws-usr-invite { display: grid; gap: 12px; }
 .plws .plws-usr-email { display: grid; gap: 4px; max-width: 26rem; font-weight: 600; font-size: 13px; }
 .plws .plws-usr-perms { min-width: 0; }
-.plws .plws-perm-block { display: grid; gap: 6px; min-width: 18rem; }
-.plws .plws-perm-row { display: grid; grid-template-columns: minmax(9rem, 1fr) auto auto; align-items: center; gap: 14px; padding: 4px 0; }
-.plws .plws-perm-row + .plws-perm-row { border-top: 1px solid var(--border); }
-.plws .plws-perm-name { font-size: 13px; font-weight: 600; color: var(--text); }
-.plws .plws-sw-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--text-2); }
-.plws .plws-sw-field.is-off { color: var(--text-3); }
+/* permission tables: header Section | View | Edit once, rows = switches only */
+.plws .plws-perm-table { border-collapse: collapse; min-width: 22rem; font-size: 13px; }
+.plws .plws-perm-table th, .plws .plws-perm-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: start; vertical-align: middle; }
+.plws .plws-perm-table thead th { font-size: 12px; font-weight: 600; color: var(--text-2); background: var(--surface-2); white-space: nowrap; }
+.plws .plws-perm-table tbody tr:last-child th, .plws .plws-perm-table tbody tr:last-child td { border-bottom: 0; }
+.plws .plws-perm-table .plws-perm-cell { text-align: center; width: 1%; white-space: nowrap; }
+.plws .plws-perm-table .plws-perm-name { font-weight: 600; color: var(--text); white-space: nowrap; }
+.plws .plws-perm-table.is-compact { min-width: 0; font-size: 12.5px; }
+.plws .plws-perm-table.is-compact th, .plws .plws-perm-table.is-compact td { padding: 4px 8px; }
+.plws .plws-usr-perms > .plws-perm-table { border: 1px solid var(--border); border-radius: var(--radius-sm, 9px); border-collapse: separate; border-spacing: 0; overflow: hidden; }
+.plws .plws-usr-perms > .plws-perm-table thead th:first-child { border-top-left-radius: var(--radius-sm, 9px); }
 
-/* App-style switch (matches Server UI .as-ios-sw look), colours only from theme variables */
+/* Switch = faithful copy of the app's src/components/ui/switch.tsx (Voucher Settings) + lib/switchMotion.ts
+   + tailwind.config.ts keyframes file-hover-switch-on/off. Track 97x19 (app 88px +10%), knob 32px pill (pad 3px), 400ms linear stretch.
+   Colours are the app's Tailwind values (neutral / green); the Server UI has no equivalent variables for them. */
 .plws .plws-sw {
-  position: relative; display: inline-block; flex: none; box-sizing: border-box;
-  width: 120px; height: 22px; margin: 0; padding: 0; border-radius: 999px;
-  border: 1px solid var(--border-strong); background: var(--surface-2);
-  cursor: pointer;
-  /* step 2: track colour fills after the knob has moved */
-  transition: background-color .25s ease .25s, border-color .25s ease .25s, opacity .2s ease;
+  position: relative; display: inline-flex; flex: none; box-sizing: border-box;
+  width: 97px; height: 19px; margin: 0; padding: 0; border-radius: 9999px;
+  border: 1px solid #d4d4d4; background: #e5e5e5;            /* neutral-300 / neutral-200 */
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);                  /* shadow-sm */
+  cursor: pointer; outline: none;
+  transition: color .15s cubic-bezier(.4, 0, .2, 1), background-color .15s cubic-bezier(.4, 0, .2, 1), border-color .15s cubic-bezier(.4, 0, .2, 1); /* transition-colors */
 }
+.plws .plws-sw.on { border-color: #86efac; background: rgb(220 252 231 / 0.8); } /* green-300 / green-100/80 */
 .plws .plws-sw-knob {
-  position: absolute; top: 2px; left: 2px; width: 32px; height: 16px; border-radius: 999px;
-  background: var(--text-3); box-shadow: var(--shadow); pointer-events: none;
-  /* step 1: knob moves first (no delay); its colour follows with the track */
-  transition: transform .25s cubic-bezier(.2, .8, .2, 1), background-color .25s ease .25s;
+  position: absolute; top: 50%; z-index: 1; transform: translateY(-50%);
+  left: 3px; width: 32px; height: calc(100% - 6px); border-radius: 9999px;
+  background: #737373;                                        /* neutral-500 */
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); pointer-events: none;
 }
-.plws .plws-sw.on { background: var(--ok-soft); border-color: var(--ok); }
-.plws .plws-sw.on .plws-sw-knob { transform: translateX(82px); background: var(--ok); }
-.plws .plws-sw:hover:not(:disabled) { border-color: var(--accent); }
-.plws .plws-sw:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.plws .plws-sw:disabled { cursor: not-allowed; opacity: .45; }
-html[dir="rtl"] .plws .plws-sw-knob { left: auto; right: 2px; }
-html[dir="rtl"] .plws .plws-sw.on .plws-sw-knob { transform: translateX(-82px); }
+.plws .plws-sw.on .plws-sw-knob { left: calc(100% - 35px); background: #4ade80; } /* green-400 */
+.plws .plws-sw.plws-sw-to-on .plws-sw-knob { animation: plws-sw-on 400ms linear forwards; }
+.plws .plws-sw.plws-sw-to-off .plws-sw-knob { animation: plws-sw-off 400ms linear forwards; }
+@keyframes plws-sw-on {
+  0% { left: 3px; width: 32px; }
+  45% { left: 3px; width: calc(100% - 6px); }
+  100% { left: calc(100% - 35px); width: 32px; }
+}
+@keyframes plws-sw-off {
+  0% { left: calc(100% - 35px); width: 32px; }
+  45% { left: 3px; width: calc(100% - 6px); }
+  100% { left: 3px; width: 32px; }
+}
+/* dark: variants of the app -> Server UI dark / medium themes */
+html[data-theme="dark"] .plws .plws-sw, html[data-theme="medium"] .plws .plws-sw { border-color: #737373; background: rgb(64 64 64 / 0.7); }
+html[data-theme="dark"] .plws .plws-sw.on, html[data-theme="medium"] .plws .plws-sw.on { border-color: #15803d; background: rgb(20 83 45 / 0.4); }
+html[data-theme="dark"] .plws .plws-sw-knob, html[data-theme="medium"] .plws .plws-sw-knob { background: #a3a3a3; }
+html[data-theme="dark"] .plws .plws-sw.on .plws-sw-knob, html[data-theme="medium"] .plws .plws-sw.on .plws-sw-knob { background: #4ade80; }
+/* focus-visible:ring-2 ring-offset-2 (ring = Server UI accent) */
+.plws .plws-sw:focus-visible { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.plws .plws-sw:disabled { cursor: not-allowed; opacity: .5; }
+/* RTL mirror: same motion from the right side */
+html[dir="rtl"] .plws .plws-sw-knob { left: auto; right: 3px; }
+html[dir="rtl"] .plws .plws-sw.on .plws-sw-knob { left: auto; right: calc(100% - 35px); }
+html[dir="rtl"] .plws .plws-sw.plws-sw-to-on .plws-sw-knob { animation-name: plws-sw-on-rtl; }
+html[dir="rtl"] .plws .plws-sw.plws-sw-to-off .plws-sw-knob { animation-name: plws-sw-off-rtl; }
+@keyframes plws-sw-on-rtl {
+  0% { right: 3px; width: 32px; }
+  45% { right: 3px; width: calc(100% - 6px); }
+  100% { right: calc(100% - 35px); width: 32px; }
+}
+@keyframes plws-sw-off-rtl {
+  0% { right: calc(100% - 35px); width: 32px; }
+  45% { right: 3px; width: calc(100% - 6px); }
+  100% { right: 3px; width: 32px; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .plws .plws-sw, .plws .plws-sw-knob { transition-duration: .01ms; transition-delay: 0s; }
+  .plws .plws-sw { transition: none; }
+  .plws .plws-sw .plws-sw-knob { animation: none !important; }
 }
 
 .plws .plws-usr-email-cell { font-weight: 600; }
 .plws .plws-usr-meta { margin-top: 2px; font-size: 12px; color: var(--text-2); }
-.plws .plws-usr-table td { vertical-align: top; }
+.plws .plws-usr-table > tbody > tr > td { vertical-align: top; }
+.plws .plws-usr-table .plws-usr-perms-td { padding-top: 4px; padding-bottom: 4px; }
+.plws .plws-usr-status-td { white-space: nowrap; }
+.plws .plws-usr-state { font-size: 12.5px; font-weight: 600; margin-bottom: 4px; }
+.plws .plws-usr-state.is-ok { color: var(--ok); }
+.plws .plws-usr-state.is-warn { color: var(--warn); }
+.plws .plws-usr-state.is-bad { color: var(--bad); }
+.plws .plws-usr-actions { white-space: nowrap; }
+.plws .plws-usr-actions .btn + .btn { margin-inline-start: 6px; }
+.plws .plws-usr-row.is-pending > td { background: var(--surface-2); }
 .plws .plws-audit > summary { cursor: pointer; margin: 0; list-style: revert; }
 .plws .plws-audit[open] > summary { margin-bottom: 10px; }
-.plws .plws-audit-table td { white-space: nowrap; }
+.plws .plws-audit-table td { vertical-align: top; }
+.plws .plws-nowrap { white-space: nowrap; }
+.plws .plws-check-col { width: 1%; text-align: center; }
+.plws .plws-audit-tools { display: flex; justify-content: flex-end; margin: 0 0 8px; }
 .plws .plws-usr-link { margin-top: 14px; }
 .plws .plws-usr-link label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
 .plws .plws-usr-link-row { display: flex; gap: 8px; align-items: center; }
