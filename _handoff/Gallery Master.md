@@ -24,3 +24,8 @@ Gallery page: UI, file preview, tiles, bugs, नए features।
 
 ## बाकी काम
 - user से पहला gallery काम मिलना बाकी।
+## 2026-11-10 जाँच: Edit/crop दूसरे PC पर sync नहीं होता
+- वजह: edit का update server पर पहुँचता है, पर उसमें lastEditedAt/updatedAt नहीं होता। दूसरे PC पर localCompanyDocMirror.ts (~1419-1529, mergePreferNewer) अपनी पुरानी row को newer/equal मानकर रख लेता है।
+- Rename (GalleryPageClient.tsx ~2378) में भी यही bug है।
+- Fix plan (हाँ का इंतज़ार): handleEditedUnassignedFile, rename और upload docData में lastEditedAt/updatedAt = Timestamp.fromMillis(pbServerTime()) जोड़ना। General fix writeGateway/mirror में होगा, जो दूसरी bots के हिस्से में है।
+- Code में कोई बदलाव नहीं किया।
