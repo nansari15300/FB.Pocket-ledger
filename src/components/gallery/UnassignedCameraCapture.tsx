@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { publicAssetUrl } from "@/lib/webAppBasePath";
+import { applyDocumentBwInPlace } from "@/lib/documentBw";
 import {
   type CropQuad,
   type CropHandle,
@@ -313,6 +314,12 @@ function applyEdits(
   opts: { mode: ColorMode; brightness: number; contrast: number; sharpness: number }
 ) {
   if (!w || !h) return;
+  if (opts.mode === "bw") {
+    // Dedicated document B&W: max-channel gray + background normalize + adaptive threshold.
+    // The old "luma, contrast stretch, gray > 150" path painted pink paper solid black.
+    applyDocumentBwInPlace(ctx, w, h, { brightness: opts.brightness, contrast: opts.contrast });
+    return;
+  }
   const img = ctx.getImageData(0, 0, w, h);
   const d = img.data;
 
@@ -337,11 +344,6 @@ function applyEdits(
     r = (r - 128) * C + 128 + bright;
     g = (g - 128) * C + 128 + bright;
     b = (b - 128) * C + 128 + bright;
-
-    if (opts.mode === "bw") {
-      const v = r > 150 ? 255 : 0;
-      r = g = b = v;
-    }
 
     d[i] = r < 0 ? 0 : r > 255 ? 255 : r;
     d[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;

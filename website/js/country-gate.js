@@ -167,6 +167,70 @@
     return path === "/" || path === "/index.html";
   }
 
+  /* Same website menu as the static sidebars on /home/, /features/, /videos/, /pricing/,
+   * /downloads/ and /about-company/ (same items, order and i18n keys). Home on the global site = /. */
+  var SIDE_NAV = [
+    ["home", "/", "nav_home", "Home"],
+    ["features", "/features/", "nav_features", "Features"],
+    ["videos", "/videos/", "nav_videos", "Videos"],
+    ["pricing", "/pricing/", "nav_pricing", "Pricing"],
+    ["downloads", "/downloads/", "nav_downloads", "Downloads"],
+    ["company", "/about-company/", "nav_company", "About company"]
+  ];
+
+  function sideNavHtml(active) {
+    return '<nav class="pl-side-nav" aria-label="Main">' +
+      SIDE_NAV.map(function (it) {
+        var on = it[0] === active;
+        return '<a href="' + it[1] + '"' + (on ? ' class="is-active" aria-current="page"' : "") +
+          ' data-i18n="' + it[2] + '">' + escapeHtml(tr(it[2], it[3])) + "</a>";
+      }).join("") +
+      "</nav>";
+  }
+
+  /** "Global site" bar (no country in the address). Same markup on / and on the other pages. */
+  function globalBarHtml() {
+    return '<div class="pl-country-chrome-inner">' +
+        '<div class="pl-country-chrome-text">' +
+          '<strong data-i18n="global_site">' + escapeHtml(tr("global_site", "Global site")) + "</strong>" +
+          '<span data-i18n="global_site_hint">' + escapeHtml(tr("global_site_hint", "pocket-ledger.com - pick a country to open that country's site")) + "</span>" +
+        "</div>" +
+        '<a class="pl-country-chrome-link" href="/" data-i18n="choose_country">' + escapeHtml(tr("choose_country", "Choose country")) + "</a>" +
+      "</div>";
+  }
+
+  /** Lets .pl-gate fill the rest of the screen under the bar (no extra scroll). */
+  function syncChromeHeight(bar) {
+    function set() {
+      document.documentElement.style.setProperty("--pl-chrome-h", (bar && bar.offsetHeight ? bar.offsetHeight : 0) + "px");
+    }
+    set();
+    window.addEventListener("resize", set);
+  }
+
+  /** Country picker (/) is the global site: show the Global site bar; its "Choose country" focuses the search. */
+  function injectPickerBar() {
+    if (document.querySelector(".pl-country-chrome")) return;
+    document.documentElement.setAttribute("data-pl-country", "global");
+    var bar = document.createElement("div");
+    bar.className = "pl-country-chrome";
+    bar.setAttribute("role", "region");
+    bar.setAttribute("aria-label", "Country site");
+    bar.innerHTML = globalBarHtml();
+    document.body.insertBefore(bar, document.body.firstChild);
+    var link = bar.querySelector(".pl-country-chrome-link");
+    if (link) {
+      link.addEventListener("click", function (ev) {
+        var input = document.getElementById("plCountrySearch");
+        if (!input) return;
+        ev.preventDefault();
+        try { input.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (_) { input.scrollIntoView(); }
+        try { input.focus({ preventScroll: true }); } catch (_) { input.focus(); }
+      });
+    }
+    syncChromeHeight(bar);
+  }
+
   function renderPicker(root) {
     if (!root) return;
     root.innerHTML =
@@ -174,7 +238,7 @@
         '<header class="pl-gate-head">' +
           '<div class="pl-gate-brand">' +
             '<span class="brand-mark" aria-hidden="true"></span>' +
-            "<div><strong>Pocket Ledger</strong><span data-i18n=\"gate_choose\">Choose your country</span></div>" +
+            "<div><strong>Pocket Ledger</strong></div>" +
           "</div>" +
           '<div class="pl-gate-tools">' +
             '<span data-pl-site-chrome></span>' +
@@ -185,12 +249,7 @@
         "</header>" +
         '<div class="pl-shell pl-gate-shell">' +
           '<aside class="pl-side" aria-label="Website menu">' +
-            '<nav class="pl-side-nav" aria-label="Main">' +
-              '<a href="/videos/" data-i18n="demo">Demo</a>' +
-              '<a href="/downloads/" data-i18n="downloads">Downloads</a>' +
-              '<a href="/about-company/" data-i18n="about">About Us</a>' +
-              '<a href="#features" data-i18n="features">Features</a>' +
-            "</nav>" +
+            sideNavHtml("home") +
           "</aside>" +
           '<div class="pl-content">' +
         '<main class="pl-gate-main">' +
@@ -262,7 +321,8 @@
     });
     root.addEventListener("click", function (ev) {
       var t = ev.target && ev.target.closest ? ev.target.closest("[data-pl-country]") : null;
-      if (!t) return;
+      // Only country cards inside the picker (<html data-pl-country="global"> must not catch menu clicks).
+      if (!t || t === root || !root.contains(t) || !t.hasAttribute("data-pl-live")) return;
       if (t.getAttribute("data-pl-live") === "0") {
         ev.preventDefault();
         return;
@@ -340,14 +400,7 @@
         "</div>";
     } else {
       document.documentElement.setAttribute("data-pl-country", "global");
-      bar.innerHTML =
-        '<div class="pl-country-chrome-inner">' +
-          '<div class="pl-country-chrome-text">' +
-            '<strong data-i18n="global_site">' + escapeHtml(tr("global_site", "Global site")) + "</strong>" +
-            '<span data-i18n="global_site_hint">' + escapeHtml(tr("global_site_hint", "pocket-ledger.com - pick a country to open that country's site")) + "</span>" +
-          "</div>" +
-          '<a class="pl-country-chrome-link" href="/" data-i18n="choose_country">' + escapeHtml(tr("choose_country", "Choose country")) + "</a>" +
-        "</div>";
+      bar.innerHTML = globalBarHtml();
     }
     document.body.insertBefore(bar, document.body.firstChild);
     rewriteHomeLinks(rec);
@@ -445,8 +498,12 @@
   maybeRedirectApexPicker();
   document.addEventListener("DOMContentLoaded", function () {
     var mount = document.getElementById("plCountryGate");
-    if (mount) renderPicker(mount);
-    else injectChrome();
+    if (mount) {
+      renderPicker(mount);
+      injectPickerBar();
+    } else {
+      injectChrome();
+    }
     bindCountryAppLinks();
     applyCountryTermsNote();
     var tries = 0;

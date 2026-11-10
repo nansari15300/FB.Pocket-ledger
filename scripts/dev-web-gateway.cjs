@@ -8,6 +8,7 @@
  */
 const fs = require("fs");
 const http = require("http");
+const https = require("https");
 const net = require("net");
 const os = require("os");
 const path = require("path");
@@ -274,11 +275,18 @@ function proxyHttp(req, res) {
 }
 
 /**
- * /pb/** -> Pocket Ledger Server (PocketBase) on this PC, prefix stripped.
- * Lets phones / port-forwarded 3000 reach PocketBase without opening 8090.
+ * /pb/** -> the one Pocket Ledger Server (PocketBase), prefix stripped.
+ * Permanent default is the Server PC, reached at https://np.pocket-ledger.com
+ * (Cloudflare tunnel pl-sub on ServerWin10 -> 127.0.0.1:8090). Do not point this
+ * at a PocketBase on this laptop. Optional PL_PB_PROXY_TARGET overrides the URL
+ * (e.g. start-dev-2000.cmd uses the local TLS forwarder on 127.0.0.1:18090).
  * Streams both ways (SSE /pb/api/realtime included): no buffering, no timeouts.
  */
-const pbTarget = new URL(process.env.PL_PB_PROXY_TARGET || "http://127.0.0.1:8090");
+const DEFAULT_PB_PROXY_TARGET = "https://np.pocket-ledger.com";
+const pbTarget = new URL(process.env.PL_PB_PROXY_TARGET || DEFAULT_PB_PROXY_TARGET);
+const pbIsHttps = pbTarget.protocol === "https:";
+const pbPort = Number(pbTarget.port || (pbIsHttps ? 443 : 80));
+const pbRequest = pbIsHttps ? https.request : http.request;
 
 function isPbPath(urlPath) {
   return urlPath === "/pb" || urlPath.startsWith("/pb/");
@@ -287,20 +295,24 @@ function isPbPath(urlPath) {
 function proxyPocketBase(req, res) {
   const upstreamPath = (req.url || "/").replace(/^\/pb(?=\/|\?|$)/, "") || "/";
   const headers = { ...req.headers, host: pbTarget.host };
-  const upstream = http.request(
-    {
-      hostname: pbTarget.hostname,
-      port: Number(pbTarget.port || 80),
-      path: upstreamPath.startsWith("/") ? upstreamPath : "/" + upstreamPath,
-      method: req.method,
-      headers,
-    },
-    (pres) => {
-      res.writeHead(pres.statusCode || 502, pres.headers);
-      if (typeof res.flushHeaders === "function") res.flushHeaders();
-      pres.pipe(res);
-    }
-  );
+  // Incoming HTTP/2 pseudo-headers and a forwarded Host would break TLS SNI / vhost.
+  for (const k of Object.keys(headers)) {
+    if (k.startsWith(":")) delete headers[k];
+  }
+  delete headers["x-forwarded-host"];
+  const opts = {
+    hostname: pbTarget.hostname,
+    port: pbPort,
+    path: upstreamPath.startsWith("/") ? upstreamPath : "/" + upstreamPath,
+    method: req.method,
+    headers,
+  };
+  if (pbIsHttps) opts.servername = pbTarget.hostname;
+  const upstream = pbRequest(opts, (pres) => {
+    res.writeHead(pres.statusCode || 502, pres.headers);
+    if (typeof res.flushHeaders === "function") res.flushHeaders();
+    pres.pipe(res);
+  });
   // long-lived SSE: never time out either side
   upstream.setTimeout(0);
   if (req.socket) req.socket.setTimeout(0);

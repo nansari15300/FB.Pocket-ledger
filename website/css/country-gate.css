@@ -486,3 +486,6 @@ html[data-theme="dark"] .pl-country-chrome {
 html.dark .pl-gate-head { border-bottom-color: #5a5a5a; }
 html[data-theme="gray"] .pl-gate-head { border-bottom-color: #bdbdbd; }
 html[data-theme="dark"] .pl-gate-head { border-bottom-color: #273142; }
+
+/* / shows the Global site bar above .pl-gate: fill only the rest of the screen (--pl-chrome-h set by country-gate.js). */
+.pl-gate { min-height: calc(100vh - var(--pl-chrome-h, 0px)); }
