@@ -53,6 +53,7 @@ export const connectIpsDetector: ReceiptFormatDetector = {
       referenceId: field(txn, "Reference Id"),
       remarks: field(txn, "Remarks"),
       particulars: field(txn, "Particulars"),
+      status: field(txn, "Debit Status") || field(txn, "Credit Status"),
       sender: side(customer),
       beneficiary: side(beneficiary),
     };

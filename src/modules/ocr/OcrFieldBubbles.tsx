@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { OcrSuggestion } from "./OcrSuggestionsDialog";
+import { useOcrPrefs } from "./prefs";
 
 export const OCR_BUBBLE_Z_CN = "z-[85]";
 const RING = ["ring-2", "ring-pink-500", "ring-offset-1", "rounded-md", "transition-shadow"];
@@ -29,7 +30,8 @@ export function ocrFieldForSuggestion(id: string): string {
   if (id === "disc") return "discount";
   if (id.startsWith("amount")) return "amount";
   if (id === "billno") return "bill-no";
-  if (id === "account") return "account";
+  if (id === "account" || id.startsWith("account-")) return "account";
+  if (id === "cannot-detect" || id === "status-failed" || id === "duplicate-ref") return "voucher-type";
   return "lines"; // lines, create-item-*, tds, drcr
 }
 
@@ -157,18 +159,24 @@ function avoidOverlap(p: Pos, el: HTMLElement, anchor: HTMLElement | null, aimSt
   const hit = (l: number, t: number) => others.find((r) => l < r.right + M && l + w > r.left - M && t < r.bottom + M && t + h > r.top - M);
   let l = p.left + o.x;
   let t = p.top + o.y;
-  for (let guard = 0; guard < 8; guard++) {
+  const origL = l, origT = t;
+  for (let guard = 0; guard < 16; guard++) {
     const r = hit(l, t);
     if (!r) break;
+    const step = 12 + guard * 8; // push farther as needed so leaders can grow
     if (p.side === "top" || p.side === "bottom") {
       const toLeft = r.left - M - w;
       const toRight = r.right + M;
-      if (toLeft >= 8) l = toLeft;
+      const preferLeft = Math.abs((toLeft + w / 2) - (origL + w / 2)) <= Math.abs((toRight + w / 2) - (origL + w / 2));
+      if (preferLeft && toLeft >= 8) l = toLeft;
       else if (toRight + w <= vw - 8) l = toRight;
-      else t = p.side === "top" ? r.top - M - h : r.bottom + M;
+      else if (toLeft >= 8) l = toLeft;
+      else {
+        t = p.side === "top" ? Math.max(8, r.top - M - h - step) : Math.min(vh - h - 8, r.bottom + M + step);
+      }
     } else {
-      const up = r.top - M - h;
-      t = up >= 8 ? up : r.bottom + M;
+      const up = r.top - M - h - step;
+      t = up >= 8 ? up : r.bottom + M + step;
     }
     l = Math.max(8, Math.min(l, vw - w - 8));
     t = Math.max(8, Math.min(t, vh - h - 8));
@@ -183,16 +191,80 @@ function avoidOverlap(p: Pos, el: HTMLElement, anchor: HTMLElement | null, aimSt
   }
 }
 
-function Tail({ side, at, border }: { side: Side; at: number; border: string }) {
-  // Rotated square with the same solid bg + border; sits half outside the bubble edge facing the field.
-  const base: React.CSSProperties = { position: "absolute", width: 14, height: 14, background: "#ffffff", transform: "rotate(45deg)", zIndex: 1 };
-  const b = `1px solid ${border}`;
-  const st: React.CSSProperties =
-    side === "top" ? { ...base, bottom: -7, left: at - 7, borderRight: b, borderBottom: b }
-    : side === "bottom" ? { ...base, top: -7, left: at - 7, borderLeft: b, borderTop: b }
-    : side === "right" ? { ...base, left: -7, top: at - 7, borderLeft: b, borderBottom: b }
-    : { ...base, right: -7, top: at - 7, borderRight: b, borderTop: b };
-  return <span aria-hidden style={st} />;
+type Leader = { x1: number; y1: number; x2: number; y2: number };
+
+/** Point on the bubble edge facing the field, then a line to the field centre. Length grows as the bubble is pushed away. */
+function leaderPoints(p: Pos, el: HTMLElement, anchor: HTMLElement | null, host: HTMLElement | null): Leader | null {
+  if (!anchor) return null;
+  const o = hostOffset(host);
+  const w = el.offsetWidth || W;
+  const h = el.offsetHeight || 120;
+  const br = { left: p.left + o.x, top: p.top + o.y, w, h };
+  const ar = anchor.getBoundingClientRect();
+  const cx = ar.left + ar.width / 2;
+  const cy = ar.top + ar.height / 2;
+  const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(v, b));
+  let x1: number, y1: number;
+  if (p.side === "top") { x1 = clamp(cx, br.left + 16, br.left + br.w - 16); y1 = br.top + br.h; }
+  else if (p.side === "bottom") { x1 = clamp(cx, br.left + 16, br.left + br.w - 16); y1 = br.top; }
+  else if (p.side === "right") { x1 = br.left; y1 = clamp(cy, br.top + 16, br.top + br.h - 16); }
+  else { x1 = br.left + br.w; y1 = clamp(cy, br.top + 16, br.top + br.h - 16); }
+  return { x1: x1 - o.x, y1: y1 - o.y, x2: cx - o.x, y2: cy - o.y };
+}
+
+function LeaderLine({ line, color }: { line: Leader; color: string }) {
+  const dx = line.x2 - line.x1, dy = line.y2 - line.y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  // short arrowhead at the field
+  const ah = Math.max(6, Math.min(10, len / 6));
+  const bx = line.x2 - ux * ah, by = line.y2 - uy * ah;
+  const px = -uy * (ah * 0.45), py = ux * (ah * 0.45);
+  const minX = Math.min(line.x1, line.x2) - 12, minY = Math.min(line.y1, line.y2) - 12;
+  const width = Math.abs(dx) + 24, height = Math.abs(dy) + 24;
+  return (
+    <svg aria-hidden width={width} height={height} viewBox={`${minX} ${minY} ${width} ${height}`}
+      style={{ position: "absolute", left: minX, top: minY, overflow: "visible", pointerEvents: "none", zIndex: 0 }}>
+      <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke={color} strokeWidth="1.75" strokeLinecap="round" />
+      <polygon points={`${line.x2},${line.y2} ${bx + px},${by + py} ${bx - px},${by - py}`} fill={color} />
+    </svg>
+  );
+}
+
+/** Filled speech-bubble tail: wide base on the popup edge, quadratic sides, point at the field. */
+function BubbleTail({ line, color, fill, side }: { line: Leader; color: string; fill: string; side: Side }) {
+  const baseW = 16;
+  const inset = 4;
+  const inward = side === "top" ? { x: 0, y: -1 } : side === "bottom" ? { x: 0, y: 1 } : side === "right" ? { x: 1, y: 0 } : { x: -1, y: 0 };
+  const along = side === "top" || side === "bottom" ? { x: 1, y: 0 } : { x: 0, y: 1 };
+  const hx = baseW / 2;
+  const { x1, y1, x2, y2 } = line;
+  const b1x = x1 + along.x * hx + inward.x * inset;
+  const b1y = y1 + along.y * hx + inward.y * inset;
+  const b2x = x1 - along.x * hx + inward.x * inset;
+  const b2y = y1 - along.y * hx + inward.y * inset;
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  const px = -uy, py = ux;
+  const mid = Math.max(10, len * 0.42);
+  const curve = Math.min(18, Math.max(6, len * 0.12));
+  const c1x = x1 + ux * mid + px * curve;
+  const c1y = y1 + uy * mid + py * curve;
+  const c2x = x1 + ux * mid - px * curve;
+  const c2y = y1 + uy * mid - py * curve;
+  const d = `M ${b1x} ${b1y} Q ${c1x} ${c1y} ${x2} ${y2} Q ${c2x} ${c2y} ${b2x} ${b2y} Z`;
+  const xs = [b1x, b2x, x2, c1x, c2x];
+  const ys = [b1y, b2y, y2, c1y, c2y];
+  const pad = 14;
+  const minX = Math.min(...xs) - pad, minY = Math.min(...ys) - pad;
+  const width = Math.max(...xs) - minX + pad, height = Math.max(...ys) - minY + pad;
+  return (
+    <svg aria-hidden width={width} height={height} viewBox={`${minX} ${minY} ${width} ${height}`}
+      style={{ position: "absolute", left: minX, top: minY, overflow: "visible", pointerEvents: "none", zIndex: 0 }}>
+      <path d={d} fill={fill} stroke={color} strokeWidth="1.25" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 function BubbleView({
@@ -211,7 +283,9 @@ function BubbleView({
   /** n-th bubble resolving to the same anchor element -> stacked, not drawn on top of each other. */
   stack?: number;
 }) {
+  const connectorStyle = useOcrPrefs().connectorStyle === "line" ? "line" : "tail";
   const [pos, setPos] = useState<Pos | null>(null);
+  const [leader, setLeader] = useState<Leader | null>(null);
   const [el, setEl] = useState<HTMLDivElement | null>(null);
 
   const update = useCallback(() => {
@@ -223,8 +297,11 @@ function BubbleView({
       const dy = stack * ((el?.offsetHeight || 120) + 10);
       p.top += p.side === "top" ? -dy : dy;
     }
-    if (p && el) avoidOverlap(p, el, a ?? fallbackAnchor(), b.key === "lines");
+    const anchor = a ?? fallbackAnchor();
+    if (p && el) avoidOverlap(p, el, anchor, b.key === "lines");
     setPos(p);
+    if (p && el) setLeader(leaderPoints(p, el, a, el.parentElement?.parentElement ?? null));
+    else setLeader(null);
   }, [b.key, b.anchor, el]);
 
   useLayoutEffect(() => {
@@ -277,7 +354,9 @@ function BubbleView({
         zIndex: 2147483000,
       }}
     >
-      <Tail side={pos?.side ?? "top"} at={pos?.tail ?? 24} border={border} />
+      {leader && pos ? (connectorStyle === "line"
+        ? <LeaderLine line={{ x1: leader.x1 - pos.left, y1: leader.y1 - pos.top, x2: leader.x2 - pos.left, y2: leader.y2 - pos.top }} color={border} />
+        : <BubbleTail line={{ x1: leader.x1 - pos.left, y1: leader.y1 - pos.top, x2: leader.x2 - pos.left, y2: leader.y2 - pos.top }} color={border} fill="#ffffff" side={pos.side} />) : null}
       <div className="relative" style={{ zIndex: 2, background: "#ffffff" }}>
         <div className="flex items-start gap-2">
           <p className="min-w-0 flex-1 font-medium leading-snug">

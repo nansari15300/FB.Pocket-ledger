@@ -62,3 +62,4 @@ Stack:
 | Trxn Table Master | transaction table: `TransactionsTable.tsx`, `transactionTableShared.tsx`, `ledgerUnifiedContentWidth.ts`, `ledgerHeaderChrome.ts`, `globals.css` lines ~8891–8959 |
 | Animation Master | animations |
 | Firebase Master | Firebase हटाकर PocketBase पर लाना |
+| ACR Master | ACR/OCR module only (`src/modules/ocr/`, `src/lib/ocr/`): voucher auto-fill from attached documents |

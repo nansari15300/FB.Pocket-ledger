@@ -1,0 +1,13 @@
+PRATIK TRADE CENTER
+TAX INVOICE
+Invoice No: SI-02833
+Nepali Date: 15/07/2083
+PAN: 123456789
+Buyer / Party Name: New Parsa Engineering Workshop
+Mode of Payment: Credit
+Particulars               Qty    Rate      Amount
+Cement OPC                100    1400    140000.00
+...
+Taxable Amount                       479694.80
+VAT 13%                               62360.32
+Grand Total                          542055.12

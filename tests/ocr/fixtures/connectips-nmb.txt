@@ -1,0 +1,22 @@
+connectIPS
+Payment Transaction Details
+Transaction Details
+Transaction Id: 761083772
+Debit Status: SUCCESS
+Credit Status: SUCCESS
+Transaction Amount: NPR 120,000.00
+Charge Amount: NPR 8.00
+Transaction Date: 06-Nov-2026 11:03:29
+Reference Id: ACCOUNTFT:New parsa Egeneering
+Remarks:
+Particulars: Butwal Staaf Kharch
+Customer Account Details
+Bank Name: 2081-NMB Bank Limited
+Bank Branch: Inaruwa
+Account No.: 208***010
+Beneficiary Details
+Bank Name: 1671-Muktinath Bikas Bank
+Bank Branch: Adarshanagar
+Account No.: 167***002
+Account Name.: Dinesh sah Kanu
+For any further information please contact NMB Bank Limited

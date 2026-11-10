@@ -1,0 +1,14 @@
+Prabhu Bank
+PAYMENT RECEIPT
+Reference Code: PRB20261106083601
+Sender's Name: ****** DHAMI
+Sender's Account: 054##68800011
+Receiver's Name: ******* SHRESTHA
+Receiver's Account: 012********089
+Date/Time: 06 Nov 2026 08:36 AM
+Service: INTERNAL FUND TRANSFER
+Amount: NPR 68,710.00
+Initiator: 9800985312
+Remarks: jasta ra cement ko
+Channel: Online
+Status: SUCCESS

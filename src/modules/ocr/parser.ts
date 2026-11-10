@@ -6,7 +6,7 @@
  * headers ("Address : Inaruwa      Nepali Date : 2083/07/01") become separate segments, so a label's
  * value always stops at the next column.
  */
-import { bsToAd, getBSMonthDays } from "@/lib/bs-date";
+import { parseDocDates, defaultVoucherDateWindow } from "@/lib/ocr/dates";
 import { amountsInLine, fixDigitConfusions, normalizeName, normalizeOcrLine, parseStrictAmount } from "./normalize";
 import { bestUniqueMatch, nameScore, namesOf } from "./fuzzy";
 import { devanagariToRoman, nameSkeleton } from "./translit";
@@ -145,44 +145,10 @@ function valueAfter(segs: Seg[], i: number, re: RegExp): string {
 type DateCand = { date: Date | null; ambiguous: boolean };
 
 function dateCandidates(text: string): DateCand[] {
-  const out: DateCand[] = [];
-  const now = new Date();
-  const min = new Date(now.getTime() - 400 * 864e5);
-  const max = new Date(now.getTime() + 7 * 864e5);
-  const inRange = (d: Date) => d >= min && d <= max;
-  let m: RegExpExecArray | null;
-  const ymd = /\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/g;
-  while ((m = ymd.exec(text))) {
-    const y = +m[1], mo = +m[2], d = +m[3];
-    if (mo < 1 || mo > 12 || d < 1) continue;
-    if (y >= 2070 && y <= 2099) {
-      const days = getBSMonthDays(y)?.[mo - 1];
-      if (!days || d > days) continue;
-      try {
-        const ad = bsToAd({ y, m: mo, d });
-        out.push({ date: inRange(ad) ? ad : null, ambiguous: !inRange(ad) });
-      } catch {
-        /* out of BS table */
-      }
-    } else if (y >= 2010 && y <= 2045) {
-      const ad = new Date(y, mo - 1, d, 0, 0, 0, 0);
-      if (ad.getMonth() !== mo - 1) continue;
-      out.push({ date: inRange(ad) ? ad : null, ambiguous: !inRange(ad) });
-    }
-  }
-  const dmy = /\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})\b/g;
-  while ((m = dmy.exec(text))) {
-    const a = +m[1], b = +m[2], y = +m[3];
-    if (y < 2010 || y > 2045) continue;
-    if (a <= 12 && b <= 12 && a !== b) {
-      out.push({ date: null, ambiguous: true });
-      continue;
-    }
-    const ad = new Date(y, b - 1, a, 0, 0, 0, 0);
-    if (ad.getMonth() !== b - 1) continue;
-    out.push({ date: inRange(ad) ? ad : null, ambiguous: !inRange(ad) });
-  }
-  return out;
+  return parseDocDates(text, defaultVoucherDateWindow()).map((x) => {
+    const okDate = x.date && !Number.isNaN(x.date.getTime()) ? x.date : null;
+    return { date: okDate, ambiguous: x.ambiguous };
+  });
 }
 
 /* --------------------------------- AMOUNTS -------------------------------- */

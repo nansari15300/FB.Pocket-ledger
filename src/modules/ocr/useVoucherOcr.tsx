@@ -31,10 +31,12 @@ import type { OcrRawResult } from "./types";
 import { isOcrSelectableParty } from "./types";
 import { resolveOcrItemUnit } from "./extras";
 import { billVatPercent, cleanItemName, partyNamePrefill, findVat13, isOwnCompany, otherPans, pickLedgerAccount } from "./extras";
+import { getBlobFromLocalFileRef, isLocalFileRef } from "@/lib/localPendingFiles";
+import { fetchPbAttachmentBlob } from "@/lib/pocketbaseData/pbAttachments";
 import { useCompany } from "@/hooks/useCompany";
 import { useVouchers } from "@/hooks/useVouchers";
-import { detectReceipt, type ReceiptDetection } from "@/lib/ocr/receiptDetect";
-import { accountDisplayLabel, buildPaymentOutFill, pickChargeAccount, receiptNarration } from "@/lib/ocr/receiptDetect/fillPaymentOut";
+import { detectReceipt, AUTO_SWITCH_MIN_CONF, type ReceiptDetection } from "@/lib/ocr/receiptDetect";
+import { accountDisplayLabel, buildMoneyVoucherFill, pickChargeAccount, receiptNarration, suggestMaskedPayees } from "@/lib/ocr/receiptDetect/fillPaymentOut";
 import { normalizeName } from "./normalize";
 import type { OcrFormAdapter } from "./adapters";
 import type { OcrItemLike, OcrParsedBill, OcrPartyLike } from "./types";
@@ -86,20 +88,47 @@ function isEmptyVal(v: unknown): boolean {
   return false;
 }
 
-async function loadFirstFile(f: File | string): Promise<{ blob: Blob; mime: string } | null> {
+async function loadFirstFile(f: File | string, companyId?: string | null): Promise<{ blob: Blob; mime: string } | null> {
   if (typeof f !== "string") return { blob: f, mime: f.type };
+  const url = f.trim();
+  const asSrc = (blob: Blob | null): { blob: Blob; mime: string } | null => {
+    if (!blob || blob.size === 0) return null;
+    const mime = blob.type || (/\.pdf(\?|$)/i.test(url) ? "application/pdf" : "image/jpeg");
+    return { blob, mime };
+  };
   try {
-    const r = await fetch(f);
-    if (!r.ok) return null;
-    const blob = await r.blob();
-    return { blob, mime: blob.type || (/\.pdf(\?|$)/i.test(f) ? "application/pdf" : "image/jpeg") };
+    if (isLocalFileRef(url)) {
+      return asSrc(await getBlobFromLocalFileRef(url, companyId ? { companyId } : undefined));
+    }
+    if (url.startsWith("pbatt:")) {
+      return asSrc(await fetchPbAttachmentBlob(url));
+    }
+    if (/^(https?:|data:|blob:)/i.test(url)) {
+      const r = await fetch(url);
+      if (!r.ok) return null;
+      return asSrc(await r.blob());
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
 /** Bump when parser/engine logic changes: shown in Show OCR text to prove the browser runs the new bundle. */
-export const OCR_BUILD = "2026-10-21.5";
+export const OCR_BUILD = "2026-11-10.2";
+
+const MONEY_TYPES = ["payment_out", "payment_in", "direct_expense", "direct_income", "contra"] as const;
+const ALL_TYPE_CHOICES = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"] as const;
+
+function findDuplicateByRef(vouchers: readonly any[] | undefined, txnId?: string, referenceId?: string): { id: string; voucherNumber?: string; type?: string } | null {
+  const needles = [txnId, referenceId].map((s) => String(s ?? "").trim()).filter((s) => s.length >= 6);
+  if (!needles.length) return null;
+  for (const v of vouchers ?? []) {
+    const hay = `${v?.narration ?? ""} ${v?.reference ?? ""} ${v?.referenceId ?? ""} ${v?.txnId ?? ""} ${v?.billNo ?? ""}`;
+    if (needles.some((n) => hay.includes(n))) return { id: String(v.id ?? ""), voucherNumber: v.voucherNumber ?? v.voucherNo, type: v.type };
+  }
+  return null;
+}
 
 export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const planAllowed = useOcrPlanAllowed();
@@ -107,9 +136,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const { company: profileCompany } = useCompany();
   const ownRef = useRef<{ name: string | null; pan: string | null }>({ name: null, pan: null });
   // Bank-receipt masters (local in-memory context, no Firestore read): own Bank/Cash, parties, staff
-  const { processedAccounts: vAccounts, processedParties: vParties, processedStaff: vStaff, processedExpenseAccounts: vExp } = useVouchers();
-  const mastersRef = useRef({ accounts: vAccounts, parties: vParties, staff: vStaff, expense: vExp });
-  mastersRef.current = { accounts: vAccounts, parties: vParties, staff: vStaff, expense: vExp };
+  const { processedAccounts: vAccounts, processedParties: vParties, processedStaff: vStaff, processedExpenseAccounts: vExp, vouchers: vVouchers } = useVouchers();
+  const mastersRef = useRef({ accounts: vAccounts, parties: vParties, staff: vStaff, expense: vExp, vouchers: vVouchers });
+  mastersRef.current = { accounts: vAccounts, parties: vParties, staff: vStaff, expense: vExp, vouchers: vVouchers };
   {
     const pc = profileCompany as { name?: string; pan?: string; panNumber?: string } | null | undefined;
     ownRef.current = { name: pc?.name || o.ownName || null, pan: pc?.pan || pc?.panNumber || o.ownPan || null };
@@ -202,7 +231,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           raw = reuse.raw; // voucher-type switch: no second OCR, re-parse the same text for this form
         } else {
           const orig = takeOcrOriginal(first);
-          const src = orig ? { blob: orig as Blob, mime: orig.type } : await loadFirstFile(first);
+          const src = orig ? { blob: orig as Blob, mime: orig.type } : await loadFirstFile(first, opt.companyId);
           if (!src) throw new Error("Attachment could not be read for OCR");
           inputNoteRef.current = `${orig ? "ORIGINAL upload" : "stored attachment (compressed)"} ${src.mime} ${(src.blob.size / 1024).toFixed(0)} KB`;
           if (process.env.NODE_ENV !== "production") {
@@ -211,128 +240,225 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           raw = await runOcrOnFile(src.blob, src.mime);
         }
         lastRawRef.current = raw;
-        if (raw.meanConfidence < 55) {
-          setDebugInfo({ text: raw.text, meanConfidence: raw.meanConfidence, reasons: ["Average confidence below 55% - nothing filled"], filled: [], missing: [] });
-          toast.error("OCR: image is not clear", { id: tId, description: "Nothing was filled. Retake a sharper, well-lit photo.", duration: 5000, position: "top-right" });
-          return;
+        const lowConf = raw.meanConfidence < 55;
+        if (lowConf) {
+          toast.message("OCR: image is not very clear", { id: tId, description: "Please confirm the highlighted fields. Nothing will be auto-saved.", duration: 5000, position: "top-right" });
         }
         const own = ownRef.current;
-        /* ---------- Bank receipt (connectIPS etc.): detect + suggest voucher type only; no field filling yet ---------- */
+        /* ---------- Money documents (connectIPS, Prabhu, generic bank, handwritten): detect + classify + fill ---------- */
         {
           const M = mastersRef.current;
           const rc: ReceiptDetection = detectReceipt(`${raw.text}\n${raw.altText ?? ""}`, {
-            ownAccounts: (M.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType })),
+            ownAccounts: (M.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType, branch: (a as { branch?: string }).branch })),
             parties: (M.parties ?? []).filter((p) => !(p as { isDeleted?: boolean }).isDeleted).map((p) => ({ id: p.id, name: String((p as { name?: string }).name ?? ""), aliasName: (p as { aliasName?: string }).aliasName })),
             staff: (M.staff ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => ({ id: x.id, name: String((x as { name?: string }).name ?? "") })),
             companyName: own.name ?? undefined,
           });
-          if (rc.format) {
+          if (rc.format && rc.format !== "tax_invoice") {
             const cur = opt.currentVoucherType ?? opt.adapter.voucherType;
-            const types: string[] = rc.voucherType ? [rc.voucherType] : rc.candidates;
+            const highUnique = !!rc.voucherType && rc.typeConfidence >= AUTO_SWITCH_MIN_CONF;
+            const types: string[] = rc.voucherType ? [rc.voucherType] : (rc.candidates.length ? rc.candidates : [...ALL_TYPE_CHOICES]);
             const m = rc.master;
             const masterTxt = m.kind ? `${m.kind === "own_bank" ? "own bank" : m.kind}: ${m.name ?? "-"} (${Math.round(m.score * 100)}%)` : "no master matched";
-            const why = `${rc.format} receipt; ${rc.reason}; ${masterTxt}${rc.payeeType === "staff" ? "; payee type Staff" : ""}`;
-            /* Payment tab only (not Direct Expense): fill payee / from-account / amount / charge / date / narration */
+            const why = `${rc.format} document; ${rc.reason}; ${masterTxt}${rc.payeeType === "staff" ? "; payee type Staff" : ""}`;
+            const ownAcc = (M.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType, branch: (a as { branch?: string }).branch }));
+            const parties = (M.parties ?? []).filter((p) => isOcrSelectableParty(p as never)).map((p) => ({ id: p.id, name: String((p as { name?: string }).name ?? ""), aliasName: (p as { aliasName?: string }).aliasName }));
+            const staff = (M.staff ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => ({ id: x.id, name: String((x as { name?: string }).name ?? "") }));
+            const taxes = (opt.taxes ?? []).map((tx) => ({ id: tx.id, name: String(tx.name ?? "") }));
             const rFilled: string[] = [];
             const rMissing: string[] = [];
             const rExtra: OcrSuggestion[] = [];
-            if (rc.parsed && opt.adapter.voucherType === "payment_out" && cur === "payment_out") {
+            const direction = rc.voucherType === "payment_in" || rc.voucherType === "direct_income" ? "payment_in"
+              : rc.voucherType === "contra" ? "contra"
+              : "payment_out";
+            const tabIsMoney = (MONEY_TYPES as readonly string[]).includes(cur);
+            const tabMatches = !rc.voucherType || sameVoucherBucket(cur, rc.voucherType) || cur === rc.voucherType;
+            const canFill = !!rc.parsed && tabIsMoney && tabMatches;
+            const fillSafeOnly = !!rc.parsed && tabIsMoney && !rc.voucherType; // date/amount/narration only
+
+            const pf = rc.parsed ? buildMoneyVoucherFill(rc.parsed, canFill ? direction : "payment_out", { ownAccounts: ownAcc, parties, staff, taxes }) : null;
+            const allowWrite = !lowConf;
+
+            if (pf && (canFill || fillSafeOnly)) {
               const F = opt.form;
-              const pf = buildPaymentOutFill(rc.parsed, {
-                ownAccounts: (M.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType })),
-                parties: (M.parties ?? []).filter((p) => isOcrSelectableParty(p as never)).map((p) => ({ id: p.id, name: String((p as { name?: string }).name ?? ""), aliasName: (p as { aliasName?: string }).aliasName })),
-                staff: (M.staff ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => ({ id: x.id, name: String((x as { name?: string }).name ?? "") })),
-                taxes: (opt.taxes ?? []).map((t) => ({ id: t.id, name: String(t.name ?? "") })),
-              });
-              const idPath = { party: "partyId", staff: "staffId", tax: "taxAccountId" } as const;
-              if (pf.payee) {
-                const path = idPath[pf.payee.payeeType];
-                if (canWrite(path) && canWrite("payeeType")) {
-                  if (F.getValues("payeeType") !== pf.payee.payeeType) write("payeeType", pf.payee.payeeType);
-                  write(path, pf.payee.id);
-                  rFilled.push(`Payee (${pf.payee.payeeType}: ${pf.payee.name})`);
+              const A = opt.adapter;
+              if (canFill && direction !== "contra") {
+                const idPath = { party: A.party?.path ?? "partyId", staff: "staffId", tax: "taxAccountId" } as const;
+                if (pf.payee) {
+                  const path = idPath[pf.payee.payeeType];
+                  if (allowWrite && canWrite(path) && canWrite("payeeType")) {
+                    if (F.getValues("payeeType") !== pf.payee.payeeType) write("payeeType", pf.payee.payeeType);
+                    write(path, pf.payee.id);
+                    rFilled.push(`Payee (${pf.payee.payeeType}: ${pf.payee.name})`);
+                  } else if (!allowWrite) {
+                    rExtra.push({ id: "find-party", label: `Use ${pf.payee.payeeType} ${pf.payee.name}`, value: pf.payee.name, confidence: pf.payee.score, reason: "Low OCR confidence — confirm payee", apply: () => { write("payeeType", pf.payee!.payeeType); write(path, pf.payee!.id); } });
+                  }
+                } else {
+                  if (pf.payeeName) rMissing.push("Party / payee");
+                  if (pf.payeeName) {
+                    const nm = pf.payeeName;
+                    const unsure = pf.payeeUnsure ?? suggestMaskedPayees(nm, { parties, staff });
+                    for (const u of unsure) {
+                      rExtra.push({
+                        id: `account-payee-${u.id}`, label: `Use ${u.payeeType} ${u.name}?`, value: `${nm} (masked / surname only)`, confidence: 0.6,
+                        reason: "Surname-only match — not auto-filled",
+                        apply: () => { write("payeeType", u.payeeType === "tax" ? "tax" : u.payeeType); write(idPath[u.payeeType], u.id); },
+                      });
+                    }
+                    const bn = direction === "payment_in" ? rc.parsed!.sender : rc.parsed!.beneficiary;
+                    rExtra.push({
+                      id: "create-party", label: "Create new party", value: nm, confidence: 0.8,
+                      reason: `Counter-party "${nm}" matches no party / staff / tax payee — opens Create Party prefilled; you confirm Save`, deferred: true,
+                      apply: () => setCreatePrefill({ ...partyNamePrefill(nm), pan: "", phone: rc.parsed!.initiatorPhone ?? "", email: "", address: "", accountTypeId: PARTY_SYSTEM_CREDITORS_ID, extra: [bn.accountMasked && `Bank A/c: ${bn.accountMasked}`, bn.bankName, bn.branch].filter(Boolean).join(" | ") }),
+                    });
+                    rExtra.push({ id: "find-party", label: "Pick an existing account instead", value: "search by name", deferred: true, apply: () => setFindOpen(true) });
+                  }
                 }
-              } else {
-                rMissing.push("Party / payee");
-                if (pf.payeeName) {
-                  const nm = pf.payeeName;
-                  const bn = rc.parsed.beneficiary;
-                  rExtra.push({
-                    id: "create-party", label: "Create new party", value: nm, confidence: 0.8,
-                    reason: `Beneficiary "${nm}" matches no party / staff / tax payee - opens Create Party prefilled; you confirm Save`, deferred: true,
-                    apply: () => setCreatePrefill({ ...partyNamePrefill(nm), pan: "", phone: "", email: "", address: "", accountTypeId: PARTY_SYSTEM_CREDITORS_ID, extra: [bn.accountMasked && `Bank A/c: ${bn.accountMasked}`, bn.bankName, bn.branch].filter(Boolean).join(" | ") }),
+              }
+              if (canFill) {
+                const accPath = direction === "contra" ? (A.fromAccountPath ?? "fromAccountId") : (A.accountPath ?? "accountId");
+                const fromHit = pf.from;
+                if (!("candidates" in fromHit)) {
+                  if (allowWrite && canWrite(accPath)) { write(accPath, fromHit.id); rFilled.push(`From: ${fromHit.name}`); }
+                  else if (!allowWrite) rExtra.push({ id: "account", label: "Bank / cash account", value: fromHit.name, reason: "Low OCR confidence — confirm account", apply: () => write(accPath, fromHit.id) });
+                } else {
+                  rMissing.push(`Bank / cash account (${fromHit.reason})`);
+                  const fromIds = fromHit.candidates;
+                  (fromHit.candidateNames ?? []).forEach((name, i) => {
+                    const id = fromIds[i];
+                    if (id) rExtra.push({ id: `account-${id}`, label: `Use ${name}`, value: name, reason: fromHit.reason, apply: () => write(accPath, id) });
                   });
-                  rExtra.push({ id: "find-party", label: "Pick an existing account instead", value: "search by name", deferred: true, apply: () => setFindOpen(true) });
+                }
+                if (direction === "contra" && pf.to) {
+                  const toHit = pf.to;
+                  const toPath = A.toAccountPath ?? "toAccountId";
+                  if (!("candidates" in toHit)) {
+                    if (allowWrite && canWrite(toPath)) { write(toPath, toHit.id); rFilled.push(`To: ${toHit.name}`); }
+                    else if (!allowWrite) rExtra.push({ id: `account-to`, label: "To account", value: toHit.name, apply: () => write(toPath, toHit.id) });
+                  } else {
+                    rMissing.push(`To account (${toHit.reason})`);
+                    const toIds = toHit.candidates;
+                    (toHit.candidateNames ?? []).forEach((name, i) => {
+                      const id = toIds[i];
+                      if (id) rExtra.push({ id: `account-${id}`, label: `Use ${name} (to)`, value: name, reason: toHit.reason, apply: () => write(toPath, id) });
+                    });
+                  }
                 }
               }
-              if (pf.from.ok) {
-                if (canWrite("accountId")) { write("accountId", pf.from.id); rFilled.push(`From: ${pf.from.name}`); }
-              } else rMissing.push(`Bank / cash account (${pf.from.reason})`);
-              /* Party row amount = `payeeAmount`; form derives top `amount` (Amount Paid) = payeeAmount + charge. */
-              if (pf.amount && canWrite("payeeAmount")) { write("payeeAmount", pf.amount); rFilled.push(`Amount ${pf.amount}`); }
-              if (pf.amount && canWrite("amount")) write("amount", pf.amount + (pf.charge ?? 0));
-              if (pf.date && canWrite("date")) { write("date", pf.date); rFilled.push("Date"); }
-              if (pf.charge) {
-                if (canWrite("otherChargeAmount")) { write("otherChargeAmount", pf.charge); rFilled.push(`Charge ${pf.charge}`); }
-                {
-                  let defId: string | null = null;
-                  try { defId = localStorage.getItem(`pocket-ledger:payment-out:other-charge-default:${opt.companyId || "global"}`); } catch { /* ignore */ }
-                  const cands = [
-                    ...(M.expense ?? []).filter((e) => !(e as { isDeleted?: boolean }).isDeleted).map((e) => ({ id: e.id, name: String((e as { name?: string }).name ?? ""), kind: "expense" as const })),
-                    ...(M.parties ?? []).filter((p) => isOcrSelectableParty(p as never)).map((p) => ({ id: p.id, name: String((p as { name?: string }).name ?? ""), kind: "party" as const })),
-                    ...(M.staff ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => ({ id: x.id, name: String((x as { name?: string }).name ?? ""), kind: "staff" as const })),
-                  ];
-                  const ch = pickChargeAccount(cands, { bankName: rc.parsed.sender?.bankName, defaultId: defId });
-                  const curCh = String(F.getValues("otherChargeAccountId") ?? "");
-                  if (ch && (!curCh || (ch.method === "detected" && canWrite("otherChargeAccountId")))) {
-                    if (curCh !== ch.id) write("otherChargeAccountId", ch.id);
-                    rFilled.push(`Charge account (${ch.method}: ${ch.name})`);
-                  } else if (!ch && !curCh) rMissing.push("Other charge account (bank charge)");
-                }
+              const outTab = cur === "payment_out" || cur === "direct_expense" || cur === "contra";
+              const amountPath = A.payeeAmount ?? (outTab ? "payeeAmount" : (A.amount ?? "amount"));
+              if (pf.amount) {
+                const topAmount = outTab ? pf.amount + (pf.charge ?? 0) : pf.amount;
+                if (allowWrite && canWrite(amountPath)) { write(amountPath, pf.amount); rFilled.push(`Amount ${pf.amount}`); }
+                else if (!allowWrite) rExtra.push({ id: "amount", label: "Amount", value: String(pf.amount), reason: "Low OCR confidence — confirm amount", apply: () => write(amountPath, pf.amount) });
+                if (allowWrite && A.amount && A.amount !== amountPath && canWrite(A.amount)) write(A.amount, topAmount);
+                if (allowWrite && amountPath !== "amount" && canWrite("amount")) write("amount", topAmount);
+              } else rMissing.push("Amount");
+              if (pf.date) {
+                if (allowWrite && canWrite("date")) { write("date", pf.date); rFilled.push("Date"); }
+                else if (!allowWrite) rExtra.push({ id: "date", label: "Date", value: pf.date.toDateString(), reason: "Low OCR confidence — confirm date", apply: () => write("date", pf.date) });
+              } else rMissing.push("Date");
+              if (canFill && pf.charge && (direction === "payment_out" || direction === "contra" || cur === "direct_expense")) {
+                if (allowWrite && canWrite("otherChargeAmount")) { write("otherChargeAmount", pf.charge); rFilled.push(`Charge ${pf.charge}`); }
+                let defId: string | null = null;
+                try { defId = localStorage.getItem(`pocket-ledger:payment-out:other-charge-default:${opt.companyId || "global"}`); } catch { /* ignore */ }
+                const cands = [
+                  ...(M.expense ?? []).filter((e) => !(e as { isDeleted?: boolean }).isDeleted).map((e) => ({ id: e.id, name: String((e as { name?: string }).name ?? ""), kind: "expense" as const })),
+                  ...(M.parties ?? []).filter((p) => isOcrSelectableParty(p as never)).map((p) => ({ id: p.id, name: String((p as { name?: string }).name ?? ""), kind: "party" as const })),
+                  ...(M.staff ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => ({ id: x.id, name: String((x as { name?: string }).name ?? ""), kind: "staff" as const })),
+                ];
+                const ch = pickChargeAccount(cands, { bankName: rc.parsed!.sender?.bankName, defaultId: defId });
+                const curCh = String(F.getValues("otherChargeAccountId") ?? "");
+                if (ch && allowWrite && (!curCh || (ch.method === "detected" && canWrite("otherChargeAccountId")))) {
+                  if (curCh !== ch.id) write("otherChargeAccountId", ch.id);
+                  rFilled.push(`Charge account (${ch.method}: ${ch.name})`);
+                } else if (!ch && !curCh) rMissing.push("Other charge account (bank charge)");
               }
-              /* Narration uses the account actually selected in From Bank/Cash (OCR match or user pick). */
               {
-                const selId = String(F.getValues("accountId") ?? "");
+                const selId = String(F.getValues(direction === "contra" ? (A.fromAccountPath ?? "fromAccountId") : (A.accountPath ?? "accountId")) ?? "");
                 const sel = (M.accounts ?? []).find((a) => a.id === selId);
-                pf.narration = receiptNarration(rc.parsed, sel ? accountDisplayLabel(sel as never) : null);
+                pf.narration = receiptNarration(rc.parsed!, sel ? accountDisplayLabel(sel as never) : null);
               }
-              if (pf.narration) {
-                const curN = String(F.getValues("narration") ?? "");
-                if (!curN || canWrite("narration")) { write("narration", pf.narration); rFilled.push("Narration"); }
-                else if (rc.parsed.txnId && !curN.includes(rc.parsed.txnId)) { write("narration", `${curN} | ${pf.narration}`); rFilled.push("Narration (appended)"); }
+              if (pf.narration && A.narration) {
+                const curN = String(F.getValues(A.narration) ?? "");
+                if (allowWrite && (!curN || canWrite(A.narration))) { write(A.narration, pf.narration); rFilled.push("Narration"); }
+                else if (allowWrite && (rc.parsed!.txnId || rc.parsed!.referenceId) && rc.parsed!.txnId && !curN.includes(rc.parsed!.txnId)) { write(A.narration, `${curN} | ${pf.narration}`); rFilled.push("Narration (appended)"); }
               }
             }
-            const sg: OcrSuggestion[] = [...rExtra, ...types.filter((t) => t !== cur).map((t, i) => ({
-              id: i === 0 ? "switch" : `switch-${t}`, label: `Switch to ${niceType(t)} voucher${rc.voucherType ? "" : i === 0 ? " (likely)" : " (alternative)"}`,
-              value: `from: ${niceType(cur)}`, confidence: rc.voucherType ? rc.typeConfidence : Math.max(0.3, rc.typeConfidence - i * 0.1), reason: why,
-              blocked: !OCR_SWITCHABLE.includes(t) ? "This voucher type cannot be opened from OCR" : opt.isEditing ? "Only for new vouchers" : undefined,
-              deferred: true,
-              apply: () => requestOcrVoucherSwitch(t, optsRef.current.files, { raw, original: takeOcrOriginal(optsRef.current.files[0]), selectedIds: [] }),
-            }))];
+
+            if (rc.statusWarning) {
+              rExtra.push({ id: "status-failed", label: "Status warning", value: rc.statusWarning, blocked: rc.statusWarning, apply: () => undefined });
+            }
+            const dup = findDuplicateByRef(M.vouchers, rc.parsed?.txnId, rc.parsed?.referenceId);
+            if (dup) {
+              rExtra.push({
+                id: "duplicate-ref",
+                label: "Possible duplicate",
+                value: `Txn/Ref already appears on voucher ${dup.voucherNumber || dup.id}${dup.type ? ` (${niceType(String(dup.type))})` : ""}`,
+                blocked: "This reference/transaction number is already on a saved voucher",
+                apply: () => undefined,
+              });
+            }
+
+            const sg: OcrSuggestion[] = [...rExtra];
+            if (!highUnique) {
+              sg.push({
+                id: "cannot-detect",
+                label: "Cannot detect voucher type",
+                value: "Stay on the current voucher, or switch:",
+                blocked: `Current: ${niceType(cur)}`,
+                apply: () => undefined,
+              });
+              for (const typ of types.filter((x) => x !== cur)) {
+                sg.push({
+                  id: `switch-${typ}`,
+                  label: niceType(typ),
+                  value: `from: ${niceType(cur)}`,
+                  confidence: Math.max(0.3, rc.typeConfidence),
+                  reason: why,
+                  blocked: !OCR_SWITCHABLE.includes(typ) ? "This voucher type cannot be opened from OCR" : opt.isEditing ? "Only for new vouchers" : undefined,
+                  deferred: true,
+                  apply: () => requestOcrVoucherSwitch(typ, optsRef.current.files, { raw, original: takeOcrOriginal(optsRef.current.files[0]), selectedIds: [] }),
+                });
+              }
+            } else if (rc.voucherType && rc.voucherType !== cur) {
+              sg.push({
+                id: "switch",
+                label: `Switch to ${niceType(rc.voucherType)} voucher`,
+                value: `from: ${niceType(cur)}`,
+                confidence: rc.typeConfidence,
+                reason: why,
+                blocked: !OCR_SWITCHABLE.includes(rc.voucherType) ? "This voucher type cannot be opened from OCR" : opt.isEditing ? "Only for new vouchers" : undefined,
+                deferred: true,
+                apply: () => requestOcrVoucherSwitch(rc.voucherType!, optsRef.current.files, { raw, original: takeOcrOriginal(optsRef.current.files[0]), selectedIds: [] }),
+              });
+            }
             setLastBill(null);
-            setReceiptTarget(sg[0] && !sg[0].blocked ? types.filter((t) => t !== cur)[0] ?? null : null);
+            setReceiptTarget(sg.some((x) => x.id === "switch" && !x.blocked) ? rc.voucherType ?? null : null);
             setSuggestions(sg);
             if (reason === "refresh") { setDoneIds(new Set()); setDismissedKeys(new Set()); }
-            if (sg.some((x) => !x.blocked)) setSugOpen(true);
+            if (sg.some((x) => !x.blocked) || rMissing.length) setSugOpen(true);
             setMissingNow(rMissing);
             setDebugInfo({
-              text: [`--- OCR build ${OCR_BUILD} | bank receipt: ${rc.format} (${Math.round(rc.confidence * 100)}%) ---`, `Type: ${rc.voucherType ?? `undecided (${rc.candidates.join(" / ")})`}`, why, rc.narration ? `Narration (not filled yet): ${rc.narration}` : "", rc.otherCharge ? `Charge: ${rc.otherCharge.amount}` : "", "--- OCR text ---", raw.text].filter(Boolean).join("\n"),
+              text: [`--- OCR build ${OCR_BUILD} | document: ${rc.format} (${Math.round(rc.confidence * 100)}%)${lowConf ? " | LOW CONFIDENCE" : ""} ---`, `Type: ${rc.voucherType ?? `undecided (${types.join(" / ")})`} (${Math.round(rc.typeConfidence * 100)}%)`, why, rc.narration ? `Narration: ${rc.narration}` : "", rc.otherCharge ? `Charge: ${rc.otherCharge.amount}` : "", rc.statusWarning ?? "", "--- OCR text ---", raw.text].filter(Boolean).join("\n"),
               meanConfidence: raw.meanConfidence, reasons: [why], filled: rFilled, missing: rMissing,
             });
-            const here = types.includes(cur);
-            toast.success(`OCR: ${rc.format === "connectips" ? "connectIPS" : rc.format} receipt detected`, {
+            const here = !!(rc.voucherType && (rc.voucherType === cur || sameVoucherBucket(cur, rc.voucherType)));
+            toast.success(`OCR: ${rc.format === "connectips" ? "connectIPS" : rc.format.replace(/_/g, " ")} detected`, {
               id: tId, duration: 6000, position: "top-right",
               description: rFilled.length || rMissing.length
                 ? `Filled: ${rFilled.join(", ") || "nothing"}${rMissing.length ? ` | Missing: ${rMissing.map((x) => x.split(" (")[0]).join(", ")}` : ""}`
-                : here && types.length === 1 ? `${niceType(cur)} is the right voucher. Fields are not auto-filled for this voucher type yet.` : `Suggested: ${types.map(niceType).join(" / ")}. Fields are not auto-filled yet.`,
+                : here && highUnique ? `${niceType(cur)} is the right voucher.` : !highUnique ? "Cannot detect voucher type — stay on the current voucher or pick one." : `Suggested: ${types.map(niceType).join(" / ")}.`,
             });
-            /* Auto Post for bank receipts (direct attach OR after a voucher-type switch hand-off): only when this tab was filled
-               (Payment), nothing is missing, and no other voucher type is suggested. Once per OCR read. */
             if ((reason === "auto" || reason === "handoff") && getOcrPrefs().autoPost && !opt.isEditing && opt.adapter.autoPost && apScheduledForRef.current !== raw) {
               const F = opt.form;
               const ok =
+                !lowConf &&
+                !rc.statusWarning &&
+                !dup &&
                 rFilled.length > 0 &&
                 rMissing.length === 0 &&
+                highUnique &&
                 !sg.some((x) => (x.id === "switch" || x.id.startsWith("switch-")) && !x.blocked) &&
                 (opt.adapter.requiredPaths ?? []).every((pth) => !isEmptyVal(F.getValues(pth)));
               if (ok) {
@@ -342,13 +468,19 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 if (reuse?.direct) pendingAutoPostRef.current = true;
                 else startAutoPostCountdown();
               } else {
-                toast.message("OCR Auto Post skipped", { description: "Required fields missing - review and save manually.", duration: 5000 });
+                toast.message("OCR Auto Post skipped", { description: "Required fields missing, type is uncertain, or the document needs review.", duration: 5000 });
               }
             }
             return;
           }
         }
         const bill = parseBill(raw, { kind: opt.adapter.partySide === "seller" ? "purchase" : "sale", parties: opt.parties, items: opt.items, ownPan: own.pan, ownName: own.name });
+        if (lowConf) {
+          const note = "Image is not clear — please confirm";
+          const flag = (f?: { status: string; note?: string }) => { if (f && f.status === "fill") { f.status = "flag"; f.note = f.note ? `${f.note}; ${note}` : note; } };
+          flag(bill.date); flag(bill.dueDate); flag(bill.amount); flag(bill.total); flag(bill.subTotal); flag(bill.vat); flag(bill.discount); flag(bill.lineItems); flag(bill.partyId); flag(bill.billNo);
+          bill.debug?.push(`Low OCR confidence (${Math.round(raw.meanConfidence)}%) — fields offered for confirmation, not auto-filled`);
+        }
         // Counter-party block identifiers from the parser (never our own buyer block); legacy scan as fallback
         const identifiers = bill.identifiers ?? extractIdentifiers(raw.lines.map((l) => l.text), opt.ownPan, bill.pan?.value);
         // HARD GUARD: our own company is never the party. Fall back to the other PAN printed on the bill.
@@ -742,13 +874,14 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     }
   }, [o.files, visible, run]);
 
-  // Auto-trigger: first file added (0 → ≥1) on a new upload (skipped when OCR already ran on the original pre-compression)
-  const prevLen = useRef(o.files.length);
+  // Auto-trigger: first file added (0 → ≥1) on a new upload, including string refs (local:/pbatt:/https).
+  // Also runs once if the first attachment is already present on mount (new voucher only; `visible` excludes edit mode).
+  // Skipped when OCR already ran on the original pre-compression.
+  const prevLen = useRef(0);
   useEffect(() => {
     const prev = prevLen.current;
     prevLen.current = o.files.length;
     if (!visible || prev !== 0 || o.files.length === 0) return;
-    if (typeof o.files[0] === "string") return;
     // switch hand-off re-applying its files is not a new upload (the handoff run re-uses the OCR text)
     if (handoffFilesRef.current && Date.now() < handoffFilesRef.current.until) return;
     if (preOcrDoneRef.current) {
@@ -954,11 +1087,20 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       for (const [k, b] of out) {
         if (b.kind !== "suggest") continue;
         const cp = b.items.find((x) => x.id === "create-party");
-        b.title = cp
-          ? `Party not found — create ${(cp.value.split(" · ")[0] || "this party").trim()}?`
-          : b.items.length === 1
-            ? `${b.items[0].label}?`
-            : `${b.items.length} suggestions for this field`;
+        const cannot = b.items.find((x) => x.id === "cannot-detect");
+        const st = b.items.find((x) => x.id === "status-failed");
+        const dup = b.items.find((x) => x.id === "duplicate-ref");
+        b.title = cannot
+          ? "Cannot detect voucher type"
+          : st
+            ? "Document status is not SUCCESS"
+          : dup
+            ? "Possible duplicate voucher"
+          : cp
+            ? `Party not found — create ${(cp.value.split(" · ")[0] || "this party").trim()}?`
+            : b.items.length === 1
+              ? `${b.items[0].label}?`
+              : `${b.items.length} suggestions for this field`;
         const ci = b.items.find((x) => x.id.startsWith("create-item-"));
         if (b.key === "lines" && ci) b.anchor = `lines#${ci.id.slice("create-item-".length)}`;
         if (b.items.some((x) => x.id === "switch")) {

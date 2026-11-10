@@ -1,22 +1,23 @@
 /**
- * connectIPS receipt -> Payment form values (pure). Used by useVoucherOcr only on the Payment tab.
- * Payee (Dr): Beneficiary Account Name vs party / staff / tax names only.
- * From (Cr): own Bank/Cash only, from Customer Account Details (bank -> branch -> masked acc no.) + "paid from <x>" in Particulars/Remarks.
+ * Money-document -> Payment / Receipt / Contra form values (pure).
+ * Unified own-account scorer (mask + bank + branch + title) is used for both classification and fill.
  */
+import { parseSingleDocDate } from "../dates";
+import { isMaskedName, maskedNameSuffix } from "./genericFields";
 import { masterNameScore } from "./index";
-import { bankNameMatches, maskedAccountMatches } from "./match";
+import { bankNameMatches, pickUniqueOwnAccount, type OwnAccountScore } from "./match";
 import type { NamedMaster, OwnAccountLike, ParsedReceipt } from "./types";
 
 export type PayeeMatch = { payeeType: "party" | "staff" | "tax"; id: string; name: string; score: number };
 export type FromAccountMatch =
   | { ok: true; id: string; name: string; method: string; reason: string }
-  | { ok: false; candidates: string[]; reason: string };
+  | { ok: false; candidates: string[]; candidateNames?: string[]; reason: string };
 
 const NAME_MIN = 0.9, NAME_GAP = 0.03;
 
 export function matchPayee(name: string | undefined | null, m: { parties?: readonly NamedMaster[]; staff?: readonly NamedMaster[]; taxes?: readonly NamedMaster[] }): PayeeMatch | null {
   const q = String(name ?? "").trim();
-  if (!q) return null;
+  if (!q || isMaskedName(q)) return null; // surname-only / masked -> not sure (caller may suggest)
   const all: PayeeMatch[] = [];
   const add = (kind: PayeeMatch["payeeType"], pool?: readonly NamedMaster[]) => (pool ?? []).forEach((x) => {
     const s = Math.max(masterNameScore(q, x.name), x.aliasName ? masterNameScore(q, x.aliasName) : 0);
@@ -30,10 +31,25 @@ export function matchPayee(name: string | undefined | null, m: { parties?: reado
   return b;
 }
 
-const stripCode = (s?: string) => String(s ?? "").replace(/^\s*\d+\s*-\s*/, "").trim();
+/** Masked names like "****** DHAMI": suggest parties whose last token matches, never auto-fill. */
+export function suggestMaskedPayees(name: string | undefined | null, m: { parties?: readonly NamedMaster[]; staff?: readonly NamedMaster[] }): PayeeMatch[] {
+  const suf = maskedNameSuffix(name ?? undefined);
+  if (!suf) return [];
+  const q = suf.toLowerCase();
+  const hits: PayeeMatch[] = [];
+  const add = (kind: PayeeMatch["payeeType"], pool?: readonly NamedMaster[]) => {
+    for (const x of pool ?? []) {
+      const last = String(x.name ?? "").trim().split(/\s+/).pop()?.toLowerCase() ?? "";
+      const aliasLast = String(x.aliasName ?? "").trim().split(/\s+/).pop()?.toLowerCase() ?? "";
+      if (last === q || aliasLast === q) hits.push({ payeeType: kind, id: x.id, name: x.name, score: 0.6 });
+    }
+  };
+  add("party", m.parties); add("staff", m.staff);
+  return hits;
+}
+
 const words = (s?: string) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-const branchWord = (s?: string) => words(stripCode(s)).replace(/\b(branch|br|office)\b/g, " ").replace(/\s+/g, " ").trim();
-const accText = (a: OwnAccountLike) => words(`${a.accountName ?? ""} ${a.bankName ?? ""}`);
+const accText = (a: OwnAccountLike) => words(`${a.accountName ?? ""} ${a.bankName ?? ""} ${a.branch ?? ""}`);
 
 /** "paid from Prabhu Itahari" / "paid frm NIC" in Particulars or Remarks. */
 export function paidFromPhrase(p: Pick<ParsedReceipt, "particulars" | "remarks">): string | null {
@@ -42,55 +58,37 @@ export function paidFromPhrase(p: Pick<ParsedReceipt, "particulars" | "remarks">
   return m ? m[1].trim() : null;
 }
 
-export function matchFromAccount(p: ParsedReceipt, own: readonly OwnAccountLike[]): FromAccountMatch {
+export function matchFromAccount(p: ParsedReceipt, own: readonly OwnAccountLike[], side: "sender" | "beneficiary" = "sender"): FromAccountMatch {
   const live = own.filter((a) => a.id);
-  const phrase = paidFromPhrase(p);
-  let byPhrase: OwnAccountLike[] = [];
+  const phrase = side === "sender" ? paidFromPhrase(p) : null;
   if (phrase) {
     const q = words(phrase);
-    // strongest first: account name ~ phrase, then phrase contained in account text, then bank name only
     const sc = live.map((a) => ({ a, s: masterNameScore(phrase, a.accountName) })).sort((x, y) => y.s - x.s);
-    byPhrase = sc[0] && sc[0].s >= NAME_MIN && (!sc[1] || sc[0].s - sc[1].s >= NAME_GAP) ? [sc[0].a] : sc.filter((x) => x.s >= NAME_MIN).map((x) => x.a);
+    let byPhrase: OwnAccountLike[] = sc[0] && sc[0].s >= NAME_MIN && (!sc[1] || sc[0].s - sc[1].s >= NAME_GAP) ? [sc[0].a] : sc.filter((x) => x.s >= NAME_MIN).map((x) => x.a);
     if (!byPhrase.length) byPhrase = live.filter((a) => q.length >= 3 && accText(a).includes(q));
     if (!byPhrase.length) byPhrase = live.filter((a) => bankNameMatches(phrase, a.bankName));
+    if (byPhrase.length === 1) {
+      const a = byPhrase[0];
+      return { ok: true, id: a.id, name: a.accountName ?? a.id, method: "paid-from", reason: `"paid from ${phrase}"` };
+    }
   }
-  const bank = stripCode(p.sender.bankName);
-  let c = bank ? live.filter((a) => bankNameMatches(bank, a.bankName) || bankNameMatches(bank, a.accountName)) : [];
-  const steps: string[] = [];
-  if (bank) steps.push(`bank "${bank}": ${c.length}`);
-  if (c.length > 1) {
-    const br = branchWord(p.sender.branch);
-    const n = br ? c.filter((a) => accText(a).includes(br)) : [];
-    if (br) steps.push(`branch "${br}": ${n.length}`);
-    if (n.length) c = n;
+  const picked = pickUniqueOwnAccount(side === "sender" ? p.sender : p.beneficiary, live);
+  // tsconfig has strict:false (no strictNullChecks), so discriminated-union narrowing on `.ok` does not apply.
+  if ("candidates" in picked) {
+    const tied = picked.candidates;
+    return {
+      ok: false,
+      candidates: tied.map((c) => c.acc.id),
+      candidateNames: tied.map((c) => c.acc.accountName ?? c.acc.id),
+      reason: picked.reason,
+    };
   }
-  if (c.length > 1 && p.sender.accountMasked) {
-    const n = c.filter((a) => maskedAccountMatches(p.sender.accountMasked, a.accountNumber));
-    steps.push(`acc no. ${p.sender.accountMasked}: ${n.length}`);
-    if (n.length) c = n;
-  }
-  // "paid from" phrase decides (and confirms/narrows a bank match)
-  if (byPhrase.length === 1) {
-    const a = byPhrase[0];
-    const agrees = !c.length || c.some((x) => x.id === a.id);
-    return { ok: true, id: a.id, name: a.accountName ?? a.id, method: "paid-from", reason: `"paid from ${phrase}"${agrees ? "" : " (overrides Customer Account bank)"}; ${steps.join(", ")}` };
-  }
-  if (byPhrase.length > 1 && c.length) {
-    const n = c.filter((x) => byPhrase.some((b) => b.id === x.id));
-    if (n.length === 1) c = n;
-  }
-  if (c.length === 1) return { ok: true, id: c[0].id, name: c[0].accountName ?? c[0].id, method: steps.length > 2 ? "account-no" : steps.length > 1 ? "branch" : "bank", reason: steps.join(", ") };
-  return { ok: false, candidates: c.map((a) => a.id), reason: c.length ? `${c.length} own accounts still match (${steps.join(", ")})` : `no own Bank/Cash account matches ${bank ? `"${bank}"` : "the sender"}${phrase ? ` or "paid from ${phrase}"` : ""}` };
+  return { ok: true, id: picked.acc.id, name: picked.acc.accountName ?? picked.acc.id, method: picked.method, reason: picked.reason };
 }
 
-const MON: Record<string, number> = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
-/** "17-Oct-2026 01:44:04 PM" -> local Date (AD; the form converts for BS display itself). Date part only. */
+/** "17-Oct-2026 01:44:04 PM" / "06 Nov 2026" / "15/07/2083" -> local Date. */
 export function parseReceiptDate(s?: string): Date | null {
-  const m = String(s ?? "").match(/(\d{1,2})\s*[-/ ]\s*([A-Za-z]{3})[a-z]*\s*[-/ ]\s*(\d{4})/);
-  if (m && MON[m[2].toLowerCase()] != null) { const d = new Date(+m[3], MON[m[2].toLowerCase()], +m[1]); return Number.isNaN(d.getTime()) ? null : d; }
-  const n = String(s ?? "").match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (n) return new Date(+n[1], +n[2] - 1, +n[3]);
-  return null;
+  return parseSingleDocDate(s ?? "");
 }
 
 /** Same text as the From Bank/Cash dropdown trigger: "Prabhu Bank Limited (Bank)". */
@@ -99,31 +97,68 @@ export function accountDisplayLabel(a?: Pick<OwnAccountLike, "accountName" | "ac
   return a.accountType ? `${a.accountName} (${a.accountType})` : String(a.accountName);
 }
 
-export function receiptNarration(p: ParsedReceipt, fromLabel?: string | null): string {
+export function receiptNarration(p: ParsedReceipt, fromLabel?: string | null, toLabel?: string | null): string {
   const mediator = p.referenceId?.includes(":") ? p.referenceId.split(":").slice(1).join(":").trim() : undefined;
-  return [mediator && `connectIPS Account: ${mediator}`, fromLabel || undefined, p.beneficiary.accountName && `To: ${p.beneficiary.accountName}`, p.particulars, p.remarks, p.txnId && `Txn ID: ${p.txnId}`].filter(Boolean).join(" | ");
+  const to = toLabel ?? (p.beneficiary.accountName ? `To: ${p.beneficiary.accountName}` : undefined);
+  const from = fromLabel || undefined;
+  return [
+    mediator && `connectIPS Account: ${mediator}`,
+    from,
+    to,
+    p.particulars,
+    p.remarks,
+    p.txnId && `Txn ID: ${p.txnId}`,
+    p.referenceId && p.referenceId !== p.txnId && !mediator && `Ref: ${p.referenceId}`,
+    p.initiatorPhone && `Initiator: ${p.initiatorPhone}`,
+    p.voucherNo && `Voucher No: ${p.voucherNo}`,
+  ].filter(Boolean).join(" | ");
 }
 
 export type PaymentOutFill = {
   payee: PayeeMatch | null;
   payeeName: string | null;
+  payeeUnsure?: PayeeMatch[];
   from: FromAccountMatch;
+  to?: FromAccountMatch;
   amount?: number;
   charge?: number;
   date: Date | null;
   narration: string;
+  txnId?: string;
+  referenceId?: string;
+  status?: string;
 };
 
+export type MoneyDirection = "payment_out" | "payment_in" | "contra";
+
 export function buildPaymentOutFill(p: ParsedReceipt, m: { ownAccounts: readonly OwnAccountLike[]; parties?: readonly NamedMaster[]; staff?: readonly NamedMaster[]; taxes?: readonly NamedMaster[] }): PaymentOutFill {
-  const payeeName = p.beneficiary.accountName?.trim() || null;
-  const from = matchFromAccount(p, m.ownAccounts);
+  return buildMoneyVoucherFill(p, "payment_out", m);
+}
+
+export function buildMoneyVoucherFill(
+  p: ParsedReceipt,
+  direction: MoneyDirection,
+  m: { ownAccounts: readonly OwnAccountLike[]; parties?: readonly NamedMaster[]; staff?: readonly NamedMaster[]; taxes?: readonly NamedMaster[] },
+): PaymentOutFill {
+  const ourSide = direction === "payment_in" ? "beneficiary" : "sender";
+  const otherSide = direction === "payment_in" ? "sender" : "beneficiary";
+  const payeeName = (otherSide === "sender" ? p.sender.accountName : p.beneficiary.accountName)?.trim() || null;
+  const from = matchFromAccount(p, m.ownAccounts, ourSide);
+  const to = direction === "contra" ? matchFromAccount(p, m.ownAccounts, "beneficiary") : undefined;
+  const payee = direction === "contra" ? null : matchPayee(payeeName, m);
+  const payeeUnsure = !payee && isMaskedName(payeeName ?? undefined) ? suggestMaskedPayees(payeeName, m) : undefined;
+  const fromLabel = from.ok ? accountDisplayLabel(m.ownAccounts.find((a) => a.id === from.id) as never) : null;
+  const toLabel = to?.ok ? `To: ${accountDisplayLabel(m.ownAccounts.find((a) => a.id === to.id) as never)}` : (direction === "payment_out" || direction === "contra" ? (p.beneficiary.accountName ? `To: ${p.beneficiary.accountName}` : null) : (p.sender.accountName ? `From: ${p.sender.accountName}` : null));
   return {
-    payee: matchPayee(payeeName, m), payeeName,
-    from,
+    payee, payeeName, payeeUnsure,
+    from, to,
     amount: p.amount && p.amount > 0 ? p.amount : undefined,
     charge: p.charge && p.charge > 0 ? p.charge : undefined,
     date: parseReceiptDate(p.date),
-    narration: receiptNarration(p, from.ok ? accountDisplayLabel(m.ownAccounts.find((a) => a.id === from.id)) : null),
+    narration: receiptNarration(p, fromLabel, toLabel),
+    txnId: p.txnId,
+    referenceId: p.referenceId,
+    status: p.status,
   };
 }
 
