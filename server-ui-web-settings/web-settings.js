@@ -18,7 +18,6 @@
   var SITE = "/api/pl/site";
   var SECTIONS = ["releases", "videos", "downloads", "notice"];
   var SECTION_LABEL = { releases: "Release upload", videos: "Website Videos", downloads: "Download analytics", notice: "Notice", users: "Users" };
-  var PERM_LABEL = { none: "None", view: "View", edit: "Edit" };
 
   /* ---------------- release settings helpers (copy of website/js/release-settings-shared.js, kept private) ---------------- */
   var RS = {};
@@ -2655,9 +2654,15 @@
       "</div>" +
       '<div class="plws-card">' +
         '<div class="plws-card-head"><h3 class="plws-h3">Website users</h3><button type="button" class="btn btn-secondary btn-sm" id="plws-usr-refreshBtn">Refresh</button></div>' +
-        '<p class="plws-hint">Per section: None = hidden, View = read only, Edit = full access. The main admin always has full access.</p>' +
+        '<p class="plws-hint">Per section: View off = hidden, View on = read only, View + Edit on = full access. The main admin always has full access.</p>' +
         '<div class="release-table-wrap"><table class="release-table plws-usr-table"><thead id="plws-usr-head"></thead><tbody id="plws-usr-list"></tbody></table></div>' +
         '<p class="release-table-empty" id="plws-usr-empty" hidden>No website users yet.</p>' +
+      "</div>" +
+      '<div class="plws-card" id="plws-usr-auditCard" hidden>' +
+        '<details class="plws-audit"><summary class="plws-h3">Recent activity</summary>' +
+        '<div class="release-table-wrap"><table class="release-table plws-audit-table"><thead><tr><th>Time</th><th>By</th><th>Action</th><th>Target</th></tr></thead><tbody id="plws-usr-audit"></tbody></table></div>' +
+        '<p class="release-table-empty" id="plws-usr-auditEmpty" hidden>No activity yet.</p>' +
+        "</details>" +
       "</div>" +
       '<div class="plws-card">' +
         '<h3 class="plws-h3">Old website admins list (read only)</h3>' +
@@ -2670,30 +2675,89 @@
       var NOT_YET = "Website user management is not available on this server yet (the web-users routes are missing). Please try again after the server update.";
       var users = [];
 
-      function permSelect(section, value, disabled) {
-        var sel = document.createElement("select");
-        sel.className = "plws-perm-select";
-        sel.setAttribute("data-section", section);
-        sel.setAttribute("aria-label", SECTION_LABEL[section]);
-        ["none", "view", "edit"].forEach(function (p) {
-          var o = document.createElement("option");
-          o.value = p;
-          o.textContent = PERM_LABEL[p];
-          sel.appendChild(o);
-        });
-        sel.value = value === "view" || value === "edit" ? value : "none";
-        sel.disabled = !!disabled;
-        return sel;
+      function permValue(v) { return v === "view" || v === "edit" ? v : "none"; }
+
+      /* One switch: <button role="switch" aria-checked>. Space / Enter work because it is a button. */
+      function makeSwitch(label) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "plws-sw";
+        b.setAttribute("role", "switch");
+        b.setAttribute("aria-checked", "false");
+        b.setAttribute("aria-label", label);
+        b.innerHTML = '<span class="plws-sw-knob" aria-hidden="true"></span>';
+        return b;
+      }
+
+      /* Row: section name + View switch + Edit switch. Value lives in data-perm (none | view | edit). */
+      function permRow(section, value, locked) {
+        var row = document.createElement("div");
+        row.className = "plws-perm-row";
+        row.setAttribute("data-section", section);
+        var name = document.createElement("span");
+        name.className = "plws-perm-name";
+        name.textContent = SECTION_LABEL[section];
+        var viewLab = document.createElement("span");
+        viewLab.className = "plws-sw-field";
+        var viewSw = makeSwitch(SECTION_LABEL[section] + " - View");
+        viewLab.appendChild(viewSw);
+        viewLab.appendChild(document.createTextNode("View"));
+        var editLab = document.createElement("span");
+        editLab.className = "plws-sw-field";
+        var editSw = makeSwitch(SECTION_LABEL[section] + " - Edit");
+        editLab.appendChild(editSw);
+        editLab.appendChild(document.createTextNode("Edit"));
+        row.appendChild(name);
+        row.appendChild(viewLab);
+        row.appendChild(editLab);
+
+        function paint(v) {
+          v = permValue(v);
+          row.setAttribute("data-perm", v);
+          var viewOn = v !== "none";
+          var editOn = v === "edit";
+          viewSw.setAttribute("aria-checked", viewOn ? "true" : "false");
+          editSw.setAttribute("aria-checked", editOn ? "true" : "false");
+          viewSw.classList.toggle("on", viewOn);
+          editSw.classList.toggle("on", editOn);
+          viewSw.disabled = !!locked;
+          editSw.disabled = !!locked || !viewOn; // Edit needs View
+          editLab.classList.toggle("is-off", !viewOn);
+        }
+        viewSw.onclick = function () {
+          if (viewSw.disabled) return;
+          paint(row.getAttribute("data-perm") === "none" ? "view" : "none"); // View off forces Edit off
+        };
+        editSw.onclick = function () {
+          if (editSw.disabled) return;
+          paint(row.getAttribute("data-perm") === "edit" ? "view" : "edit");
+        };
+        paint(value);
+        return row;
+      }
+
+      function permBlock(perms, locked) {
+        var box = document.createElement("div");
+        box.className = "plws-perm-block";
+        SECTIONS.forEach(function (s) { box.appendChild(permRow(s, locked ? "edit" : perms && perms[s], locked)); });
+        return box;
       }
 
       function readPerms(container, base) {
         var out = {};
         if (base && typeof base === "object") Object.keys(base).forEach(function (k) { out[k] = base[k]; });
-        Array.prototype.forEach.call(container.querySelectorAll("select[data-section]"), function (sel) {
-          out[sel.getAttribute("data-section")] = sel.value;
+        Array.prototype.forEach.call(container.querySelectorAll(".plws-perm-row[data-section]"), function (row) {
+          out[row.getAttribute("data-section")] = permValue(row.getAttribute("data-perm"));
         });
         if (!out.users) out.users = "none"; // Users tab is main-admin only
         return out;
+      }
+
+      function fmtTime(v) {
+        if (v == null || v === "") return "";
+        var d = typeof v === "number" ? new Date(v < 1e12 ? v * 1000 : v) : new Date(String(v).replace(" ", "T"));
+        if (isNaN(d.getTime())) return String(v);
+        try { return d.toLocaleString(); } catch (_) { return d.toISOString(); }
       }
 
       function friendly(err) {
@@ -2704,15 +2768,11 @@
 
       // invite form
       var invitePerms = $("invitePerms");
-      SECTIONS.forEach(function (s) {
-        var lab = document.createElement("label");
-        lab.className = "plws-perm-field";
-        var span = document.createElement("span");
-        span.textContent = SECTION_LABEL[s];
-        lab.appendChild(span);
-        lab.appendChild(permSelect(s, s === "downloads" ? "view" : "none"));
-        invitePerms.appendChild(lab);
-      });
+      function resetInvitePerms() {
+        invitePerms.innerHTML = "";
+        invitePerms.appendChild(permBlock({ downloads: "view" }, false));
+      }
+      resetInvitePerms();
 
       $("inviteBtn").onclick = function () {
         var email = String($("inviteEmail").value || "").trim().toLowerCase();
@@ -2727,6 +2787,7 @@
           $("link").value = link;
           $("linkBox").hidden = false;
           $("inviteEmail").value = "";
+          resetInvitePerms();
           setStatus("Invite link created for " + email + ". Copy it and send it to them. It works once, within 24 hours.", true);
           loadUsers(true);
         }).catch(function (err) {
@@ -2752,7 +2813,7 @@
       // list
       function renderHead() {
         var tr = document.createElement("tr");
-        ["Email"].concat(SECTIONS.map(function (s) { return SECTION_LABEL[s]; })).concat(["Status", ""]).forEach(function (h, i, arr) {
+        ["Email", "Permissions", "Status", ""].forEach(function (h, i, arr) {
           var th = document.createElement("th");
           th.textContent = h;
           if (i === arr.length - 1) th.className = "col-action";
@@ -2773,15 +2834,27 @@
           var tr = document.createElement("tr");
           var isMain = u.role === "main_admin";
           var tdE = document.createElement("td");
-          tdE.textContent = userEmail(u) + (isMain ? " (main admin)" : "");
-          if (u.pending || u.status === "invited") tdE.textContent += " \u00b7 invited";
+          var em = document.createElement("div");
+          em.className = "plws-usr-email-cell";
+          em.textContent = userEmail(u) + (isMain ? " (main admin)" : "");
+          if (u.pending || u.status === "invited") em.textContent += " \u00b7 invited";
+          tdE.appendChild(em);
+          var lastLogin = u.lastLogin || u.last_login || u.lastLoginAt;
+          var meta = [];
+          if (lastLogin) meta.push("Last login: " + fmtTime(lastLogin));
+          else if (u.created || "lastLogin" in u) meta.push("Last login: never");
+          if (u.created) meta.push("Created: " + fmtTime(u.created));
+          if (meta.length) {
+            var mt = document.createElement("div");
+            mt.className = "plws-usr-meta";
+            mt.textContent = meta.join(" \u00b7 ");
+            tdE.appendChild(mt);
+          }
           tr.appendChild(tdE);
           var perms = u.web_perms && typeof u.web_perms === "object" ? u.web_perms : {};
-          SECTIONS.forEach(function (s) {
-            var td = document.createElement("td");
-            td.appendChild(permSelect(s, isMain ? "edit" : perms[s], isMain));
-            tr.appendChild(td);
-          });
+          var tdP = document.createElement("td");
+          tdP.appendChild(permBlock(perms, isMain));
+          tr.appendChild(tdP);
           var tdS = document.createElement("td");
           var lab = document.createElement("label");
           lab.className = "plws-inline-check";
@@ -2807,6 +2880,7 @@
                 .then(function () {
                   setStatus("Saved " + userEmail(u) + ".", true);
                   loadUsers(true);
+                  loadAudit();
                 })
                 .catch(function (err) { setStatus(friendly(err), false); })
                 .then(function () { save.disabled = false; });
@@ -2858,9 +2932,48 @@
         });
       }
 
-      $("refreshBtn").onclick = function () { loadUsers(false); loadLegacy(); };
+      function pick(o, keys) {
+        for (var i = 0; i < keys.length; i++) {
+          var v = o[keys[i]];
+          if (v != null && v !== "") return typeof v === "object" ? JSON.stringify(v) : String(v);
+        }
+        return "";
+      }
+
+      function loadAudit() {
+        return ctx.api("GET", "/api/pl/web-users/audit").then(function (res) {
+          var items = Array.isArray(res) ? res : (res && (res.items || res.list)) || [];
+          var body = $("audit");
+          body.innerHTML = "";
+          items.forEach(function (it) {
+            if (!it || typeof it !== "object") return;
+            var tr = document.createElement("tr");
+            var t = it.time || it.at || it.ts || it.created || it.date;
+            [fmtTime(t) || "\u2014",
+              pick(it, ["actor", "actorEmail", "by", "email", "user"]) || "\u2014",
+              pick(it, ["action", "event", "type"]) || "\u2014",
+              pick(it, ["target", "targetEmail", "subject", "detail", "details"]) || ""].forEach(function (txt) {
+              var td = document.createElement("td");
+              td.textContent = txt;
+              tr.appendChild(td);
+            });
+            body.appendChild(tr);
+          });
+          $("auditEmpty").hidden = body.children.length > 0;
+          $("auditCard").hidden = false;
+        }).catch(function (err) {
+          if (err && (err.status === 404 || err.status === 403)) { $("auditCard").hidden = true; return; }
+          $("auditCard").hidden = false;
+          $("audit").innerHTML = "";
+          $("auditEmpty").hidden = false;
+          $("auditEmpty").textContent = "Could not load activity. " + ((err && err.message) || "");
+        });
+      }
+
+      $("refreshBtn").onclick = function () { loadUsers(false); loadAudit(); loadLegacy(); };
       renderHead();
       loadUsers(false);
+      loadAudit();
       loadLegacy();
     },
   };
@@ -2995,6 +3108,6 @@
     return container.__plws;
   }
 
-  window.WebSettings = { mount: mount, __plws: true, version: "20261110-1" };
+  window.WebSettings = { mount: mount, __plws: true, version: "20261110-2" };
   window.PLWebSettings = window.WebSettings;
 })();

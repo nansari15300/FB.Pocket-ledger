@@ -10,10 +10,10 @@ Both files are UTF-8 without BOM. They are new files, so no existing Server UI f
 ## 1. Add to `pb_public/index.html`
 
 ```html
-<link rel="stylesheet" href="/web-settings.css?v=20261110-1">
+<link rel="stylesheet" href="/web-settings.css?v=20261110-2">
 ...
 <script src="/app.js?v=..."></script>
-<script src="/web-settings.js?v=20261110-1"></script>   <!-- after app.js -->
+<script src="/web-settings.js?v=20261110-2"></script>   <!-- after app.js -->
 ```
 
 Inside `#view-web-hosting`, add an empty container for the Web Settings tab, for example:
@@ -71,13 +71,23 @@ function openWebSettings() {
 | Download analytics | GET `/api/pl/site/admin/download-stats` | (read only; the view shows New downloads and Updates tabs, charts, By country, Recent clicks and the Duplicate email jump) |
 | Notice | GET / POST `/api/pl/site/admin/notice` | POST `{ message, enabled }` |
 | Users (main admin) | GET `/api/pl/web-users` | The list may be an array, `{items}`, `{users}` or `{list}`. Each row uses `{id, email, role?, web_perms, disabled, pending?/status?}`. |
+| | GET `/api/pl/web-users/audit` | `{items}` (last 200) are shown in a collapsible "Recent activity" card with the fields time/at/ts, actor/by/email, action/event/type and target/detail. A 404 or 403 hides the card. |
 | | POST `/api/pl/web-users/invite` | `{ email, web_perms }` returns `{ link }` (`url` is also accepted). The view shows the link with a Copy button and the note "one-time, valid 24 hours". |
 | | POST `/api/pl/web-users/update` | `{ id, web_perms, disabled }`. `web_perms` keeps any keys the user already had. `users` is always sent as `none`. |
 | | GET `/api/pl/site/admin/admins` | Old `admins.json` list, shown read only with the note "no longer gives access". POST is never called. |
 
 If a `/api/pl/web-users*` call returns 404, the view shows "Website user management is not available on this server yet". A 403 shows "Only the main admin can manage website users". All other errors appear in red in the status line at the top of the view.
 
-## 5. Not done here
+## 5. Users permission switches
+
+Each section (Release upload, Website Videos, Download analytics, Notice) is one row with two switches: **View**, then **Edit**. A switch is a `<button role="switch" aria-checked>`, so Tab, Space and Enter all work.
+- View off means `none`. The Edit switch is dimmed and cannot be turned on.
+- View on with Edit off means `view`.
+- View and Edit both on means `edit`. Turning View off also turns Edit off.
+- `users` is always sent as `none`. The main admin row is locked to all on.
+- Under each email, the user row shows `lastLogin` and `created`.
+
+## 6. Not done here
 
 - No Server UI file was edited. The Hosting and Web Settings pills, routing, i18n keys, the host filter and the auth changes are Server master's work.
 - Public website cleanup (removing the admin pages and the Admin Panel button) is a separate step on the laptop `website\` folder.

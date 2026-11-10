@@ -61,14 +61,44 @@
 /* Users view */
 .plws .plws-usr-invite { display: grid; gap: 12px; }
 .plws .plws-usr-email { display: grid; gap: 4px; max-width: 26rem; font-weight: 600; font-size: 13px; }
-.plws .plws-usr-perms { display: flex; flex-wrap: wrap; gap: 12px; }
-.plws .plws-perm-field { display: grid; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--text-2); min-width: 9rem; }
-.plws .plws-perm-select { width: auto; min-width: 7rem; padding: 6px 8px; font-size: 13px; }
+.plws .plws-usr-perms { min-width: 0; }
+.plws .plws-perm-block { display: grid; gap: 6px; min-width: 18rem; }
+.plws .plws-perm-row { display: grid; grid-template-columns: minmax(9rem, 1fr) auto auto; align-items: center; gap: 14px; padding: 4px 0; }
+.plws .plws-perm-row + .plws-perm-row { border-top: 1px solid var(--border); }
+.plws .plws-perm-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.plws .plws-sw-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+.plws .plws-sw-field.is-off { color: var(--text-3); }
+
+/* App-style switch (matches Server UI .as-ios-sw look), colours only from theme variables */
+.plws .plws-sw {
+  position: relative; display: inline-block; flex: none; box-sizing: border-box;
+  width: 40px; height: 22px; margin: 0; padding: 0; border-radius: 999px;
+  border: 1px solid var(--border-strong); background: var(--surface-2);
+  cursor: pointer; transition: background .2s ease, border-color .2s ease, opacity .2s ease;
+}
+.plws .plws-sw-knob {
+  position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--text-3); box-shadow: var(--shadow); pointer-events: none;
+  transition: transform .2s ease, background .2s ease;
+}
+.plws .plws-sw.on { background: var(--ok-soft); border-color: var(--ok); }
+.plws .plws-sw.on .plws-sw-knob { transform: translateX(18px); background: var(--ok); }
+.plws .plws-sw:hover:not(:disabled) { border-color: var(--accent); }
+.plws .plws-sw:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.plws .plws-sw:disabled { cursor: not-allowed; opacity: .45; }
+html[dir="rtl"] .plws .plws-sw-knob { left: auto; right: 2px; }
+html[dir="rtl"] .plws .plws-sw.on .plws-sw-knob { transform: translateX(-18px); }
+
+.plws .plws-usr-email-cell { font-weight: 600; }
+.plws .plws-usr-meta { margin-top: 2px; font-size: 12px; color: var(--text-2); }
+.plws .plws-usr-table td { vertical-align: top; }
+.plws .plws-audit > summary { cursor: pointer; margin: 0; list-style: revert; }
+.plws .plws-audit[open] > summary { margin-bottom: 10px; }
+.plws .plws-audit-table td { white-space: nowrap; }
 .plws .plws-usr-link { margin-top: 14px; }
 .plws .plws-usr-link label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
 .plws .plws-usr-link-row { display: flex; gap: 8px; align-items: center; }
 .plws .plws-usr-link-row input { flex: 1; min-width: 0; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
-.plws .plws-usr-table td { white-space: nowrap; }
 .plws .plws-inline-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
 
 /* fallback confirm dialog (only when Server UI plDialog is missing) */
