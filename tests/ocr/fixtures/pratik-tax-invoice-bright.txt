@@ -1,0 +1,19 @@
+rar [ar [vow] RAE amount
+"RATIK TRADE CENTER PVT.LTD.
+Birgunj-10, Adarshanagar, Parsa
+Phone : 051-523456
+PAN NO : 619727215
+TAX INVOICE
+ner Nas * NEW PARSA ENGINEERING WoRKSHop lnvoice N0 : SI-02833
+SS ; Birgun), Parsa Invoice Mit1 : 15/07/2083
+PAN No : 303687788 Dat3 : 01/11/2026
+Mode of Payment : Credit
+S.N. Particulars Qty Unit Rate Amount
+1 MS SHEET 3.5MM 20.000 PCS 9,800.00 196,000.00
+2 HR SHEET 3MM 25.000 PCS 7,450.00 186,250.00
+3 MS PLATE 6MM 6.000 PCS 16.240 80 97.444.80
+Sub Total 479,694 80
+Discount 0.00
+Taxable Amount 479.694 80
+VAT 13% 6236032
+Grand Tota1 542,055,12

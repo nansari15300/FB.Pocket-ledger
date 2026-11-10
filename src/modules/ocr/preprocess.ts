@@ -1,7 +1,9 @@
 "use client";
-/** Source → raster → preprocessing (spec §2): EXIF orientation, PDF page 1 @300DPI, upscale, grayscale, contrast stretch. */
+/** Source → raster → preprocessing (spec §2): EXIF orientation, PDF page 1 @300DPI, upscale, grayscale, contrast stretch.
+ *  "enhanced" variant (retry pass): flat-field + stretch + deskew, see preprocessOps.ts. */
 import { importPdfJsDist } from "@/lib/importPdfJsDist";
 import { ensurePdfJsWorker, PDFJS_WORKER_VERSION_FALLBACK } from "@/lib/pdfjsWorkerSrc";
+import { enhanceForOcr, rgbToGray } from "./preprocessOps";
 
 async function pdfToCanvas(file: Blob, maxSide: number): Promise<HTMLCanvasElement> {
   const { pdfjsLib, pdfjs } = await importPdfJsDist();
@@ -68,9 +70,49 @@ function grayscaleStretch(c: HTMLCanvasElement) {
   ctx.putImageData(img, 0, 0);
 }
 
-export async function fileToOcrCanvas(file: Blob, mime: string, maxSide: number): Promise<HTMLCanvasElement> {
+export type OcrPreprocessVariant = "standard" | "enhanced";
+
+/**
+ * Enhanced variant (retry pass for over-lit / glare / tilted photos): flat-field background removal + stretch
+ * (preprocessOps), then deskew by rotating onto a white canvas.
+ */
+function enhanceCanvas(c: HTMLCanvasElement): { canvas: HTMLCanvasElement; skewDeg: number } {
+  const ctx = c.getContext("2d")!;
+  const img = ctx.getImageData(0, 0, c.width, c.height);
+  const { gray, skewDeg } = enhanceForOcr(rgbToGray(img.data, c.width, c.height, 4));
+  const d = img.data;
+  for (let i = 0, j = 0; i < gray.data.length; i++, j += 4) d[j] = d[j + 1] = d[j + 2] = gray.data[i];
+  ctx.putImageData(img, 0, 0);
+  if (!skewDeg) return { canvas: c, skewDeg: 0 };
+  const t = (skewDeg * Math.PI) / 180;
+  const w = Math.round(Math.abs(c.width * Math.cos(t)) + Math.abs(c.height * Math.sin(t)));
+  const h = Math.round(Math.abs(c.width * Math.sin(t)) + Math.abs(c.height * Math.cos(t)));
+  const r = document.createElement("canvas");
+  r.width = w;
+  r.height = h;
+  const rc = r.getContext("2d")!;
+  rc.fillStyle = "#fff";
+  rc.fillRect(0, 0, w, h);
+  rc.imageSmoothingQuality = "high";
+  rc.translate(w / 2, h / 2);
+  rc.rotate(t);
+  rc.drawImage(c, -c.width / 2, -c.height / 2);
+  return { canvas: r, skewDeg };
+}
+
+export async function fileToOcrCanvas(file: Blob, mime: string, maxSide: number, variant: OcrPreprocessVariant = "standard"): Promise<HTMLCanvasElement> {
+  return (await fileToOcrCanvasInfo(file, mime, maxSide, variant)).canvas;
+}
+
+export async function fileToOcrCanvasInfo(
+  file: Blob,
+  mime: string,
+  maxSide: number,
+  variant: OcrPreprocessVariant = "standard"
+): Promise<{ canvas: HTMLCanvasElement; skewDeg: number }> {
   const isPdf = /pdf/i.test(mime || file.type);
   const c = isPdf ? await pdfToCanvas(file, maxSide) : await imageToCanvas(file, maxSide);
+  if (variant === "enhanced") return enhanceCanvas(c);
   grayscaleStretch(c);
-  return c;
+  return { canvas: c, skewDeg: 0 };
 }

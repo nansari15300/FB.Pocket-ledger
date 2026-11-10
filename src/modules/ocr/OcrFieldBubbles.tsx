@@ -39,19 +39,7 @@ export function ocrFieldForSuggestion(id: string): string {
 }
 
 /** Missing-field label (from the hook) -> anchor key. */
-export function ocrFieldForMissing(label: string): string {
-  const l = label.toLowerCase();
-  if (l.startsWith("party")) return "party";
-  if (l.startsWith("bank") || l.startsWith("account")) return "account";
-  if (l.startsWith("other charge")) return "amount";
-  if (l.startsWith("date")) return "date";
-  if (l.includes("vat") || l.includes("tax")) return "tax";
-  if (l.startsWith("line")) return "lines";
-  if (l.startsWith("total")) return "total";
-  if (l.startsWith("amount")) return "amount";
-  if (l.startsWith("bill")) return "bill-no";
-  return "lines";
-}
+export { ocrMissingFieldKey as ocrFieldForMissing } from "./reactiveBubbles";
 
 export type OcrBubble = {
   key: string; // field anchor
@@ -99,7 +87,24 @@ function findAnchor(key: string, anchor?: string): HTMLElement | null {
     if (key === "lines") return preferLineCell(all);
     return all[all.length - 1];
   }
+  if (key === "total") return findVisibleTotalSummaryRow();
   return null;
+}
+
+/** Last-resort Total locator: a visible "Total:" / "Invoice Total:" label in the summary panel. */
+function findVisibleTotalSummaryRow(): HTMLElement | null {
+  const vis = (el: Element) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  };
+  const labels = Array.from(document.querySelectorAll<HTMLElement>("span, label")).filter((el) => {
+    if (!vis(el) || el.childElementCount > 0) return false;
+    return /^(Invoice\s+)?Total:$/i.test((el.textContent ?? "").trim());
+  });
+  if (!labels.length) return null;
+  const el = labels[labels.length - 1];
+  const row = el.closest("div");
+  return row && vis(row) ? row : el;
 }
 function fallbackAnchor(): HTMLElement | null {
   const all = Array.from(document.querySelectorAll<HTMLElement>("[data-pl-ocr-refresh-bar]")).filter((e) => e.getBoundingClientRect().width > 0);
@@ -768,26 +773,39 @@ function BubbleView({
   }, [update, b.title, b.items.length, b.countdown]);
 
   useEffect(() => {
-    const a = findAnchor(b.key, b.anchor);
-    if (a) {
-      a.classList.add(...RING);
-      if (scrollOnMount) a.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    }
-    const on = () => update();
+    let current: HTMLElement | null = null;
+    const applyRing = () => {
+      const next = findAnchor(b.key, b.anchor);
+      if (current && current !== next) current.classList.remove(...RING);
+      if (next && next !== current) {
+        next.classList.add(...RING);
+        if (scrollOnMount && !current) next.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+      current = next;
+    };
+    applyRing();
+    const on = () => { applyRing(); update(); };
     window.addEventListener("scroll", on, true);
     window.addEventListener("resize", on);
-    const t = window.setInterval(on, 400); // layout shifts (rows added, dialogs resized)
+    const t = window.setInterval(on, 400); // layout shifts (rows added, dialogs resized, field appears later)
     let ro: ResizeObserver | null = null;
     if (el && typeof ResizeObserver !== "undefined") {
       ro = new ResizeObserver(on);
       ro.observe(el);
     }
+    let mo: MutationObserver | null = null;
+    if (typeof MutationObserver !== "undefined") {
+      mo = new MutationObserver(on);
+      const host = document.querySelector('[role="dialog"]') ?? document.body;
+      mo.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-ocr-field", "data-ocr-anchor", "class", "style"] });
+    }
     return () => {
-      a?.classList.remove(...RING);
+      current?.classList.remove(...RING);
       window.removeEventListener("scroll", on, true);
       window.removeEventListener("resize", on);
       window.clearInterval(t);
       ro?.disconnect();
+      mo?.disconnect();
     };
   }, [b.key, b.anchor, update, scrollOnMount, el]);
 
@@ -844,8 +862,16 @@ function BubbleView({
 
         <div data-ocr-bubble-body="" className="min-h-0" style={{ maxHeight: listMaxH, overflowY: "auto", overscrollBehavior: "contain" }}>
         {missing ? (
-          <div className="mt-2 flex justify-end">
-            <Button type="button" size="sm" className={pill} onClick={onDismiss}>OK</Button>
+          <div className="mt-1.5">
+            {b.items[0] ? (
+              <>
+                <p className="break-words text-xs text-slate-500">{b.items[0].value}</p>
+                {b.items[0].reason ? <p className="text-[11px] text-slate-500">{b.items[0].reason}</p> : null}
+              </>
+            ) : null}
+            <div className="mt-2 flex justify-end">
+              <Button type="button" size="sm" className={pill} onClick={onDismiss}>OK</Button>
+            </div>
           </div>
         ) : party ? (
           <div className="mt-1.5">

@@ -6,12 +6,14 @@
  * headers ("Address : Inaruwa      Nepali Date : 2083/07/01") become separate segments, so a label's
  * value always stops at the next column.
  */
-import { parseDocDates, defaultVoucherDateWindow } from "@/lib/ocr/dates";
+import { parseDocDates, defaultVoucherDateWindow, resolveBillDate } from "@/lib/ocr/dates";
+import { joinSpacedOcrText } from "@/lib/ocr/devanagariJoin";
+import { canonicalizeNepaliBill } from "@/lib/ocr/nepaliBill";
 import { amountsInLine, fixDigitConfusions, normalizeName, normalizeOcrLine, parseStrictAmount } from "./normalize";
 import { bestUniqueMatch, nameScore, namesOf, tokenCoverageScore } from "./fuzzy";
 import { devanagariToRoman, nameSkeleton } from "./translit";
 import { isOcrSelectableParty } from "./types";
-import { ownNameRule, textHasOwnName, textHasOwnPan } from "./ownCompany";
+import { ownNameRule, panConfusionDistance, textHasOwnName, textHasOwnPan, textHasOwnPanLoose } from "./ownCompany";
 import { canonicalOcrQty, descriptionHasLeakedQtyUnit, normalizeItemDescription, parseOcrQtyToken } from "./extras";
 import type { OcrIdentifiers } from "./identifiers";
 import type {
@@ -28,17 +30,17 @@ type L = { text: string; conf: number; rel: number; y: number; words: OcrWord[] 
 type Seg = { text: string; conf: number; rel: number; y: number; x0: number; x1: number; h: number; line: number };
 
 const RX = {
-  dateLabel: /\b(invoice\s*date|bill\s*date|nepali\s*date|miti|dated|date)\b|मिति|दिनांक|तारीख/i,
+  dateLabel: /\b(invoice\s*date|bill\s*date|nepali\s*date|invoice\s*m[il1]t[il1]|m[il1]t[il1]|dated|dat[e3])\b|मिति|दिनांक|तारीख/i,
   dueLabel: /\b(due\s*date)\b|भुक्तानी\s*मिति|अन्तिम\s*मिति/i,
   printLabel: /\bprint(ed)?\s*(time|date)|\btime\b/i,
   panLabel: /\b(pan|vat)\s*(reg\.?)?\s*(no\.?|number)?\b|स्थायी\s*लेखा|स्था\.?\s*ले\.?\s*नं|प्यान|भ्याट/i,
   buyerLabel: /\b(buyer|customer|bill\s*to|purchaser|party\s*name|m\/s|sold\s*to)\b|क्रेता|ग्राहक/i,
   sellerLabel: /\b(seller|supplier|vendor)\b|विक्रेता/i,
-  billLabel: /\b(bill|invoice|inv|receipt|ref)\s*(no|number|#)\.?|बिल\s*(नं|नम्बर)|रसिद\s*नं|बीजक\s*सं/i,
+  billLabel: /\b(bill|[il1|]nvo[il1]ce|[il1|]nv|receipt|ref)\.?\s*(n[o0](?![a-z])|number|#|mo(?![a-z]))\.?|बिल\s*(नं|नम्बर)|रसिद\s*नं|बीजक\s*सं/i,
   phoneLabel: /\b(phone|ph|tel|mobile|mob|contact)\b|फोन|मोबाइल/i,
   addressLabel: /\b(address|addr)\b|ठेगाना/i,
   payMode: /\b(mode\s*of\s*payment|payment\s*mode|paid\s*by|payment\s*method)\b/i,
-  grand: /\b(grand\s*(total|amount)|net\s*(amount|total|payable)|total\s*amount|bill\s*amount|invoice\s*total)\b|कुल\s*जम्मा|कुल\s*रकम|कुल\s*योग/i,
+  grand: /\b(gr[a@]nd\s*(t[o0]t[a@][l1i]|amount)|g\.\s*total|net\s*(amount|total|payable)|total\s*amount|bill\s*amount|invoice\s*total)\b|कुल\s*जम्मा|कुल\s*रकम|कुल\s*योग/i,
   plainTotal: /\b(sub\s*-?\s*)?total\b(?!\s*(packages?|qty|quantity|amount|items?|in\s*words))/gi,
   taxable: /\b(taxable\s*(amount|value|total)?|sub\s*-?\s*total|amount\s*before\s*tax)\b|करयोग्य\s*रकम/i,
   vat: /(\b\d{1,2}(\.\d+)?\s*%\s*)?\bvat\b(?!\s*(no|reg|number))|मू\.?\s*अ\.?\s*क\.?|मूल्य\s*अभिवृद्धि\s*कर/i,
@@ -65,6 +67,10 @@ const UNIT_MAP: [RegExp, string][] = [
   [/^(box|bag|set|pkt|doz|dozen|ft)\.?$/i, ""],
   [/^(पिस|केजी|लिटर|थान|बोरा)$/, ""],
 ];
+/** Business-name words that mark the seller's name line in a bill header. */
+const COMPANY_WORD =
+  /\b(pvt|private|ltd|limited|trade|traders?|trading|cent(er|re)|suppliers?|enterprises?|udh?yog|industries|stores?|hardware|company|co\.|concern|mart|suppliers|steel|engineering|works?(hop)?)\b|प्रा\.?\s*लि|ट्रेडर्स|उद्योग|सप्लायर्स/i;
+
 const UNIT_CANON = ["ltr", "lr", "pcs", "pc", "nos", "kg", "kgs", "gm", "mtr", "box", "bag", "set", "pkt", "doz"];
 function lev(a: string, b: string): number {
   const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
@@ -163,7 +169,11 @@ function amountAfterLabel(lines: L[], re: RegExp, exclude?: RegExp): { value: nu
     const ms = [...t.matchAll(g)];
     if (!ms.length) continue;
     const last = ms[ms.length - 1];
-    const tail = t.slice((last.index ?? 0) + last[0].length).replace(/\b\d+(\.\d+)?\s*%/g, " ");
+    const tail = t
+      .slice((last.index ?? 0) + last[0].length)
+      .replace(/\b\d+(\.\d+)?\s*%/g, " ")
+      // photo OCR: decimal point read as a space / missing on totals lines ("62,360 32", "479.694 80" -> x.32 / x.80)
+      .replace(/(?<![\d.,])(\d{1,3}(?:[,.]\d{3})+|\d{4,})\s(\d{2})(?![\d.,])/g, (_m, a: string, b: string) => `${a.replace(/[.,]/g, "")}.${b}`);
     const nums = amountsInLine(tail);
     if (nums.length) return { value: nums[0], conf: lines[i].conf };
   }
@@ -177,7 +187,8 @@ const NUM_ONLY = /^[\d,]+(\.\d+)?$/;
 const QTY_UNIT_LEAK = /\d[\d,]*(?:\.\d+)?\s+(?:pcs?|nos?|pieces?|ltr|ltrs|litres?|liters?|kgs?|gms?|grams?|mtrs?|meters?|metres?|box(?:es)?|bags?|sets?|pkts?|packets?|doz(?:en)?|ft)\.?\b/i;
 
 function finalizeItemDescription(...cands: (string | undefined | null)[]): string {
-  const cleaned = cands.map((c) => (c ? normalizeItemDescription(c) : "")).filter(Boolean);
+  // "Item" is the placeholder of an already-finalized empty candidate (tripletRow): never prefer it over real text
+  const cleaned = cands.map((c) => (c ? normalizeItemDescription(c) : "")).filter((c) => c && c !== "Item");
   const withSize = cleaned.find((c) => /\d+(?:\.\d+)?MM\b/i.test(c));
   return withSize || cleaned[0] || "Item";
 }
@@ -505,7 +516,39 @@ export type ParseContext = {
 
 const localYmd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
+/**
+ * Google Vision text with every akshara/digit spaced ("ज म्मा", "4 4 2 4 7 7 9") is re-joined, and Nepali-labelled
+ * bills (क्रेताको नाम, बिजक नं., कुल जम्मा ...) become canonical English-labelled lines. Other text is untouched.
+ */
+export function prepareOcrRawForParse(raw: OcrRawResult): { raw: OcrRawResult; notes: string[] } {
+  const joined = joinSpacedOcrText(raw.text ?? "");
+  const src = joined.joined ? joined.text.split(/\r?\n/).filter((t) => t.trim()) : raw.lines.map((l) => l.text);
+  const canon = canonicalizeNepaliBill(src);
+  if (!joined.joined && !canon.applied) return { raw, notes: [] };
+  const texts = canon.applied ? canon.lines : src;
+  const n = texts.length;
+  const conf = raw.meanConfidence || 90;
+  return {
+    raw: {
+      ...raw,
+      text: texts.join("\n"),
+      // synthetic word boxes by character offset (10px per char) so table columns line up
+      lines: texts.map((t, i) => ({
+        text: t.replace(/\s+/g, " ").trim(),
+        confidence: conf,
+        y: 40 + i * 30,
+        words: [...t.matchAll(/\S+/g)].map((m) => ({ text: m[0], x0: (m.index ?? 0) * 10, x1: ((m.index ?? 0) + m[0].length) * 10, y0: 40 + i * 30, y1: 60 + i * 30, conf })),
+      })),
+      pageHeight: 40 + 30 * Math.max(20, n),
+      pageWidth: Math.max(400, ...texts.map((t) => t.length * 10)),
+    },
+    notes: [...(joined.joined ? ["Spaced OCR text (Vision): characters re-joined"] : []), ...canon.notes],
+  };
+}
+
+export function parseBill(rawIn: OcrRawResult, ctx: ParseContext): OcrParsedBill {
+  const prepared = prepareOcrRawForParse(rawIn);
+  const raw = prepared.raw;
   const H = raw.pageHeight || 1;
   const W = raw.pageWidth || Math.max(1, ...raw.lines.flatMap((l) => (l.words ?? []).map((w) => w.x1)));
   const lines: L[] = raw.lines
@@ -514,6 +557,8 @@ export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
   const segs = buildSegments(lines, W);
   const out: OcrParsedBill = { debug: [] };
   const dbg = (m: string) => out.debug!.push(m);
+  for (const n of prepared.notes) dbg(n);
+  if (raw.preprocess || raw.passNote) dbg(`OCR pass: ${raw.preprocess ?? "standard"}${raw.passNote ? ` | ${raw.passNote}` : ""}`);
   const own = (ctx.ownPan || "").replace(/\D/g, "");
   const ownName = ctx.ownName ? normalizeName(ctx.ownName) : "";
 
@@ -522,7 +567,8 @@ export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
   // "NEW PARSA ENGINEERING WORKSHOP"); a name split over two OCR lines is matched with the segment below it.
   const ownRule = ownNameRule(ctx.ownName);
   const ownKnown = own.length === 9 || !!ownRule;
-  const isOwnPanSeg = (s: Seg) => textHasOwnPan(s.text, own);
+  // exact PAN anywhere; one OCR-confused digit tolerated only on a PAN-labelled segment (over-lit photo: 303687786 -> 303687788)
+  const isOwnPanSeg = (s: Seg) => textHasOwnPan(s.text, own) || (RX.panLabel.test(s.text) && textHasOwnPanLoose(s.text, own));
   const isOwnNameSeg = (s: Seg) => (ownName.length >= 4 && normalizeName(s.text).includes(ownName)) || textHasOwnName(s.text, ownRule);
   const isOwnSeg = (s: Seg) => isOwnPanSeg(s) || isOwnNameSeg(s);
   const below = (s: Seg) => segs.find((t) => t.line === s.line + 1 && (t.x1 <= t.x0 || (t.x0 < s.x1 && t.x1 > s.x0)));
@@ -535,8 +581,19 @@ export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
   const ownPanSeg = segs.find(isOwnPanSeg);
   const ownNameSeg = segs.find(isOwnNameSeg) ?? segs.find(ownNameAcross);
   const ownSeg = [ownPanSeg, ownNameSeg].filter((x): x is Seg => !!x).sort((a, b) => a.y - b.y)[0];
+  // No Bill To / Customer label read (faded photo: "Customer Name" -> "ner Nas"): a short document title
+  // ("TAX INVOICE") with another company's name line above it splits seller (above) from buyer (below).
+  const titleSeg = buyerY != null ? undefined : segs.find(
+    (s) => /\b(tax\s*invoice|invoice|estimate|quotation|bill\s*of\s*supply)\b|कर\s*बीजक/i.test(s.text) &&
+      (s.text.match(/\p{L}+/gu) ?? []).length <= 4 && !RX.billLabel.test(s.text)
+  );
+  const titleY =
+    titleSeg && segs.some((s) => s.y < titleSeg.y - 2 && COMPANY_WORD.test(s.text) && !isOwnSeg(s)) ? titleSeg.y : null;
   const sideOf = (s: Seg): "seller" | "buyer" =>
-    buyerY != null ? (s.y >= buyerY - 2 ? "buyer" : "seller") : RX.sellerLabel.test(s.text) || s.rel <= 0.2 ? "seller" : "buyer";
+    buyerY != null ? (s.y >= buyerY - 2 ? "buyer" : "seller")
+    : RX.sellerLabel.test(s.text) ? "seller"
+    : titleY != null ? (s.y > titleY + 2 ? "buyer" : "seller")
+    : s.rel <= 0.2 ? "seller" : "buyer";
   let ourSide: "seller" | "buyer" | null = null;
   if (ownSeg) ourSide = sideOf(ownSeg);
   // how we found ourselves: PAN 0.95, name 0.9, both agreeing 0.97
@@ -546,25 +603,15 @@ export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
   dbg(`Own company: ${ownKnown ? `profile "${ctx.ownName ?? "-"}" (match tokens: ${ownRule ? ownRule.tokens.slice(0, ownRule.need).join(" ") : "-"}) / PAN ${own || "-"}` : "no company name/PAN in profile"}; found by ${ownBy ?? "-"}${ownSeg ? ` at "${ownSeg.text}"` : ""}`);
   // Counter-party block: purchase -> seller (above the buyer block); sale -> buyer block
   const counterSide: "seller" | "buyer" = ourSide ? (ourSide === "buyer" ? "seller" : "buyer") : ctx.kind === "purchase" ? "seller" : "buyer";
-  const sellerTop = buyerY != null ? (s: Seg) => s.y < buyerY - 2 : (s: Seg) => s.rel <= 0.3;
+  const sellerTop = buyerY != null ? (s: Seg) => s.y < buyerY - 2 : titleY != null ? (s: Seg) => s.y <= titleY + 2 : (s: Seg) => s.rel <= 0.3;
   const counterSegs = segs.filter((s) => (counterSide === "seller" ? sellerTop(s) : !sellerTop(s) && s.rel < 0.6)).filter((s) => !isOwnSeg(s));
   dbg(`Layout: ${lines.length} lines, ${segs.length} segments; our company = ${ourSide ?? "not found"}; counter-party block = ${counterSide} (${counterSegs.length} segments)`);
 
-  /* ---- Date / due date (labeled segment value) ---- */
-  let dateCand: DateCand | null = null;
-  for (let i = 0; i < segs.length && !dateCand; i++) {
-    const s = segs[i];
-    if (!RX.dateLabel.test(s.text) || RX.dueLabel.test(s.text) || RX.printLabel.test(s.text)) continue;
-    const c = dateCandidates(valueAfter(segs, i, RX.dateLabel));
-    if (c.length) dateCand = c.find((x) => x.date && !x.ambiguous) ?? c[0];
-  }
-  if (dateCand?.date && !dateCand.ambiguous) out.date = f(dateCand.date, "fill", 0.95);
-  else if (dateCand) out.date = f(dateCand.date ?? new Date(NaN), "flag", 0.5, "Date ambiguous / out of range");
-  else {
-    const all = segs.filter((s) => s.rel <= 0.4 && !RX.printLabel.test(s.text)).flatMap((s) => dateCandidates(s.text));
-    const uniq = new Set(all.map((c) => c.date?.getTime() ?? "x"));
-    if (all.length && uniq.size === 1 && all[0].date && !all[0].ambiguous) out.date = f(all[0].date, "fill", 0.9);
-    else if (all.length) out.date = f(all[0].date ?? new Date(NaN), "flag", 0.5, "Several dates without label");
+  /* ---- Date / due date (labeled AD + BS, cross-checked) ---- */
+  {
+    const dateText = [raw.text, ...lines.map((l) => l.text), ...segs.map((s) => s.text)].filter(Boolean).join("\n");
+    const resolved = resolveBillDate(dateText, defaultVoucherDateWindow());
+    if (resolved) out.date = f(resolved.date, resolved.status, resolved.confidence, resolved.note);
   }
   if (!out.date) dbg("Date: no BS/AD date found");
   else dbg(`Date: ${out.date.status} ${localYmd(out.date.value)}${out.date.note ? ` (${out.date.note})` : ""}`);
@@ -583,13 +630,13 @@ export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
   segs.forEach((s, i) => {
     if (!RX.panLabel.test(s.text)) return;
     const p = panIn(valueAfter(segs, i, RX.panLabel)) ?? panIn(s.text);
-    if (p && p !== own && counterSegs.includes(s) && !pans.includes(p)) pans.push(p);
+    if (p && p !== own && panConfusionDistance(p, own) > 1 && counterSegs.includes(s) && !pans.includes(p)) pans.push(p);
   });
   if (!pans.length) {
     // label-less 9-digit number in the counter block (not a phone)
     counterSegs.forEach((s) => {
       const p = panIn(s.text);
-      if (p && p !== own && !RX.phoneLabel.test(s.text) && !pans.includes(p)) pans.push(p);
+      if (p && p !== own && panConfusionDistance(p, own) > 1 && !RX.phoneLabel.test(s.text) && !pans.includes(p)) pans.push(p);
     });
   }
   const pan = pans.length === 1 ? pans[0] : null;
@@ -607,8 +654,23 @@ export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
         !/invoice|bill|tax|estimate|receipt|<<|>>|quotation/i.test(s.text) &&
         (s.text.match(/\p{L}+/gu) ?? []).length >= 2
     );
-    const big = cands.sort((a, b) => b.h - a.h || a.y - b.y)[0];
-    if (big) partyName = { text: big.text, conf: big.conf, seg: big };
+    // Over-lit photos give garbage header lines ("rar [ar [vow] RAE amount"): drop non-word lines, prefer a line
+    // by height with a company word (Pvt / Ltd / Trade / Center ...) counting 1.5x, then the top-most.
+    const words = (t: string): string[] => t.match(/\p{L}+/gu) ?? [];
+    const wordLike = (t: string) => {
+      const ws = words(t);
+      const good = ws.filter((w) => w.length >= 3 && /[aeiouyअ-औा-ौ]/i.test(w) && !/(.)\1\1/i.test(w)).length;
+      return ws.length ? good / ws.length : 0;
+    };
+    const junk = (t: string) => /[[\]{}<>@#$%^*=~_\\]/.test(t) || wordLike(t) < 0.5;
+    const companyWord = (t: string) => COMPANY_WORD.test(t);
+    const clean = cands.filter((x) => !junk(x.text));
+    const pool0 = clean.length ? clean : cands;
+    const weight = (x: Seg) => x.h * (companyWord(x.text) ? 1.5 : 1);
+    const big = pool0.sort((a, b) => weight(b) - weight(a) || Number(companyWord(b.text)) - Number(companyWord(a.text)) || a.y - b.y)[0];
+    // stray OCR quote / bar at the edges ('"RATIK TRADE ...' -> 'RATIK TRADE ...')
+    if (big) partyName = { text: big.text.replace(/^[^\p{L}\p{N}]+/u, "").replace(/[^\p{L}\p{N}.)]+$/u, ""), conf: big.conf, seg: big };
+    if (cands.length !== clean.length) dbg(`Party name: skipped ${cands.length - clean.length} garbled header line(s)`);
   } else {
     const i = segs.findIndex((s) => RX.buyerLabel.test(s.text) && !isOwnSeg(s));
     if (i >= 0) {
@@ -731,6 +793,19 @@ export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
       : [];
     dbg(`Party candidates: ${ctx.parties.length} received, ${pool.length} active, ${pool.filter((p) => (p.aliasName ?? "").trim()).length} with alias; query "${qn || "-"}"; best: ${top.map((t) => `${t.n}${t.a ? ` [alias "${t.a}"]` : ""} name ${Math.round(t.s * 100)}% / sound ${Math.round(t.k * 100)}%`).join("; ") || "-"}; picked ${out.partyId?.value ?? "none"}`);
   }
+  // Over-lit photo misreads PAN digits (619727215 -> 818727218): unique master PAN within 3 OCR-confusable digits
+  // (6/8/5/9/3/0, 1/7/4) is a SUGGESTION only (flag), never a fill.
+  if (!out.partyId && pan) {
+    const near = pool
+      .map((p) => ({ p, d: Math.min(...panOf(p).map((x) => panConfusionDistance(pan, x))) }))
+      .filter((x) => x.d >= 1 && x.d <= 3);
+    if (near.length === 1) {
+      const real = panOf(near[0].p).find((x) => panConfusionDistance(pan, x) === near[0].d)!;
+      out.partyId = f(near[0].p.id, "flag", 0.7, `PAN read as ${pan}; closest party PAN ${real} - confirm`);
+      out.pan = f(real, "flag", 0.7, `PAN read as ${pan} (unclear print)`);
+      dbg(`Party: "${near[0].p.name}" by near PAN ${real} (read ${pan}, ${near[0].d} confusable digit(s)) - suggestion only`);
+    }
+  }
   if (!out.partyId) dbg(pan ? `Party: no account has PAN ${pan}; name "${partyName?.text ?? "-"}" had no unique match >= 95%` : `Party: no PAN; name "${partyName?.text ?? "-"}" had no unique match >= 95%`);
 
   /* ---- Bill no (OCR digit confusions fixed per part: B3 -> 83) ---- */
@@ -742,6 +817,18 @@ export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
       const fixed = tok.split(/([-/])/).map(fixDigitConfusions).join("").toUpperCase();
       out.billNo = f(fixed, "fill", segs[i].conf);
       break;
+    }
+  }
+  if (!out.billNo) {
+    // label lost on an over-lit photo: invoice-series token like "SI-02833" in the header (suggestion only)
+    for (const s of segs) {
+      if (s.rel > 0.45 || RX.phoneLabel.test(s.text) || RX.panLabel.test(s.text)) continue;
+      const m = /(?<![A-Za-z0-9])([A-Z]{1,4})[-/](\d{3,7})(?![\d/.-])/.exec(s.text);
+      if (m) {
+        out.billNo = f(`${m[1]}-${m[2]}`, "flag", 0.6, "Bill No label not read - confirm");
+        dbg(`Bill No: unlabeled series token "${out.billNo.value}" (suggestion)`);
+        break;
+      }
     }
   }
   if (!out.billNo) dbg("Bill No: no Bill/Invoice No label with a value");
@@ -776,6 +863,26 @@ export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
       }
     }
   }
+  // Dropped decimal point on printed Taxable / Grand Total ("47969480", "54205512"): restore when it then fits
+  // the other printed totals (Taxable + VAT = Grand, VAT = 13% of Taxable).
+  const restoreTo = (v: number, target: number) => {
+    for (const k of [1, 2, 3]) {
+      const x = Math.round((v / 10 ** k) * 100) / 100;
+      if (Math.abs(x - target) <= 1) return x;
+    }
+    return null;
+  };
+  if (grand && taxableL && vat) {
+    const want = (gv: number, tv: number, vv: number) => Math.abs(tv + vv - gv) <= 1;
+    if (!want(grand.value, taxableL.value, vat.value)) {
+      const g2 = restoreTo(grand.value, taxableL.value + vat.value);
+      const t2 = restoreTo(taxableL.value, grand.value - vat.value);
+      const v2 = restoreTo(vat.value, grand.value - taxableL.value);
+      if (g2 != null) { dbg(`Grand ${grand.value} -> ${g2} (decimal point restored)`); grand.value = g2; }
+      else if (t2 != null) { dbg(`Taxable ${taxableL.value} -> ${t2} (decimal point restored)`); taxableL.value = t2; }
+      else if (v2 != null) { dbg(`VAT ${vat.value} -> ${v2} (decimal point restored from Grand - Taxable)`); vat.value = v2; }
+    }
+  }
   const check1 =
     (plainValue == null || Math.abs(S - plainValue) <= 1) &&
     (!taxableL || Math.abs(taxable - taxableL.value) <= 1) &&
@@ -789,6 +896,15 @@ export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
         tax = v;
         break;
       }
+    }
+  }
+  tax = vat?.value ?? tax;
+  if (vat && grand && Math.abs(vat.value - (grand.value * 13) / 113) > 1 && Math.abs(vat.value - taxable * 0.13) > 1) {
+    const v = restoreTo(vat.value, (grand.value * 13) / 113);
+    if (v != null) {
+      dbg(`VAT ${vat.value} -> ${v} (decimal point restored from Grand x 13/113)`);
+      vat.value = v;
+      tax = v;
     }
   }
   const check2 = !vat || Math.abs(tax - Math.round(taxable * 0.13 * 100) / 100) <= 1;
@@ -827,12 +943,25 @@ export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
       return best ? { ...r, itemId: best.item.id } : r;
     });
   }
+  // Printed totals agree with each other (Taxable x 13% = VAT, Taxable + VAT = Grand) even though the item rows
+  // did not reconcile (a faded / misread row): totals are trustworthy on their own -> fill them, items stay flagged.
+  const printedBase = taxableL?.value ?? (plainValue != null ? Math.round((plainValue - discount) * 100) / 100 : null);
+  const totalsSelfConsistent =
+    !reconciled && printedBase != null && printedBase > 0 && !!vat && grand != null &&
+    Math.abs(vat.value - printedBase * 0.13) <= 1 && Math.abs(printedBase + vat.value - grand.value) <= 1;
+  if (totalsSelfConsistent) dbg(`Totals: printed Taxable ${printedBase} + VAT ${vat!.value} = Grand ${grand!.value} (self-consistent) -> filled; line items ${items?.rows.length ? "flagged" : "not read"}`);
   if (reconciled) {
     out.lineItems = f(items!.rows, "fill", 0.95);
     if (taxableL ?? plain) out.subTotal = f((taxableL ?? plain)!.value, "fill", 0.95);
     if (disc) out.discount = f(discount, "fill", 0.95);
     if (vat) out.vat = f(tax, "fill", 0.95);
     out.total = f(grandValue!, "fill", 0.97);
+  } else if (totalsSelfConsistent) {
+    out.subTotal = f((taxableL ?? plain)!.value, "fill", 0.9);
+    if (disc) out.discount = f(discount, "fill", 0.9);
+    out.vat = f(vat!.value, "fill", 0.9);
+    out.total = f(grand!.value, "fill", 0.92);
+    if (items?.rows.length) out.lineItems = f(items.rows, "flag", 0.5, "Line items did not reconcile");
   } else {
     if (grandValue != null) out.total = f(grandValue, "flag", grand?.conf ?? 0.6, "Totals did not reconcile with line items");
     if (items?.rows.length) out.lineItems = f(items.rows, "flag", 0.5, "Line items did not reconcile");
@@ -843,9 +972,10 @@ export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
 
   // Single amount (payments / contra / adjustment)
   const recv = amountAfterLabel(lines, /\b(received|paid|amount\s*paid|amount\s*received|cheque\s*amount)\b|प्राप्त\s*रकम|भुक्तानी\s*रकम/i);
-  const cand = reconciled ? grandValue! : (grandValue ?? recv?.value ?? null);
+  const cand = reconciled ? grandValue! : totalsSelfConsistent ? grand!.value : (grandValue ?? recv?.value ?? null);
   if (cand != null && cand > 0) {
     if (reconciled) out.amount = f(cand, "fill", 0.97);
+    else if (totalsSelfConsistent) out.amount = f(cand, "fill", 0.92);
     else {
       const seen = lines.reduce((n, l) => n + amountsInLine(l.text).filter((v) => Math.abs(v - cand) < 0.005).length, 0) + (altNums.has(cand.toFixed(2)) ? 1 : 0);
       dbg(`Amount: candidate ${cand} seen ${seen} time(s) (need 2 unless totals reconcile)`);

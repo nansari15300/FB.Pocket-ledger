@@ -56,6 +56,14 @@ export type OcrRawResult = {
   pageWidth?: number;
   /** Second (sparse-text) pass - only used to CONFIRM values the main pass could not read. */
   altText?: string;
+  /** Which preprocessing produced `lines` ("standard" | "enhanced (deskew x deg)"), for the debug dump. */
+  preprocess?: string;
+  /** Standard vs enhanced retry pass summary (only when the retry ran). */
+  passNote?: string;
+  /** Which OCR engine produced the text (debug dump "OCR engine: google|tesseract"). */
+  engine?: "google" | "tesseract";
+  /** Why the online engine was skipped / failed (tesseract fallback), or other engine detail. */
+  engineNote?: string;
 };
 
 export type OcrPartyLike = {

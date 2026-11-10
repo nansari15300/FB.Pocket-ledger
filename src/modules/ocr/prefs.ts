@@ -3,6 +3,9 @@
 import { useSyncExternalStore } from "react";
 
 export type OcrConnectorStyle = "tail" | "line";
+export type OcrNarrationStyle = "full" | "short";
+/** auto = Google online OCR when the server allows it for this user/company, else offline tesseract. */
+export type OcrEnginePref = "auto" | "offline";
 export type OcrPrefs = {
   enabled: boolean;
   autoPost: boolean;
@@ -14,6 +17,10 @@ export type OcrPrefs = {
   autoSwitchSeconds: number;
   /** Field-popup connector: speech-bubble tail (default) or straight arrow line. */
   connectorStyle: OcrConnectorStyle;
+  /** Full narration includes item names; short is "Bill No … Pur from … on …". */
+  narrationStyle: OcrNarrationStyle;
+  /** OCR engine preference (default auto). */
+  engine: OcrEnginePref;
 };
 export const AUTO_POST_SECONDS_MIN = 1;
 export const AUTO_POST_SECONDS_MAX = 60;
@@ -22,7 +29,7 @@ export function clampAutoPostSeconds(v: unknown): number {
   return Number.isFinite(n) ? Math.min(AUTO_POST_SECONDS_MAX, Math.max(AUTO_POST_SECONDS_MIN, n)) : 10;
 }
 const KEY = "pl.ocr.prefs.v1";
-const DEFAULTS: OcrPrefs = { enabled: true, autoPost: false, overwriteEdited: false, autoPostSeconds: 10, autoSwitchVoucher: true, autoSwitchSeconds: 10, connectorStyle: "tail" };
+const DEFAULTS: OcrPrefs = { enabled: true, autoPost: false, overwriteEdited: false, autoPostSeconds: 10, autoSwitchVoucher: true, autoSwitchSeconds: 10, connectorStyle: "tail", narrationStyle: "full", engine: "auto" };
 const subs = new Set<() => void>();
 let cache: OcrPrefs | null = null;
 
@@ -31,6 +38,8 @@ function normalize(raw: Partial<OcrPrefs> | null | undefined): OcrPrefs {
     ...DEFAULTS,
     ...(raw ?? {}),
     connectorStyle: raw?.connectorStyle === "line" ? "line" : "tail",
+    narrationStyle: raw?.narrationStyle === "short" ? "short" : "full",
+    engine: raw?.engine === "offline" ? "offline" : "auto",
   };
 }
 

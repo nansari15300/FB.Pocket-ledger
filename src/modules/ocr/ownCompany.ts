@@ -88,3 +88,32 @@ export function textHasOwnPan(text: string, ownPan?: string | null): boolean {
   if (own.length !== 9) return false;
   return new RegExp(`(?<!\\d)${own}(?!\\d)`).test(String(text ?? "").replace(/(\d)[\s-](?=\d)/g, "$1"));
 }
+
+/** Digit groups OCR mixes up on faded / over-lit prints (6->8, 5->8, 9->8, 3->8, 1->7). */
+const CONFUSABLE = ["035689", "147"];
+const confusable = (a: string, b: string) => CONFUSABLE.some((g) => g.includes(a) && g.includes(b));
+
+/**
+ * Number of differing digits between two 9-digit PANs when every difference is an OCR confusion
+ * (see CONFUSABLE); Infinity when lengths differ or any difference is not confusable.
+ */
+export function panConfusionDistance(a: string, b: string): number {
+  const x = String(a ?? "").replace(/\D/g, ""), y = String(b ?? "").replace(/\D/g, "");
+  if (x.length !== 9 || y.length !== 9) return Infinity;
+  let d = 0;
+  for (let i = 0; i < 9; i++) {
+    if (x[i] === y[i]) continue;
+    if (!confusable(x[i], y[i])) return Infinity;
+    d++;
+  }
+  return d;
+}
+
+/** Loose own-PAN check for a PAN-labelled segment: 9-digit value within 1 OCR-confusable digit of our PAN. */
+export function textHasOwnPanLoose(text: string, ownPan?: string | null): boolean {
+  const own = String(ownPan ?? "").replace(/\D/g, "");
+  if (own.length !== 9) return false;
+  if (textHasOwnPan(text, own)) return true;
+  const digits = String(text ?? "").replace(/(\d)[\s-](?=\d)/g, "$1").match(/(?<!\d)\d{9}(?!\d)/g) ?? [];
+  return digits.some((p) => panConfusionDistance(p, own) <= 1);
+}

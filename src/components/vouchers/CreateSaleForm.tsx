@@ -4582,7 +4582,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                           <SalePurchaseTotalsSummaryAmount value={tds || 0} />
                         </div>
                       )}
-                      <div className={cn(SALE_PURCHASE_TOTALS_SUMMARY_ROW, "text-lg font-bold border-t py-[3px]")}>
+                      <div className={cn(SALE_PURCHASE_TOTALS_SUMMARY_ROW, "text-lg font-bold border-t py-[3px]")} data-ocr-field="total">
                         <span className="shrink-0">{(tds || 0) > 0 ? "Invoice Total:" : "Total:"}</span>
                         <SalePurchaseTotalsSummaryAmount value={total || 0} className="text-green-600 font-bold" />
                       </div>

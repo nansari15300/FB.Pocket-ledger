@@ -9,7 +9,9 @@ export function devanagariDigitsToAscii(s: string): string {
 export function fixNumericToken(tok: string): string {
   if (!/\d/.test(tok)) return tok;
   if (!/^[\dOolISB.,\-/]+$/.test(tok)) return tok;
-  return tok.replace(/[Oo]/g, "0").replace(/[lI]/g, "1").replace(/S/g, "5").replace(/B/g, "8");
+  const fix = (x: string) => x.replace(/[Oo]/g, "0").replace(/[lI]/g, "1").replace(/S/g, "5").replace(/B/g, "8");
+  // letters-only prefix part before "-" / "/" is an invoice series, not misread digits: "SI-02833" stays SI (was 51-02833)
+  return tok.split(/([-/])/).map((part, i, all) => (i === 0 && all.length > 1 && /^[A-Za-z]{1,4}$/.test(part) ? part : fix(part))).join("");
 }
 
 export function normalizeOcrLine(s: string): string {
@@ -29,6 +31,8 @@ export function parseStrictAmount(raw: string): number | null {
   if (!s) return null;
   // Printed 5-decimal values (175.20000 / 11,504.16000): trailing zeros after 2 decimals are noise.
   s = s.replace(/(\.\d{2})0+$/, "$1").replace(/(\.\d)0+$/, "$1");
+  // decimal comma misread on photos: "62,360,32" / "479,694,80" -> 62360.32 / 479694.80 (thousands group, then 2 digits)
+  if (!AMOUNT_RE.test(s) && /^\d{1,3}(,\d{3})+,\d{2}$/.test(s)) s = s.replace(/,(\d{2})$/, ".$1");
   if (!AMOUNT_RE.test(s)) return null;
   s = s.replace(/,/g, "");
   const n = Number(s);

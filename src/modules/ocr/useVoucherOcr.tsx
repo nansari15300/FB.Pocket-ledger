@@ -15,6 +15,7 @@ import { parseBill } from "./parser";
 import { extractIdentifiers, type OcrIdentifiers } from "./identifiers";
 import { learnTemplateParty, lookupTemplateParty } from "./templates";
 import { clampAutoPostSeconds, getOcrPrefs, useOcrPrefs } from "./prefs";
+import { buildOcrNarration, formatOcrNarrationDate, itemsNarrationTag, readDateDisplayPrefs } from "./narration";
 import { AutoPostCountdownBubble } from "./AutoPostCountdownBubble";
 import { useOcrPlanAllowed } from "./gate";
 import { OcrFindAccountDialog } from "./OcrFindAccountDialog";
@@ -44,6 +45,7 @@ import { detectReceipt, AUTO_SWITCH_MIN_CONF, type ReceiptDetection } from "@/li
 import { accountDisplayLabel, buildMoneyVoucherFill, pickChargeAccount, receiptNarration, suggestMaskedPayees } from "@/lib/ocr/receiptDetect/fillPaymentOut";
 import { paymentAmountFromBill } from "./fillPaymentOut";
 import { normalizeName } from "./normalize";
+import { resolveOcrBubbles, snapshotFromForm } from "./reactiveBubbles";
 import type { OcrFormAdapter } from "./adapters";
 import type { OcrItemLike, OcrParsedBill, OcrPartyLike } from "./types";
 
@@ -121,7 +123,7 @@ async function loadFirstFile(f: File | string, companyId?: string | null): Promi
 }
 
 /** Bump when parser/engine logic changes: shown in Show OCR text to prove the browser runs the new bundle. */
-export const OCR_BUILD = "2026-11-10.8";
+export const OCR_BUILD = "2026-11-10.12";
 
 const MONEY_TYPES = ["payment_out", "payment_in", "direct_expense", "direct_income", "contra"] as const;
 const ALL_TYPE_CHOICES = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"] as const;
@@ -172,6 +174,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const [sugOpen, setSugOpen] = useState(false); // field bubbles shown
   const [doneIds, setDoneIds] = useState<Set<string>>(() => new Set());
   const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(() => new Set());
+  const [dismissedMissingKeys, setDismissedMissingKeys] = useState<Set<string>>(() => new Set());
   const [missingNow, setMissingNow] = useState<string[]>([]);
   const [createPrefill, setCreatePrefill] = useState<Record<string, string> | null>(null);
   const [createItemFor, setCreateItemFor] = useState<{ index: number; name: string; unit?: string; rate: number; groupId?: string; ocrGroups?: MasterGroupLike[] } | null>(null);
@@ -379,7 +382,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           if (process.env.NODE_ENV !== "production") {
             console.info(`[OCR] input: ${orig ? "ORIGINAL upload" : "stored attachment (compressed)"} ${src.mime} ${(src.blob.size / 1024).toFixed(0)} KB`);
           }
-          raw = await runOcrOnFile(src.blob, src.mime);
+          raw = await runOcrOnFile(src.blob, src.mime, { companyId: opt.companyId, enginePref: getOcrPrefs().engine });
         }
         lastRawRef.current = raw;
         const lowConf = raw.meanConfidence < 55;
@@ -519,7 +522,21 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               {
                 const selId = String(F.getValues(direction === "contra" ? (A.fromAccountPath ?? "fromAccountId") : (A.accountPath ?? "accountId")) ?? "");
                 const sel = (M.accounts ?? []).find((a) => a.id === selId);
-                pf.narration = receiptNarration(rc.parsed!, sel ? accountDisplayLabel(sel as never) : null);
+                const fromLabel = sel ? accountDisplayLabel(sel as never) : null;
+                const fullN = receiptNarration(rc.parsed!, fromLabel);
+                if (getOcrPrefs().narrationStyle === "short") {
+                  const toId = direction === "contra" ? String(F.getValues(A.toAccountPath ?? "toAccountId") ?? "") : "";
+                  const toAcc = toId ? (M.accounts ?? []).find((a) => a.id === toId) : undefined;
+                  pf.narration = buildOcrNarration({
+                    style: "short",
+                    voucherType: direction,
+                    billNo: rc.parsed!.voucherNo || rc.parsed!.txnId || undefined,
+                    partyName: pf.payee?.name ?? pf.payeeName ?? undefined,
+                    dateText: pf.date ? formatOcrNarrationDate(pf.date, readDateDisplayPrefs()) : "",
+                    fromName: fromLabel || undefined,
+                    toName: toAcc ? accountDisplayLabel(toAcc as never) : (rc.parsed!.beneficiary?.accountName ?? undefined),
+                  });
+                } else pf.narration = fullN;
               }
               if (pf.narration && A.narration) {
                 const curN = String(F.getValues(A.narration) ?? "");
@@ -578,11 +595,11 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             setLastBill(null);
             setReceiptTarget(sg.some((x) => x.id === "switch" && !x.blocked) ? rc.voucherType ?? null : null);
             setSuggestions(sg);
-            if (reason === "refresh") { setDoneIds(new Set()); setDismissedKeys(new Set()); }
+            if (reason === "refresh") { setDoneIds(new Set()); setDismissedKeys(new Set()); setDismissedMissingKeys(new Set()); }
             if (sg.some((x) => !x.blocked) || rMissing.length) setSugOpen(true);
             setMissingNow(rMissing);
             setDebugInfo({
-              text: [`--- OCR build ${OCR_BUILD} | document: ${rc.format} (${Math.round(rc.confidence * 100)}%)${lowConf ? " | LOW CONFIDENCE" : ""} ---`, `Type: ${rc.voucherType ?? `undecided (${types.join(" / ")})`} (${Math.round(rc.typeConfidence * 100)}%)`, why, rc.narration ? `Narration: ${rc.narration}` : "", rc.otherCharge ? `Charge: ${rc.otherCharge.amount}` : "", rc.statusWarning ?? "", "--- OCR text ---", raw.text].filter(Boolean).join("\n"),
+              text: [`--- OCR build ${OCR_BUILD} | OCR engine: ${raw.engine ?? "tesseract"}${raw.engineNote ? ` (${raw.engineNote})` : ""} | document: ${rc.format} (${Math.round(rc.confidence * 100)}%)${lowConf ? " | LOW CONFIDENCE" : ""} ---`, `Type: ${rc.voucherType ?? `undecided (${types.join(" / ")})`} (${Math.round(rc.typeConfidence * 100)}%)`, why, rc.narration ? `Narration: ${rc.narration}` : "", rc.otherCharge ? `Charge: ${rc.otherCharge.amount}` : "", rc.statusWarning ?? "", "--- OCR text ---", raw.text].filter(Boolean).join("\n"),
               meanConfidence: raw.meanConfidence, reasons: [why], filled: rFilled, missing: rMissing,
             });
             const here = !!(rc.voucherType && (rc.voucherType === cur || sameVoucherBucket(cur, rc.voucherType)));
@@ -742,13 +759,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                   window.setTimeout(clearTds, 250);
                 }
                 filled.push(`Line items (${rows.length})${vat > 0 && vatTax ? " + VAT 13%" : ""}`);
-                // Free-form rows (no matching item): keep the bill description in narration
-                const free = bill.lineItems.value.filter((r) => !r.itemId);
-                if (free.length && A.narration) {
-                  const cur = String(F.getValues(A.narration) ?? "");
-                  const tag = `Items: ${free.map((r) => `${r.description} ${r.quantity}${r.unit ? " " + r.unit : ""} x ${r.rate}`).join("; ")}`;
-                  if (!cur.includes(tag)) write(A.narration, cur ? `${cur} | ${tag}` : tag);
-                }
+                // Item descriptions are added to the narration below (full vs short setting).
               }
               filledKeys.add("lines");
               if (bill.discount?.status === "fill" && bill.discount.value > 0 && A.lineItems.discountPath && canWrite(A.lineItems.discountPath)) {
@@ -788,17 +799,43 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           } else missing.push(bill.amount ? `Amount (${bill.amount.note ?? "not confirmed"})` : "Amount");
         }
 
-        // Narration: append only (never replace)
+        // Narration: full = current item + Bill No wording (append); short = Bill No / party / date
         if (A.narration) {
-          if (bill.billNo?.status === "fill") {
-            const cur = String(F.getValues(A.narration) ?? "");
-            if (!cur.includes(`Bill No: ${bill.billNo.value}`)) {
-              const party = A.party ? opt.parties.find((p) => p.id === F.getValues(A.party!.path)) : undefined;
-              const tag = [`Bill No: ${bill.billNo.value}`, party?.name ?? bill.partyName?.value, "OCR"].filter(Boolean).join(" | ");
-              write(A.narration, cur ? `${cur} | ${tag}` : tag);
-              filled.push("Bill No → narration");
+          const nStyle = getOcrPrefs().narrationStyle === "short" ? "short" : "full";
+          const party = A.party ? opt.parties.find((p) => p.id === F.getValues(A.party!.path)) : undefined;
+          const partyName = party?.name ?? bill.partyName?.value ?? "";
+          const rawDate = bill.date?.value && !Number.isNaN(bill.date.value.getTime()) ? bill.date.value : A.date ? (F.getValues(A.date) as Date | undefined) : undefined;
+          const dateText = rawDate instanceof Date && !Number.isNaN(rawDate.getTime()) ? formatOcrNarrationDate(rawDate, readDateDisplayPrefs()) : "";
+          const free = (bill.lineItems?.value ?? []).filter((r) => !r.itemId);
+          const itemsText = itemsNarrationTag(free.map((r) => ({ description: r.description, quantity: r.quantity, unit: r.unit, rate: r.rate })));
+          const built = buildOcrNarration({
+            style: nStyle,
+            voucherType: opt.currentVoucherType ?? A.voucherType,
+            billNo: bill.billNo?.value,
+            partyName,
+            dateText,
+            itemsText,
+          });
+          if (nStyle === "short") {
+            if (built && canWrite(A.narration) && String(F.getValues(A.narration) ?? "") !== built) {
+              write(A.narration, built);
+              filled.push("Narration");
             }
-          } else missing.push("Bill No");
+          } else {
+            const cur0 = String(F.getValues(A.narration) ?? "");
+            if (itemsText && !cur0.includes(itemsText) && canWrite(A.narration)) {
+              write(A.narration, cur0 ? `${cur0} | ${itemsText}` : itemsText);
+            }
+            if (bill.billNo?.status === "fill") {
+              const cur = String(F.getValues(A.narration) ?? "");
+              if (!cur.includes(`Bill No: ${bill.billNo.value}`) && canWrite(A.narration)) {
+                const tag = [`Bill No: ${bill.billNo.value}`, partyName || undefined, "OCR"].filter(Boolean).join(" | ");
+                write(A.narration, cur ? `${cur} | ${tag}` : tag);
+                filled.push("Bill No -> narration");
+              }
+            }
+          }
+          if (bill.billNo?.status !== "fill") missing.push("Bill No");
         }
 
         /* ---------------- Suggestions checklist (all unticked) ---------------- */
@@ -921,9 +958,20 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           }
         }
         if (A.narration && bill.billNo && !String(F.getValues(A.narration) ?? "").includes(bill.billNo.value)) {
-          sg.push({ id: "billno", label: "Bill No → narration", value: bill.billNo.value, confidence: bill.billNo.confidence, apply: () => {
-            const cur = String(F.getValues(A.narration!) ?? "");
-            write(A.narration!, cur ? `${cur} | Bill No: ${bill.billNo!.value} | OCR` : `Bill No: ${bill.billNo!.value} | OCR`);
+          sg.push({ id: "billno", label: "Bill No -> narration", value: bill.billNo.value, confidence: bill.billNo.confidence, apply: () => {
+            const nStyle = getOcrPrefs().narrationStyle === "short" ? "short" : "full";
+            const party = A.party ? opt.parties.find((p) => p.id === F.getValues(A.party!.path)) : undefined;
+            const partyName = party?.name ?? bill.partyName?.value ?? "";
+            const rawDate = bill.date?.value && !Number.isNaN(bill.date.value.getTime()) ? bill.date.value : A.date ? (F.getValues(A.date) as Date | undefined) : undefined;
+            const dateText = rawDate instanceof Date && !Number.isNaN(rawDate.getTime()) ? formatOcrNarrationDate(rawDate, readDateDisplayPrefs()) : "";
+            const free = (bill.lineItems?.value ?? []).filter((r) => !r.itemId);
+            const itemsText = itemsNarrationTag(free.map((r) => ({ description: r.description, quantity: r.quantity, unit: r.unit, rate: r.rate })));
+            const built = buildOcrNarration({ style: nStyle, voucherType: opt.currentVoucherType ?? A.voucherType, billNo: bill.billNo!.value, partyName, dateText, itemsText });
+            if (nStyle === "short") write(A.narration!, built);
+            else {
+              const cur = String(F.getValues(A.narration!) ?? "");
+              write(A.narration!, cur ? `${cur} | Bill No: ${bill.billNo!.value} | OCR` : `Bill No: ${bill.billNo!.value} | OCR`);
+            }
           } });
         }
         if (A.accountPath && opt.accounts?.length) {
@@ -943,6 +991,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         if (reason === "refresh") {
           setDoneIds(new Set());
           setDismissedKeys(new Set());
+          setDismissedMissingKeys(new Set());
         }
         // Suggestions ticked together with a voucher switch: apply them here (same ids), keep the rest open
         const carry = new Set(reuse?.selectedIds ?? []);
@@ -956,7 +1005,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         const devDump =
           true
             ? [
-                `--- OCR build ${OCR_BUILD} | engine PSM 6 + sparse 11 | input ${inputNoteRef.current} ---`,
+                `--- OCR build ${OCR_BUILD} | ${raw.engine === "google" ? "online Google Vision" : "engine PSM 6 + sparse 11"} | input ${inputNoteRef.current} ---`,
+                `OCR engine: ${raw.engine ?? "tesseract"}${raw.engineNote ? ` (${raw.engineNote})` : ""}`,
                 `--- dev dump: input ${inputNoteRef.current} | page ${raw.pageWidth ?? "?"}x${raw.pageHeight}px | ${raw.lines.length} lines ---`,
                 ...raw.lines.map((l, i) => `L${i} y=${Math.round(l.y ?? 0)}: ${(l.words ?? []).map((w) => `${w.text}@${Math.round(w.x0)}`).join(" ")}`),
                 `--- 2nd pass (sparse) ---`,
@@ -1187,7 +1237,40 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     toast.success("OCR: account linked - will be recognised next time");
   }, [ids, write]);
 
-  // No auto-hide (user decision): missing-field bubbles stay until OK / X; suggestion bubbles until an option / Dismiss / X / Hide.
+  // Bubbles stay until the field is filled or the user dismisses them (t73u). User-dismissed bubbles never return (except Refresh).
+
+  const formVals = o.form.watch() as Record<string, unknown>;
+  const liveBubbles = useMemo(() => {
+    const live = resolveOcrBubbles({
+      missing: missingNow,
+      suggestions: suggestions.map((s) => ({ id: s.id, value: s.value, reason: s.reason })),
+      dismissedMissingKeys,
+      dismissedSuggestionIds: dismissedKeys,
+      doneIds,
+      form: snapshotFromForm(formVals, o.adapter),
+      bill: lastBill
+        ? {
+            total: lastBill.total?.value,
+            subTotal: lastBill.subTotal?.value,
+            vat: lastBill.vat?.value,
+            discount: lastBill.discount?.value,
+            date: lastBill.date?.value,
+            amount: lastBill.amount?.value,
+            billNo: lastBill.billNo?.value,
+          }
+        : null,
+      vatTaxId: findVat13(o.taxes)?.id ?? null,
+    });
+    const keep = new Set(live.suggestions.map((s) => s.id));
+    const reasonById = new Map(live.suggestions.map((s) => [s.id, s.reason]));
+    return {
+      missing: live.missing,
+      suggestions: suggestions.filter((s) => keep.has(s.id)).map((s) => {
+        const reason = reasonById.get(s.id);
+        return reason !== undefined && reason !== s.reason ? { ...s, reason } : s;
+      }),
+    };
+  }, [missingNow, suggestions, dismissedMissingKeys, dismissedKeys, doneIds, formVals, o.adapter, o.taxes, lastBill]);
 
   const runApply = useCallback(async (list: OcrSuggestion[]) => {
     const sw = list.find((s) => s.id === "switch");
@@ -1201,15 +1284,15 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     for (const s of list.filter((x) => x.deferred)) await s.apply();
   }, []);
   // "Apply all" in the OCR bar: every shown, non-blocked suggestion that applies directly (no dialog / voucher switch)
-  const tickedList = sugOpen ? suggestions.filter((s) => !s.blocked && !s.deferred && s.id !== "switch" && !doneIds.has(s.id) && !dismissedKeys.has(s.id)) : [];
+  const tickedList = sugOpen ? liveBubbles.suggestions.filter((s) => !s.blocked && !s.deferred && s.id !== "switch") : [];
   const applyTicked = useCallback(() => void runApply(tickedList), [runApply, tickedList]);
 
   // target voucher type of a pending "Switch to X voucher" suggestion (drives bubble anchor + tab badge)
   const switchTarget = useMemo(() => {
-    const s = suggestions.find((x) => x.id === "switch");
-    if (!s || s.blocked || doneIds.has("switch") || dismissedKeys.has("switch")) return null;
+    const s = liveBubbles.suggestions.find((x) => x.id === "switch");
+    if (!s || s.blocked) return null;
     return lastBill?.docType?.type ?? receiptTarget ?? null;
-  }, [suggestions, doneIds, dismissedKeys, lastBill, receiptTarget]);
+  }, [liveBubbles.suggestions, lastBill, receiptTarget]);
   useOcrTabBadge(visible ? switchTarget : null);
 
   /* Auto-switch countdown (10 s) on the top "switch" suggestion. One per OCR result (keyed by the suggestions array).
@@ -1257,16 +1340,27 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   }, [o.currentVoucherType, cancelSwitchCountdown]);
   const bubbles = useMemo<OcrBubble[]>(() => {
     const out = new Map<string, OcrBubble>();
-    for (const m of missingNow) {
+    for (const m of liveBubbles.missing) {
       const key = ocrFieldForMissing(m);
       const b = out.get(`m:${key}`) ?? { key, kind: "missing" as const, title: "", items: [] };
       b.title = b.title ? `${b.title}, ${m}` : `OCR could not find: ${m}`;
+      if (key === "total" && !b.items.length) {
+        const t = lastBill?.total;
+        if (t && t.value != null && Number.isFinite(t.value)) {
+          b.items.push({
+            id: "total-compare",
+            label: "Bill total",
+            value: `Bill total: ${t.value}`,
+            confidence: t.confidence,
+            reason: t.note || "This form field is calculated from the lines. Compare it with the bill.",
+            apply: () => {},
+          });
+        }
+      }
       out.set(`m:${key}`, b);
     }
     if (sugOpen) {
-      for (const s of suggestions) {
-        if (doneIds.has(s.id)) continue;
-        if (dismissedKeys.has(s.id)) continue; // per-suggestion-id dismiss (X / Dismiss closes only that bubble)
+      for (const s of liveBubbles.suggestions) {
         const key = ocrFieldForSuggestion(s.id);
         const b = out.get(`s:${key}`) ?? { key, kind: "suggest" as const, title: "", items: [] };
         b.items.push(s);
@@ -1303,7 +1397,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       for (const k of [...out.keys()]) if (k.startsWith("m:") && out.has(`s:${k.slice(2)}`)) out.delete(k);
     }
     return [...out.values()];
-  }, [missingNow, sugOpen, suggestions, doneIds, dismissedKeys, switchTarget, lastBill, swCount]);
+  }, [liveBubbles, sugOpen, switchTarget, lastBill, swCount]);
 
   const panel = useMemo(
     () =>
@@ -1319,7 +1413,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             onCreateAllItems={(items) => { cancelSwitchCountdown(); void itemCreateApiRef.current.all(items); }}
             onDismiss={(b) => {
               cancelSwitchCountdown();
-              if (b.kind === "missing") setMissingNow((p) => p.filter((m) => ocrFieldForMissing(m) !== b.key));
+              if (b.kind === "missing") setDismissedMissingKeys((p) => new Set([...p, b.key]));
               else setDismissedKeys((p) => new Set([...p, ...b.items.map((x) => x.id)]));
             }}
           />
@@ -1390,11 +1484,11 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     openFindAccount: () => setFindOpen(true),
     debugInfo,
     /** = number of suggestion BUBBLES (suggestions merged per field, e.g. Create party + Pick existing = 1). */
-    suggestionsCount: new Set(suggestions.filter((x) => !x.blocked && !doneIds.has(x.id) && !dismissedKeys.has(x.id)).map((x) => ocrFieldForSuggestion(x.id))).size,
+    suggestionsCount: new Set(liveBubbles.suggestions.filter((x) => !x.blocked).map((x) => ocrFieldForSuggestion(x.id))).size,
     /** OCR bar "Suggestions (n)": toggles all bubbles show / hide. */
     openSuggestions: () => {
       if (sugOpen) setSugOpen(false);
-      else { setDismissedKeys(new Set()); setSugOpen(true); }
+      else setSugOpen(true);
     },
     suggestionsShown: sugOpen,
     tickedCount: tickedList.length,
