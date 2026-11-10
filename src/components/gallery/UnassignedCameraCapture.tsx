@@ -22,7 +22,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RotateCcw, Check, X, Loader2, ScanText, Sun, Contrast, Sparkles, Maximize2, ChevronLeft } from "lucide-react";
+import { RotateCcw, Check, X, Loader2, ScanText, Sun, Contrast, Sparkles, Maximize2, ChevronLeft, Undo2, Redo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -369,6 +369,40 @@ function applyEdits(
   }
 }
 
+const MAX_CROP_HISTORY = 10;
+
+function cloneCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = src.width;
+  c.height = src.height;
+  const ctx = c.getContext("2d");
+  if (!ctx) throw new Error("canvas_unavailable");
+  ctx.drawImage(src, 0, 0);
+  return c;
+}
+
+function revokeBlobUrl(url: string | null | undefined) {
+  if (url && url.startsWith("blob:")) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch {
+      /* already revoked */
+    }
+  }
+}
+
+type CropHistoryEntry = {
+  canvas: HTMLCanvasElement;
+  crop: CropQuad;
+  blobUrl?: string;
+};
+
+function revokeHistoryEntry(entry: CropHistoryEntry | null | undefined) {
+  if (!entry) return;
+  revokeBlobUrl(entry.blobUrl);
+  entry.blobUrl = undefined;
+}
+
 /** Encode a canvas as a File with a scan-looking name. */
 async function canvasToScanFile(canvas: HTMLCanvasElement, quality = 0.85, fileName?: string): Promise<File> {
   const blob = await new Promise<Blob | null>((resolve) =>
@@ -507,6 +541,46 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
     boxH: number;
   } | null>(null);
 
+  /** Bumped when the working bitmap changes (Apply / Undo / Redo / Retry) so the preview repaints. */
+  const [sourceRev, setSourceRev] = useState(0);
+  const [histCounts, setHistCounts] = useState({ undo: 0, redo: 0 });
+  const originalCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const sessionKindRef = useRef<"camera" | "file">("file");
+  const undoStackRef = useRef<CropHistoryEntry[]>([]);
+  const redoStackRef = useRef<CropHistoryEntry[]>([]);
+  const blobUrlsRef = useRef<string[]>([]);
+
+  const trackBlobUrl = useCallback((url: string) => {
+    if (url && url.startsWith("blob:")) blobUrlsRef.current.push(url);
+    return url;
+  }, []);
+
+  const revokeTrackedBlobUrls = useCallback(() => {
+    for (const u of blobUrlsRef.current) revokeBlobUrl(u);
+    blobUrlsRef.current = [];
+  }, []);
+
+  const clearCropHistory = useCallback(() => {
+    for (const e of undoStackRef.current) revokeHistoryEntry(e);
+    for (const e of redoStackRef.current) revokeHistoryEntry(e);
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    revokeTrackedBlobUrls();
+    setHistCounts({ undo: 0, redo: 0 });
+  }, [revokeTrackedBlobUrls]);
+
+  const beginSession = useCallback(
+    (canvas: HTMLCanvasElement, kind: "camera" | "file") => {
+      clearCropHistory();
+      canvasRef.current = canvas;
+      originalCanvasRef.current = cloneCanvas(canvas);
+      sessionKindRef.current = kind;
+      fileRef.current = null;
+      setSourceRev((n) => n + 1);
+    },
+    [clearCropHistory]
+  );
+
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
@@ -642,13 +716,21 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
     fileRef.current = null;
     preserveNameRef.current = null;
     canvasRef.current = null;
+    originalCanvasRef.current = null;
+    clearCropHistory();
     setStage("idle");
     setSaving(false);
     resetEdits();
-  }, [stopStream, resetEdits]);
+  }, [stopStream, resetEdits, clearCropHistory]);
 
-  // Tear the camera down if the component unmounts mid-shot.
-  useEffect(() => () => { stopStream(); }, [stopStream]);
+  // Tear the camera down if the component unmounts mid-shot; revoke any leftover blob URLs.
+  useEffect(
+    () => () => {
+      stopStream();
+      clearCropHistory();
+    },
+    [stopStream, clearCropHistory]
+  );
 
   const openNativeCamera = useCallback(() => {
     setStage("idle");
@@ -659,15 +741,14 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
   const openDemoEditor = useCallback(() => {
     try {
       stopStream();
-      canvasRef.current = makeDemoSourceCanvas();
-      fileRef.current = null;
+      beginSession(makeDemoSourceCanvas(), "file");
       resetEdits();
       setMode("color");
       setStage("review");
     } catch {
       toast.error("Demo editor could not start.");
     }
-  }, [stopStream, resetEdits]);
+  }, [stopStream, resetEdits, beginSession]);
 
   // Header ka "Camera demo" button (PC + mobile) — window event se editor kholta hai.
   useEffect(() => {
@@ -718,8 +799,7 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
         if (!ctx) throw new Error("canvas_unavailable");
         ctx.drawImage(bitmap, 0, 0, w, h);
         bitmap.close?.();
-        canvasRef.current = canvas;
-        fileRef.current = null;
+        beginSession(canvas, "file");
         preserveNameRef.current = preserveName;
         resetEdits();
         setMode("color");
@@ -735,7 +815,7 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
     return () => {
       cancelled = true;
     };
-  }, [openRequest, preserveName, stopStream, resetEdits]);
+  }, [openRequest, preserveName, stopStream, resetEdits, beginSession]);
 
   const startCamera = useCallback(async () => {
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
@@ -791,7 +871,7 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
     const sh = dst.height;
     applyEdits(ctx, sw, sh, { mode, brightness, contrast, sharpness });
     setPreviewAspect(sw / Math.max(1, sh));
-  }, [crop, cropMode, mode, brightness, contrast, sharpness]);
+  }, [crop, cropMode, mode, brightness, contrast, sharpness, sourceRev]);
 
   // Repaint whenever an edit changes or the review stage becomes active.
   // NOTE: cropMode me canvas poori image dikhata hai (crop ke bina), isliye drag ke
@@ -831,22 +911,141 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
     const v = videoRef.current;
     if (!v) return;
     try {
-      canvasRef.current = drawVideoToCanvas(v);
-      fileRef.current = null;
+      beginSession(drawVideoToCanvas(v), "camera");
       resetEdits();
       stopStream();
       setStage("review");
     } catch {
       toast.error("Could not capture photo. Try again.");
     }
-  }, [stopStream, resetEdits]);
+  }, [stopStream, resetEdits, beginSession]);
 
   const retake = useCallback(() => {
     canvasRef.current = null;
     fileRef.current = null;
+    originalCanvasRef.current = null;
+    clearCropHistory();
     resetEdits();
     void startCamera();
-  }, [startCamera, resetEdits]);
+  }, [startCamera, resetEdits, clearCropHistory]);
+
+  const bumpSource = useCallback(() => {
+    fileRef.current = null;
+    setSourceRev((n) => n + 1);
+  }, []);
+
+  const applyCropToPage = useCallback(() => {
+    const src = canvasRef.current;
+    if (!src) return;
+    if (isFullCropQuad(crop)) return;
+    try {
+      const snapshot: CropHistoryEntry = {
+        canvas: cloneCanvas(src),
+        crop: {
+          nw: { ...crop.nw },
+          ne: { ...crop.ne },
+          se: { ...crop.se },
+          sw: { ...crop.sw },
+        },
+      };
+      const warped = warpCropQuadToCanvas(src, crop);
+      const evicted: CropHistoryEntry[] = [];
+      const nextUndo = [...undoStackRef.current, snapshot];
+      while (nextUndo.length > MAX_CROP_HISTORY) {
+        const old = nextUndo.shift();
+        if (old) evicted.push(old);
+      }
+      for (const e of evicted) revokeHistoryEntry(e);
+      for (const e of redoStackRef.current) revokeHistoryEntry(e);
+      undoStackRef.current = nextUndo;
+      redoStackRef.current = [];
+      setHistCounts({ undo: nextUndo.length, redo: 0 });
+      canvasRef.current = warped;
+      setCrop(DEFAULT_CROP);
+      setCropMode(false);
+      bumpSource();
+    } catch {
+      toast.error("Could not apply crop");
+    }
+  }, [crop, bumpSource]);
+
+  const undoCrop = useCallback(() => {
+    const prev = undoStackRef.current.pop();
+    if (!prev) return;
+    const current = canvasRef.current;
+    if (current) {
+      redoStackRef.current.push({
+        canvas: cloneCanvas(current),
+        crop: {
+          nw: { ...crop.nw },
+          ne: { ...crop.ne },
+          se: { ...crop.se },
+          sw: { ...crop.sw },
+        },
+      });
+    }
+    setHistCounts({ undo: undoStackRef.current.length, redo: redoStackRef.current.length });
+    canvasRef.current = prev.canvas;
+    setCrop(prev.crop);
+    setCropMode(!isFullCropQuad(prev.crop));
+    bumpSource();
+  }, [crop, bumpSource]);
+
+  const redoCrop = useCallback(() => {
+    const next = redoStackRef.current.pop();
+    if (!next) return;
+    const current = canvasRef.current;
+    if (current) {
+      undoStackRef.current.push({
+        canvas: cloneCanvas(current),
+        crop: {
+          nw: { ...crop.nw },
+          ne: { ...crop.ne },
+          se: { ...crop.se },
+          sw: { ...crop.sw },
+        },
+      });
+    }
+    setHistCounts({ undo: undoStackRef.current.length, redo: redoStackRef.current.length });
+    canvasRef.current = next.canvas;
+    setCrop(next.crop);
+    setCropMode(!isFullCropQuad(next.crop));
+    bumpSource();
+  }, [crop, bumpSource]);
+
+  const retryReview = useCallback(() => {
+    if (sessionKindRef.current === "camera") {
+      retake();
+      return;
+    }
+    clearCropHistory();
+    resetEdits();
+    fileRef.current = null;
+    const orig = originalCanvasRef.current;
+    if (orig) canvasRef.current = cloneCanvas(orig);
+    bumpSource();
+  }, [retake, clearCropHistory, resetEdits, bumpSource]);
+
+  useEffect(() => {
+    if (stage !== "review") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (saving) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.key === "z" || e.key === "Z") {
+        e.preventDefault();
+        if (e.shiftKey) redoCrop();
+        else undoCrop();
+      } else if (e.key === "y" || e.key === "Y") {
+        e.preventDefault();
+        redoCrop();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [stage, saving, undoCrop, redoCrop]);
 
   const save = useCallback(async () => {
     setSaving(true);
@@ -898,8 +1097,7 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
         if (!ctx) throw new Error("canvas_unavailable");
         ctx.drawImage(bitmap, 0, 0, w, h);
         bitmap.close?.();
-        canvasRef.current = canvas;
-        fileRef.current = null;
+        beginSession(canvas, "file");
         resetEdits();
         setStage("review");
       } catch {
@@ -907,7 +1105,7 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
         setStage("idle");
       }
     },
-    [resetEdits]
+    [resetEdits, beginSession]
   );
 
   const cropPresets = useMemo(
@@ -1264,7 +1462,31 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
                 </div>
               )}
 
-              <div className="flex items-center gap-2 px-2 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-2">
+              <div className="flex items-center gap-1.5 px-2 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10 shrink-0 rounded-full"
+                  onClick={undoCrop}
+                  disabled={saving || histCounts.undo === 0}
+                  title="Undo (Ctrl+Z)"
+                  aria-label="Undo"
+                >
+                  <Undo2 className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10 shrink-0 rounded-full"
+                  onClick={redoCrop}
+                  disabled={saving || histCounts.redo === 0}
+                  title="Redo (Ctrl+Y)"
+                  aria-label="Redo"
+                >
+                  <Redo2 className="h-4 w-4" />
+                </Button>
                 {panelOpen ? (
                   <Button
                     type="button"
@@ -1278,16 +1500,28 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
                     Back
                   </Button>
                 ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-10 min-w-0 flex-1 gap-1.5 rounded-full px-3 text-sm"
-                    onClick={retake}
-                    disabled={saving}
-                  >
-                    <RotateCcw className="h-4 w-4 shrink-0" />
-                    Retry
-                  </Button>
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 min-w-0 flex-1 gap-1.5 rounded-full px-3 text-sm"
+                      onClick={retryReview}
+                      disabled={saving}
+                    >
+                      <RotateCcw className="h-4 w-4 shrink-0" />
+                      Retry
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 min-w-0 flex-1 gap-1.5 rounded-full px-3 text-sm"
+                      onClick={applyCropToPage}
+                      disabled={saving || isFullCropQuad(crop)}
+                      title="Warp the crop onto this page"
+                    >
+                      Apply
+                    </Button>
+                  </>
                 )}
                 <Button
                   type="button"
