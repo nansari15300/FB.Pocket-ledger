@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Features — Pocket Ledger</title>
+  <meta name="description" content="Party, bank, staff, tax and voucher books. Web app, Windows EXE and Android APK." />
+  <link rel="stylesheet" href="/styles.css?v=20261028-222500" />
+  <link rel="stylesheet" href="/css/color-mode.css?v=20261028-195200" />
+  <link rel="stylesheet" href="/css/country-gate.css?v=20261028-195200" />
+  <script src="/js/color-mode.js?v=20261028-195200"></script>
+  <script src="/js/countries.js?v=20261028-181900"></script>
+  <script src="/js/country-gate.js?v=20261110-0900"></script>
+  <link rel="stylesheet" href="/css/public-shell.css?v=20261110-0900" />
+</head>
+<body class="public-shell-page">
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="/home/">
+        <span class="brand-mark" aria-hidden="true"></span>
+        Pocket Ledger
+      </a>
+      <div class="nav-scroll">
+        <div class="marketing-auth-actions">
+          <span data-pl-site-chrome></span>
+          <button type="button" class="btn btn-outline btn-sm" id="marketingLoginBtn" data-i18n="signin">Sign in</button>
+          <button type="button" class="btn btn-outline btn-sm is-auth-hidden" id="marketingSettingsBtn" hidden aria-hidden="true">Admin Panel</button>
+          <button type="button" class="btn btn-outline btn-sm is-auth-hidden" id="marketingLogoutBtn" hidden aria-hidden="true" data-i18n="signout">Sign out</button>
+          <a class="btn btn-primary btn-sm" href="/app" id="goToAppBtn" data-i18n="goto_app">Go to App</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="marketing-notice" id="marketingNoticeBanner" hidden aria-hidden="true" role="status">
+    <div class="wrap">
+      <p id="marketingNoticeText"></p>
+    </div>
+  </div>
+
+  <div class="pl-shell">
+    <aside class="pl-side" aria-label="Website menu">
+      <nav class="pl-side-nav" aria-label="Main">
+        <a href="/home/" data-i18n="nav_home">Home</a>
+        <a href="/features/" class="is-active" aria-current="page" data-i18n="nav_features">Features</a>
+        <a href="/videos/" data-i18n="nav_videos">Videos</a>
+        <a href="/pricing/" data-i18n="nav_pricing">Pricing</a>
+        <a href="/downloads/" data-i18n="nav_downloads">Downloads</a>
+        <a href="/company/" data-i18n="nav_company">Company</a>
+      </nav>
+    </aside>
+    <div class="pl-content">
+  <main class="pl-main">
+    <section class="section" id="features">
+      <div class="wrap">
+        <h2>Same data, three form factors</h2>
+        <p class="lead intro" data-intro="home_features_lead">Use the marketing site here. Open books only under /app.</p>
+        <div class="cards">
+          <article class="card">
+            <div class="icon-dot">PC</div>
+            <h3>Desktop</h3>
+            <p>Full voucher grid, reports and multi-company work on a wide screen.</p>
+          </article>
+          <article class="card">
+            <div class="icon-dot">TB</div>
+            <h3>Tablet</h3>
+            <p>Counter-friendly view for daybook, quick entry and approvals.</p>
+          </article>
+          <article class="card">
+            <div class="icon-dot">MB</div>
+            <h3>Mobile</h3>
+            <p>On-the-go entry, attachments from camera, and balance checks.</p>
+          </article>
+        </div>
+
+        <h3 class="feature-list-title">App features</h3>
+        <p class="feature-list-lead intro" data-intro="feature_list_lead">What you get inside Pocket Ledger (web, Windows EXE, and Android APK).</p>
+        <div class="feature-rows-scroll">
+        <ol class="feature-rows">
+          <li><span class="feature-name">Multi-company books</span><span class="feature-desc">Create and switch companies without mixing ledgers.</span></li>
+          <li><span class="feature-name">Sale vouchers</span><span class="feature-desc">Invoice sales with party, items, tax and narration.</span></li>
+          <li><span class="feature-name">Purchase vouchers</span><span class="feature-desc">Record supplier bills and purchase returns flow.</span></li>
+          <li><span class="feature-name">Receipt</span><span class="feature-desc">Receive money against parties and open bills.</span></li>
+          <li><span class="feature-name">Payment</span><span class="feature-desc">Pay suppliers and settle outstanding purchases.</span></li>
+          <li><span class="feature-name">Contra</span><span class="feature-desc">Move funds between cash and bank accounts.</span></li>
+          <li><span class="feature-name">Journal entries</span><span class="feature-desc">Manual debit/credit adjustments when needed.</span></li>
+          <li><span class="feature-name">Inter-company vouchers</span><span class="feature-desc">Transfer between your own companies with linked books.</span></li>
+          <li><span class="feature-name">Bill-wise linking</span><span class="feature-desc">Allocate receipts/payments to specific invoices.</span></li>
+          <li><span class="feature-name">Edit lock when linked</span><span class="feature-desc">Linked vouchers stay protected so allocations stay correct.</span></li>
+          <li><span class="feature-name">Party masters</span><span class="feature-desc">Customers and suppliers with contact and balance views.</span></li>
+          <li><span class="feature-name">Party ledger</span><span class="feature-desc">Running balance and voucher history per party.</span></li>
+          <li><span class="feature-name">Bank &amp; cash accounts</span><span class="feature-desc">Track multiple bank and cash books in one place.</span></li>
+          <li><span class="feature-name">Staff masters</span><span class="feature-desc">Keep staff records for salary and operations.</span></li>
+          <li><span class="feature-name">Tax setup</span><span class="feature-desc">Configure tax rates used on vouchers and reports.</span></li>
+          <li><span class="feature-name">Items / stock catalog</span><span class="feature-desc">Maintain items for sale and purchase lines.</span></li>
+          <li><span class="feature-name">Daybook</span><span class="feature-desc">See today’s (or any day’s) vouchers in one list.</span></li>
+          <li><span class="feature-name">Dashboard KPIs</span><span class="feature-desc">Sale, purchase, payment and cash movement at a glance.</span></li>
+          <li><span class="feature-name">Reports suite</span><span class="feature-desc">Ledgers, daybook and business reports from the same data.</span></li>
+          <li><span class="feature-name">Voucher search &amp; filters</span><span class="feature-desc">Find entries by party, type, date or voucher number.</span></li>
+          <li><span class="feature-name">Attachment upload</span><span class="feature-desc">Attach bills, scans and photos to vouchers.</span></li>
+          <li><span class="feature-name">Camera capture (mobile)</span><span class="feature-desc">Snap documents on phone and link them to entries.</span></li>
+          <li><span class="feature-name">Image preview</span><span class="feature-desc">Open attachments clearly without leaving the voucher.</span></li>
+          <li><span class="feature-name">PDF portal preview</span><span class="feature-desc">Sharp first-page PDF preview in the attachment portal.</span></li>
+          <li><span class="feature-name">Attachment gallery</span><span class="feature-desc">Browse company attachments in one place.</span></li>
+          <li><span class="feature-name">Local-first data</span><span class="feature-desc">Books stay usable on device; sync is optional.</span></li>
+          <li><span class="feature-name">Online company sync</span><span class="feature-desc">Live Firebase sync for companies you keep in the cloud.</span></li>
+          <li><span class="feature-name">Cloud attachment sync</span><span class="feature-desc">Storage-backed files for online companies.</span></li>
+          <li><span class="feature-name">PL Server (LAN share)</span><span class="feature-desc">Share selected companies on your local network.</span></li>
+          <li><span class="feature-name">PL Server live delta</span><span class="feature-desc">Host and clients stay updated with change-only sync.</span></li>
+          <li><span class="feature-name">Backup &amp; restore (.plbp)</span><span class="feature-desc">Portable company backup with attachments.</span></li>
+          <li><span class="feature-name">Auto backup scheduler</span><span class="feature-desc">Schedule recurring local backups from settings.</span></li>
+          <li><span class="feature-name">Windows EXE install</span><span class="feature-desc">Desktop installer for offline-friendly office use.</span></li>
+          <li><span class="feature-name">Android APK</span><span class="feature-desc">Native Android build for shop-floor and field entry.</span></li>
+          <li><span class="feature-name">Web app under /app</span><span class="feature-desc">Browser access with the same product surface.</span></li>
+          <li><span class="feature-name">Release update check</span><span class="feature-desc">EXE/APK can prompt when a newer published build exists.</span></li>
+          <li><span class="feature-name">Versioned downloads</span><span class="feature-desc">Pick latest or recent prior EXE/APK from Downloads.</span></li>
+          <li><span class="feature-name">Settings &amp; preferences</span><span class="feature-desc">Company, sync, backup and display controls in one area.</span></li>
+        </ol>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-row">
+      <div>
+        © Pocket Ledger Solutions Pvt. Ltd.<br />
+        <span class="footer-sub">Inaruwa 6, Sunsari, Nepal · Product: <strong>Pocket Ledger</strong> · <span data-pl-web-version></span></span>
+      </div>
+      <div class="footer-links">
+        <a href="/downloads/">Downloads</a>
+        <a href="/company/">Company</a>
+        <a href="/terms/">Terms</a>
+        <a href="/app">Go to App</a>
+      </div>
+    </div>
+  </footer>
+    </div>
+  </div>
+  <script src="/js/site-data-config.js?v=20261031-1440"></script>
+  <script src="/js/website-notice.js?v=20261031-1"></script>
+  <script src="/js/languages-iso.js?v=20261028-195200"></script>
+  <script src="/js/i18n-web.js?v=20261029-i18nmt"></script>
+  <script src="/js/i18n-translate.js?v=20261029-i18nmt"></script>
+  <script src="/js/intro.js?v=20261028-195200"></script>
+  <script src="/js/version.js?v=20261028-195200"></script>
+  <script src="/js/site-chrome.js?v=20261110-0805"></script>
+  <script src="/js/website-auth.js?v=20261031-1440"></script>
+</body>
+</html>

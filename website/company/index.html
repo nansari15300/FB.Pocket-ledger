@@ -10,9 +10,10 @@
   <link rel="stylesheet" href="../css/country-gate.css?v=20261028-195200" />
   <script src="../js/color-mode.js?v=20261028-195200"></script>
   <script src="../js/countries.js?v=20261028-181900"></script>
-  <script src="../js/country-gate.js?v=20261031-1440"></script>
+  <script src="../js/country-gate.js?v=20261110-0900"></script>
+  <link rel="stylesheet" href="../css/public-shell.css?v=20261110-0900" />
 </head>
-<body>
+<body class="public-shell-page">
   <header class="site-header">
     <div class="wrap nav">
       <a class="brand" href="/home/">
@@ -20,14 +21,6 @@
         Pocket Ledger
       </a>
       <div class="nav-scroll">
-        <nav class="nav-links" aria-label="Main">
-          <a href="/home/">Home</a>
-          <a href="/home/#features">Features</a>
-          <a href="/home/#videos">Videos</a>
-          <a href="/home/#pricing">Pricing</a>
-          <a href="/downloads/">Downloads</a>
-          <a href="./" aria-current="page">Company</a>
-        </nav>
         <div class="marketing-auth-actions">
           <span data-pl-site-chrome></span>
           <button type="button" class="btn btn-outline btn-sm" id="marketingLoginBtn" data-i18n="signin">Sign in</button>
@@ -38,7 +31,19 @@
     </div>
   </header>
 
-  <main class="company-page">
+  <div class="pl-shell">
+    <aside class="pl-side" aria-label="Website menu">
+      <nav class="pl-side-nav" aria-label="Main">
+        <a href="/home/" data-i18n="nav_home">Home</a>
+        <a href="/features/" data-i18n="nav_features">Features</a>
+        <a href="/videos/" data-i18n="nav_videos">Videos</a>
+        <a href="/pricing/" data-i18n="nav_pricing">Pricing</a>
+        <a href="/downloads/" data-i18n="nav_downloads">Downloads</a>
+        <a href="/company/" class="is-active" aria-current="page" data-i18n="nav_company">Company</a>
+      </nav>
+    </aside>
+    <div class="pl-content">
+  <main class="pl-main company-page">
     <section class="company-hero">
       <div class="wrap company-hero-inner">
         <div class="company-logo-card">
@@ -162,6 +167,8 @@
       </div>
     </div>
   </footer>
+    </div>
+  </div>
   <script>
     document.getElementById("footerYear").textContent = String(new Date().getFullYear());
   </script>

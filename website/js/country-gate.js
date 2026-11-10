@@ -198,7 +198,7 @@
               "</div>" +
             "</div>" +
             '<nav class="pl-gate-links" aria-label="Website">' +
-              '<a class="pl-gate-link-card" href="/home/#videos">' +
+              '<a class="pl-gate-link-card" href="/videos/">' +
                 '<strong data-i18n="demo">Demo</strong>' +
                 '<span data-i18n="demo_desc">See Pocket Ledger on desktop, tablet and phone.</span>' +
               "</a>" +
@@ -358,6 +358,12 @@
     return "/home/" + q + (hash ? "#" + hash : "");
   }
 
+  /* Features / Videos / Pricing are their own pages now (were /home/#… sections). */
+  function pageUrl(rec, page) {
+    var q = rec ? "?c=" + encodeURIComponent(rec.cc) : "";
+    return "/" + page + "/" + q;
+  }
+
   function rewriteHomeLinks(rec) {
     document.querySelectorAll("a[href]").forEach(function (a) {
       var href = a.getAttribute("href") || "";
@@ -367,14 +373,14 @@
           a.setAttribute("href", homeUrl(rec));
         }
       }
-      if (href === "../#features" || href === "./#features" || href === "/#features" || href === "/home/#features") {
-        a.setAttribute("href", homeUrl(rec, "features"));
+      if (href === "../#features" || href === "./#features" || href === "/#features" || href === "/home/#features" || href === "/features/") {
+        a.setAttribute("href", pageUrl(rec, "features"));
       }
-      if (href === "../#videos" || href === "./#videos" || href === "/#videos" || href === "/home/#videos") {
-        a.setAttribute("href", homeUrl(rec, "videos"));
+      if (href === "../#videos" || href === "./#videos" || href === "/#videos" || href === "/home/#videos" || href === "/videos/") {
+        a.setAttribute("href", pageUrl(rec, "videos"));
       }
-      if (href === "../#pricing" || href === "./#pricing" || href === "/#pricing" || href === "/home/#pricing") {
-        a.setAttribute("href", homeUrl(rec, "pricing"));
+      if (href === "../#pricing" || href === "./#pricing" || href === "/#pricing" || href === "/home/#pricing" || href === "/pricing/") {
+        a.setAttribute("href", pageUrl(rec, "pricing"));
       }
     });
   }

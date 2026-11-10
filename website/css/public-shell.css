@@ -1,0 +1,135 @@
+/* Public marketing website shell: full-height left sidebar + every section as its own card.
+ * Used by /home/, /features/, /videos/, /pricing/, /downloads/, /company/ (body.public-shell-page).
+ * Admin pages use css/website-settings.css instead. Theme colours come from css/color-mode.css vars. */
+
+/* Header: full width, logo at the far left (lines up with the sidebar), actions at the far right */
+body.public-shell-page .site-header .wrap.nav {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding-left: 1.4rem;
+  padding-right: 1.4rem;
+}
+
+.pl-shell {
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 1fr);
+  min-height: calc(100vh - 72px);
+  background: var(--paper);
+}
+.pl-side {
+  background: var(--surface, #fff);
+  border-right: 1px solid var(--line);
+  padding: 1rem 0.75rem 1.5rem;
+  align-self: stretch;
+}
+.pl-side-nav {
+  position: sticky;
+  top: calc(72px + 1rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.pl-side-nav a {
+  display: block;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 0.92rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pl-side-nav a:hover { background: var(--surface-2, var(--paper)); }
+.pl-side-nav a.is-active {
+  background: var(--sky-soft, #e8f1ff);
+  color: var(--sky, #2f80ed);
+}
+
+.pl-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pl-content > footer { margin-top: auto; }
+.pl-content > footer .wrap { margin-inline: 40px; }
+
+/* Main area: 40px around, 40px between cards */
+.pl-main {
+  min-width: 0;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+body.public-shell-page .pl-main > section,
+body.public-shell-page .pl-main > .logo-strip {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(11, 31, 58, 0.05);
+  min-width: 0;
+}
+body.public-shell-page .pl-main > section:not(.hero),
+body.public-shell-page .pl-main > .logo-strip {
+  background: var(--surface, #fff);
+}
+body.public-shell-page .pl-main > .hero { overflow: hidden; }
+body.public-shell-page .pl-main > section:not(.hero) {
+  padding: 2rem 0;
+}
+body.public-shell-page .pl-main > section:not(.hero) .wrap {
+  width: auto;
+  max-width: none;
+  margin-inline: 0;
+  padding-inline: clamp(1rem, 2.5vw, 2rem);
+}
+body.public-shell-page .pl-main > .logo-strip {
+  width: auto;
+  margin-inline: 0;
+  padding: 1.25rem 1.5rem;
+}
+body.public-shell-page .pl-main .pricing-fullbleed {
+  padding: 0 clamp(1rem, 2.5vw, 2rem);
+}
+/* The "your data" section already is a card: drop the inner card frame so it is not doubled */
+body.public-shell-page .pl-main .trust-card {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+/* Downloads / Company page headers are cards now, not full-width bands */
+body.public-shell-page .pl-main > .page-hero,
+body.public-shell-page .pl-main > .company-hero {
+  border-bottom: 1px solid var(--line);
+}
+body.public-shell-page .pl-main > .company-section { padding-top: 2rem; }
+
+/* Mobile / tablet: sidebar becomes a sideways-scrolling bar on top, smaller gaps */
+@media (max-width: 860px) {
+  .pl-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+  .pl-side {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 0.5rem 0.75rem;
+  }
+  .pl-side-nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .pl-side-nav::-webkit-scrollbar { display: none; }
+  .pl-side-nav a { flex: 0 0 auto; padding: 0.45rem 0.8rem; }
+  .pl-main { padding: 16px; gap: 16px; }
+  .pl-content > footer .wrap { margin-inline: 16px; }
+  body.public-shell-page .pl-main > section,
+  body.public-shell-page .pl-main > .logo-strip { border-radius: 12px; }
+  body.public-shell-page .pl-main > section:not(.hero) { padding: 1.25rem 0; }
+}

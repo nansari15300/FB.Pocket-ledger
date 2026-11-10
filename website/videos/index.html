@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Videos — Pocket Ledger</title>
+  <meta name="description" content="Party, bank, staff, tax and voucher books. Web app, Windows EXE and Android APK." />
+  <link rel="stylesheet" href="/styles.css?v=20261028-222500" />
+  <link rel="stylesheet" href="/css/color-mode.css?v=20261028-195200" />
+  <link rel="stylesheet" href="/css/country-gate.css?v=20261028-195200" />
+  <script src="/js/color-mode.js?v=20261028-195200"></script>
+  <script src="/js/countries.js?v=20261028-181900"></script>
+  <script src="/js/country-gate.js?v=20261110-0900"></script>
+  <link rel="stylesheet" href="/css/public-shell.css?v=20261110-0900" />
+</head>
+<body class="public-shell-page">
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="/home/">
+        <span class="brand-mark" aria-hidden="true"></span>
+        Pocket Ledger
+      </a>
+      <div class="nav-scroll">
+        <div class="marketing-auth-actions">
+          <span data-pl-site-chrome></span>
+          <button type="button" class="btn btn-outline btn-sm" id="marketingLoginBtn" data-i18n="signin">Sign in</button>
+          <button type="button" class="btn btn-outline btn-sm is-auth-hidden" id="marketingSettingsBtn" hidden aria-hidden="true">Admin Panel</button>
+          <button type="button" class="btn btn-outline btn-sm is-auth-hidden" id="marketingLogoutBtn" hidden aria-hidden="true" data-i18n="signout">Sign out</button>
+          <a class="btn btn-primary btn-sm" href="/app" id="goToAppBtn" data-i18n="goto_app">Go to App</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="marketing-notice" id="marketingNoticeBanner" hidden aria-hidden="true" role="status">
+    <div class="wrap">
+      <p id="marketingNoticeText"></p>
+    </div>
+  </div>
+
+  <div class="pl-shell">
+    <aside class="pl-side" aria-label="Website menu">
+      <nav class="pl-side-nav" aria-label="Main">
+        <a href="/home/" data-i18n="nav_home">Home</a>
+        <a href="/features/" data-i18n="nav_features">Features</a>
+        <a href="/videos/" class="is-active" aria-current="page" data-i18n="nav_videos">Videos</a>
+        <a href="/pricing/" data-i18n="nav_pricing">Pricing</a>
+        <a href="/downloads/" data-i18n="nav_downloads">Downloads</a>
+        <a href="/company/" data-i18n="nav_company">Company</a>
+      </nav>
+    </aside>
+    <div class="pl-content">
+  <main class="pl-main">
+    <section class="section videos-section" id="videos" aria-labelledby="videos-title">
+      <div class="wrap">
+        <span class="section-kicker">Learn &amp; events</span>
+        <h2 id="videos-title">How to use Pocket Ledger</h2>
+        <p class="lead">Tutorials, learning clips and event videos from YouTube, Facebook and TikTok.</p>
+        <div class="videos-tools" role="search">
+          <label class="videos-search">
+            <span class="sr-only">Search videos</span>
+            <input id="videosSearch" type="search" placeholder="Search videos…" autocomplete="off" />
+          </label>
+          <div class="videos-categories" id="videosCategories" aria-label="Video categories"></div>
+        </div>
+        <p class="videos-status" id="videosStatus" aria-live="polite">Loading videos…</p>
+        <div class="videos-platforms" id="videosGrid"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-row">
+      <div>
+        © Pocket Ledger Solutions Pvt. Ltd.<br />
+        <span class="footer-sub">Inaruwa 6, Sunsari, Nepal · Product: <strong>Pocket Ledger</strong> · <span data-pl-web-version></span></span>
+      </div>
+      <div class="footer-links">
+        <a href="/downloads/">Downloads</a>
+        <a href="/company/">Company</a>
+        <a href="/terms/">Terms</a>
+        <a href="/app">Go to App</a>
+      </div>
+    </div>
+  </footer>
+    </div>
+  </div>
+  <script src="/js/site-data-config.js?v=20261031-1440"></script>
+  <script src="/js/website-notice.js?v=20261031-1"></script>
+  <script src="/js/videos.js?v=20261031-1"></script>
+  <script src="/js/languages-iso.js?v=20261028-195200"></script>
+  <script src="/js/i18n-web.js?v=20261029-i18nmt"></script>
+  <script src="/js/i18n-translate.js?v=20261029-i18nmt"></script>
+  <script src="/js/intro.js?v=20261028-195200"></script>
+  <script src="/js/version.js?v=20261028-195200"></script>
+  <script src="/js/site-chrome.js?v=20261110-0805"></script>
+  <script src="/js/website-auth.js?v=20261031-1440"></script>
+</body>
+</html>
