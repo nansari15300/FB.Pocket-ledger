@@ -29,7 +29,7 @@
       nav_videos: "Videos",
       nav_pricing: "Pricing",
       nav_downloads: "Downloads",
-      nav_company: "Company",
+      nav_company: "About company",
       gate_choose: "Choose your country",
       gate_h1: "Where do you keep the books?",
       find_country: "Find Your Country",

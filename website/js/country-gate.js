@@ -202,7 +202,7 @@
                 '<strong data-i18n="demo">Demo</strong>' +
                 '<span data-i18n="demo_desc">See Pocket Ledger on desktop, tablet and phone.</span>' +
               "</a>" +
-              '<a class="pl-gate-link-card" href="/company/">' +
+              '<a class="pl-gate-link-card" href="/about-company/">' +
                 '<strong data-i18n="about">About Us</strong>' +
                 '<span data-i18n="about_desc">The software company behind Pocket Ledger.</span>' +
               "</a>" +

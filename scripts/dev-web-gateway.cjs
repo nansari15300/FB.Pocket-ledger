@@ -318,34 +318,79 @@ function proxyPocketBase(req, res) {
   req.pipe(upstream);
 }
 
+function hardenWsSocket(sock) {
+  if (!sock) return;
+  try { sock.setTimeout(0); } catch {
+    /* noop */
+  }
+  try { sock.setNoDelay(true); } catch {
+    /* noop */
+  }
+  try { sock.setKeepAlive(true, 30_000); } catch {
+    /* noop */
+  }
+}
+
 function proxyUpgrade(req, socket, head) {
-  const headers = [
-    `${req.method} ${req.url} HTTP/${req.httpVersion}`,
-    ...Object.entries(req.headers).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`),
+  // Same Host rewrite as proxyHttp, so Next accepts HMR upgrades from the
+  // Cloudflare tunnel (Host: laptopdev.pocket-ledger.com was rejected as Unauthorized).
+  hardenWsSocket(socket);
+  const headers = { ...req.headers, host: `127.0.0.1:${nextPort}` };
+  // Next dev HMR replies with a bare "Unauthorized" body (no HTTP status)
+  // when Origin is the public tunnel host. Align Origin/Referer with Host.
+  headers.origin = `http://127.0.0.1:${nextPort}`;
+  if (headers.referer) {
+    try {
+      const ref = new URL(headers.referer);
+      headers.referer = `http://127.0.0.1:${nextPort}${ref.pathname}${ref.search}`;
+    } catch {
+      delete headers.referer;
+    }
+  }
+  delete headers["content-length"];
+  // HTTP/2 pseudo-headers must not be forwarded on the HTTP/1.1 origin hop.
+  for (const key of Object.keys(headers)) {
+    if (key.startsWith(":")) delete headers[key];
+  }
+
+  const raw = [
+    `${req.method || "GET"} ${req.url} HTTP/1.1`,
+    ...Object.entries(headers).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`),
     "",
     "",
   ].join("\r\n");
 
   const upstream = net.connect(Number(nextPort), "127.0.0.1", () => {
-    upstream.write(headers);
+    hardenWsSocket(upstream);
+    upstream.write(raw);
     if (head && head.length) upstream.write(head);
     upstream.pipe(socket);
     socket.pipe(upstream);
   });
-  upstream.on("error", () => {
+  hardenWsSocket(upstream);
+
+  const closeBoth = () => {
+    try { socket.destroy(); } catch {
+      /* noop */
+    }
+    try { upstream.destroy(); } catch {
+      /* noop */
+    }
+  };
+  upstream.on("error", (err) => {
     try {
-      socket.destroy();
+      if (socket.writable && !socket.destroyed && !socket.writableEnded) {
+        socket.write(
+          "HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n[dev-gateway] Next websocket proxy failed\n" +
+            ((err && err.message) || "")
+        );
+      }
     } catch {
       /* noop */
     }
+    closeBoth();
   });
-  socket.on("error", () => {
-    try {
-      upstream.destroy();
-    } catch {
-      /* noop */
-    }
-  });
+  socket.on("error", closeBoth);
 }
 
 // --- Next on internal port ---

@@ -1,5 +1,5 @@
 /* Public marketing website shell: full-height left sidebar + every section as its own card.
- * Used by /home/, /features/, /videos/, /pricing/, /downloads/, /company/ (body.public-shell-page).
+ * Used by /home/, /features/, /videos/, /pricing/, /downloads/, /about-company/ (body.public-shell-page).
  * Admin pages use css/website-settings.css instead. Theme colours come from css/color-mode.css vars. */
 
 /* Header: full width, logo at the far left (lines up with the sidebar), actions at the far right */

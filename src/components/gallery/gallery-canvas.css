@@ -44,6 +44,14 @@ html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .pl-galler
   color: var(--gallery-canvas-caption, #ffffff) !important;
 }
 
+/* 1px green border on every file-preview tile face (Company Files and Unassigned).
+   box-sizing:border-box keeps the existing width/height; the selected-tile outline
+   stays as-is and remains distinct from this border. */
+html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .group > div:first-child,
+html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas :has(> .pl-gallery-canvas-msg) {
+  border: 1px solid #22c55e !important;
+  box-sizing: border-box;
+}
 html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .group > div.ring-2 {
   outline: 2px solid rgba(255, 255, 255, 0.85);
   outline-offset: 1px;
