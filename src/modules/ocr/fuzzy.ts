@@ -1,3 +1,5 @@
+import { normalizeName } from "./normalize";
+
 /** Jaro-Winkler + token-set ratio (spec §5). */
 export function jaroWinkler(a: string, b: string): number {
   if (a === b) return 1;
@@ -70,4 +72,25 @@ export function bestUniqueMatch<T>(
   }
   if (!best || best.score < min || best.score - second < gap) return null;
   return best;
+}
+
+const SUGGEST = 0.6;
+
+/** Token coverage: extra trailing master words allowed; shared prefix only is suggestion-level. */
+export function tokenCoverageScore(query: string, candidate: string): number {
+  const q = normalizeName(query).split(" ").filter(Boolean);
+  const c = normalizeName(candidate).split(" ").filter(Boolean);
+  if (!q.length || !c.length) return 0;
+  let shared = 0;
+  const n = Math.min(q.length, c.length);
+  while (shared < n && q[shared] === c[shared]) shared++;
+  if (shared === 0) return 0;
+  // Bill fully covered; master may have a trailing suffix.
+  if (shared === q.length && q.length <= c.length) {
+    const cover = q.length / c.length;
+    const enough = q.length === c.length || (q.length >= 3 && cover >= 0.7);
+    return enough ? 1 : SUGGEST;
+  }
+  // Shared leading tokens but the bill has leftover words, or they diverge.
+  return SUGGEST;
 }
