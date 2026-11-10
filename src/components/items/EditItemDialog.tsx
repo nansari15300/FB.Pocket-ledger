@@ -1548,7 +1548,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
             </div>
             </div>
 
-              <DialogFooter className={MASTER_DIALOG_FOOTER_ROW_CLASS}>
+              <DialogFooter className={cn(MASTER_DIALOG_FOOTER_ROW_CLASS, "sticky bottom-0 z-10")}>
                 <DialogClose asChild>
                   <Button type="button" variant="ghost" className={MASTER_DIALOG_CANCEL_GRAY_PILL_BTN_CLASS}>
                     Cancel
@@ -1566,7 +1566,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                             onClick={() => setIsDeleteDialogOpen(true)}
                             disabled={hasTransactions || apkOfflineViewOnly || catalogLocked}
                           >
-                            <Trash2 className="mr-2 h-4 w-4 shrink-0" /> Move to Bin
+                            <Trash2 className="mr-2 h-4 w-4 shrink-0" /> Delete
                           </Button>
                         </span>
                       </TooltipTrigger>
@@ -1608,6 +1608,8 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
       <MasterDeleteConfirmAlertDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}
+        overlayClassName="!z-[120]"
+        contentClassName="!z-[121]"
         entityKind="item"
         entityName={item.name}
         onMoveToBin={handleDelete}
