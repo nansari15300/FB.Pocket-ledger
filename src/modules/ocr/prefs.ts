@@ -28,6 +28,13 @@ export function clampAutoPostSeconds(v: unknown): number {
   const n = Math.round(Number(v));
   return Number.isFinite(n) ? Math.min(AUTO_POST_SECONDS_MAX, Math.max(AUTO_POST_SECONDS_MIN, n)) : 10;
 }
+/**
+ * Field bubbles / countdown pill layer. Above the voucher shell (z-81) and the nested dialogs
+ * (z-90 … z-100) opened from it, but BELOW the OCR settings gear dialog (2147483000), so the
+ * settings popup is never covered by a bubble or its tail line.
+ */
+export const OCR_LAYER_Z = 100;
+
 const KEY = "pl.ocr.prefs.v1";
 const DEFAULTS: OcrPrefs = { enabled: true, autoPost: false, overwriteEdited: false, autoPostSeconds: 10, autoSwitchVoucher: true, autoSwitchSeconds: 10, connectorStyle: "tail", narrationStyle: "full", engine: "auto" };
 const subs = new Set<() => void>();

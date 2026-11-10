@@ -16,7 +16,20 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { OcrSuggestion } from "./OcrSuggestionsDialog";
-import { useOcrPrefs } from "./prefs";
+import { OCR_LAYER_Z, useOcrPrefs } from "./prefs";
+
+/** Bubbles are hidden while any dialog / popover looks like it is layered above them. */
+function ocrCoveredByModal(): Element | null {
+  if (typeof document === "undefined") return null;
+  const nodes = document.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"]');
+  for (const el of Array.from(nodes)) {
+    if (el.hasAttribute("data-ocr-bubble")) continue;
+    if (el.closest("[data-ocr-bubbles]")) continue;
+    const z = Number(getComputedStyle(el).zIndex);
+    if (Number.isFinite(z) && z > OCR_LAYER_Z) return el;
+  }
+  return null;
+}
 import { shouldDrawOcrBubbleTail, stretchOcrTailTip } from "./bubbleTail";
 
 export const OCR_BUBBLE_Z_CN = "z-[85]";
@@ -843,7 +856,7 @@ function BubbleView({
         boxShadow: "0 10px 30px rgba(15,23,42,0.22), 0 2px 6px rgba(15,23,42,0.08)",
         padding: 12,
         isolation: "isolate",
-        zIndex: 2147483000,
+        zIndex: OCR_LAYER_Z,
       }}
     >
       {connectorStyle === "line"
@@ -938,6 +951,20 @@ export function OcrFieldBubbles({
 }) {
   const [mobile, setMobile] = useState(false);
   const [idx, setIdx] = useState(0);
+  /** OCR settings gear modal is open → hide bubbles (they live above the voucher shell, not above modals). */
+  const [modalCovered, setModalCovered] = useState(false);
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const sync = () => {
+      // Explicit gear-modal marker first; anything else stacked above the bubble layer also hides them.
+      const open = document.querySelector('[data-ocr-settings-open="1"]') ?? ocrCoveredByModal();
+      setModalCovered(!!open);
+    };
+    sync();
+    const mo = new MutationObserver(sync);
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-ocr-settings-open"] });
+    return () => mo.disconnect();
+  }, []);
   useEffect(() => {
     const m = () => setMobile(window.innerWidth < 640);
     m();
@@ -950,10 +977,10 @@ export function OcrFieldBubbles({
 
   // Desktop: several bubbles on the same anchor (e.g. missing + suggestion) are merged by key upstream; show all.
   const shown = useMemo(() => (mobile ? bubbles.slice(idx, idx + 1) : bubbles), [mobile, bubbles, idx]);
-  if (typeof document === "undefined" || !bubbles.length) return null;
-  const host = (fallbackAnchor()?.closest('[role="dialog"]') as HTMLElement | null) ?? document.body;
+  if (typeof document === "undefined" || !bubbles.length || modalCovered) return null;
+  const host = document.body;
   return createPortal(
-    <div className="pointer-events-none fixed inset-0" style={{ zIndex: 2147483000 }} data-ocr-bubbles="">
+    <div className="pointer-events-none fixed inset-0" style={{ zIndex: OCR_LAYER_Z }} data-ocr-bubbles="">
       {shown.map((b, i) => (
         <BubbleView
           key={`${b.kind}:${b.key}:${b.anchor ?? ""}`}

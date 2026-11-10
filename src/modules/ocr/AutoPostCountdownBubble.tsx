@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { OCR_LAYER_Z } from "./prefs";
 
 function findSaveButton(): HTMLElement | null {
   const vis = (e: HTMLElement) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
@@ -30,8 +31,8 @@ export function AutoPostCountdownBubble({ seconds, onCancel }: { seconds: number
   if (typeof document === "undefined") return null;
   const left = pos ? Math.min(Math.max(pos.x, 110), window.innerWidth - 110) : window.innerWidth / 2;
   const style: React.CSSProperties = pos
-    ? { position: "fixed", left, top: pos.y - 10, transform: "translate(-50%, -100%)", zIndex: 2147483001 }
-    : { position: "fixed", left, bottom: 16, transform: "translateX(-50%)", zIndex: 2147483001 };
+    ? { position: "fixed", left, top: pos.y - 10, transform: "translate(-50%, -100%)", zIndex: OCR_LAYER_Z + 1 }
+    : { position: "fixed", left, bottom: 16, transform: "translateX(-50%)", zIndex: OCR_LAYER_Z + 1 };
   return createPortal(
     <div style={style} className="pointer-events-auto" data-pl-autopost-bubble="" role="status" aria-live="polite">
       <div className="relative flex items-center gap-2 rounded-lg border border-emerald-500/60 bg-emerald-50 px-2.5 py-1.5 text-xs text-emerald-900 shadow-lg dark:bg-emerald-950 dark:text-emerald-100">

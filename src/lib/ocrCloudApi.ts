@@ -22,6 +22,14 @@ import {
 
 const VISION_TIMEOUT_MS = 60_000;
 
+/**
+ * Plausible Vision key shape (only used to enable the Save button — the server validates the real key).
+ * Placeholder keys (`AIzaTEST…`) are allowed here so the flow can be exercised without a live key.
+ */
+export function looksLikeVisionKeyInput(key: string): boolean {
+  return /^AIza[0-9A-Za-z_-]{25,}$/.test(String(key || "").trim());
+}
+
 export type OcrCloudErrorCode =
   | "disabled"
   | "no_key"
@@ -172,16 +180,19 @@ export async function getOcrCloudStatus(companyId: string): Promise<OcrCloudStat
   return normalizeStatus(raw);
 }
 
-/** Admin: save (or replace) the Google Vision key on the server. The key is not kept on this device. */
-export async function saveOcrCloudKey(key: string): Promise<void> {
+/** Admin: save (or replace) the Google Vision key on the server. The key is not kept on this device.
+ *  `companyId` lets the server verify the caller is an admin of the company whose settings are open. */
+export async function saveOcrCloudKey(key: string, companyId?: string): Promise<void> {
   const k = String(key || "").trim();
   if (!k) throw new OcrCloudError("no_key", "Key is empty");
-  await call<unknown>("/api/ocr-cloud/key", { method: "POST", body: { key: k } });
+  const body: Record<string, unknown> = { key: k };
+  if (companyId) body.company = companyId;
+  await call<unknown>("/api/ocr-cloud/key", { method: "POST", body });
 }
 
 /** Admin: delete the saved Google Vision key from the server. */
-export async function deleteOcrCloudKey(): Promise<void> {
-  await call<unknown>("/api/ocr-cloud/key", { method: "DELETE" });
+export async function deleteOcrCloudKey(companyId?: string): Promise<void> {
+  await call<unknown>("/api/ocr-cloud/key", { method: "DELETE", body: companyId ? { company: companyId } : {} });
 }
 
 /** Admin: enable/disable cloud OCR for a company, or grant/revoke one shared user. */

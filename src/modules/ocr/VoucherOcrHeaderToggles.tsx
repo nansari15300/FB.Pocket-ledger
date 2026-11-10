@@ -6,6 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useCompany } from "@/hooks/useCompany";
 import { cn } from "@/lib/utils";
+import { OCR_SETTINGS_DIALOG_CONTENT_CN, OCR_SETTINGS_DIALOG_OVERLAY_CN } from "@/lib/dialogShellChrome";
 import { AUTO_POST_SECONDS_MAX, AUTO_POST_SECONDS_MIN, clampAutoPostSeconds, setOcrPrefs, useOcrPrefs, type OcrConnectorStyle, type OcrEnginePref, type OcrNarrationStyle } from "./prefs";
 import { useOcrPlanAllowed } from "./gate";
 import { ocrCloud, ocrCloudErrorText, useOcrCloudStatus } from "./cloud/ocrCloudClient";
@@ -147,10 +148,11 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
   if (!companyId) return <Section title="Google Online OCR" hint={hint}><p className="text-xs text-muted-foreground">Select a company first.</p>{engineRadio}</Section>;
   if (loading && !status) return <Section title="Google Online OCR" hint={hint}><p className="text-xs text-muted-foreground">Checking online OCR status…</p>{engineRadio}</Section>;
   if (!status) {
+    // The status call itself failed — this is NOT "server turned it off". Say so, and retry.
     return (
       <Section title="Google Online OCR" hint={hint}>
-        <div className="flex items-center justify-between gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs dark:bg-slate-800">
-          <span>Online OCR status unavailable{error ? `: ${error}` : ""}. Offline OCR is used.</span>
+        <div className="flex items-center justify-between gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          <span>Could not reach the server for the OCR status{error ? ` (${error})` : ""}. This does not mean it is off. Offline OCR is used meanwhile.</span>
           <button type="button" onClick={reload} className="shrink-0 rounded-md border px-2 py-1 text-[11px] font-medium hover:bg-white dark:hover:bg-slate-700">Retry</button>
         </div>
         {engineRadio}
@@ -202,7 +204,7 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
             <button
               type="button"
               disabled={!keyDraft.trim() || !!busy}
-              onClick={() => act("save", async () => { await ocrCloud.saveKey(keyDraft.trim()); setKeyDraft(""); return "Key saved on the server."; })}
+              onClick={() => act("save", async () => { await ocrCloud.saveKey(keyDraft.trim(), companyId); setKeyDraft(""); return "Key saved on the server."; })}
               className="h-9 flex-1 rounded-md bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 sm:flex-none"
             >
               {busy === "save" ? "Saving…" : "Save"}
@@ -227,7 +229,7 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
           confirmDelete ? (
             <div className="flex flex-wrap items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-900 dark:bg-red-950/40 dark:text-red-200">
               <span className="flex-1">Delete the saved key? Google OCR stops for every company using it.</span>
-              <button type="button" disabled={!!busy} onClick={() => act("delete", async () => { await ocrCloud.deleteKey(); setConfirmDelete(false); return "Key deleted."; })} className="rounded-md bg-red-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+              <button type="button" disabled={!!busy} onClick={() => act("delete", async () => { await ocrCloud.deleteKey(companyId); setConfirmDelete(false); return "Key deleted."; })} className="rounded-md bg-red-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-red-700 disabled:opacity-50">
                 {busy === "delete" ? "Deleting…" : "Delete"}
               </button>
               <button type="button" onClick={() => setConfirmDelete(false)} className="rounded-md border px-2.5 py-1 text-[11px] font-medium">Cancel</button>
@@ -311,7 +313,14 @@ function OcrSettingsGear({
         </button>
       </DialogTrigger>
       <DialogContent
-        className="flex max-h-[min(88vh,820px)] w-[calc(100vw-1.5rem)] max-w-[600px] flex-col gap-0 overflow-hidden p-0"
+        className={cn(
+          // 60% of the screen wide, 80% of the screen tall (small screens keep a safe inset).
+          "flex h-[80vh] max-h-[80vh] w-[60vw] max-w-[60vw] min-w-[min(100vw-1.5rem,360px)] flex-col gap-0 overflow-hidden p-0",
+          "max-sm:h-[calc(100vh-1.5rem)] max-sm:max-h-[calc(100vh-1.5rem)] max-sm:w-[calc(100vw-1.5rem)] max-sm:max-w-[calc(100vw-1.5rem)] max-sm:min-w-0",
+          OCR_SETTINGS_DIALOG_CONTENT_CN
+        )}
+        overlayClassName={OCR_SETTINGS_DIALOG_OVERLAY_CN}
+        data-ocr-settings-open="1"
         onClick={(e) => e.stopPropagation()}
         aria-describedby={undefined}
       >

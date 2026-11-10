@@ -55,5 +55,13 @@ export const NESTED_VOUCHER_HISTORY_CONTENT_CN = "z-[97]";
 export const NESTED_VOUCHER_HISTORY_ALERT_OVERLAY_CN = "z-[98] bg-black/45 backdrop-blur-sm";
 export const NESTED_VOUCHER_HISTORY_ALERT_CONTENT_CN = "!z-[99]";
 
+/**
+ * OCR settings gear (New Trxn header) — a top-level modal above everything else in the voucher,
+ * INCLUDING the OCR field bubbles / countdown pill (`OCR_LAYER_Z = 100`), so a bubble can never
+ * poke into the settings popup. The marker attribute lets the bubble layer hide itself.
+ */
+export const OCR_SETTINGS_DIALOG_OVERLAY_CN = "z-[2147482998] bg-black/45 backdrop-blur-sm";
+export const OCR_SETTINGS_DIALOG_CONTENT_CN = "!z-[2147483000]";
+
 /** Inner boxes / category panels — same dim green tone. */
 export const DIALOG_DIM_GREEN_BORDER = DIALOG_SHELL_BORDER_CN;

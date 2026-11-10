@@ -76,8 +76,8 @@ export function ocrCloudErrorText(e: unknown): string {
 
 export const ocrCloud = {
   vision: (companyId: string, imageBase64: string, opts?: { signal?: AbortSignal; languageHints?: string[] }) => ocrCloudVision(companyId, imageBase64, opts),
-  async saveKey(key: string) { await saveOcrCloudKey(key); invalidateOcrCloudStatus(); },
-  async deleteKey() { await deleteOcrCloudKey(); invalidateOcrCloudStatus(); },
+  async saveKey(key: string, companyId?: string) { await saveOcrCloudKey(key, companyId); invalidateOcrCloudStatus(); },
+  async deleteKey(companyId?: string) { await deleteOcrCloudKey(companyId); invalidateOcrCloudStatus(); },
   async setCompany(o: OcrCloudCompanyOptions) { await setOcrCloudCompany(o); invalidateOcrCloudStatus(o.company); },
 };
 
