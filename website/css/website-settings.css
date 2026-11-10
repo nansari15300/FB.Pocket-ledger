@@ -115,3 +115,14 @@ body.website-settings-page .ws-side-title {
   margin-bottom: 0.6rem;
   border-bottom: 1px solid var(--line);
 }
+/* Every admin page: main card fills the area with a 40px gap on all four sides */
+body.website-settings-page .ws-main > .section { padding: 0; }
+body.website-settings-page .ws-main > .section > .wrap {
+  max-width: none;
+  width: auto;
+  margin: 0;
+  padding: 40px;
+  box-sizing: border-box;
+}
+body.website-settings-page .ws-main > .section > .wrap > .content-block { margin-bottom: 0; }
+body.website-settings-page .ws-main > .section > .wrap > .status:empty { display: none; }

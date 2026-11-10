@@ -1,37 +1,56 @@
-/* Scoped Gallery tile-canvas background. Gray / default theme only.
-   Does not change global theme tokens, the top toolbar, or the bottom panels.
-   Specificity is high enough to override globals.css forcing the scroll area
-   to background-color: transparent !important. */
+/* Scoped Gallery tile-canvas background. Applies in every app theme
+   (default body class is theme-pro / "Default", not theme-pl-gray).
+   Paint ONLY the tiles scroll area. Do not paint [data-pl-gallery-tab-body]
+   or the company/unassigned shells: those wrappers also contain the bottom
+   floating footer panel (date range, All Users, Select All, Full preview,
+   column controls). A min-height: 100% on those wrappers overflows and
+   clips the shrink-0 footer inside overflow-hidden.
+   Specificity beats globals.css `background-color: transparent !important`
+   on [data-pl-gallery-scroll]. Toolbar and bottom panels are left alone. */
 
-html body.theme-pl-gray [data-pl-gallery-scroll][data-pl-gallery-scroll][data-pl-gallery-scroll].pl-gallery-canvas {
-  --gallery-canvas-bg: #2a2d33;
-  --gallery-canvas-caption: #e5e7eb;
-  --gallery-canvas-caption-muted: #c4c8cf;
+html body[class*="theme-"] [data-pl-gallery-scroll][data-pl-gallery-scroll][data-pl-gallery-scroll].pl-gallery-canvas {
+  --gallery-canvas-bg: #4a4e55;
+  --gallery-canvas-caption: #f1f3f5;
+  --gallery-canvas-caption-muted: #dde1e6;
   background-color: var(--gallery-canvas-bg) !important;
   background-image: none !important;
-  /* Fill the visible scroll region even when the tile grid is short. */
-  min-height: 100%;
+  /* Fill the flex slot above the footer when the tile grid is short.
+     Do not use min-height: 100% — that is 100% of the shell, which also
+     includes the footer, and would cover/clip the panel. */
+  flex: 1 1 auto;
+  align-self: stretch;
   width: 100%;
+  min-height: 0;
+  /* Stay below the in-flow footer sibling and the mobile fixed ribbon (z-56). */
+  position: relative;
+  z-index: 0;
 }
 
 /* File-name captions and other in-canvas messages (empty / uploading).
    Tile card surfaces and size badges are left alone. */
-html body.theme-pl-gray [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-tile-caption,
-html body.theme-pl-gray [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-canvas-msg,
-html body.theme-pl-gray [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-tile-caption.text-muted-foreground {
-  color: var(--gallery-canvas-caption-muted, #c4c8cf) !important;
+html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-tile-caption,
+html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-canvas-msg,
+html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-tile-caption.text-muted-foreground {
+  color: var(--gallery-canvas-caption-muted, #dde1e6) !important;
 }
 
-html body.theme-pl-gray [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-canvas-msg {
-  color: var(--gallery-canvas-caption, #e5e7eb) !important;
+html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-canvas-msg {
+  color: var(--gallery-canvas-caption, #f1f3f5) !important;
 }
 
-/* Keep existing selection rings visible on the dark canvas without restyling the tile face. */
-html body.theme-pl-gray [data-pl-gallery-scroll].pl-gallery-canvas .group > div.ring-2 {
-  outline: 2px solid rgba(229, 231, 235, 0.7);
+/* Keep existing selection rings visible on the charcoal canvas without restyling the tile face. */
+html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .group > div.ring-2 {
+  outline: 2px solid rgba(241, 243, 245, 0.8);
   outline-offset: 1px;
 }
 
-html body.theme-pl-gray [data-pl-gallery-scroll].pl-gallery-canvas .group:hover > div:not(.ring-2) {
+html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .group:hover > div:not(.ring-2) {
   box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.45);
+}
+
+/* Footer card is a later flex sibling of the scroll (not inside it).
+   Keep it stacked above the canvas. Do not override mobile fixed positioning. */
+html body[class*="theme-"] [data-pl-gallery-company-footer],
+html body[class*="theme-"] [data-pl-gallery-unassigned-footer] {
+  z-index: 2;
 }

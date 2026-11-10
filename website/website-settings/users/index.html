@@ -6,7 +6,7 @@
   <title>Users — Pocket Ledger</title>
   <meta name="robots" content="noindex,nofollow" />
   <link rel="stylesheet" href="../../styles.css?v=20261028-190500" />
-  <link rel="stylesheet" href="../../css/website-settings.css?v=20261110-0810" />
+  <link rel="stylesheet" href="../../css/website-settings.css?v=20261110-0815" />
   <link rel="stylesheet" href="../../css/color-mode.css?v=20261028-195200" />
   <script src="../../js/color-mode.js?v=20261028-195200"></script>
   <style>
@@ -14,16 +14,8 @@
     .status { margin-top: 1rem; font-size: 0.95rem; }
     .status.ok { color: var(--ok); }
     .status.err { color: #b42318; }
-    /* Card: 40px gap on all four sides (same as Release upload) */
-    body.website-settings-page .ws-main > .section { padding: 0; }
-    body.website-settings-page .ws-main > .section > .wrap.users-card {
-      max-width: none;
-      width: auto;
-      margin: 0;
-      padding: 40px;
-    }
-    .users-card > .content-block { margin-bottom: 0; max-height: 70vh; overflow-y: auto; }
-    .users-card > .status:empty { display: none; }
+    /* Card 40px gap: shared rule in css/website-settings.css */
+    .users-card > .content-block { max-height: 70vh; overflow-y: auto; }
     .users-hint { margin: 0 0 1rem; color: var(--muted); font-size: 0.88rem; }
     .add-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
     .add-row input { flex: 1; min-width: 12rem; }
