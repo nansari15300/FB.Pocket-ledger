@@ -5004,12 +5004,15 @@ export function AddVoucherDialog(props: any) {
         </DialogContent>
       ) : (
         // Mobile: full viewport — PWA, mobile browser aur static/Capacitor APK sab par yahi layout; safe-area env() 0 ho to asar nahi.
+        /* overflow-visible: OCR field bubbles are portaled into this role=dialog node.
+           Tailwind translate-x/y (even 0) makes it the containing block for position:fixed;
+           overflow-hidden would clip bubble tails at this edge. Form scrolling stays on the inner wrapper below. */
         <DialogContent
           hideCloseButton
           overlayClassName="z-[80] bg-black/45"
           onFocusOutside={(e) => e.preventDefault()}
           className={cn(
-            "z-[81] flex min-h-0 flex-col overflow-hidden p-0 !gap-0",
+            "z-[81] flex min-h-0 flex-col overflow-visible p-0 !gap-0",
             "box-border h-[100dvh] max-h-[100dvh] w-full max-w-none !left-0 !top-0 !translate-x-0 !translate-y-0 rounded-none border-0 shadow-lg",
             "pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]"
           )}

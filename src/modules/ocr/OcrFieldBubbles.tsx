@@ -5,7 +5,8 @@
  * - Each bubble points (tail) at its target field: elements marked `data-ocr-field="<key>"` inside the voucher form.
  *   Missing anchor -> bubble attaches to the OCR bar (`data-pl-ocr-refresh-bar`).
  * - Target field gets a pink attention ring while its bubble is shown.
- * - Repositions on scroll (capture) / resize / layout changes.
+ * - Repositions on scroll (capture) / resize / ResizeObserver / layout changes.
+ * - A single coordinator measures every [data-ocr-bubble] and resolves overlaps in both directions.
  * - Mobile (< 640px): one bubble at a time with Prev / Next.
  * - Stacking: above AddVoucherDialog content (z-81), below nested master-create dialogs (z-92+) that bubbles open.
  */
@@ -61,15 +62,28 @@ export type OcrBubble = {
   countdown?: number;
 };
 
+/** Prefer a compact line-item cell over a whole-table wrapper marked with the same field key. */
+function preferLineCell(all: HTMLElement[]): HTMLElement {
+  const compact = all.filter((el) => el.getBoundingClientRect().height <= 80);
+  if (compact.length) return compact[0];
+  return all.reduce((best, el) => {
+    const a = el.getBoundingClientRect();
+    const b = best.getBoundingClientRect();
+    return a.width * a.height < b.width * b.height ? el : best;
+  });
+}
+
 function findAnchor(key: string, anchor?: string): HTMLElement | null {
   const vis = (el: Element) => {
     const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0;
   };
-  // "lines#N" -> item combobox of line N (N-th visible `data-ocr-field="lines"` cell)
+  // "lines#N" -> item combobox of line N (N-th visible compact `data-ocr-field="lines"` cell)
   const m = anchor?.match(/^lines#(\d+)$/);
   if (m) {
-    const rows = Array.from(document.querySelectorAll<HTMLElement>(`[data-ocr-field="lines"]`)).filter(vis);
+    const all = Array.from(document.querySelectorAll<HTMLElement>(`[data-ocr-field="lines"]`)).filter(vis);
+    const compact = all.filter((el) => el.getBoundingClientRect().height <= 80);
+    const rows = compact.length ? compact : all;
     const n = Number(m[1]);
     if (rows[n]) return rows[n];
     if (rows.length) return rows[0];
@@ -79,7 +93,10 @@ function findAnchor(key: string, anchor?: string): HTMLElement | null {
     if (exact.length) return exact[exact.length - 1];
   }
   const all = Array.from(document.querySelectorAll<HTMLElement>(`[data-ocr-field="${key}"]`)).filter(vis);
-  if (all.length) return all[all.length - 1];
+  if (all.length) {
+    if (key === "lines") return preferLineCell(all);
+    return all[all.length - 1];
+  }
   return null;
 }
 function fallbackAnchor(): HTMLElement | null {
@@ -99,8 +116,13 @@ function hostOffset(host: HTMLElement | null): { x: number; y: number } {
 
 type Side = "top" | "bottom" | "left" | "right";
 type Pos = { top: number; left: number; side: Side; tail: number; fallback: boolean };
+type Box = { left: number; top: number; right: number; bottom: number };
 const W = 300;
 const GAP = 12;
+const MARGIN = 8;
+const MAX_PASSES = 16;
+/** Suggestions list (and other bubble bodies) cap; shrink further when the dialog is tight. */
+const SUGGEST_LIST_MAX = 280;
 
 /** Prefer ABOVE the field aligned to its top-right; else flip to whichever side has room. Tail aims at field centre. */
 function place(a: HTMLElement | null, fallback: boolean, h: number, host: HTMLElement | null, aimStart = false, avoid: DOMRect[] = []): Pos | null {
@@ -133,65 +155,315 @@ function place(a: HTMLElement | null, fallback: boolean, h: number, host: HTMLEl
   return { top: top - o.y, left: left - o.x, side, tail, fallback };
 }
 
-/** Collision avoidance: nudge this bubble away from bubbles rendered BEFORE it (DOM order) so no two overlap.
- *  top/bottom bubbles slide horizontally (then vertically if no room), left/right slide vertically;
- *  the tail is recomputed so it still aims at this bubble's own anchor. Mutates p (host-relative coords). */
-function avoidOverlap(p: Pos, el: HTMLElement, anchor: HTMLElement | null, aimStart = false) {
-  const host = el.parentElement?.parentElement ?? null;
-  const o = hostOffset(host);
-  const w = el.offsetWidth || W;
-  const h = el.offsetHeight || 120;
+function asBox(r: { left: number; top: number; right: number; bottom: number }): Box {
+  return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+}
+
+function layoutBox(host: HTMLElement | null): Box {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  // all OTHER bubbles (both directions; earlier bubbles have priority, later ones are re-checked every tick)
-  const others: DOMRect[] = [];
-  for (let n = el.previousElementSibling; n; n = n.previousElementSibling) {
-    if ((n as HTMLElement).dataset?.ocrBubble !== undefined) others.unshift(n.getBoundingClientRect());
-  }
-  if (el.dataset.ocrBubble !== "voucher-type") {
-    for (const tr of Array.from(document.querySelectorAll<HTMLElement>('[data-ocr-field="voucher-type"]'))) {
-      const r = tr.getBoundingClientRect();
-      if (r.width > 0) others.push(r);
+  let left = 8, top = 8, right = vw - 8, bottom = vh - 8;
+  const dialog = (host && host !== document.body ? (host.closest('[role="dialog"]') as HTMLElement | null) ?? host : null);
+  if (dialog) {
+    const r = dialog.getBoundingClientRect();
+    if (r.width > 40 && r.height > 40) {
+      left = Math.max(left, r.left + 8);
+      top = Math.max(top, r.top + 8);
+      right = Math.min(right, r.right - 8);
+      bottom = Math.min(bottom, r.bottom - 8);
     }
   }
-  if (!others.length) return;
-  const M = 8;
-  const hit = (l: number, t: number) => others.find((r) => l < r.right + M && l + w > r.left - M && t < r.bottom + M && t + h > r.top - M);
-  let l = p.left + o.x;
-  let t = p.top + o.y;
-  const origL = l, origT = t;
-  for (let guard = 0; guard < 16; guard++) {
-    const r = hit(l, t);
-    if (!r) break;
-    const step = 12 + guard * 8; // push farther as needed so leaders can grow
-    if (p.side === "top" || p.side === "bottom") {
-      const toLeft = r.left - M - w;
-      const toRight = r.right + M;
-      const preferLeft = Math.abs((toLeft + w / 2) - (origL + w / 2)) <= Math.abs((toRight + w / 2) - (origL + w / 2));
-      if (preferLeft && toLeft >= 8) l = toLeft;
-      else if (toRight + w <= vw - 8) l = toRight;
-      else if (toLeft >= 8) l = toLeft;
-      else {
-        t = p.side === "top" ? Math.max(8, r.top - M - h - step) : Math.min(vh - h - 8, r.bottom + M + step);
-      }
-    } else {
-      const up = r.top - M - h - step;
-      t = up >= 8 ? up : r.bottom + M + step;
-    }
-    l = Math.max(8, Math.min(l, vw - w - 8));
-    t = Math.max(8, Math.min(t, vh - h - 8));
+  if (right - left < 80 || bottom - top < 80) return { left: 8, top: 8, right: vw - 8, bottom: vh - 8 };
+  return { left, top, right, bottom };
+}
+
+function bubbleSizeCap(box: Box): { maxW: number; maxH: number; listMaxH: number } {
+  const maxW = Math.min(W, Math.max(160, box.right - box.left), window.innerWidth - 16);
+  const tight = Math.max(96, box.bottom - box.top);
+  const listMaxH = Math.min(window.innerHeight * 0.4, SUGGEST_LIST_MAX, Math.max(72, tight - 72));
+  const maxH = Math.min(window.innerHeight * 0.4 + 72, SUGGEST_LIST_MAX + 72, tight, listMaxH + 72);
+  return { maxW, maxH, listMaxH };
+}
+
+function intersectArea(l: number, t: number, w: number, h: number, r: Box, m = MARGIN): number {
+  const x1 = Math.max(l, r.left - m);
+  const y1 = Math.max(t, r.top - m);
+  const x2 = Math.min(l + w, r.right + m);
+  const y2 = Math.min(t + h, r.bottom + m);
+  return Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+}
+
+function clampToBox(l: number, t: number, w: number, h: number, box: Box): { l: number; t: number } {
+  const maxL = Math.max(box.left, box.right - w);
+  const maxT = Math.max(box.top, box.bottom - h);
+  return { l: Math.min(Math.max(l, box.left), maxL), t: Math.min(Math.max(t, box.top), maxT) };
+}
+
+function tabRects(key: string): DOMRect[] {
+  if (key === "voucher-type") return [];
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-ocr-field="voucher-type"]'))
+    .map((x) => x.getBoundingClientRect())
+    .filter((x) => x.width > 0);
+}
+
+function inferSide(l: number, t: number, w: number, h: number, field: HTMLElement | null): Side {
+  if (!field) return "top";
+  const r = field.getBoundingClientRect();
+  const dx = l + w / 2 - (r.left + r.width / 2);
+  const dy = t + h / 2 - (r.top + r.height / 2);
+  if (Math.abs(dy) >= Math.abs(dx)) return dy < 0 ? "top" : "bottom";
+  return dx < 0 ? "left" : "right";
+}
+
+function sidePos(field: HTMLElement, side: Side, w: number, h: number, box: Box, aimStart: boolean): { l: number; t: number; side: Side } {
+  const r = field.getBoundingClientRect();
+  const cx = aimStart ? r.left + Math.min(r.width / 2, 48) : r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+  let l: number, t: number;
+  if (side === "top") { t = r.top - GAP - h; l = aimStart ? cx - 28 : r.right - w; }
+  else if (side === "bottom") { t = r.bottom + GAP; l = aimStart ? cx - 28 : r.right - w; }
+  else if (side === "right") { l = r.right + GAP; t = cy - h / 2; }
+  else { l = r.left - GAP - w; t = cy - h / 2; }
+  const c = clampToBox(l, t, w, h, box);
+  return { l: c.l, t: c.t, side };
+}
+
+function clearOfField(l: number, t: number, w: number, h: number, field: HTMLElement | null, box: Box, aimStart: boolean): { l: number; t: number; side: Side } {
+  if (!field || intersectArea(l, t, w, h, asBox(field.getBoundingClientRect()), MARGIN) <= 0) {
+    return { l, t, side: inferSide(l, t, w, h, field) };
   }
-  p.left = l - o.x;
-  p.top = t - o.y;
-  if (anchor) {
-    const ar = anchor.getBoundingClientRect();
-    p.tail = p.side === "top" || p.side === "bottom"
-      ? Math.max(16, Math.min((aimStart ? ar.left + Math.min(ar.width / 2, 48) : ar.left + ar.width / 2) - l, w - 16))
-      : Math.max(16, Math.min(ar.top + ar.height / 2 - t, h - 16));
+  let best: { l: number; t: number; side: Side; score: number } | null = null;
+  for (const side of ["top", "bottom", "right", "left"] as Side[]) {
+    const c = sidePos(field, side, w, h, box, aimStart);
+    const area = intersectArea(c.l, c.t, w, h, asBox(field.getBoundingClientRect()), MARGIN);
+    const score = area * 1000 + Math.hypot(c.l - l, c.t - t);
+    if (!best || score < best.score) best = { ...c, score };
   }
+  return best ?? { l, t, side: inferSide(l, t, w, h, field) };
+}
+
+function penalty(l: number, t: number, w: number, h: number, obstacles: Box[], box: Box, field: HTMLElement | null, originL: number, originT: number): number {
+  let s = 0;
+  for (const o of obstacles) s += intersectArea(l, t, w, h, o);
+  if (field) s += intersectArea(l, t, w, h, asBox(field.getBoundingClientRect()), MARGIN) * 2;
+  if (l < box.left) s += (box.left - l) * h;
+  if (t < box.top) s += (box.top - t) * w;
+  if (l + w > box.right) s += (l + w - box.right) * h;
+  if (t + h > box.bottom) s += (t + h - box.bottom) * w;
+  s += Math.hypot(l - originL, t - originT) * 0.05;
+  return s;
+}
+
+function stillHits(l: number, t: number, w: number, h: number, obstacles: Box[]): boolean {
+  return obstacles.some((o) => intersectArea(l, t, w, h, o) > 0);
 }
 
 type Leader = { x1: number; y1: number; x2: number; y2: number };
+type LayoutSink = (pos: Pos | null, leader: Leader | null, tail: TailGeom | null) => void;
+type Reg = { key: string; anchor?: string; sink: LayoutSink };
+type Item = {
+  el: HTMLElement;
+  key: string;
+  sink: LayoutSink;
+  field: HTMLElement | null;
+  usedFallback: boolean;
+  aimStart: boolean;
+  w: number;
+  h: number;
+  l: number;
+  t: number;
+  side: Side;
+  originL: number;
+  originT: number;
+};
+
+const bubbleRegistry = new Map<HTMLElement, Reg>();
+let layoutRaf = 0;
+
+function registerOcrBubble(el: HTMLElement, key: string, anchor: string | undefined, sink: LayoutSink) {
+  bubbleRegistry.set(el, { key, anchor, sink });
+  scheduleOcrBubbleLayout();
+}
+function unregisterOcrBubble(el: HTMLElement) {
+  bubbleRegistry.delete(el);
+  scheduleOcrBubbleLayout();
+}
+function scheduleOcrBubbleLayout() {
+  if (typeof window === "undefined") return;
+  if (layoutRaf) return;
+  layoutRaf = window.requestAnimationFrame(() => {
+    layoutRaf = 0;
+    layoutAllOcrBubbles();
+  });
+}
+
+function stackAlongSide(stuck: Item[], all: Item[], box: Box) {
+  const good = all.filter((it) => !stuck.includes(it));
+  const mid = (box.left + box.right) / 2;
+  let leftOcc = 0, rightOcc = 0;
+  for (const g of good) {
+    if (g.l + g.w / 2 >= mid) rightOcc += g.w * g.h;
+    else leftOcc += g.w * g.h;
+  }
+  const useRight = rightOcc <= leftOcc;
+  const gap = MARGIN;
+  const colW = Math.max(...stuck.map((it) => it.w));
+  let x = useRight ? box.right - colW : box.left;
+  let y = box.top;
+  const ordered = [...stuck].sort((a, b) => a.t - b.t || a.l - b.l);
+  for (const it of ordered) {
+    if (y + it.h > box.bottom && y > box.top) {
+      x = useRight ? x - colW - gap : x + colW + gap;
+      if (x < box.left) x = box.left;
+      if (x + it.w > box.right) x = Math.max(box.left, box.right - it.w);
+      y = box.top;
+    }
+    let guard = 0;
+    while (guard++ < 24) {
+      const hit = good.find((g) => intersectArea(x, y, it.w, it.h, { left: g.l, top: g.t, right: g.l + g.w, bottom: g.t + g.h }) > 0);
+      if (!hit) break;
+      y = hit.t + hit.h + gap;
+      if (y + it.h > box.bottom) {
+        x = useRight ? x - colW - gap : x + colW + gap;
+        if (x < box.left) x = box.left;
+        if (x + it.w > box.right) x = Math.max(box.left, box.right - it.w);
+        y = box.top;
+      }
+    }
+    const c = clampToBox(x, y, it.w, it.h, box);
+    it.l = c.l;
+    it.t = c.t;
+    it.side = inferSide(it.l, it.t, it.w, it.h, it.field);
+    y = it.t + it.h + gap;
+  }
+}
+
+/** Measure every bubble, pick the least-overlap slot among right/left/down/up, iterate, then clamp. */
+function layoutAllOcrBubbles() {
+  if (typeof document === "undefined") return;
+  const entries = [...bubbleRegistry.entries()].filter(([el]) => el.isConnected);
+  if (!entries.length) return;
+  const host = entries[0][0].parentElement?.parentElement ?? null;
+  const box = layoutBox(host);
+  const cap = bubbleSizeCap(box);
+  const items: Item[] = [];
+
+  for (const [el, reg] of entries) {
+    el.style.maxWidth = cap.maxW + "px";
+    el.style.width = cap.maxW + "px";
+    el.style.maxHeight = cap.maxH + "px";
+    const body = el.querySelector<HTMLElement>("[data-ocr-bubble-body]");
+    if (body) body.style.maxHeight = cap.listMaxH + "px";
+    const w = Math.min(cap.maxW, el.offsetWidth || cap.maxW);
+    const h = Math.min(cap.maxH, el.offsetHeight || Math.min(120, cap.maxH));
+    const found = findAnchor(reg.key, reg.anchor);
+    const field = found ?? fallbackAnchor();
+    const usedFallback = !found;
+    const aimStart = !!found && (reg.key === "lines" || !!reg.anchor?.startsWith("lines#"));
+    const p = place(field, usedFallback, h, host, aimStart, tabRects(reg.key));
+    const o = hostOffset(host);
+    let l: number, t: number, side: Side;
+    if (p) {
+      l = p.left + o.x;
+      t = p.top + o.y;
+      side = p.side;
+    } else {
+      const c = clampToBox(box.left, box.top, w, h, box);
+      l = c.l; t = c.t; side = "top";
+    }
+    const cleared = clearOfField(l, t, w, h, field, box, aimStart);
+    items.push({
+      el, key: reg.key, sink: reg.sink, field, usedFallback, aimStart, w, h,
+      l: cleared.l, t: cleared.t, side: cleared.side,
+      originL: cleared.l, originT: cleared.t,
+    });
+  }
+
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    let moved = false;
+    for (const it of items) {
+      const obstacles: Box[] = [
+        ...tabRects(it.key).map(asBox),
+        ...items.filter((o) => o !== it).map((o) => ({ left: o.l, top: o.t, right: o.l + o.w, bottom: o.t + o.h })),
+      ];
+      const fieldBox = it.field ? asBox(it.field.getBoundingClientRect()) : null;
+      const hitsOthers = stillHits(it.l, it.t, it.w, it.h, obstacles);
+      const hitsField = fieldBox ? intersectArea(it.l, it.t, it.w, it.h, fieldBox, MARGIN) > 0 : false;
+      if (!hitsOthers && !hitsField) continue;
+
+      const cands: { l: number; t: number; side: Side }[] = [];
+      const cur = clampToBox(it.l, it.t, it.w, it.h, box);
+      cands.push({ l: cur.l, t: cur.t, side: it.side });
+      if (it.field) {
+        for (const s of ["top", "bottom", "right", "left"] as Side[]) {
+          cands.push(sidePos(it.field, s, it.w, it.h, box, it.aimStart));
+        }
+      }
+      const obsList = fieldBox ? [...obstacles, fieldBox] : obstacles;
+      for (const obs of obsList) {
+        const slides = [
+          { l: obs.right + MARGIN, t: it.t },
+          { l: obs.left - MARGIN - it.w, t: it.t },
+          { l: it.l, t: obs.bottom + MARGIN },
+          { l: it.l, t: obs.top - MARGIN - it.h },
+          { l: obs.right + MARGIN, t: obs.top - MARGIN - it.h },
+          { l: obs.right + MARGIN, t: obs.bottom + MARGIN },
+          { l: obs.left - MARGIN - it.w, t: obs.top - MARGIN - it.h },
+          { l: obs.left - MARGIN - it.w, t: obs.bottom + MARGIN },
+        ];
+        for (const s of slides) {
+          const c = clampToBox(s.l, s.t, it.w, it.h, box);
+          cands.push({ l: c.l, t: c.t, side: inferSide(c.l, c.t, it.w, it.h, it.field) });
+        }
+      }
+
+      let best = cands[0];
+      let bestScore = Infinity;
+      for (const c of cands) {
+        const score = penalty(c.l, c.t, it.w, it.h, obstacles, box, it.field, it.originL, it.originT);
+        if (score < bestScore - 0.5) {
+          bestScore = score;
+          best = c;
+        }
+      }
+      if (best.l !== it.l || best.t !== it.t) {
+        it.l = best.l;
+        it.t = best.t;
+        it.side = best.side;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+
+  const colliding = items.filter((it) => {
+    const others = items.filter((o) => o !== it).map((o) => ({ left: o.l, top: o.t, right: o.l + o.w, bottom: o.t + o.h }));
+    const fieldBox = it.field ? asBox(it.field.getBoundingClientRect()) : null;
+    return stillHits(it.l, it.t, it.w, it.h, others) || (fieldBox ? intersectArea(it.l, it.t, it.w, it.h, fieldBox, MARGIN) > 0 : false);
+  });
+  if (colliding.length) stackAlongSide(colliding, items, box);
+
+  const o = hostOffset(host);
+  for (const it of items) {
+    const cleared = clearOfField(it.l, it.t, it.w, it.h, it.field, box, it.aimStart);
+    const c = clampToBox(cleared.l, cleared.t, it.w, it.h, box);
+    const again = clearOfField(c.l, c.t, it.w, it.h, it.field, box, it.aimStart);
+    it.l = again.l;
+    it.t = again.t;
+    it.side = again.side;
+    const p: Pos = { top: it.t - o.y, left: it.l - o.x, side: it.side, tail: 16, fallback: it.usedFallback };
+    if (it.field) {
+      const ar = it.field.getBoundingClientRect();
+      const cx = it.aimStart ? ar.left + Math.min(ar.width / 2, 48) : ar.left + ar.width / 2;
+      const cy = ar.top + ar.height / 2;
+      p.tail = p.side === "top" || p.side === "bottom"
+        ? Math.max(16, Math.min(cx - it.l, it.w - 16))
+        : Math.max(16, Math.min(cy - it.t, it.h - 16));
+    }
+    // Tails only after final positions, using the same anchor as placement (found ?? fallback).
+    it.sink(p, leaderPoints(p, it.el, it.field, host), computeTailGeom(p, it.el, it.field, host));
+  }
+}
 
 /** Point on the bubble edge facing the field, then a line to the field centre. Length grows as the bubble is pushed away. */
 function leaderPoints(p: Pos, el: HTMLElement, anchor: HTMLElement | null, host: HTMLElement | null): Leader | null {
@@ -294,9 +566,9 @@ function cubics(from: Pt, to: Pt, nx: number, ny: number, bow: number) {
 }
 
 /**
- * Tail geometry after the bubble has been placed and pushed by collision avoidance.
+ * Tail geometry after the coordinator has settled final positions.
  * Length = distance from the nearest corner/side of the rectangle to the closest point on the field.
- * Recomputed in update() (layout, scroll, resize, 400ms tick, after avoidOverlap).
+ * Uses the same anchor as placement (found ?? fallback). Bubbles overlapping their field are moved off first.
  */
 function computeTailGeom(p: Pos, el: HTMLElement, anchor: HTMLElement | null, host: HTMLElement | null): TailGeom | null {
   if (!anchor) return null;
@@ -421,14 +693,13 @@ function BubbleView({
   onDismiss,
   nav,
   scrollOnMount,
-  stack = 0,
 }: {
   b: OcrBubble;
   onApply: (s: OcrSuggestion) => void;
   onDismiss: () => void;
   nav?: { i: number; n: number; prev: () => void; next: () => void };
   scrollOnMount: boolean;
-  /** n-th bubble resolving to the same anchor element -> stacked, not drawn on top of each other. */
+  /** Kept for callers; overlap is now resolved by the global coordinator. */
   stack?: number;
 }) {
   const connectorStyle = useOcrPrefs().connectorStyle === "line" ? "line" : "tail";
@@ -438,27 +709,23 @@ function BubbleView({
   const [el, setEl] = useState<HTMLDivElement | null>(null);
 
   const update = useCallback(() => {
-    const a = findAnchor(b.key, b.anchor);
-    // non-switch bubbles must not cover the voucher-type tab row
-    const avoid = b.key === "voucher-type" ? [] : Array.from(document.querySelectorAll<HTMLElement>('[data-ocr-field="voucher-type"]')).map((x) => x.getBoundingClientRect()).filter((x) => x.width > 0);
-    const p = place(a ?? fallbackAnchor(), !a, el?.offsetHeight || 120, el?.parentElement?.parentElement ?? null, !!a && b.key === "lines", avoid);
-    if (p && stack) {
-      const dy = stack * ((el?.offsetHeight || 120) + 10);
-      p.top += p.side === "top" ? -dy : dy;
-    }
-    const anchor = a ?? fallbackAnchor();
-    if (p && el) avoidOverlap(p, el, anchor, b.key === "lines");
-    setPos(p);
-    const host = el?.parentElement?.parentElement ?? null;
-    if (p && el) {
-      setLeader(leaderPoints(p, el, a, host));
-      setTail(computeTailGeom(p, el, a, host));
-    } else { setLeader(null); setTail(null); }
-  }, [b.key, b.anchor, el]);
+    scheduleOcrBubbleLayout();
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!el) return;
+    const sink: LayoutSink = (p, nextLeader, nextTail) => {
+      setPos(p);
+      setLeader(nextLeader);
+      setTail(nextTail);
+    };
+    registerOcrBubble(el, b.key, b.anchor, sink);
+    return () => unregisterOcrBubble(el);
+  }, [el, b.key, b.anchor]);
 
   useLayoutEffect(() => {
     update();
-  }, [update]);
+  }, [update, b.title, b.items.length, b.countdown]);
 
   useEffect(() => {
     const a = findAnchor(b.key, b.anchor);
@@ -470,19 +737,29 @@ function BubbleView({
     window.addEventListener("scroll", on, true);
     window.addEventListener("resize", on);
     const t = window.setInterval(on, 400); // layout shifts (rows added, dialogs resized)
+    let ro: ResizeObserver | null = null;
+    if (el && typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(on);
+      ro.observe(el);
+    }
     return () => {
       a?.classList.remove(...RING);
       window.removeEventListener("scroll", on, true);
       window.removeEventListener("resize", on);
       window.clearInterval(t);
+      ro?.disconnect();
     };
-  }, [b.key, b.anchor, update, scrollOnMount]);
+  }, [b.key, b.anchor, update, scrollOnMount, el]);
 
   const missing = b.kind === "missing";
   const party = b.items.find((s) => s.id === "create-party");
   const pick = b.items.find((s) => s.id === "find-party");
   const border = missing ? "#fcd34d" : "#f9a8d4";
   const pill = "h-7 rounded-full px-3 text-xs";
+  const vw = typeof window !== "undefined" ? window.innerWidth : W;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+  const bubbleMaxW = Math.min(W, vw - 16);
+  const listMaxH = Math.min(vh * 0.4, SUGGEST_LIST_MAX);
 
   return (
     <div
@@ -494,7 +771,12 @@ function BubbleView({
       style={{
         top: pos?.top ?? -9999,
         left: pos?.left ?? -9999,
-        width: Math.min(W, typeof window !== "undefined" ? window.innerWidth - 16 : W),
+        width: bubbleMaxW,
+        maxWidth: bubbleMaxW,
+        maxHeight: listMaxH + 72,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
         visibility: pos ? "visible" : "hidden",
         background: connectorStyle === "line" ? "#ffffff" : "transparent",
         opacity: 1,
@@ -509,8 +791,8 @@ function BubbleView({
       {connectorStyle === "line"
         ? (leader && pos ? <LeaderLine line={{ x1: leader.x1 - pos.left, y1: leader.y1 - pos.top, x2: leader.x2 - pos.left, y2: leader.y2 - pos.top }} color={border} /> : null)
         : (pos && el ? <BubbleChrome w={el.offsetWidth || W} h={el.offsetHeight || 120} tail={tail} color={border} fill="#ffffff" /> : null)}
-      <div className="relative" style={{ zIndex: 2, background: connectorStyle === "line" ? "#ffffff" : "transparent" }}>
-        <div className="flex items-start gap-2">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden" style={{ zIndex: 2, background: connectorStyle === "line" ? "#ffffff" : "transparent" }}>
+        <div className="flex shrink-0 items-start gap-2">
           <p className="min-w-0 flex-1 font-medium leading-snug">
             {b.title}
             {pos?.fallback ? <span className="block text-[11px] font-normal text-slate-500">(field not on screen)</span> : null}
@@ -520,6 +802,7 @@ function BubbleView({
           </button>
         </div>
 
+        <div data-ocr-bubble-body="" className="min-h-0" style={{ maxHeight: listMaxH, overflowY: "auto", overscrollBehavior: "contain" }}>
         {missing ? (
           <div className="mt-2 flex justify-end">
             <Button type="button" size="sm" className={pill} onClick={onDismiss}>OK</Button>
@@ -560,9 +843,10 @@ function BubbleView({
             </div>
           </div>
         )}
+        </div>
 
         {nav && nav.n > 1 ? (
-          <div className="mt-2 flex items-center justify-between border-t pt-1.5 text-[11px] text-slate-500">
+          <div className="mt-2 flex shrink-0 items-center justify-between border-t pt-1.5 text-[11px] text-slate-500">
             <button type="button" className="flex items-center gap-0.5 disabled:opacity-40" disabled={nav.i === 0} onClick={nav.prev}><ChevronLeft className="h-3.5 w-3.5" />Prev</button>
             <span>{nav.i + 1} / {nav.n}</span>
             <button type="button" className="flex items-center gap-0.5 disabled:opacity-40" disabled={nav.i >= nav.n - 1} onClick={nav.next}>Next<ChevronRight className="h-3.5 w-3.5" /></button>
@@ -596,14 +880,6 @@ export function OcrFieldBubbles({
 
   // Desktop: several bubbles on the same anchor (e.g. missing + suggestion) are merged by key upstream; show all.
   const shown = useMemo(() => (mobile ? bubbles.slice(idx, idx + 1) : bubbles), [mobile, bubbles, idx]);
-  // bubbles sharing one anchor (missing field -> all fall back to the OCR bar) get a stack index
-  const seen = new Map<string, number>();
-  const stackOf = shown.map((b) => {
-    const k = typeof document !== "undefined" && findAnchor(b.key, b.anchor) ? b.key : "__fallback__";
-    const n = seen.get(k) ?? 0;
-    seen.set(k, n + 1);
-    return n;
-  });
   if (typeof document === "undefined" || !bubbles.length) return null;
   const host = (fallbackAnchor()?.closest('[role="dialog"]') as HTMLElement | null) ?? document.body;
   return createPortal(
@@ -615,7 +891,6 @@ export function OcrFieldBubbles({
           onApply={onApply}
           onDismiss={() => onDismiss(b)}
           scrollOnMount={mobile || i === 0}
-          stack={mobile ? 0 : stackOf[i]}
           nav={mobile ? { i: idx, n: bubbles.length, prev: () => setIdx((x) => Math.max(0, x - 1)), next: () => setIdx((x) => Math.min(bubbles.length - 1, x + 1)) } : undefined}
         />
       ))}
