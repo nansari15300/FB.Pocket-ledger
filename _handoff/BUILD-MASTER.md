@@ -28,7 +28,7 @@
    - Tauri Master का पुराना नोट: "ServerWin10 सिर्फ़ git pull करे, build नहीं"। user का नया निर्देश ऊपर है। **अभी के लिए: Tauri EXE build = सिर्फ़ laptop; APK/AAB = किसी भी PC पर।**
 7. **Secrets कभी print/log/chat/git में नहीं** — password, keystore content, `.env` values, tokens। सिर्फ़ file names/paths और variable NAMES।
 8. **`electron\` folder नहीं हटाना** (न कुछ और)।
-9. **बदलाव से पहले backup:** laptop पर `C:\PocketLedger-Backups\`, ServerWin10 पर सिर्फ़ `D:\PocketLedger-Backups\` (C: पर कभी नहीं)।
+9. **User rule (4 Nov 2026):** local backup नहीं लेना; गड़बड़ी पर file Git से वापस ली जाएगी। पुराने backups खुद से नहीं हटाने।
 10. Cloudflare/cloudflared files, PocketBase data (`pb_data`), `.env`/secrets को नहीं छूना। नया Firebase code नहीं (Firebase Master का काम)।
 11. Build के बाद बदली version files (`src-tauri\tauri.conf.json`, `src-tauri\Cargo.toml`/`Cargo.lock`, `src\config\releaseVersion.ts`, `package.json` अगर बदला, `android\app\build.gradle`) सिर्फ़ Git Master user की हाँ के बाद commit करेगी। Build Master commit/push नहीं करती।
 
@@ -106,6 +106,7 @@ Parameters (default नहीं, ज़रूरी): `-EncryptedKeystorePath`,
 | 2026-11-04 ~20:50 | Laptop पर Android build tools: JDK 17 (Temurin zip), Android SDK cmdline-tools + platform-tools + android-34 + build-tools 34.0.0, user env vars, `local.properties` sdk.dir; `java -version`, `gradlew --version` (Gradle 8.7, JVM 17) OK; कोई build नहीं, repo code नहीं छुआ | `android\local.properties` (gitignored), `_handoff\BUILD-MASTER.md` | — |
 | 2026-11-04 ~21:35 | HEAD 35bcd7cc, tree clean; key-check + tsc PASS; bump 1.1.77→1.1.78 (versionCode 90); laptop पर `tauri:build` → `Pocket Ledger Tauri_1.1.78_x64-setup.exe` (16.1 MB); `cap:sync:bundled` + `assembleDebug` (JDK 17) → APK aapt2 1.1.78/90 (DEBUG, 38.1 MB); ServerWin10 `pb_public\releases\2026-11-04\` में दोनों + latest.json (1.1.77 history में); `_bot-data\Build Master\2026-11-04`। device-limit files a3d19457 के बाद नहीं बदलीं | `android\app\build.gradle`, `electron\package.json`, `src-tauri\Cargo.toml`, `src-tauri\tauri.conf.json`, `src\config\releaseVersion.ts`, `_handoff\BUILD-MASTER.md` (commit नहीं) | — (Git) |
 | 2026-11-05 ~07:20 | Server debug.keystore → laptop (SHA match); HEAD e45b7b0e = origin/main, tree clean; key-check + tsc PASS; bump 1.1.78→1.1.79 (versionCode 91); tauri:build EXE 16.1 MB; cap:sync:bundled + assembleDebug APK 38.6 MB; aapt2 1.1.79/91; apksigner SHA-256 = 32:03:0B:6E…1A:36; upload pb_public\releases\2026-11-05 + latest.json; `_bot-data\Build Master\2026-11-05` | `android\app\build.gradle`, `electron\package.json`, `src-tauri\Cargo.toml`, `Cargo.lock`, `tauri.conf.json`, `src\config\releaseVersion.ts`, `_handoff\BUILD-MASTER.md` (commit नहीं) | — (Git) |
+| 2026-11-10 ~16:05 | Build Key Manager FAIL की वजह से रोका (`tauri:build` static step में ही रुका); अधूरे build के हटाए files (`src/app/api`, `src/app/(admin)`, `src/components/admin`, `deleteCompanyAction.ts`) `.build-static-bak` से वापस रखे; version bump (1.1.84/96) वापस लिया, repo फिर 1.1.83/95; np पर APK 1.1.83 पहले से published, अगला release 1.1.84/96 होगा। | कोई नहीं (सिर्फ़ यह handoff) | - (Git) |
 
 ## अगला कदम
 - Key Manager से encrypted keystore path + cipher; keystore alias/store/key password का source; Firebase key files पर user का फ़ैसला।
