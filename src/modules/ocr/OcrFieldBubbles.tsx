@@ -231,42 +231,190 @@ function LeaderLine({ line, color }: { line: Leader; color: string }) {
   );
 }
 
-/** Filled speech-bubble tail: wide base on the popup edge, quadratic sides, point at the field. */
-function BubbleTail({ line, color, fill, side }: { line: Leader; color: string; fill: string; side: Side }) {
-  const baseW = 16;
-  const inset = 4;
-  const inward = side === "top" ? { x: 0, y: -1 } : side === "bottom" ? { x: 0, y: 1 } : side === "right" ? { x: 1, y: 0 } : { x: -1, y: 0 };
-  const along = side === "top" || side === "bottom" ? { x: 1, y: 0 } : { x: 0, y: 1 };
-  const hx = baseW / 2;
-  const { x1, y1, x2, y2 } = line;
-  const b1x = x1 + along.x * hx + inward.x * inset;
-  const b1y = y1 + along.y * hx + inward.y * inset;
-  const b2x = x1 - along.x * hx + inward.x * inset;
-  const b2y = y1 - along.y * hx + inward.y * inset;
-  const dx = x2 - x1, dy = y2 - y1;
-  const len = Math.hypot(dx, dy) || 1;
-  const ux = dx / len, uy = dy / len;
-  const px = -uy, py = ux;
-  const mid = Math.max(10, len * 0.42);
-  const curve = Math.min(18, Math.max(6, len * 0.12));
-  const c1x = x1 + ux * mid + px * curve;
-  const c1y = y1 + uy * mid + py * curve;
-  const c2x = x1 + ux * mid - px * curve;
-  const c2y = y1 + uy * mid - py * curve;
-  const d = `M ${b1x} ${b1y} Q ${c1x} ${c1y} ${x2} ${y2} Q ${c2x} ${c2y} ${b2x} ${b2y} Z`;
-  const xs = [b1x, b2x, x2, c1x, c2x];
-  const ys = [b1y, b2y, y2, c1y, c2y];
-  const pad = 14;
+type Pt = { x: number; y: number };
+type TailGeom = {
+  kind: "corner" | "side";
+  corner?: "tl" | "tr" | "bl" | "br";
+  side?: Side;
+  /** Attachment (corner or side point) and field tip, in bubble-local pixels. Length = distance between them. */
+  attach: Pt;
+  tip: Pt;
+  length: number;
+  bEnter: Pt;
+  bLeave: Pt;
+  cEnter1: Pt;
+  cEnter2: Pt;
+  cLeave1: Pt;
+  cLeave2: Pt;
+  w: number;
+  h: number;
+  r: number;
+};
+
+function clampNum(v: number, a: number, b: number) {
+  return Math.max(a, Math.min(v, b));
+}
+
+/** Closest point on a rect; if the query is inside, the nearest point on the border. */
+function closestOnRect(x: number, y: number, r: DOMRect): Pt {
+  if (x > r.left && x < r.right && y > r.top && y < r.bottom) {
+    const dl = x - r.left, dr = r.right - x, dt = y - r.top, db = r.bottom - y;
+    const m = Math.min(dl, dr, dt, db);
+    if (m === dl) return { x: r.left, y };
+    if (m === dr) return { x: r.right, y };
+    if (m === dt) return { x, y: r.top };
+    return { x, y: r.bottom };
+  }
+  return { x: clampNum(x, r.left, r.right), y: clampNum(y, r.top, r.bottom) };
+}
+
+/** Closest point on the bubble rectangle boundary to F. */
+function closestOnBoundary(F: Pt, left: number, top: number, w: number, h: number): Pt {
+  const right = left + w, bottom = top + h;
+  const inside = F.x > left && F.x < right && F.y > top && F.y < bottom;
+  if (inside) {
+    const dl = F.x - left, dr = right - F.x, dt = F.y - top, db = bottom - F.y;
+    const m = Math.min(dl, dr, dt, db);
+    if (m === dl) return { x: left, y: F.y };
+    if (m === dr) return { x: right, y: F.y };
+    if (m === dt) return { x: F.x, y: top };
+    return { x: F.x, y: bottom };
+  }
+  return { x: clampNum(F.x, left, right), y: clampNum(F.y, top, bottom) };
+}
+
+function cubics(from: Pt, to: Pt, nx: number, ny: number, bow: number) {
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const L = Math.hypot(dx, dy) || 1;
+  const ux = dx / L, uy = dy / L;
+  return {
+    c1: { x: from.x + ux * L * 0.3 + nx * bow, y: from.y + uy * L * 0.3 + ny * bow },
+    c2: { x: from.x + ux * L * 0.7 + nx * bow * 0.4, y: from.y + uy * L * 0.7 + ny * bow * 0.4 },
+  };
+}
+
+/**
+ * Tail geometry after the bubble has been placed and pushed by collision avoidance.
+ * Length = distance from the nearest corner/side of the rectangle to the closest point on the field.
+ * Recomputed in update() (layout, scroll, resize, 400ms tick, after avoidOverlap).
+ */
+function computeTailGeom(p: Pos, el: HTMLElement, anchor: HTMLElement | null, host: HTMLElement | null): TailGeom | null {
+  if (!anchor) return null;
+  const o = hostOffset(host);
+  const w = el.offsetWidth || W;
+  const h = el.offsetHeight || 120;
+  const r = 16;
+  const left = p.left + o.x, top = p.top + o.y;
+  const right = left + w, bottom = top + h;
+  const ar = anchor.getBoundingClientRect();
+  const fieldMid = { x: ar.left + ar.width / 2, y: ar.top + ar.height / 2 };
+  // Boundary point of the popup nearest the field (in that direction).
+  const Q = closestOnBoundary(fieldMid, left, top, w, h);
+  const corners: { name: NonNullable<TailGeom["corner"]>; x: number; y: number }[] = [
+    { name: "tl", x: left, y: top },
+    { name: "tr", x: right, y: top },
+    { name: "bl", x: left, y: bottom },
+    { name: "br", x: right, y: bottom },
+  ];
+  let near = corners[0], nearD = Infinity;
+  for (const c of corners) {
+    const d = Math.hypot(c.x - Q.x, c.y - Q.y);
+    if (d < nearD) { near = c; nearD = d; }
+  }
+  const onTop = Math.abs(Q.y - top) < 0.6;
+  const onBottom = Math.abs(Q.y - bottom) < 0.6;
+  const onLeft = Math.abs(Q.x - left) < 0.6;
+  const onRight = Math.abs(Q.x - right) < 0.6;
+  const snap = 28;
+  const useCorner = nearD <= snap;
+  const kind: TailGeom["kind"] = useCorner ? "corner" : "side";
+  const side: Side = onTop ? "top" : onBottom ? "bottom" : onLeft ? "left" : onRight ? "right" : (p.side ?? "bottom");
+  const attach = useCorner ? { x: near.x, y: near.y } : { x: Q.x, y: Q.y };
+  const tipV = closestOnRect(attach.x, attach.y, ar);
+  const length = Math.hypot(tipV.x - attach.x, tipV.y - attach.y);
+  if (length < 8) return null;
+  const base = Math.min(22, 16 + Math.min(6, length / 50)); // 16, slightly wider when the field is far
+  const loc = (pt: Pt): Pt => ({ x: pt.x - o.x - p.left, y: pt.y - o.y - p.top });
+  const A = loc(attach);
+  const tip = loc(tipV);
+  let bEnter: Pt, bLeave: Pt;
+  if (kind === "corner") {
+    const c = near.name;
+    if (c === "tr") { bEnter = { x: w - base, y: 0 }; bLeave = { x: w, y: base }; }
+    else if (c === "br") { bEnter = { x: w, y: h - base }; bLeave = { x: w - base, y: h }; }
+    else if (c === "bl") { bEnter = { x: base, y: h }; bLeave = { x: 0, y: h - base }; }
+    else { bEnter = { x: 0, y: base }; bLeave = { x: base, y: 0 }; }
+  } else {
+    const half = base / 2;
+    const lo = r, hiX = w - r, hiY = h - r;
+    if (side === "top") {
+      const x = clampNum(A.x, lo + half, hiX - half);
+      bEnter = { x: x - half, y: 0 }; bLeave = { x: x + half, y: 0 };
+    } else if (side === "right") {
+      const y = clampNum(A.y, lo + half, hiY - half);
+      bEnter = { x: w, y: y - half }; bLeave = { x: w, y: y + half };
+    } else if (side === "bottom") {
+      const x = clampNum(A.x, lo + half, hiX - half);
+      bEnter = { x: x + half, y: h }; bLeave = { x: x - half, y: h }; // clockwise: right to left
+    } else {
+      const y = clampNum(A.y, lo + half, hiY - half);
+      bEnter = { x: 0, y: y + half }; bLeave = { x: 0, y: y - half }; // clockwise: bottom to top
+    }
+  }
+  // Slight bend, perpendicular to attach->tip, signed outward so the tail does not cut through the popup.
+  const tdx = tip.x - A.x, tdy = tip.y - A.y;
+  const L = Math.hypot(tdx, tdy) || 1;
+  let px = -tdy / L, py = tdx / L;
+  if (px * (A.x - w / 2) + py * (A.y - h / 2) < 0) { px = -px; py = -py; }
+  const bow = Math.min(24, Math.max(8, L * 0.15));
+  const en = cubics(bEnter, tip, px, py, bow);
+  const lv = cubics(tip, bLeave, px, py, bow);
+  return {
+    kind, corner: kind === "corner" ? near.name : undefined, side: kind === "side" ? side : undefined,
+    attach: A, tip, length,
+    bEnter, bLeave, cEnter1: en.c1, cEnter2: en.c2, cLeave1: lv.c1, cLeave2: lv.c2,
+    w, h, r,
+  };
+}
+
+function tailDetour(t: TailGeom): string {
+  return "L " + t.bEnter.x + " " + t.bEnter.y + " C " + t.cEnter1.x + " " + t.cEnter1.y + " " + t.cEnter2.x + " " + t.cEnter2.y + " " + t.tip.x + " " + t.tip.y + " C " + t.cLeave1.x + " " + t.cLeave1.y + " " + t.cLeave2.x + " " + t.cLeave2.y + " " + t.bLeave.x + " " + t.bLeave.y;
+}
+
+/** Single outline of the existing rounded rectangle plus the tail (seamless fill and border). */
+function buildBubblePath(w: number, h: number, r: number, t: TailGeom | null): string {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  const arc = (x: number, y: number) => "A " + r + " " + r + " 0 0 1 " + x + " " + y;
+  const isC = (c: string) => t?.kind === "corner" && t.corner === c;
+  const isS = (s: string) => t?.kind === "side" && t.side === s;
+  let d = "M " + r + " 0";
+  d += isS("top") ? tailDetour(t!) + " L " + (w - r) + " 0" : "L " + (w - r) + " 0";
+  d += isC("tr") ? tailDetour(t!) : " " + arc(w, r);
+  d += isS("right") ? tailDetour(t!) + " L " + w + " " + (h - r) : "L " + w + " " + (h - r);
+  d += isC("br") ? tailDetour(t!) : " " + arc(w - r, h);
+  d += isS("bottom") ? tailDetour(t!) + " L " + r + " " + h : "L " + r + " " + h;
+  d += isC("bl") ? tailDetour(t!) : " " + arc(0, h - r);
+  d += isS("left") ? tailDetour(t!) + " L 0 " + r : "L 0 " + r;
+  d += isC("tl") ? tailDetour(t!) : " " + arc(r, 0);
+  return d + "Z";
+}
+
+/** Filled+stroked popup chrome: same rectangle as the CSS box, with an optional tapered bent tail to the field. */
+function BubbleChrome({ w, h, tail, color, fill }: { w: number; h: number; tail: TailGeom | null; color: string; fill: string }) {
+  const r = 16;
+  const d = buildBubblePath(w, h, r, tail);
+  const xs = [0, w], ys = [0, h];
+  if (tail) for (const pt of [tail.tip, tail.bEnter, tail.bLeave, tail.cEnter1, tail.cEnter2, tail.cLeave1, tail.cLeave2]) { xs.push(pt.x); ys.push(pt.y); }
+  const pad = 10;
   const minX = Math.min(...xs) - pad, minY = Math.min(...ys) - pad;
   const width = Math.max(...xs) - minX + pad, height = Math.max(...ys) - minY + pad;
   return (
-    <svg aria-hidden width={width} height={height} viewBox={`${minX} ${minY} ${width} ${height}`}
+    <svg aria-hidden width={width} height={height} viewBox={minX + " " + minY + " " + width + " " + height}
       style={{ position: "absolute", left: minX, top: minY, overflow: "visible", pointerEvents: "none", zIndex: 0 }}>
       <path d={d} fill={fill} stroke={color} strokeWidth="1.25" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
 }
-
 function BubbleView({
   b,
   onApply,
@@ -286,6 +434,7 @@ function BubbleView({
   const connectorStyle = useOcrPrefs().connectorStyle === "line" ? "line" : "tail";
   const [pos, setPos] = useState<Pos | null>(null);
   const [leader, setLeader] = useState<Leader | null>(null);
+  const [tail, setTail] = useState<TailGeom | null>(null);
   const [el, setEl] = useState<HTMLDivElement | null>(null);
 
   const update = useCallback(() => {
@@ -300,8 +449,11 @@ function BubbleView({
     const anchor = a ?? fallbackAnchor();
     if (p && el) avoidOverlap(p, el, anchor, b.key === "lines");
     setPos(p);
-    if (p && el) setLeader(leaderPoints(p, el, a, el.parentElement?.parentElement ?? null));
-    else setLeader(null);
+    const host = el?.parentElement?.parentElement ?? null;
+    if (p && el) {
+      setLeader(leaderPoints(p, el, a, host));
+      setTail(computeTailGeom(p, el, a, host));
+    } else { setLeader(null); setTail(null); }
   }, [b.key, b.anchor, el]);
 
   useLayoutEffect(() => {
@@ -344,9 +496,9 @@ function BubbleView({
         left: pos?.left ?? -9999,
         width: Math.min(W, typeof window !== "undefined" ? window.innerWidth - 16 : W),
         visibility: pos ? "visible" : "hidden",
-        background: "#ffffff",
+        background: connectorStyle === "line" ? "#ffffff" : "transparent",
         opacity: 1,
-        border: `1px solid ${border}`,
+        border: `1px solid ${connectorStyle === "line" ? border : "transparent"}`,
         borderRadius: 16,
         boxShadow: "0 10px 30px rgba(15,23,42,0.22), 0 2px 6px rgba(15,23,42,0.08)",
         padding: 12,
@@ -354,10 +506,10 @@ function BubbleView({
         zIndex: 2147483000,
       }}
     >
-      {leader && pos ? (connectorStyle === "line"
-        ? <LeaderLine line={{ x1: leader.x1 - pos.left, y1: leader.y1 - pos.top, x2: leader.x2 - pos.left, y2: leader.y2 - pos.top }} color={border} />
-        : <BubbleTail line={{ x1: leader.x1 - pos.left, y1: leader.y1 - pos.top, x2: leader.x2 - pos.left, y2: leader.y2 - pos.top }} color={border} fill="#ffffff" side={pos.side} />) : null}
-      <div className="relative" style={{ zIndex: 2, background: "#ffffff" }}>
+      {connectorStyle === "line"
+        ? (leader && pos ? <LeaderLine line={{ x1: leader.x1 - pos.left, y1: leader.y1 - pos.top, x2: leader.x2 - pos.left, y2: leader.y2 - pos.top }} color={border} /> : null)
+        : (pos && el ? <BubbleChrome w={el.offsetWidth || W} h={el.offsetHeight || 120} tail={tail} color={border} fill="#ffffff" /> : null)}
+      <div className="relative" style={{ zIndex: 2, background: connectorStyle === "line" ? "#ffffff" : "transparent" }}>
         <div className="flex items-start gap-2">
           <p className="min-w-0 flex-1 font-medium leading-snug">
             {b.title}
