@@ -167,11 +167,11 @@
     return path === "/" || path === "/index.html";
   }
 
-  /* Same website menu as the static sidebars on /home/, /features/, /videos/, /pricing/,
-   * /downloads/ and /about-company/ (same items, order and i18n keys). Home on the global site = /. */
+  /* Same website menu as the static sidebars on /home/, /videos/, /pricing/,
+   * /downloads/ and /about-company/ (same items, order and i18n keys). Home on the global site = /.
+   * Features is part of Home (old /features/ redirects there). */
   var SIDE_NAV = [
     ["home", "/", "nav_home", "Home"],
-    ["features", "/features/", "nav_features", "Features"],
     ["videos", "/videos/", "nav_videos", "Videos"],
     ["pricing", "/pricing/", "nav_pricing", "Pricing"],
     ["downloads", "/downloads/", "nav_downloads", "Downloads"],
@@ -231,28 +231,10 @@
     syncChromeHeight(bar);
   }
 
-  function renderPicker(root) {
-    if (!root) return;
-    root.innerHTML =
-      '<div class="pl-gate">' +
-        '<header class="pl-gate-head">' +
-          '<div class="pl-gate-brand">' +
-            '<span class="brand-mark" aria-hidden="true"></span>' +
-            "<div><strong>Pocket Ledger</strong></div>" +
-          "</div>" +
-          '<div class="pl-gate-tools">' +
-            '<span data-pl-site-chrome></span>' +
-            '<button type="button" class="btn btn-outline btn-sm" id="marketingLoginBtn" data-i18n="signin">Sign in</button>' +
-            '<button type="button" class="btn btn-outline btn-sm is-auth-hidden" id="marketingLogoutBtn" hidden aria-hidden="true" data-i18n="signout">Sign out</button>' +
-            '<a class="btn btn-primary btn-sm" href="/app" id="goToAppBtn" data-i18n="goto_app">Go to App</a>' +
-          "</div>" +
-        "</header>" +
-        '<div class="pl-shell pl-gate-shell">' +
-          '<aside class="pl-side" aria-label="Website menu">' +
-            sideNavHtml("home") +
-          "</aside>" +
-          '<div class="pl-content">' +
-        '<main class="pl-gate-main">' +
+  /** Country picker heading + "Find Your Country" combo. Same markup on / (renderPicker)
+   *  and on /home/ (#plHomePicker, mountHomePicker). */
+  function pickerBlockHtml() {
+    return (
           '<h1 data-i18n="gate_h1">Where do you keep the books?</h1>' +
           '<p class="pl-gate-lead intro" data-intro="gate_lead">Open your country’s Pocket Ledger site. That country web runs on its own — including plans and payment. Main also takes subscriptions for people who stay on pocket-ledger.com. Each subdomain has its own terms; main is not responsible for a country site.</p>' +
           '<div class="pl-gate-row">' +
@@ -269,15 +251,12 @@
                 '<div class="pl-gate-list" id="plCountryGrid" role="listbox"></div>' +
               "</div>" +
             "</div>" +
-          "</div>" +
-        "</main>" +
-        '<footer class="pl-gate-foot"><span class="intro" data-intro="gate_foot">Each country site (np, in, us, nz) has its own terms and billing. pocket-ledger.com is not responsible for a country subdomain.</span> <a href="/terms/">Terms</a> · <span data-pl-web-version></span></footer>' +
-          "</div>" +
-        "</div>" +
-      "</div>";
-    var mainEl = root.querySelector(".pl-gate-main");
-    var tpl = document.getElementById("plMainFeaturesTpl");
-    if (mainEl && tpl && tpl.content) mainEl.appendChild(tpl.content.cloneNode(true));
+          "</div>"
+    );
+  }
+
+  /** Search box, drop-down list and country clicks for a picker rendered inside root. */
+  function wirePicker(root) {
     var input = document.getElementById("plCountrySearch");
     var drop = document.getElementById("plCountryDrop");
     var combo = document.getElementById("plCountryCombo");
@@ -333,6 +312,48 @@
       goCountry(t.getAttribute("data-pl-country"));
     });
     setOpen(false);
+  }
+
+  /** /home/ = country picker + features (same as /). Fills #plHomePicker once. */
+  function mountHomePicker(el) {
+    if (!el || el.getAttribute("data-pl-picker-ready") === "1") return;
+    el.setAttribute("data-pl-picker-ready", "1");
+    el.innerHTML = pickerBlockHtml();
+    wirePicker(el);
+  }
+
+  function renderPicker(root) {
+    if (!root) return;
+    root.innerHTML =
+      '<div class="pl-gate">' +
+        '<header class="pl-gate-head">' +
+          '<div class="pl-gate-brand">' +
+            '<span class="brand-mark" aria-hidden="true"></span>' +
+            "<div><strong>Pocket Ledger</strong></div>" +
+          "</div>" +
+          '<div class="pl-gate-tools">' +
+            '<span data-pl-site-chrome></span>' +
+            '<button type="button" class="btn btn-outline btn-sm" id="marketingLoginBtn" data-i18n="signin">Sign in</button>' +
+            '<button type="button" class="btn btn-outline btn-sm is-auth-hidden" id="marketingLogoutBtn" hidden aria-hidden="true" data-i18n="signout">Sign out</button>' +
+            '<a class="btn btn-primary btn-sm" href="/app" id="goToAppBtn" data-i18n="goto_app">Go to App</a>' +
+          "</div>" +
+        "</header>" +
+        '<div class="pl-shell pl-gate-shell">' +
+          '<aside class="pl-side" aria-label="Website menu">' +
+            sideNavHtml("home") +
+          "</aside>" +
+          '<div class="pl-content">' +
+        '<main class="pl-gate-main">' +
+          pickerBlockHtml() +
+        "</main>" +
+        '<footer class="pl-gate-foot"><span class="intro" data-intro="gate_foot">Each country site (np, in, us, nz) has its own terms and billing. pocket-ledger.com is not responsible for a country subdomain.</span> <a href="/terms/">Terms</a> · <span data-pl-web-version></span></footer>' +
+          "</div>" +
+        "</div>" +
+      "</div>";
+    var mainEl = root.querySelector(".pl-gate-main");
+    var tpl = document.getElementById("plMainFeaturesTpl");
+    if (mainEl && tpl && tpl.content) mainEl.appendChild(tpl.content.cloneNode(true));
+    wirePicker(root);
     if (window.PLSiteChrome && typeof window.PLSiteChrome.mount === "function") {
       window.PLSiteChrome.mount();
     }
@@ -418,7 +439,7 @@
     return "/home/?c=" + encodeURIComponent(rec.cc) + (hash ? "#" + hash : "");
   }
 
-  /* Features / Videos / Pricing are their own pages now (were /home/#… sections). */
+  /* Videos / Pricing are their own pages (were /home/#… sections). Features is on Home (#features). */
   function pageUrl(rec, page) {
     var q = rec ? "?c=" + encodeURIComponent(rec.cc) : "";
     return "/" + page + "/" + q;
@@ -434,7 +455,7 @@
         }
       }
       if (href === "../#features" || href === "./#features" || href === "/#features" || href === "/home/#features" || href === "/features/") {
-        a.setAttribute("href", pageUrl(rec, "features"));
+        a.setAttribute("href", homeUrl(rec, "features"));
       }
       if (href === "../#videos" || href === "./#videos" || href === "/#videos" || href === "/home/#videos" || href === "/videos/") {
         a.setAttribute("href", pageUrl(rec, "videos"));
@@ -492,6 +513,7 @@
     countryReleasesUrl: countryReleasesUrl,
     remember: remember,
     renderPicker: renderPicker,
+    mountHomePicker: mountHomePicker,
     isCountrySite: function () { return !!detect(); }
   };
 
@@ -503,6 +525,7 @@
       injectPickerBar();
     } else {
       injectChrome();
+      mountHomePicker(document.getElementById("plHomePicker"));
     }
     bindCountryAppLinks();
     applyCountryTermsNote();

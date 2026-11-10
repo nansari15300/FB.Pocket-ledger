@@ -7,12 +7,11 @@
   <meta name="description" content="Party, bank, staff, tax and voucher books. Web app, Windows EXE and Android APK." />
   <link rel="stylesheet" href="/styles.css?v=20261110-1505" />
   <link rel="stylesheet" href="/css/color-mode.css?v=20261028-195200" />
-  <link rel="stylesheet" href="/css/country-gate.css?v=20261110-1535" />
+  <link rel="stylesheet" href="/css/country-gate.css?v=20261110-1554" />
   <script src="/js/color-mode.js?v=20261028-195200"></script>
   <script src="/js/countries.js?v=20261028-181900"></script>
-  <script src="/js/public-nav.js?v=20261110-0900"></script>
-  <script src="/js/country-gate.js?v=20261110-1535"></script>
-  <link rel="stylesheet" href="/devices.css?v=20261025-130700" />
+  <script src="/js/public-nav.js?v=20261110-1554"></script>
+  <script src="/js/country-gate.js?v=20261110-1554"></script>
   <link rel="stylesheet" href="/css/public-shell.css?v=20261110-0910" />
 </head>
 <body class="public-shell-page">
@@ -43,7 +42,6 @@
     <aside class="pl-side" aria-label="Website menu">
       <nav class="pl-side-nav" aria-label="Main">
         <a href="/home/" class="is-active" aria-current="page" data-i18n="nav_home">Home</a>
-        <a href="/features/" data-i18n="nav_features">Features</a>
         <a href="/videos/" data-i18n="nav_videos">Videos</a>
         <a href="/pricing/" data-i18n="nav_pricing">Pricing</a>
         <a href="/downloads/" data-i18n="nav_downloads">Downloads</a>
@@ -52,198 +50,78 @@
     </aside>
     <div class="pl-content">
   <main class="pl-main">
-    <section class="hero hero-devices">
-      <div class="wrap hero-grid">
-        <div>
-          <div class="eyebrow">Works on desktop, tablet and phone</div>
-          <h1>One ledger. Every screen.</h1>
-          <p class="intro" data-intro="home_hero">
-            Same books on Windows EXE, Android APK, and the web app.
-            This site is for visitors — your accounts open only from Go to App.
-          </p>
-          <div class="hero-actions">
-            <a class="btn btn-primary" href="/app">Go to App</a>
-            <a class="btn btn-ghost" href="/downloads/">Download</a>
-          </div>
-          <div class="hero-note intro" data-intro="home_hero_note">
-            pocket-ledger.com = choose country · this page = your country site · /app = application
-          </div>
-        </div>
-
-        <div class="device-stage" aria-hidden="true">
-          <div class="device laptop">
-            <div class="laptop-screen laptop-screen-real">
-              <div
-                class="device-carousel device-carousel-wide device-carousel-laptop"
-                data-hero-carousel
-                aria-roledescription="carousel"
-                aria-label="Pocket Ledger desktop screenshots"
-                tabindex="0"
-              >
-                <button type="button" class="device-carousel-btn prev" aria-label="Previous screenshot">‹</button>
-                <div class="device-carousel-viewport">
-                  <div class="device-carousel-track">
-                                <figure class="device-carousel-slide is-landscape"><img src="/assets/mobile-demo/04-pc-dashboard.png" width="1024" height="662" alt="Dashboard demo" loading="eager" decoding="async" /></figure>
-                                <figure class="device-carousel-slide is-landscape"><img src="/assets/mobile-demo/05-pc-staff.png" width="1024" height="658" alt="Staff ledger demo" loading="lazy" decoding="async" /></figure>
-                  </div>
-                </div>
-                <button type="button" class="device-carousel-btn next" aria-label="Next screenshot">›</button>
-                <div class="device-carousel-dots" role="tablist" aria-label="Choose screenshot">
-                  <button type="button" class="device-carousel-dot is-active" role="tab" aria-label="Dashboard" aria-selected="true"></button>
-                  <button type="button" class="device-carousel-dot" role="tab" aria-label="Staff" aria-selected="false"></button>
-                </div>
-              </div>
-            </div>
-            <div class="laptop-base"></div>
-          </div>
-
-          <div class="device tablet">
-            <div class="tablet-screen tablet-screen-real">
-              <div
-                class="device-carousel"
-                data-hero-carousel
-                aria-roledescription="carousel"
-                aria-label="Pocket Ledger tablet screenshots"
-                tabindex="0"
-              >
-                <button type="button" class="device-carousel-btn prev" aria-label="Previous screenshot">‹</button>
-                <div class="device-carousel-viewport">
-                  <div class="device-carousel-track">
-                    <figure class="device-carousel-slide is-portrait"><img src="/assets/mobile-demo/01-daybook.png" width="524" height="1024" alt="Daybook demo" loading="eager" decoding="async" /></figure>
-                    <figure class="device-carousel-slide is-landscape"><img src="/assets/mobile-demo/04-pc-dashboard.png" width="1024" height="662" alt="Dashboard demo" loading="lazy" decoding="async" /></figure>
-                    <figure class="device-carousel-slide is-portrait"><img src="/assets/mobile-demo/02-parties.png" width="524" height="1024" alt="Parties demo" loading="lazy" decoding="async" /></figure>
-                    <figure class="device-carousel-slide is-landscape"><img src="/assets/mobile-demo/05-pc-staff.png" width="1024" height="658" alt="Staff ledger demo" loading="lazy" decoding="async" /></figure>
-                    <figure class="device-carousel-slide is-portrait"><img src="/assets/mobile-demo/03-party-detail.png" width="524" height="1024" alt="Party detail demo" loading="lazy" decoding="async" /></figure>
-                  </div>
-                </div>
-                <button type="button" class="device-carousel-btn next" aria-label="Next screenshot">›</button>
-                <div class="device-carousel-dots" role="tablist" aria-label="Choose screenshot">
-                  <button type="button" class="device-carousel-dot is-active" role="tab" aria-label="Daybook" aria-selected="true"></button>
-                  <button type="button" class="device-carousel-dot" role="tab" aria-label="Dashboard" aria-selected="false"></button>
-                  <button type="button" class="device-carousel-dot" role="tab" aria-label="Parties" aria-selected="false"></button>
-                  <button type="button" class="device-carousel-dot" role="tab" aria-label="Staff" aria-selected="false"></button>
-                  <button type="button" class="device-carousel-dot" role="tab" aria-label="Party detail" aria-selected="false"></button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="device phone">
-            <div class="phone-screen phone-screen-real">
-              <div class="phone-notch"></div>
-              <div
-                class="device-carousel device-carousel-phone"
-                data-hero-carousel
-                aria-roledescription="carousel"
-                aria-label="Pocket Ledger mobile screenshots"
-                tabindex="0"
-              >
-                <button type="button" class="device-carousel-btn prev" aria-label="Previous screenshot">‹</button>
-                <div class="device-carousel-viewport">
-                  <div class="device-carousel-track">
-                    <figure class="device-carousel-slide is-portrait"><img src="/assets/mobile-demo/01-daybook.png" width="524" height="1024" alt="Daybook demo" loading="eager" decoding="async" /></figure>
-                    <figure class="device-carousel-slide is-portrait"><img src="/assets/mobile-demo/02-parties.png" width="524" height="1024" alt="Parties demo" loading="lazy" decoding="async" /></figure>
-                    <figure class="device-carousel-slide is-portrait"><img src="/assets/mobile-demo/03-party-detail.png" width="524" height="1024" alt="Party detail demo" loading="lazy" decoding="async" /></figure>
-                  </div>
-                </div>
-                <button type="button" class="device-carousel-btn next" aria-label="Next screenshot">›</button>
-                <div class="device-carousel-dots" role="tablist" aria-label="Choose screenshot">
-                  <button type="button" class="device-carousel-dot is-active" role="tab" aria-label="Daybook" aria-selected="true"></button>
-                  <button type="button" class="device-carousel-dot" role="tab" aria-label="Parties" aria-selected="false"></button>
-                  <button type="button" class="device-carousel-dot" role="tab" aria-label="Party detail" aria-selected="false"></button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+    <section class="section pl-home-country" id="country" aria-label="Choose country">
+      <div class="wrap">
+        <!-- Country picker (same as /): filled by js/country-gate.js -->
+        <div class="pl-gate-main pl-home-picker" id="plHomePicker"></div>
       </div>
     </section>
 
-    <div class="wrap logo-strip" aria-label="Platforms">
-      <span>Windows EXE</span>
-      <span>Android APK</span>
-      <span>Web app</span>
-      <span>Local / PL Server</span>
-      <span>Cloud sync</span>
-    </div>
-
-    <section class="section section-trust" id="your-data" aria-labelledby="trust-title">
+    <section class="section" id="features">
       <div class="wrap">
-        <article class="trust-card">
-          <span class="section-kicker">Your books, your devices</span>
-          <h2 id="trust-title">Keep the ledger on your phone and PC — not on someone else’s server</h2>
-          <p class="trust-lead">
-            Many business owners hesitate to move accounts online because the risks feel real: books sitting on a remote
-            server you do not control, bill photos uploaded to unknown storage, one wrong click or one breach and years
-            of party balances and tax records could be copied, leaked, or held hostage. Pocket Ledger is built for teams
-            who want modern multi-device work without handing the crown jewels to a faceless cloud.
-          </p>
+        <h2>Same data, three form factors</h2>
+        <p class="lead intro" data-intro="home_features_lead">Use the marketing site here. Open books only under /app.</p>
+        <div class="cards">
+          <article class="card">
+            <div class="icon-dot">PC</div>
+            <h3>Desktop</h3>
+            <p>Full voucher grid, reports and multi-company work on a wide screen.</p>
+          </article>
+          <article class="card">
+            <div class="icon-dot">TB</div>
+            <h3>Tablet</h3>
+            <p>Counter-friendly view for daybook, quick entry and approvals.</p>
+          </article>
+          <article class="card">
+            <div class="icon-dot">MB</div>
+            <h3>Mobile</h3>
+            <p>On-the-go entry, attachments from camera, and balance checks.</p>
+          </article>
+        </div>
 
-          <div class="trust-server-banner" role="note">
-            <h3>Your PC can be <em>your</em> server — at home or on a VPS</h3>
-            <p>
-              Pick one Windows PC (or a small machine you control), turn on <strong>PL Server</strong>, and that box
-              becomes <strong>your owned server</strong> — not ours, not a shared SaaS pool. Keep it under your desk at
-              home, in the back office, or on a <strong>VPS you rent</strong>; the books and attachments stay on storage
-              you chose. Staff open Pocket Ledger on any laptop, desktop, tablet, or phone — in the shop, at home, or
-              travelling — and work <strong>as if it were online</strong>, while the master copy remains on your machine.
-              Remote access, local safety: your data on your PC, your rules, your backup.
-            </p>
-          </div>
-
-          <div class="trust-grid">
-            <div class="trust-pillar">
-              <h3>Local-first by default</h3>
-              <p>
-                Your company data lives in a database on your Windows PC, Android phone, or tablet — the same device you
-                already trust for WhatsApp, photos, and daily work. Open the app, enter vouchers, run reports: the books
-                are physically with you, not pooled in a shared SaaS bucket next to thousands of strangers.
-              </p>
-            </div>
-            <div class="trust-pillar">
-              <h3>Attachments stay under your control</h3>
-              <p>
-                Scans and camera captures are stored as part of your company backup on your machine (or on storage you
-                choose). You are not forced to push every invoice image to a public upload pipeline just to keep working.
-                Fewer unknown copies means fewer places for data to leak.
-              </p>
-            </div>
-            <div class="trust-pillar">
-              <h3>Multi-device without surrendering ownership</h3>
-              <p>
-                Need the counter on a phone and the accountant on a desktop? Host <strong>PL Server</strong> on your PC
-                (home or VPS), share companies on your LAN or over the internet, and let every device stay in sync — or
-                use <strong>Google Drive</strong> you already own. Optional cloud company only when you explicitly want
-                it. Same ledgers on every screen; the file still answers to you.
-              </p>
-            </div>
-            <div class="trust-pillar">
-              <h3>No “wrong hands” by design</h3>
-              <p>
-                We do not monetise your transaction history. We do not train models on your party names. Your backup
-                file (.plbp) is yours to copy to a USB, NAS, or safe — restore anywhere, anytime. If a device is lost,
-                your data does not automatically scatter across the internet; it stays where you put it until you decide
-                otherwise.
-              </p>
-            </div>
-          </div>
-          <p class="trust-close">
-            <strong>Bottom line:</strong> one PC as your private server — home or VPS — books on your disk, team on any
-            device, remote like online without giving your ledger to a stranger’s cloud. Less fear of servers. Less fear
-            of risky uploads. More confidence that your numbers stay in the right hands: yours.
-          </p>
-        </article>
-      </div>
-    </section>
-
-    <section class="section alt">
-      <div class="wrap">
-        <div class="cta-band">
-          <div>
-            <h3>Open your books from any device</h3>
-            <p>Website stays public. App starts at /app.</p>
-          </div>
-          <a class="btn btn-outline" href="/app">Go to App →</a>
+        <h3 class="feature-list-title">App features</h3>
+        <p class="feature-list-lead intro" data-intro="feature_list_lead">What you get inside Pocket Ledger (web, Windows EXE, and Android APK).</p>
+        <div class="feature-rows-scroll">
+        <ol class="feature-rows">
+          <li><span class="feature-name">Multi-company books</span><span class="feature-desc">Create and switch companies without mixing ledgers.</span></li>
+          <li><span class="feature-name">Sale vouchers</span><span class="feature-desc">Invoice sales with party, items, tax and narration.</span></li>
+          <li><span class="feature-name">Purchase vouchers</span><span class="feature-desc">Record supplier bills and purchase returns flow.</span></li>
+          <li><span class="feature-name">Receipt</span><span class="feature-desc">Receive money against parties and open bills.</span></li>
+          <li><span class="feature-name">Payment</span><span class="feature-desc">Pay suppliers and settle outstanding purchases.</span></li>
+          <li><span class="feature-name">Contra</span><span class="feature-desc">Move funds between cash and bank accounts.</span></li>
+          <li><span class="feature-name">Journal entries</span><span class="feature-desc">Manual debit/credit adjustments when needed.</span></li>
+          <li><span class="feature-name">Inter-company vouchers</span><span class="feature-desc">Transfer between your own companies with linked books.</span></li>
+          <li><span class="feature-name">Bill-wise linking</span><span class="feature-desc">Allocate receipts/payments to specific invoices.</span></li>
+          <li><span class="feature-name">Edit lock when linked</span><span class="feature-desc">Linked vouchers stay protected so allocations stay correct.</span></li>
+          <li><span class="feature-name">Party masters</span><span class="feature-desc">Customers and suppliers with contact and balance views.</span></li>
+          <li><span class="feature-name">Party ledger</span><span class="feature-desc">Running balance and voucher history per party.</span></li>
+          <li><span class="feature-name">Bank &amp; cash accounts</span><span class="feature-desc">Track multiple bank and cash books in one place.</span></li>
+          <li><span class="feature-name">Staff masters</span><span class="feature-desc">Keep staff records for salary and operations.</span></li>
+          <li><span class="feature-name">Tax setup</span><span class="feature-desc">Configure tax rates used on vouchers and reports.</span></li>
+          <li><span class="feature-name">Items / stock catalog</span><span class="feature-desc">Maintain items for sale and purchase lines.</span></li>
+          <li><span class="feature-name">Daybook</span><span class="feature-desc">See today’s (or any day’s) vouchers in one list.</span></li>
+          <li><span class="feature-name">Dashboard KPIs</span><span class="feature-desc">Sale, purchase, payment and cash movement at a glance.</span></li>
+          <li><span class="feature-name">Reports suite</span><span class="feature-desc">Ledgers, daybook and business reports from the same data.</span></li>
+          <li><span class="feature-name">Voucher search &amp; filters</span><span class="feature-desc">Find entries by party, type, date or voucher number.</span></li>
+          <li><span class="feature-name">Attachment upload</span><span class="feature-desc">Attach bills, scans and photos to vouchers.</span></li>
+          <li><span class="feature-name">Camera capture (mobile)</span><span class="feature-desc">Snap documents on phone and link them to entries.</span></li>
+          <li><span class="feature-name">Image preview</span><span class="feature-desc">Open attachments clearly without leaving the voucher.</span></li>
+          <li><span class="feature-name">PDF portal preview</span><span class="feature-desc">Sharp first-page PDF preview in the attachment portal.</span></li>
+          <li><span class="feature-name">Attachment gallery</span><span class="feature-desc">Browse company attachments in one place.</span></li>
+          <li><span class="feature-name">Local-first data</span><span class="feature-desc">Books stay usable on device; sync is optional.</span></li>
+          <li><span class="feature-name">Online company sync</span><span class="feature-desc">Live Firebase sync for companies you keep in the cloud.</span></li>
+          <li><span class="feature-name">Cloud attachment sync</span><span class="feature-desc">Storage-backed files for online companies.</span></li>
+          <li><span class="feature-name">PL Server (LAN share)</span><span class="feature-desc">Share selected companies on your local network.</span></li>
+          <li><span class="feature-name">PL Server live delta</span><span class="feature-desc">Host and clients stay updated with change-only sync.</span></li>
+          <li><span class="feature-name">Backup &amp; restore (.plbp)</span><span class="feature-desc">Portable company backup with attachments.</span></li>
+          <li><span class="feature-name">Auto backup scheduler</span><span class="feature-desc">Schedule recurring local backups from settings.</span></li>
+          <li><span class="feature-name">Windows EXE install</span><span class="feature-desc">Desktop installer for offline-friendly office use.</span></li>
+          <li><span class="feature-name">Android APK</span><span class="feature-desc">Native Android build for shop-floor and field entry.</span></li>
+          <li><span class="feature-name">Web app under /app</span><span class="feature-desc">Browser access with the same product surface.</span></li>
+          <li><span class="feature-name">Release update check</span><span class="feature-desc">EXE/APK can prompt when a newer published build exists.</span></li>
+          <li><span class="feature-name">Versioned downloads</span><span class="feature-desc">Pick latest or recent prior EXE/APK from Downloads.</span></li>
+          <li><span class="feature-name">Settings &amp; preferences</span><span class="feature-desc">Company, sync, backup and display controls in one area.</span></li>
+        </ol>
         </div>
       </div>
     </section>
@@ -265,7 +143,6 @@
   </footer>
     </div>
   </div>
-  <script src="/js/hero-device-carousel.js"></script>
   <script src="/js/site-data-config.js?v=20261031-1440"></script>
   <script src="/js/website-notice.js?v=20261031-1"></script>
   <script src="/js/languages-iso.js?v=20261028-195200"></script>

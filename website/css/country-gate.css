@@ -489,3 +489,32 @@ html[data-theme="dark"] .pl-gate-head { border-bottom-color: #273142; }
 
 /* / shows the Global site bar above .pl-gate: fill only the rest of the screen (--pl-chrome-h set by country-gate.js). */
 .pl-gate { min-height: calc(100vh - var(--pl-chrome-h, 0px)); }
+
+/* Home (/ and /home/) = country picker + the features content of the old /features/ page.
+ * On / the features sit inside .pl-gate-main: give them the same card look as .pl-main > section. */
+.pl-gate-main > .pl-home-features {
+  margin-top: 40px;
+  padding: 2rem 0;
+  border: 1px solid var(--line, #d7e0ea);
+  border-radius: 16px;
+  background: var(--surface, #fff);
+  color: var(--ink, #142033);
+  box-shadow: 0 8px 24px rgba(11, 31, 58, 0.05);
+}
+.pl-gate-main > .pl-home-features .wrap {
+  width: auto;
+  max-width: none;
+  margin-inline: 0;
+  padding-inline: clamp(1rem, 2.5vw, 2rem);
+}
+/* /home/: the picker lives in a .pl-main card, so drop the picker's own outer spacing. */
+.pl-gate-main.pl-home-picker {
+  margin: 0;
+  padding: 0;
+  flex: none;
+}
+.pl-gate-main.pl-home-picker .pl-gate-row { grid-template-columns: minmax(16rem, 28rem); }
+@media (max-width: 860px) {
+  .pl-gate-main > .pl-home-features { margin-top: 16px; padding: 1.25rem 0; border-radius: 12px; }
+  .pl-gate-main.pl-home-picker .pl-gate-row { grid-template-columns: 1fr; }
+}

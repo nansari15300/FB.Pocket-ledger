@@ -8,26 +8,40 @@
   <meta name="theme-color" content="#3a3a3a" />
   <link rel="stylesheet" href="/styles.css?v=20261110-1505" />
   <link rel="stylesheet" href="/css/color-mode.css?v=20261028-195200" />
-  <link rel="stylesheet" href="/css/country-gate.css?v=20261110-1535" />
+  <link rel="stylesheet" href="/css/country-gate.css?v=20261110-1554" />
   <link rel="stylesheet" href="/css/public-shell.css?v=20261110-0910" />
   <script src="/js/color-mode.js?v=20261028-195200"></script>
   <script src="/js/countries.js?v=20261028-181900"></script>
-  <script src="/js/country-gate.js?v=20261110-1535"></script>
+  <script src="/js/country-gate.js?v=20261110-1554"></script>
 </head>
 <body>
   <div id="plCountryGate"></div>
   <template id="plMainFeaturesTpl">
-    <section class="pl-gate-features" id="features">
-      <h2 data-i18n="features">Features</h2>
-      <p class="pl-gate-features-lead intro" data-intro="gate_features_lead">Same books on desktop, tablet, phone, and the web app.</p>
-      <div class="pl-gate-feat-cards">
-        <article class="pl-gate-link-card"><strong>Desktop</strong><span>Full voucher grid, reports and multi-company work.</span></article>
-        <article class="pl-gate-link-card"><strong>Tablet</strong><span>Counter-friendly daybook, quick entry and approvals.</span></article>
-        <article class="pl-gate-link-card"><strong>Mobile</strong><span>On-the-go entry, camera attachments, balance checks.</span></article>
-      </div>
-      <h3 class="feature-list-title">App features</h3>
-      <p class="feature-list-lead intro" data-intro="feature_list_lead">What you get inside Pocket Ledger (web, Windows EXE, and Android APK).</p>
-      <div class="feature-rows-scroll pl-gate-features-scroll">
+    <section class="section pl-home-features" id="features">
+      <div class="wrap">
+        <h2>Same data, three form factors</h2>
+        <p class="lead intro" data-intro="home_features_lead">Use the marketing site here. Open books only under /app.</p>
+        <div class="cards">
+          <article class="card">
+            <div class="icon-dot">PC</div>
+            <h3>Desktop</h3>
+            <p>Full voucher grid, reports and multi-company work on a wide screen.</p>
+          </article>
+          <article class="card">
+            <div class="icon-dot">TB</div>
+            <h3>Tablet</h3>
+            <p>Counter-friendly view for daybook, quick entry and approvals.</p>
+          </article>
+          <article class="card">
+            <div class="icon-dot">MB</div>
+            <h3>Mobile</h3>
+            <p>On-the-go entry, attachments from camera, and balance checks.</p>
+          </article>
+        </div>
+
+        <h3 class="feature-list-title">App features</h3>
+        <p class="feature-list-lead intro" data-intro="feature_list_lead">What you get inside Pocket Ledger (web, Windows EXE, and Android APK).</p>
+        <div class="feature-rows-scroll">
         <ol class="feature-rows">
           <li><span class="feature-name">Multi-company books</span><span class="feature-desc">Create and switch companies without mixing ledgers.</span></li>
           <li><span class="feature-name">Sale vouchers</span><span class="feature-desc">Invoice sales with party, items, tax and narration.</span></li>
@@ -68,6 +82,7 @@
           <li><span class="feature-name">Versioned downloads</span><span class="feature-desc">Pick latest or recent prior EXE/APK from Downloads.</span></li>
           <li><span class="feature-name">Settings &amp; preferences</span><span class="feature-desc">Company, sync, backup and display controls in one area.</span></li>
         </ol>
+        </div>
       </div>
     </section>
   </template>
