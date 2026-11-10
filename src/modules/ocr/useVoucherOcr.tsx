@@ -121,7 +121,7 @@ async function loadFirstFile(f: File | string, companyId?: string | null): Promi
 }
 
 /** Bump when parser/engine logic changes: shown in Show OCR text to prove the browser runs the new bundle. */
-export const OCR_BUILD = "2026-11-10.7";
+export const OCR_BUILD = "2026-11-10.8";
 
 const MONEY_TYPES = ["payment_out", "payment_in", "direct_expense", "direct_income", "contra"] as const;
 const ALL_TYPE_CHOICES = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"] as const;
@@ -294,7 +294,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       if (inferred) {
         try {
           const found = await findOrCreateSheetSizeItemGroups({
-            company: profileCompany, companyId, userId: uid, size: inferred.size, existing: itemGroupsRef.current,
+            company: profileCompany, companyId, userId: uid, size: inferred.size, parentName: inferred.parentName, existing: itemGroupsRef.current,
           });
           itemGroupsRef.current = mergeMasterGroups(itemGroupsRef.current, found.groups);
           groupId = found.childId;
@@ -326,7 +326,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       if (inferred && companyId && uid) {
         try {
           const found = await findOrCreateSheetSizeItemGroups({
-            company: profileCompany, companyId, userId: uid, size: inferred.size, existing: itemGroupsRef.current,
+            company: profileCompany, companyId, userId: uid, size: inferred.size, parentName: inferred.parentName, existing: itemGroupsRef.current,
           });
           itemGroupsRef.current = mergeMasterGroups(itemGroupsRef.current, found.groups);
           groupId = found.childId;

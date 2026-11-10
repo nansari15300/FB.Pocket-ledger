@@ -12,7 +12,7 @@ import { bestUniqueMatch, nameScore, namesOf, tokenCoverageScore } from "./fuzzy
 import { devanagariToRoman, nameSkeleton } from "./translit";
 import { isOcrSelectableParty } from "./types";
 import { ownNameRule, textHasOwnName, textHasOwnPan } from "./ownCompany";
-import { normalizeItemDescription } from "./extras";
+import { canonicalOcrQty, descriptionHasLeakedQtyUnit, normalizeItemDescription, parseOcrQtyToken } from "./extras";
 import type { OcrIdentifiers } from "./identifiers";
 import type {
   OcrItemLike,
@@ -183,7 +183,7 @@ function finalizeItemDescription(...cands: (string | undefined | null)[]): strin
 }
 
 function preferTripletDescription(headerDesc: string, tripletDesc: string): string {
-  if (QTY_UNIT_LEAK.test(headerDesc) && !QTY_UNIT_LEAK.test(tripletDesc)) return finalizeItemDescription(tripletDesc, headerDesc);
+  if (descriptionHasLeakedQtyUnit(headerDesc) && !descriptionHasLeakedQtyUnit(tripletDesc)) return finalizeItemDescription(tripletDesc, headerDesc);
   return finalizeItemDescription(headerDesc, tripletDesc);
 }
 
@@ -206,6 +206,12 @@ function tripletRow(words: string[]): OcrLineItem | null {
         if (!digits.includes(".") && digits.length >= 4)
           for (let k = 1; k <= 6 && k < digits.length; k++) nums.push({ i, v: Number(digits) / 10 ** k, shifted: true, k });
       }
+      // "5,000" as qty-decimals (5.000 -> 5) when rate*qty = amount prefers it
+      const comma3 = /^(\d{1,3}),(\d{3})$/.exec(t);
+      if (comma3) {
+        const dec = Number(comma3[1]);
+        if (dec > 0 && (v == null || dec !== v)) nums.push({ i, v: dec, shifted: false, k: 0 });
+      }
     }
   });
   if (nums.length < 3) return null;
@@ -227,7 +233,7 @@ function tripletRow(words: string[]): OcrLineItem | null {
   const firstAlpha = toks.findIndex((t) => /[A-Za-z\u0900-\u097F]{2,}/.test(t));
   const descToks = firstAlpha >= 0 && firstAlpha < best.q.i ? toks.slice(firstAlpha, best.q.i) : [];
   const between = toks.slice(best.q.i + 1, best.r.i).find((t) => !NUM_ONLY.test(t));
-  return { description: finalizeItemDescription(descToks.join(" ").trim()), quantity: best.q.v, unit: normUnit(between), rate: best.r.v, amount: best.a.v };
+  return { description: finalizeItemDescription(descToks.join(" ").trim()), quantity: canonicalOcrQty(best.q.v), unit: normUnit(between), rate: best.r.v, amount: best.a.v };
 }
 
 function scanTripletRows(lines: L[], from: number, dbg: (m: string) => void): OcrLineItem[] {
@@ -258,7 +264,7 @@ function confirmQtyFromTotals(lines: L[], rows: OcrLineItem[], dbg: (m: string) 
     const rate = Math.abs(c * r.rate - r.amount) <= 0.05 ? r.rate : Math.round((r.amount / c) * 100) / 100;
     if (Math.abs(c * rate - r.amount) <= Math.max(0.6, 0.005 * r.amount)) {
       dbg(`Row "${r.description}": qty ${r.quantity} x ${r.rate} -> ${c} x ${rate} (confirmed by "${line.text.trim()}")`);
-      rows[0] = { ...r, quantity: c, rate };
+      rows[0] = { ...r, quantity: canonicalOcrQty(c), rate };
       return;
     }
   }
@@ -299,7 +305,7 @@ function scanRateAmountRows(lines: L[], from: number, dbg: (m: string) => void):
       dbg(`Row "${l.text}": rate ${rate} / amount ${amount} but qty could not be confirmed`);
       continue;
     }
-    out.push({ description: finalizeItemDescription(desc), quantity: q, rate, amount });
+    out.push({ description: finalizeItemDescription(desc), quantity: canonicalOcrQty(q), rate, amount });
     dbg(`Row "${l.text}": no qty column; ${q} x ${rate} = ${amount} (qty from ${how})`);
   }
   return out;
@@ -414,9 +420,9 @@ function parseLineItemsByHeader(lines: L[], dbg: (m: string) => void): { rows: O
     while (k0 < descWords.length && /^[\d.,)|lI]+$/.test(descWords[k0]) && /\d/.test(descWords[k0])) k0++;
     const description = descWords.slice(k0).join(" ").trim();
     let fbDesc: string | null = null;
-    let qty = cell.qty?.length ? parseStrictAmount(cell.qty.join("")) : null;
     let rate = cell.rate?.length ? parseStrictAmount(cell.rate.join("")) : null;
     let amount = cell.amount?.length ? parseStrictAmount(cell.amount.join("")) : null;
+    let qty = cell.qty?.length ? parseOcrQtyToken(cell.qty.join(""), { rate: rate ?? undefined, amount: amount ?? undefined }) : null;
     let unit = normUnit(cell.unit?.join(""));
     const okRow = (q: number | null, r: number | null, a: number | null) =>
       q != null && r != null && a != null && q > 0 && r > 0 && Math.abs(q * r - a) <= Math.max(0.6, 0.005 * a);
@@ -455,7 +461,7 @@ function parseLineItemsByHeader(lines: L[], dbg: (m: string) => void): { rows: O
       if (amount != null && amount >= 1) {
         const rec = recoverQtyRate(cell.rate?.join("") ?? "", amount, totalsQty(lines));
         if (rec) {
-          rows.push({ description: finalizeItemDescription(description), quantity: rec.q, unit, rate: rec.r, amount });
+          rows.push({ description: finalizeItemDescription(description), quantity: canonicalOcrQty(rec.q), unit, rate: rec.r, amount });
           dbg(`Row "${l.text}": qty unreadable; recovered ${rec.q} x ${rec.r} = ${amount} (${rec.how})`);
           continue;
         }
@@ -482,7 +488,7 @@ function parseLineItemsByHeader(lines: L[], dbg: (m: string) => void): { rows: O
     }
     {
       const t = tripletRow(words.map((w) => w.text));
-      rows.push({ description: finalizeItemDescription(t?.description, description, fbDesc), quantity: qty, unit: unit ?? t?.unit, rate, amount });
+      rows.push({ description: finalizeItemDescription(t?.description, description, fbDesc), quantity: canonicalOcrQty(qty), unit: unit ?? t?.unit, rate, amount });
     }
   }
   return { rows, flagged, head: head + 1 };

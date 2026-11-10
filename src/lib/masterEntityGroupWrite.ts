@@ -173,22 +173,27 @@ export async function findOrCreateNamedItemGroup(params: {
   }
 }
 
-/** Stock Items -> parent "Sheet" -> child size (e.g. 3.5MM). Reuses existing groups. Does not delete duplicates. */
+/**
+ * Stock Items -> parent (default "Sheet"; e.g. "Angles") -> child size (e.g. 3.5MM / "Angle 40x40x5").
+ * Reuses existing groups. Does not delete duplicates.
+ */
 export async function findOrCreateSheetSizeItemGroups(params: {
   company: Company | null | undefined;
   companyId: string;
   userId: string;
   size: string;
+  parentName?: string;
   existing: readonly MasterGroupLike[];
 }): Promise<{ parentId: string; childId: string; groups: MasterGroupLike[] }> {
   const existing = mergeMasterGroups(params.existing, await listStoredItemGroups(params.companyId));
+  const parentName = String(params.parentName ?? "").trim() || "Sheet";
   const parentId = await findOrCreateNamedItemGroup({
     ...params,
-    name: "Sheet",
+    name: parentName,
     parentId: STOCK_ITEMS_ID,
     existing,
   });
-  if (!existing.some((g) => g.id === parentId)) existing.push({ id: parentId, name: "Sheet", parentId: STOCK_ITEMS_ID });
+  if (!existing.some((g) => g.id === parentId)) existing.push({ id: parentId, name: parentName, parentId: STOCK_ITEMS_ID });
   const childName = String(params.size ?? "").trim();
   const childId = await findOrCreateNamedItemGroup({
     ...params,

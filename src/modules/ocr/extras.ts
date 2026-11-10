@@ -1,7 +1,7 @@
 /** Pure OCR decision helpers (shared by useVoucherOcr and the node regression test). */
 import { ownNameRule, textHasOwnName } from "./ownCompany";
 import type { OcrParsedBill } from "./types";
-import { normalizeName } from "./normalize";
+import { normalizeName, parseStrictAmount } from "./normalize";
 
 export type TaxLike = { id: string; rate?: number | string; name?: string; isDeleted?: boolean };
 export type OptionLike = { value: string; label: string };
@@ -58,8 +58,119 @@ export function isOwnCompany(name: string | undefined | null, pan: string | unde
 }
 
 /** Inventory units that may leak into an OCR item name (qty + unit). MM is a size, not a qty unit. */
-const TRAILING_QTY_UNIT =
-  /\s+[\d,]+(?:\.\d+)?\s+(?:pcs?|nos?|pieces?|ltr|ltrs|litres?|liters?|kgs?|gms?|grams?|mtrs?|meters?|metres?|box(?:es)?|bags?|sets?|pkts?|packets?|doz(?:en)?|ft)\.?\s*$/i;
+const QTY_UNIT_WORDS = new Set([
+  "pc", "pcs", "pc5", "cs",
+  "no", "nos", "piece", "pieces",
+  "ltr", "ltrs", "litre", "litres", "liter", "liters", "l",
+  "kg", "kgs", "gm", "gms", "gram", "grams", "g",
+  "mtr", "mtrs", "meter", "meters", "metre", "metres", "mt", "mts",
+  "box", "boxes", "bag", "bags", "set", "sets",
+  "pkt", "pkts", "packet", "packets",
+  "doz", "dozen", "ft", "feet", "foot",
+]);
+
+/** True for PCS/NOS/KG/... and OCR misreads (CS, 2CS, 7CS, deg-cs, PC5, P CS). */
+export function isOcrQtyUnit(token: string): boolean {
+  const raw = String(token ?? "").trim();
+  if (!raw) return false;
+  const n = raw.replace(/[\u00b0\u00ba]/g, "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+  if (!n || n.length > 8) return false;
+  if (QTY_UNIT_WORDS.has(n)) return true;
+  const stripped = n.replace(/^[0-9]/, "");
+  return !!stripped && stripped !== n && QTY_UNIT_WORDS.has(stripped);
+}
+
+function isSizeBreak(head: string): boolean {
+  const h = head.trim();
+  return /[xX'"\u2019\u201d]$/.test(h) || /\d\s*[xX]$/.test(h);
+}
+
+/** Drop a leaked trailing qty + unit ("4.000 2CS", "5,000 CS", "1.000 deg-cs"). Keeps sizes such as 8'X135FT. */
+export function stripTrailingQtyUnit(s: string): string {
+  let t = s.replace(/\s+/g, " ").trim();
+  for (let i = 0; i < 2; i++) {
+    const two = /^(.*)\s+([\d,]+(?:\.\d+)?)\s+(p)\s+(cs)\s*$/i.exec(t);
+    if (two && two[1].trim() && !isSizeBreak(two[1])) {
+      t = two[1].trim();
+      continue;
+    }
+    const one = /^(.*)\s+([\d,]+(?:\.\d+)?)\s+(\S+)\s*$/.exec(t);
+    if (one && one[1].trim() && isOcrQtyUnit(one[3]) && !isSizeBreak(one[1])) {
+      t = one[1].trim();
+      continue;
+    }
+    break;
+  }
+  return t;
+}
+
+export function descriptionHasLeakedQtyUnit(s: string): boolean {
+  const t = String(s ?? "").replace(/\s+/g, " ").trim();
+  return !!t && stripTrailingQtyUnit(t) !== t;
+}
+
+const ITEM_NOUNS = /^(?:angles?|channels?|sheets?|plates?|pipes?|beams?|rods?|bars?|flats?|tubes?|coils?|wires?|strips?|joists?|girders?)\b/i;
+const KEEP_LEADING_PREFIX = /^(?:ms|hr|cr|gi|ss|gp|cg|tmt|hysd|ctd|tor|isi|isa|ismc|ismb|isjb|mc|mb|ub|uc|upvc|cpvc|pvc|hdpe|ppr|hsd|tata|sail|jsw|jindal)$/i;
+
+/** Leading S.N. / row marks (fr208, 12., 12) and short OCR junk before a known item noun (Lil ANGLE). Conservative: keep 2-letter grade prefixes such as HE, MS, HR. */
+export function stripLeadingOcrJunk(s: string): string {
+  let t = s.replace(/\s+/g, " ").trim();
+  t = t.replace(/^(?:s\.?\s*n\.?|sl\.?|no\.?)[\s.:#-]*/i, "");
+  t = t.replace(/^(?:#\s*)?(?:[a-z]{1,3})?\d{1,4}[a-z]?[.)]?(?=\s)/i, "");
+  t = t.replace(/^\s+/, "");
+  const m = /^([A-Za-z]{3,4})\s+(.+)$/.exec(t);
+  if (m && !KEEP_LEADING_PREFIX.test(m[1]) && ITEM_NOUNS.test(m[2])) t = m[2];
+  return t;
+}
+
+/** "3 SMM" / "3SMM" -> "3.5MM" (S misread as 5). Does not change "3.5SMM" or a lone "SMM". */
+export function restoreSmmAsFiveMm(s: string): string {
+  return s
+    .replace(/(\d)\s+SMM\b/gi, "$1.5MM")
+    .replace(/(?<![\d.])(\d)SMM\b/gi, "$1.5MM");
+}
+
+/** Drop trailing zeros after the decimal (4.000 -> 4, 4.500 -> 4.5). Keeps up to 3 significant decimals (65.663). */
+export function canonicalOcrQty(n: number): number {
+  if (!Number.isFinite(n)) return n;
+  return Number(n.toFixed(3));
+}
+
+/**
+ * Parse a qty token. "4.000" -> 4, "4.500" -> 4.5.
+ * "5,000" (comma, 3 digits): treat as 5 (qty decimals 5.000) unless rate*qty ~= amount prefers 5000.
+ */
+export function parseOcrQtyToken(raw: string, ctx?: { rate?: number; amount?: number }): number | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  const candidates: number[] = [];
+  const add = (v: number) => {
+    if (Number.isFinite(v) && v > 0 && !candidates.includes(v)) candidates.push(v);
+  };
+  const comma3 = /^(\d{1,3}),(\d{3})$/.exec(s);
+  if (comma3) {
+    add(Number(comma3[1]));
+    add(Number(comma3[1] + comma3[2]));
+  }
+  if (/^\d{1,12}(?:\.\d{1,4})?$/.test(s)) add(Number(s));
+  const strict = parseStrictAmount(s);
+  if (strict != null) add(strict);
+
+  const rate = ctx?.rate;
+  const amount = ctx?.amount;
+  if (rate && amount && rate > 0 && candidates.length) {
+    const tol = Math.max(0.6, 0.005 * amount);
+    const fit = candidates.filter((q) => Math.abs(q * rate - amount) <= tol);
+    if (fit.length === 1) return canonicalOcrQty(fit[0]);
+    if (fit.length > 1) {
+      fit.sort((a, b) => Math.abs(a * rate - amount) - Math.abs(b * rate - amount));
+      return canonicalOcrQty(fit[0]);
+    }
+  }
+  if (comma3) return canonicalOcrQty(Number(comma3[1]));
+  if (candidates.length) return canonicalOcrQty(candidates[0]);
+  return null;
+}
 
 /** Restore a size decimal OCR often drops ("3 5MM" / "3,5 mm" -> "3.5MM"). Does not change "35MM". */
 export function restoreItemSizeDecimal(s: string): string {
@@ -69,31 +180,59 @@ export function restoreItemSizeDecimal(s: string): string {
     .replace(/(\d+[.,]\d{1,2})\s*(mm)\b/gi, (_m, n: string) => `${String(n).replace(",", ".")}MM`);
 }
 
-/** "(Diesel <HSD>" -> "Diesel": drop leading punctuation, bracketed codes, leaked qty/unit; keep size. */
+/**
+ * OCR sometimes reads the "x" of a 3-part size as "%" ("ANGLE 40x40%5" -> "ANGLE 40x40x5").
+ * Only touches N?N?N size patterns (separators x/X/A-/%) that contain a "%"; a lone "13%" or "5%" is unchanged.
+ */
+export function restoreItemSizeSeparators(s: string): string {
+  return s.replace(
+    /(\d+(?:\.\d+)?)\s*([xX\u00D7%])\s*(\d+(?:\.\d+)?)\s*([xX\u00D7%])\s*(\d+(?:\.\d+)?)(?![\d.]*\s*%)/g,
+    (m: string, a: string, s1: string, b: string, s2: string, c: string) => {
+      if (s1 !== "%" && s2 !== "%") return m;
+      const x = s1 === "X" || s2 === "X" ? "X" : "x";
+      return `${a}${s1 === "%" ? x : s1}${b}${s2 === "%" ? x : s2}${c}`;
+    }
+  );
+}
+
 /** Restore size decimals and strip a leaked trailing qty+unit. Keeps bill codes such as <HSD>. */
 export function normalizeItemDescription(desc: string): string {
-  const s = restoreItemSizeDecimal(desc.replace(/\s+/g, " ").trim()).replace(TRAILING_QTY_UNIT, "").replace(/\s+/g, " ").trim();
+  let s = stripLeadingOcrJunk(desc.replace(/\s+/g, " ").trim());
+  s = restoreItemSizeDecimal(restoreSmmAsFiveMm(restoreItemSizeSeparators(s)));
+  s = stripTrailingQtyUnit(s).replace(/\s+/g, " ").trim();
   return s || desc.trim();
 }
 
 /** "(Diesel <HSD>" -> "Diesel": drop leading punctuation, bracketed codes, leaked qty/unit; keep size. */
 export function cleanItemName(desc: string): string {
-  let s = desc.replace(/<[^>]*>?/g, " ").replace(/\([^)]*\)/g, " ").replace(/^[^\p{L}\d]+/u, "").replace(/[^\p{L}\d)]+$/u, "").replace(/\s+/g, " ").trim();
+  let s = desc.replace(/<[^>]*>?/g, " ").replace(/\([^)]*\)/g, " ").replace(/^[^\p{L}\d]+/u, "").replace(/[^\p{L}\d)"'\u2019]+$/u, "").replace(/\s+/g, " ").trim();
   s = normalizeItemDescription(s);
   return s || desc.trim();
 }
 
-export type InferredItemGroup = { parentName: "Sheet"; size: string };
+export type InferredItemGroup = { parentName: "Sheet" | "Angles"; size: string };
 
-/** Sheet or Plate followed by a size like 3.5MM / 12MM -> parent "Sheet", child the size. */
+/**
+ * Sheet or Plate followed by a size like 3.5MM / 12MM -> parent "Sheet", child the size.
+ * Angle followed by a size like 40x40x5 -> parent "Angles", child "Angle 40x40x5".
+ */
 export function inferItemGroupFromName(raw: string): InferredItemGroup | null {
   const name = cleanItemName(raw);
   const kind = /\b(?:sheets?|plates?)\b/i.exec(name);
-  if (!kind || kind.index == null) return null;
+  if (!kind || kind.index == null) return inferAngleGroup(name);
   const after = name.slice(kind.index + kind[0].length);
   const size = /\b(\d+(?:\.\d+)?)MM\b/i.exec(after);
   if (!size) return null;
   return { parentName: "Sheet", size: `${size[1]}MM` };
+}
+
+function inferAngleGroup(name: string): InferredItemGroup | null {
+  const kind = /\bangles?\b/i.exec(name);
+  if (!kind || kind.index == null) return null;
+  const after = name.slice(kind.index + kind[0].length);
+  const size = /\b\d+(?:\.\d+)?(?:\s*[xX×*]\s*\d+(?:\.\d+)?){1,2}\b/.exec(after);
+  if (!size) return null;
+  return { parentName: "Angles", size: `Angle ${size[0].replace(/\s*[xX×*]\s*/g, "x")}` };
 }
 
 /** Other PANs printed on the bill (9 digits), excluding ours - fallback counter-party when the parsed party was our own company. */
