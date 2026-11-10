@@ -106,3 +106,93 @@
   else mount();
   window.PLSiteChrome = { mount: mount };
 })();
+/* Refresh/back keeps the same page and scroll position (window + inner scroll boxes such as cards/tables).
+   Saved per URL in sessionStorage (this tab only). New link navigation still opens at the top. */
+(function () {
+  "use strict";
+  var KEY = "pl-scroll:" + location.pathname + location.search;
+  var navType = "navigate";
+  try {
+    var nav = performance.getEntriesByType("navigation")[0];
+    if (nav && nav.type) navType = nav.type;
+  } catch (_) {}
+  try {
+    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+  } catch (_) {}
+
+  function pathOf(el) {
+    if (el.id) return "#" + el.id;
+    var parts = [];
+    while (el && el.nodeType === 1 && el !== document.body) {
+      if (el.id) { parts.unshift("#" + el.id); break; }
+      var i = 0, s = el;
+      while ((s = s.previousElementSibling)) i++;
+      parts.unshift(el.tagName.toLowerCase() + ":" + i);
+      el = el.parentElement;
+    }
+    return parts.join(">");
+  }
+  function findByPath(p) {
+    var segs = p.split(">");
+    var el = document.body;
+    for (var k = 0; k < segs.length; k++) {
+      var seg = segs[k];
+      if (seg.charAt(0) === "#") { el = document.getElementById(seg.slice(1)); }
+      else {
+        var bits = seg.split(":");
+        el = el && el.children[Number(bits[1])];
+        if (el && el.tagName.toLowerCase() !== bits[0]) el = null;
+      }
+      if (!el) return null;
+    }
+    return el;
+  }
+  function save() {
+    try {
+      var boxes = [];
+      document.querySelectorAll("body *").forEach(function (el) {
+        if ((el.scrollTop > 0 || el.scrollLeft > 0) && el.scrollHeight > el.clientHeight - 1) {
+          boxes.push({ p: pathOf(el), t: el.scrollTop, l: el.scrollLeft });
+        }
+      });
+      sessionStorage.setItem(KEY, JSON.stringify({ x: window.scrollX, y: window.scrollY, b: boxes }));
+    } catch (_) {}
+  }
+  var timer = 0;
+  function saveSoon() {
+    clearTimeout(timer);
+    timer = setTimeout(save, 200);
+  }
+  window.addEventListener("pagehide", save);
+  window.addEventListener("beforeunload", save);
+  document.addEventListener("scroll", saveSoon, true);
+
+  if (navType !== "reload" && navType !== "back_forward") return;
+  var data = null;
+  try { data = JSON.parse(sessionStorage.getItem(KEY) || "null"); } catch (_) {}
+  if (!data) return;
+
+  var stopped = false;
+  function stop() { stopped = true; }
+  ["wheel", "touchstart", "keydown", "mousedown"].forEach(function (ev) {
+    window.addEventListener(ev, stop, { once: true, passive: true });
+  });
+  var started = Date.now();
+  function tryRestore() {
+    if (stopped) return;
+    var done = true;
+    window.scrollTo(data.x || 0, data.y || 0);
+    if (Math.abs(window.scrollY - (data.y || 0)) > 2) done = false;
+    (data.b || []).forEach(function (b) {
+      var el = findByPath(b.p);
+      if (!el) { done = false; return; }
+      el.scrollTop = b.t;
+      el.scrollLeft = b.l;
+      if (Math.abs(el.scrollTop - b.t) > 2) done = false;
+    });
+    if (!done && Date.now() - started < 3000) setTimeout(tryRestore, 100);
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", tryRestore);
+  else tryRestore();
+  window.addEventListener("pageshow", function (e) { if (e.persisted) { started = Date.now(); tryRestore(); } });
+})();

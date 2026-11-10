@@ -13,11 +13,8 @@ body.website-settings-page {
   background: #fff;
   border-right: 1px solid var(--line);
   padding: 1rem 0.75rem 1.5rem;
-  position: sticky;
-  top: 0;
-  align-self: start;
-  max-height: calc(100vh - 3.5rem);
-  overflow: auto;
+  /* Full height: sidebar runs to the bottom of the page */
+  align-self: stretch;
 }
 .ws-side-title {
   font-weight: 800;
@@ -97,4 +94,24 @@ html:not([data-theme="light"]) body.website-settings-page textarea {
   background: var(--surface, #fff);
   color: var(--ink);
   border-color: var(--line);
+}
+/* Admin header: full width, logo at the far left (lines up with sidebar text) */
+body.website-settings-page .site-header .wrap.nav {
+  max-width: none;
+  width: auto;
+  margin: 0;
+  padding-left: 1.4rem;
+  padding-right: 1.4rem;
+}
+
+/* "Admin Panel" heading: looks like a section title, not a menu item */
+body.website-settings-page .ws-side-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sky, #1d4ed8);
+  padding: 0.35rem 0.65rem 0.7rem;
+  margin-bottom: 0.6rem;
+  border-bottom: 1px solid var(--line);
 }

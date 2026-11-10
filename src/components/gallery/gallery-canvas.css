@@ -1,0 +1,37 @@
+/* Scoped Gallery tile-canvas background. Gray / default theme only.
+   Does not change global theme tokens, the top toolbar, or the bottom panels.
+   Specificity is high enough to override globals.css forcing the scroll area
+   to background-color: transparent !important. */
+
+html body.theme-pl-gray [data-pl-gallery-scroll][data-pl-gallery-scroll][data-pl-gallery-scroll].pl-gallery-canvas {
+  --gallery-canvas-bg: #2a2d33;
+  --gallery-canvas-caption: #e5e7eb;
+  --gallery-canvas-caption-muted: #c4c8cf;
+  background-color: var(--gallery-canvas-bg) !important;
+  background-image: none !important;
+  /* Fill the visible scroll region even when the tile grid is short. */
+  min-height: 100%;
+  width: 100%;
+}
+
+/* File-name captions and other in-canvas messages (empty / uploading).
+   Tile card surfaces and size badges are left alone. */
+html body.theme-pl-gray [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-tile-caption,
+html body.theme-pl-gray [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-canvas-msg,
+html body.theme-pl-gray [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-tile-caption.text-muted-foreground {
+  color: var(--gallery-canvas-caption-muted, #c4c8cf) !important;
+}
+
+html body.theme-pl-gray [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-canvas-msg {
+  color: var(--gallery-canvas-caption, #e5e7eb) !important;
+}
+
+/* Keep existing selection rings visible on the dark canvas without restyling the tile face. */
+html body.theme-pl-gray [data-pl-gallery-scroll].pl-gallery-canvas .group > div.ring-2 {
+  outline: 2px solid rgba(229, 231, 235, 0.7);
+  outline-offset: 1px;
+}
+
+html body.theme-pl-gray [data-pl-gallery-scroll].pl-gallery-canvas .group:hover > div:not(.ring-2) {
+  box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.45);
+}

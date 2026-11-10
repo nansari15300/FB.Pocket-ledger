@@ -3,7 +3,7 @@
 
   /**
    * Light website-only nav (no app Admin Panel menus).
-   * Page sets: <body data-ws-active="release|videos|downloads|notice">
+   * Page sets: <body data-ws-active="release|videos|downloads|notice|users">
    */
   function navHtml(active) {
     function item(key, href, label) {
@@ -18,6 +18,7 @@
         item("videos", "/website-settings/videos/", "Website Videos") +
         item("downloads", "/website-settings/downloads/", "Download analytics") +
         item("notice", "/website-settings/notice/", "Notice") +
+        item("users", "/website-settings/users/", "Users") +
         '<a href="/home/">← Back to website</a>' +
       "</aside>"
     );

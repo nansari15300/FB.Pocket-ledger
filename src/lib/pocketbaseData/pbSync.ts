@@ -54,8 +54,11 @@ const CURSOR_KEY_PREFIX = "pl_pb_pull_cursor_v1:";
 
 function isFieldValueSentinel(v: unknown): string | null {
   if (!v || typeof v !== "object") return null;
-  const m = (v as { _methodName?: unknown })._methodName;
-  return typeof m === "string" ? m : null;
+  const rec = v as { _methodName?: unknown; methodName?: unknown; __isPbFieldValue?: unknown };
+  // Firebase SDK FieldValue uses `_methodName`; our pbValues sentinels use `methodName` + `__isPbFieldValue`.
+  if (typeof rec._methodName === "string") return rec._methodName;
+  if (rec.__isPbFieldValue === true && typeof rec.methodName === "string") return rec.methodName;
+  return null;
 }
 
 /** Server-side field operation (Firestore FieldValue equivalent, applied in the server transaction). */

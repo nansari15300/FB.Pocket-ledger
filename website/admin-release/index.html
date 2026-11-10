@@ -6,14 +6,26 @@
   <title>Release upload — Pocket Ledger</title>
   <meta name="robots" content="noindex,nofollow" />
   <link rel="stylesheet" href="../styles.css?v=20261028-190500" />
-  <link rel="stylesheet" href="../css/website-settings.css?v=20261031-063500" />
+  <link rel="stylesheet" href="../css/website-settings.css?v=20261110-0810" />
   <link rel="stylesheet" href="../css/color-mode.css?v=20261028-195200" />
   <script src="../js/color-mode.js?v=20261028-195200"></script>
   <style>
     .admin-card {
       max-width: none;
-      width: min(1200px, calc(100% - 2rem));
+      width: auto;
     }
+    /* Card: 40px gap on all four sides */
+    body.website-settings-page .ws-main > .section { padding: 0; }
+    body.website-settings-page .ws-main > .section > .wrap.admin-card {
+      margin: 0;
+      padding: 40px;
+    }
+    .admin-card > .content-block { margin-bottom: 0; }
+    .admin-card > .status:empty { display: none; }
+    /* Each section is its own card, 40px apart */
+    .release-cards { display: flex; flex-direction: column; gap: 40px; }
+    .release-cards[hidden] { display: none; }
+    .release-cards > .release-card { margin: 0; max-height: 70vh; overflow-y: auto; }
     .row { margin: 0.85rem 0; }
     .row label { display: block; font-weight: 700; margin-bottom: 0.35rem; }
     .status { margin-top: 1rem; font-size: 0.95rem; }
@@ -278,8 +290,9 @@
           <div class="content-block" id="authBox">
                       </div>
 
-          <div class="content-block" id="uploadBox" hidden>
-            <h3 style="margin:0.85rem 0 0.35rem;font-size:1rem">Upload new build</h3>
+          <div class="release-cards" id="uploadBox" hidden>
+            <div class="content-block release-card">
+            <h3 style="margin:0 0 0.35rem;font-size:1rem">Upload new build</h3>
             <div class="release-upload-date settings-grid">
               <div class="row" style="margin:0">
                 <label for="dateField">Date folder (shared)</label>
@@ -343,7 +356,9 @@
             </div>
             <progress id="progress" max="100" value="0" hidden></progress>
 
-            <hr style="margin:1.5rem 0;border:0;border-top:1px solid var(--line)" />
+            </div>
+
+            <div class="content-block release-card">
 
             <h3 style="margin:0 0 0.35rem;font-size:1rem">Downloads list (user-visible)</h3>
             <div class="settings-grid" style="margin-top:0.75rem">
@@ -410,7 +425,9 @@
               <button type="button" class="btn btn-outline btn-sm" id="saveDownloadsSettingsBtn">Save downloads setting</button>
             </div>
 
-            <hr style="margin:1.5rem 0;border:0;border-top:1px solid var(--line)" />
+            </div>
+
+            <div class="content-block release-card">
 
             <h3 style="margin:0 0 0.35rem;font-size:1rem">Hidden / outdated releases</h3>
             <div class="settings-grid" style="margin-top:0.75rem">
@@ -478,14 +495,6 @@
               <button type="button" class="btn btn-outline btn-sm" id="saveSettingsBtn">Save hidden settings</button>
             </div>
 
-            <hr style="margin:1.5rem 0;border:0;border-top:1px solid var(--line)" />
-
-            <h3 style="margin:0 0 0.35rem;font-size:1rem">Website admins</h3>
-            <p style="margin:0;color:var(--muted);font-size:0.88rem">Owners (main admins) cannot be removed. Added users can manage the website settings too.</p>
-            <ul class="admin-list" id="adminList"></ul>
-            <div class="row add-row" id="addAdminRow" style="margin-top:0.75rem">
-              <input id="newAdminEmail" type="email" placeholder="user@example.com" />
-              <button type="button" class="btn btn-outline btn-sm" id="addAdminBtn">Add user</button>
             </div>
           </div>
           <p class="status" id="status"></p>
@@ -510,11 +519,11 @@
   <script src="../js/site-data-config.js?v=20261031-1440"></script>
   <script src="../js/site-data.js?v=20261031-1"></script>
   <script src="../js/release-settings-shared.js?v=20261031-1"></script>
-  <script src="../js/website-settings-nav.js"></script>
+  <script src="../js/website-settings-nav.js?v=20261110-0800"></script>
   <script src="../js/languages-iso.js?v=20261028-195200"></script>
   <script src="../js/i18n-web.js?v=20261029-i18nmt"></script>
   <script src="../js/i18n-translate.js?v=20261029-i18nmt"></script>
-  <script src="../js/site-chrome.js?v=20261028-195200"></script>
-  <script src="../js/release-admin.js?v=20261031-1"></script>
+  <script src="../js/site-chrome.js?v=20261110-0805"></script>
+  <script src="../js/release-admin.js?v=20261110-0800"></script>
 </body>
 </html>

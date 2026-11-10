@@ -6,7 +6,6 @@
   var whoEl = document.getElementById("who");
   var progressEl = document.getElementById("progress");
   var outBtn = document.getElementById("outBtn");
-  var adminListEl = document.getElementById("adminList");
   var deleteAllOutdatedBtn = document.getElementById("deleteAllOutdatedBtn");
   var visibleReleaseTableExe = document.getElementById("visibleReleaseTableExe");
   var visibleReleaseTableApk = document.getElementById("visibleReleaseTableApk");
@@ -29,7 +28,6 @@
   var cachedManifest = null;
   var cachedSettings = normalizeReleaseSettings(null);
   var settingsFileCorrupt = false;
-  var adminState = { owners: [], emails: [], canEdit: false };
 
   function normalizeReleaseSettings(raw) {
     return typeof window.normalizeReleaseSettings === "function"
@@ -485,37 +483,6 @@
     tbodyEl.appendChild(tr);
   }
 
-  function renderAdminList() {
-    if (!adminListEl) return;
-    adminListEl.innerHTML = "";
-    adminState.owners.forEach(function (email) {
-      var li = document.createElement("li");
-      var left = document.createElement("span");
-      left.textContent = email + " (owner)";
-      li.appendChild(left);
-      adminListEl.appendChild(li);
-    });
-    adminState.emails.forEach(function (email) {
-      var li = document.createElement("li");
-      var left = document.createElement("span");
-      left.textContent = email;
-      li.appendChild(left);
-      if (adminState.canEdit) {
-        var rm = document.createElement("button");
-        rm.type = "button";
-        rm.className = "btn btn-outline btn-sm";
-        rm.textContent = "Remove";
-        rm.onclick = function () {
-          void removeAdmin(email);
-        };
-        li.appendChild(rm);
-      }
-      adminListEl.appendChild(li);
-    });
-    var addRow = document.getElementById("addAdminRow");
-    if (addRow) addRow.hidden = !adminState.canEdit;
-  }
-
   async function loadManifest() {
     try {
       var res = await window.SiteData.adminGet("/admin/releases");
@@ -596,64 +563,10 @@
     );
   }
 
-  async function loadAdmins() {
-    try {
-      var data = await window.SiteData.adminGet("/admin/admins");
-      adminState.owners = Array.isArray(data.owners) ? data.owners : [];
-      adminState.emails = Array.isArray(data.emails) ? data.emails : [];
-      adminState.canEdit = data.canEdit === true;
-    } catch (_) {
-      adminState.owners = [];
-      adminState.emails = [];
-      adminState.canEdit = false;
-    }
-    renderAdminList();
-  }
-
-  async function saveAdmins(nextEmails) {
-    var res = await window.SiteData.adminPost("/admin/admins", { emails: nextEmails });
-    adminState.emails = Array.isArray(res.emails) ? res.emails : [];
-    renderAdminList();
-  }
-
-  async function addAdmin(email) {
-    var e = String(email || "").trim().toLowerCase();
-    if (!e) {
-      setStatus("Enter an email.", false);
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
-      setStatus("Invalid email.", false);
-      return;
-    }
-    try {
-      await saveAdmins(adminState.emails.concat([e]));
-      document.getElementById("newAdminEmail").value = "";
-      setStatus("Added " + e, true);
-    } catch (err) {
-      setStatus(err.message || String(err), false);
-    }
-  }
-
-  async function removeAdmin(email) {
-    var e = String(email || "").trim().toLowerCase();
-    try {
-      await saveAdmins(adminState.emails.filter(function (x) { return x !== e; }));
-      setStatus("Removed " + e, true);
-    } catch (err) {
-      setStatus(err.message || String(err), false);
-    }
-  }
-
   function showAuthedUi() {
-    renderAdminList();
-    void loadAdmins();
     void loadManifest();
   }
 
-  document.getElementById("addAdminBtn").onclick = function () {
-    void addAdmin(document.getElementById("newAdminEmail").value);
-  };
   if (deleteAllOutdatedBtn) {
     deleteAllOutdatedBtn.onclick = function () {
       void deleteAllOutdated();

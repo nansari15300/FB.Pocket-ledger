@@ -15,6 +15,7 @@ import {
   PbCollectionReference,
   PbDocumentReference,
   pbRefPath,
+  refSegmentsFrom,
   type Converter,
 } from "@/lib/pocketbaseData/pbRef";
 
@@ -213,13 +214,9 @@ export class PbCollectionGroupQuery extends PbQuery {
 export function pbCollection(...args: readonly unknown[]): PbCollectionReference {
   const first = args[0];
   if (first && typeof first === "object" && isPbCollectionRef(first)) return first;
-  const parts = first && typeof first === "object" && !Array.isArray(first) && !("__segments" in (first as object)) ? args.slice(1) : args;
-  const segs: string[] = [];
-  for (const p of parts) {
-    if (p && typeof p === "object" && Array.isArray((p as { __segments?: unknown }).__segments)) segs.push(...(p as { __segments: string[] }).__segments);
-    else segs.push(String(p ?? ""));
-  }
-  return new PbCollectionReference(segs.filter(Boolean));
+  // Split slash paths the same way Firestore does ("companies/id/coll" -> 3 segments).
+  // Separate-segment and existing ref-object callers still go through refSegmentsFrom.
+  return new PbCollectionReference(refSegmentsFrom(args));
 }
 
 /** `doc(db, ...parts)` or `doc(collectionRef, id)`. */
@@ -229,13 +226,7 @@ export function pbDoc(...args: readonly unknown[]): PbDocumentReference {
     const [id] = args.slice(1) as [string?];
     return (first as PbCollectionReference).doc(id === undefined ? undefined : String(id));
   }
-  const parts = first && typeof first === "object" && !Array.isArray(first) && !("__segments" in (first as object)) ? args.slice(1) : args;
-  const segs: string[] = [];
-  for (const p of parts) {
-    if (p && typeof p === "object" && Array.isArray((p as { __segments?: unknown }).__segments)) segs.push(...(p as { __segments: string[] }).__segments);
-    else segs.push(String(p ?? ""));
-  }
-  return new PbDocumentReference(segs.filter(Boolean));
+  return new PbDocumentReference(refSegmentsFrom(args));
 }
 
 export { FieldPath, Timestamp, decodeTimestamps, encodeTimestamps, pbRefPath };

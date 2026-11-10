@@ -1,5 +1,6 @@
 "use client";
 
+import "./gallery-canvas.css";
 import { writeBatch, updateDoc, deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { STAFF_ENTITY_LABEL } from "@/lib/staffEntityDisplayName";
 
@@ -1059,7 +1060,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
       <div
         data-pl-gallery-scroll
         className={cn(
-          "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain",
+          "pl-gallery-canvas min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain",
           isMobile && !companyFooterExpanded && GALLERY_COLLAPSED_RIBBON_SCROLL_PB
         )}
       >
@@ -1152,7 +1153,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                               </DropdownMenu>
                             )}
                          </div>
-                         <p className="w-full max-w-full min-w-0 truncate px-0.5 text-center text-[10px] text-muted-foreground" style={{ width: `${tileSize}px` }}>
+                         <p className="pl-gallery-tile-caption w-full max-w-full min-w-0 truncate px-0.5 text-center text-[10px] text-muted-foreground" style={{ width: `${tileSize}px` }}>
                             {cleanFileName}
                          </p>
                       </div>
@@ -2634,7 +2635,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
         {...getRootProps({
           "data-pl-gallery-scroll": "",
           className: cn(
-            "min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain",
+            "pl-gallery-canvas min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain",
             isMobile && !unassignedFooterExpanded ? GALLERY_COLLAPSED_RIBBON_SCROLL_PB : "pb-2"
           ),
         })}
@@ -2649,12 +2650,12 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
             {uploadingFiles.map((file) => (
               <div key={file.id} className="relative flex flex-col gap-1" style={{ width: `${tileSize}px` }}>
                   <div className="relative rounded-lg bg-muted/30 flex items-center justify-center" style={{ width: `${tileSize}px`, height: `${tileSize}px` }}>
-                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                      <div className="pl-gallery-canvas-msg flex flex-col items-center gap-2 text-muted-foreground">
                         <Loader2 className="h-8 w-8 animate-spin" />
                         <span className="text-xs">Uploading...</span>
                       </div>
                   </div>
-                  <p className="w-full min-w-0 max-w-full truncate px-0.5 text-center text-[10px] text-muted-foreground">{file.name}</p>
+                  <p className="pl-gallery-tile-caption w-full min-w-0 max-w-full truncate px-0.5 text-center text-[10px] text-muted-foreground">{file.name}</p>
               </div>
             ))}
             {paginatedUnassignedFiles.map((file) => {
@@ -2794,7 +2795,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                  <p className="w-full min-w-0 max-w-full truncate px-0.5 text-center text-[10px] text-muted-foreground">{cleanFileName}</p>
+                  <p className="pl-gallery-tile-caption w-full min-w-0 max-w-full truncate px-0.5 text-center text-[10px] text-muted-foreground">{cleanFileName}</p>
                 </div>
               );
 
