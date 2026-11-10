@@ -14,8 +14,10 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } fro
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { OcrSuggestion } from "./OcrSuggestionsDialog";
 import { useOcrPrefs } from "./prefs";
+import { shouldDrawOcrBubbleTail, stretchOcrTailTip } from "./bubbleTail";
 
 export const OCR_BUBBLE_Z_CN = "z-[85]";
 const RING = ["ring-2", "ring-pink-500", "ring-offset-1", "rounded-md", "transition-shadow"];
@@ -23,7 +25,7 @@ const RING = ["ring-2", "ring-pink-500", "ring-offset-1", "rounded-md", "transit
 /** Suggestion id -> form field anchor key. */
 export function ocrFieldForSuggestion(id: string): string {
   if (id === "switch" || id.startsWith("switch-")) return "voucher-type";
-  if (id === "create-party" || id === "find-party") return "party";
+  if (id === "create-party" || id === "find-party" || id === "use-party") return "party";
   if (id === "date") return "date";
   if (id === "due") return "due-date";
   if (id === "create-vat" || id === "vat") return "tax";
@@ -460,8 +462,9 @@ function layoutAllOcrBubbles() {
         ? Math.max(16, Math.min(cx - it.l, it.w - 16))
         : Math.max(16, Math.min(cy - it.t, it.h - 16));
     }
-    // Tails only after final positions, using the same anchor as placement (found ?? fallback).
-    it.sink(p, leaderPoints(p, it.el, it.field, host), computeTailGeom(p, it.el, it.field, host));
+    // Tails only after final positions, and only when the real field is on screen (not the OCR-bar fallback).
+    const tailAnchor = shouldDrawOcrBubbleTail(!it.usedFallback) ? it.field : null;
+    it.sink(p, leaderPoints(p, it.el, tailAnchor, host), computeTailGeom(p, it.el, tailAnchor, host));
   }
 }
 
@@ -602,9 +605,10 @@ function computeTailGeom(p: Pos, el: HTMLElement, anchor: HTMLElement | null, ho
   const kind: TailGeom["kind"] = useCorner ? "corner" : "side";
   const side: Side = onTop ? "top" : onBottom ? "bottom" : onLeft ? "left" : onRight ? "right" : (p.side ?? "bottom");
   const attach = useCorner ? { x: near.x, y: near.y } : { x: Q.x, y: Q.y };
-  const tipV = closestOnRect(attach.x, attach.y, ar);
-  const length = Math.hypot(tipV.x - attach.x, tipV.y - attach.y);
-  if (length < 8) return null;
+  const tipClosest = closestOnRect(attach.x, attach.y, ar);
+  const stretched = stretchOcrTailTip(attach, tipClosest, { x: fieldMid.x - attach.x, y: fieldMid.y - attach.y });
+  const tipV = stretched.tip;
+  const length = stretched.length;
   const base = Math.min(22, 16 + Math.min(6, length / 50)); // 16, slightly wider when the field is far
   const loc = (pt: Pt): Pt => ({ x: pt.x - o.x - p.left, y: pt.y - o.y - p.top });
   const A = loc(attach);
@@ -687,16 +691,52 @@ function BubbleChrome({ w, h, tail, color, fill }: { w: number; h: number; tail:
     </svg>
   );
 }
+
+function isCreateItemSuggestion(s: OcrSuggestion): boolean {
+  return s.id.startsWith("create-item-");
+}
+
+function CreateItemChoiceButton({
+  s,
+  onApply,
+  className,
+}: {
+  s: OcrSuggestion;
+  onApply: (s: OcrSuggestion, mode?: "auto" | "manual") => void;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" size="sm" className={className}>Create</Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="z-[2147483646] w-44 p-1" onOpenAutoFocus={(e) => e.preventDefault()}>
+        <button type="button" className="block w-full rounded-md px-2.5 py-1.5 text-left text-xs hover:bg-slate-100" onClick={() => { setOpen(false); onApply(s, "auto"); }}>Auto Create</button>
+        <button type="button" className="block w-full rounded-md px-2.5 py-1.5 text-left text-xs hover:bg-slate-100" onClick={() => { setOpen(false); onApply(s, "manual"); }}>Manual Create</button>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function suggestionActionLabel(s: OcrSuggestion, countdown?: number): string {
+  if (s.id === "switch" || s.id.startsWith("switch-")) return s.id === "switch" && countdown != null ? `Switch (${countdown})` : "Switch";
+  if (s.deferred) return "Open";
+  return "Apply";
+}
+
 function BubbleView({
   b,
   onApply,
   onDismiss,
+  onCreateAllItems,
   nav,
   scrollOnMount,
 }: {
   b: OcrBubble;
-  onApply: (s: OcrSuggestion) => void;
+  onApply: (s: OcrSuggestion, mode?: "auto" | "manual") => void;
   onDismiss: () => void;
+  onCreateAllItems?: (items: OcrSuggestion[]) => void;
   nav?: { i: number; n: number; prev: () => void; next: () => void };
   scrollOnMount: boolean;
   /** Kept for callers; overlap is now resolved by the global coordinator. */
@@ -774,7 +814,7 @@ function BubbleView({
         width: bubbleMaxW,
         maxWidth: bubbleMaxW,
         maxHeight: listMaxH + 72,
-        overflow: "hidden",
+        overflow: "visible",
         display: "flex",
         flexDirection: "column",
         visibility: pos ? "visible" : "hidden",
@@ -822,7 +862,8 @@ function BubbleView({
             {b.items[0].reason ? <p className="text-[11px] text-slate-500">{b.items[0].reason}</p> : null}
             {b.items[0].blocked ? <p className="text-[11px] text-amber-700">{b.items[0].blocked}</p> : null}
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {!b.items[0].blocked ? <Button type="button" size="sm" className={pill} onClick={() => onApply(b.items[0])}>{b.items[0].id === "switch" || b.items[0].id.startsWith("switch-") ? (b.items[0].id === "switch" && b.countdown != null ? `Switch (${b.countdown})` : "Switch") : b.items[0].deferred ? "Open" : "Apply"}</Button> : null}
+              {!b.items[0].blocked ? (isCreateItemSuggestion(b.items[0]) ? <CreateItemChoiceButton s={b.items[0]} onApply={onApply} className={pill} /> : <Button type="button" size="sm" className={pill} onClick={() => onApply(b.items[0])}>{suggestionActionLabel(b.items[0], b.countdown)}</Button>) : null}
+              {b.items.filter((x) => isCreateItemSuggestion(x) && !x.blocked).length >= 2 ? <Button type="button" size="sm" variant="outline" className={pill} onClick={() => onCreateAllItems?.(b.items.filter((x) => isCreateItemSuggestion(x) && !x.blocked))}>Create All</Button> : null}
               <Button type="button" size="sm" variant="ghost" className={pill} onClick={onDismiss}>Dismiss</Button>
             </div>
           </div>
@@ -835,10 +876,11 @@ function BubbleView({
                   <p className="break-words text-[11px] text-slate-500">{s.value}</p>
                   {s.blocked ? <p className="text-[11px] text-amber-700">{s.blocked}</p> : null}
                 </div>
-                {!s.blocked ? <Button type="button" size="sm" variant="outline" className="h-6 rounded-full px-2.5 text-[11px]" onClick={() => onApply(s)}>{s.id === "switch" || s.id.startsWith("switch-") ? (s.id === "switch" && b.countdown != null ? `Switch (${b.countdown})` : "Switch") : s.deferred ? "Open" : "Apply"}</Button> : null}
+                {!s.blocked ? (isCreateItemSuggestion(s) ? <CreateItemChoiceButton s={s} onApply={onApply} className="h-6 rounded-full px-2.5 text-[11px]" /> : <Button type="button" size="sm" variant="outline" className="h-6 rounded-full px-2.5 text-[11px]" onClick={() => onApply(s)}>{suggestionActionLabel(s, b.countdown)}</Button>) : null}
               </div>
             ))}
-            <div className="flex justify-end">
+            <div className="flex flex-wrap justify-end gap-1.5">
+              {b.items.filter((x) => isCreateItemSuggestion(x) && !x.blocked).length >= 2 ? <Button type="button" size="sm" variant="outline" className={pill} onClick={() => onCreateAllItems?.(b.items.filter((x) => isCreateItemSuggestion(x) && !x.blocked))}>Create All</Button> : null}
               <Button type="button" size="sm" variant="ghost" className={pill} onClick={onDismiss}>Dismiss</Button>
             </div>
           </div>
@@ -861,10 +903,12 @@ export function OcrFieldBubbles({
   bubbles,
   onApply,
   onDismiss,
+  onCreateAllItems,
 }: {
   bubbles: OcrBubble[];
-  onApply: (s: OcrSuggestion) => void;
+  onApply: (s: OcrSuggestion, mode?: "auto" | "manual") => void;
   onDismiss: (b: OcrBubble) => void;
+  onCreateAllItems?: (items: OcrSuggestion[]) => void;
 }) {
   const [mobile, setMobile] = useState(false);
   const [idx, setIdx] = useState(0);
@@ -889,7 +933,8 @@ export function OcrFieldBubbles({
           key={`${b.kind}:${b.key}:${b.anchor ?? ""}`}
           b={b}
           onApply={onApply}
-          onDismiss={() => onDismiss(b)}
+          onCreateAllItems={onCreateAllItems}
+            onDismiss={() => onDismiss(b)}
           scrollOnMount={mobile || i === 0}
           nav={mobile ? { i: idx, n: bubbles.length, prev: () => setIdx((x) => Math.max(0, x - 1)), next: () => setIdx((x) => Math.min(bubbles.length - 1, x + 1)) } : undefined}
         />

@@ -104,6 +104,8 @@ import { sidebarEntityMenuLabel } from "@/lib/sidebarEntityMenuLabels";
 import { apkCloudCompanyOfflineViewOnly, apkCloudEntityMasterReadFromSqliteMirror, apkEntityWriteUsesLocalSqliteMirror } from "@/lib/apkOnlineFirestoreWritePolicy";
 import { useNavigatorOnline } from "@/hooks/useNavigatorOnline";
 import { itemStrippedRowToCreateItemFormPatch } from "@/lib/crossCompanyMasterPrefill";
+import { baseUnitConversions, collectItemUnits, computeItemUnitPrices } from "@/components/items/itemUnitPrices";
+import { writeNewItemRecord } from "@/components/items/createItemSilent";
 import { upsertCompanyDocInBrowserDb, listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { enqueueCompanyDocOutbox } from "@/lib/localVoucherOutbox";
 import {
@@ -317,7 +319,33 @@ export function CreateItemDialog({
       const patch = itemStrippedRowToCreateItemFormPatch(row, t);
       const resolvedType = (patch.type as typeof t) || t;
       const base = getInitialFormValues(resolvedType);
-      form.reset({ ...base, ...patch } as z.infer<typeof formSchema>);
+      const detail = event as CustomEvent<{ preserveGroupId?: boolean; ocrGroups?: Array<{ id: string; name?: string; parentId?: string | null }> }>;
+      const preserveGroupId = detail.detail?.preserveGroupId === true;
+      const groupId = preserveGroupId && typeof row.groupId === "string" ? row.groupId.trim() : "";
+      const unitConversions = baseUnitConversions(
+        String(row.purchasePriceUnit || row.salePriceUnit || ""),
+        Array.isArray((patch as { unitConversions?: unknown }).unitConversions) ? (patch as { unitConversions: { fromUnit?: string; toUnit?: string; conversionFactor?: number }[] }).unitConversions : undefined,
+      );
+      const purchaseTaxId = preserveGroupId ? String(row.purchaseTaxId ?? "") : "";
+      const saleTaxId = preserveGroupId ? String(row.saleTaxId ?? "") : "";
+      form.reset({
+        ...base,
+        ...patch,
+        unitConversions: unitConversions.length ? unitConversions : base.unitConversions,
+        ...(groupId ? { groupId } : {}),
+        ...(purchaseTaxId ? { purchaseTaxId } : {}),
+        ...(saleTaxId ? { saleTaxId } : {}),
+      } as z.infer<typeof formSchema>);
+      const extraGroups = detail.detail?.ocrGroups ?? [];
+      if (extraGroups.length) {
+        setGroups((prev) => {
+          const byId = new Map(prev.map((g) => [g.id, g]));
+          for (const g of extraGroups) {
+            if (g?.id && !byId.has(g.id)) byId.set(g.id, { ...g, id: g.id, name: String(g.name ?? "") } as ItemGroup);
+          }
+          return [...byId.values()];
+        });
+      }
     };
     document.addEventListener("prefill-create-item-from-row", handlePrefillRow as EventListener);
     return () => document.removeEventListener("prefill-create-item-from-row", handlePrefillRow as EventListener);
@@ -430,9 +458,17 @@ export function CreateItemDialog({
     if (!isOpen || !companyId) return;
     let cancelled = false;
 
+    const mergeIn = (incoming: ItemGroup[]) => {
+      if (!incoming.length) return;
+      setGroups((prev) => {
+        const byId = new Map(prev.map((g) => [g.id, g]));
+        for (const g of incoming) if (g?.id) byId.set(g.id, g);
+        return [...byId.values()];
+      });
+    };
     const fallbackGroups = () => {
       const g = (processedItemGroupsRef.current || []) as unknown as ItemGroup[];
-      if (g.length) setGroups(g);
+      if (g.length) mergeIn(g);
     };
     const fallbackTaxes = () => {
       const t = (processedTaxesRef.current || []) as unknown as Tax[];
@@ -450,7 +486,7 @@ export function CreateItemDialog({
           ]);
           if (cancelled) return;
           if (gRows.length) {
-            setGroups(gRows.map((r: Record<string, unknown> & { id: string }) => ({ ...r, id: r.id } as ItemGroup)));
+            mergeIn(gRows.map((r: Record<string, unknown> & { id: string }) => ({ ...r, id: r.id } as ItemGroup)));
           }
           if (tRows.length) {
             setTaxes(tRows.map((r: Record<string, unknown> & { id: string }) => ({ ...r, id: r.id } as Tax)));
@@ -655,8 +691,7 @@ export function CreateItemDialog({
           isSalePriceTaxInclusive: values.isSalePriceTaxInclusive || false,
           isDeleted: false,
         };
-        await upsertCompanyDocInBrowserDb(companyId, "items", localId, payload);
-        await enqueueCompanyDocOutbox(companyId, "items", "create", localId, payload);
+        await writeNewItemRecord({ company, companyId, payload, id: localId });
         const showSyncHint = process.env.NEXT_PUBLIC_ENABLE_AUTO_BACKUP_SYNC === "1" && user.uid !== "local_guest_user";
         sonnerToast.success(showSyncHint ? "Saved. Will sync when online." : "Saved.", {
           id: toastId,
@@ -795,7 +830,7 @@ export function CreateItemDialog({
           openingBalanceNarration: values.openingBalanceNarration?.trim() || null,
       };
 
-      await setDoc(itemRef, submissionData);
+      await writeNewItemRecord({ company, companyId, payload: submissionData, id: newItemId });
 
       sonnerToast.success("Item Created!", { id: toastId, description: `"${values.name}" has been successfully created.` });
       
@@ -817,79 +852,22 @@ export function CreateItemDialog({
   }
 
   
-  const allUnits = [...new Set(watchedUnitConversions?.flatMap(uc => [uc.fromUnit, uc.toUnit]) || [])].filter(Boolean);
+  const allUnits = collectItemUnits(watchedUnitConversions, [watchedPurchasePriceUnit, watchedSalePriceUnit, watchedOpeningBalanceUnit]);
   const openingStockQty = form.watch('openingBalance') || 0;
   const openingStockRate = form.watch('openingBalanceRate') || 0;
   
-  const unitPrices = useMemo(() => {
-    const prices: Record<string, { purchase: number; sale: number; purchaseTax: number; saleTax: number; }> = {};
-    const conversions = watchedUnitConversions || [];
-    if (conversions.length === 0 || !conversions[0].toUnit) return prices;
-
-    const smallestUnit = conversions[conversions.length - 1].toUnit;
-
-    const purchaseTaxRate = taxes.find(t => t.id === watchedPurchaseTaxId)?.rate || 0;
-    const saleTaxRate = taxes.find(t => t.id === watchedSaleTaxId)?.rate || 0;
-
-    let basePurchasePrice = Number(watchedPurchasePrice) || 0;
-    if (watchedIsPurchaseTaxInclusive) {
-        basePurchasePrice = parseFloat((basePurchasePrice / (1 + purchaseTaxRate / 100)).toFixed(10));
-    }
-    if (watchedPurchasePriceUnit && smallestUnit && watchedPurchasePriceUnit !== smallestUnit) {
-        let factor = 1;
-        let current = watchedPurchasePriceUnit;
-        while (current !== smallestUnit) {
-            const conv = conversions.find((c) => c.fromUnit === current);
-            if (!conv) { factor = 0; break; }
-            factor *= Number(conv.conversionFactor) || 1;
-            current = conv.toUnit;
-        }
-        basePurchasePrice /= (factor || 1);
-    }
-
-    let baseSalePrice = Number(watchedSalePrice) || 0;
-    if (watchedIsSalePriceTaxInclusive) {
-        baseSalePrice = parseFloat((baseSalePrice / (1 + saleTaxRate / 100)).toFixed(10));
-    }
-    if (watchedSalePriceUnit && smallestUnit && watchedSalePriceUnit !== smallestUnit) {
-        let factor = 1;
-        let current = watchedSalePriceUnit;
-        while (current !== smallestUnit) {
-            const conv = conversions.find((c) => c.fromUnit === current);
-            if (!conv) { factor = 0; break; }
-            factor *= Number(conv.conversionFactor) || 1;
-            current = conv.toUnit;
-        }
-        baseSalePrice /= (factor || 1);
-    }
-
-    allUnits.forEach((unit) => {
-        let purchasePriceForUnit = basePurchasePrice;
-        let salePriceForUnit = baseSalePrice;
-
-        if (unit !== smallestUnit) {
-            let factor = 1;
-            let current = unit;
-             while (current !== smallestUnit) {
-                const conv = conversions.find((c) => c.fromUnit === current);
-                if (!conv) { factor = 0; break; }
-                factor *= Number(conv.conversionFactor) || 1;
-                current = conv.toUnit;
-            }
-            purchasePriceForUnit *= factor;
-            salePriceForUnit *= factor;
-        }
-
-        prices[unit] = {
-            purchase: purchasePriceForUnit,
-            sale: salePriceForUnit,
-            purchaseTax: purchasePriceForUnit * (purchaseTaxRate / 100),
-            saleTax: salePriceForUnit * (saleTaxRate / 100),
-        };
-    });
-
-    return prices;
-}, [allUnits, watchedUnitConversions, watchedPurchasePrice, watchedSalePrice, watchedPurchasePriceUnit, watchedSalePriceUnit, watchedPurchaseTaxId, watchedSaleTaxId, taxes, watchedIsPurchaseTaxInclusive, watchedIsSalePriceTaxInclusive]);
+  const unitPrices = useMemo(() => computeItemUnitPrices({
+    conversions: watchedUnitConversions,
+    units: allUnits,
+    purchasePrice: watchedPurchasePrice,
+    salePrice: watchedSalePrice,
+    purchasePriceUnit: watchedPurchasePriceUnit,
+    salePriceUnit: watchedSalePriceUnit,
+    purchaseTaxRate: taxes.find((t) => t.id === watchedPurchaseTaxId)?.rate || 0,
+    saleTaxRate: taxes.find((t) => t.id === watchedSaleTaxId)?.rate || 0,
+    purchaseInclusive: !!watchedIsPurchaseTaxInclusive,
+    saleInclusive: !!watchedIsSalePriceTaxInclusive,
+  }), [allUnits, watchedUnitConversions, watchedPurchasePrice, watchedSalePrice, watchedPurchasePriceUnit, watchedSalePriceUnit, watchedPurchaseTaxId, watchedSaleTaxId, taxes, watchedIsPurchaseTaxInclusive, watchedIsSalePriceTaxInclusive]);
   
   useEffect(() => {
     const openingStockUnit = form.getValues('openingBalanceUnit');

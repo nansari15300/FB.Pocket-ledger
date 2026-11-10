@@ -17,7 +17,7 @@ export type OcrSuggestion = {
   blocked?: string;
   /** Runs last (opens a dialog / switches voucher). */
   deferred?: boolean;
-  apply: (ctx?: { selectedIds: string[] }) => void | Promise<void>;
+  apply: (ctx?: { selectedIds: string[]; mode?: "auto" | "manual" }) => void | Promise<void>;
 };
 
 export function OcrSuggestionsDialog({

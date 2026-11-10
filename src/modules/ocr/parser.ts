@@ -8,10 +8,11 @@
  */
 import { parseDocDates, defaultVoucherDateWindow } from "@/lib/ocr/dates";
 import { amountsInLine, fixDigitConfusions, normalizeName, normalizeOcrLine, parseStrictAmount } from "./normalize";
-import { bestUniqueMatch, nameScore, namesOf } from "./fuzzy";
+import { bestUniqueMatch, nameScore, namesOf, tokenCoverageScore } from "./fuzzy";
 import { devanagariToRoman, nameSkeleton } from "./translit";
 import { isOcrSelectableParty } from "./types";
 import { ownNameRule, textHasOwnName, textHasOwnPan } from "./ownCompany";
+import { normalizeItemDescription } from "./extras";
 import type { OcrIdentifiers } from "./identifiers";
 import type {
   OcrItemLike,
@@ -173,6 +174,20 @@ function amountAfterLabel(lines: L[], re: RegExp, exclude?: RegExp): { value: nu
 type Col = "sn" | "desc" | "qty" | "unit" | "rate" | "amount";
 const NUM_ONLY = /^[\d,]+(\.\d+)?$/;
 
+const QTY_UNIT_LEAK = /\d[\d,]*(?:\.\d+)?\s+(?:pcs?|nos?|pieces?|ltr|ltrs|litres?|liters?|kgs?|gms?|grams?|mtrs?|meters?|metres?|box(?:es)?|bags?|sets?|pkts?|packets?|doz(?:en)?|ft)\.?\b/i;
+
+function finalizeItemDescription(...cands: (string | undefined | null)[]): string {
+  const cleaned = cands.map((c) => (c ? normalizeItemDescription(c) : "")).filter(Boolean);
+  const withSize = cleaned.find((c) => /\d+(?:\.\d+)?MM\b/i.test(c));
+  return withSize || cleaned[0] || "Item";
+}
+
+function preferTripletDescription(headerDesc: string, tripletDesc: string): string {
+  if (QTY_UNIT_LEAK.test(headerDesc) && !QTY_UNIT_LEAK.test(tripletDesc)) return finalizeItemDescription(tripletDesc, headerDesc);
+  return finalizeItemDescription(headerDesc, tripletDesc);
+}
+
+
 /** Any 3 numbers on a line with qty x rate ~= amount (rounded-qty tolerance), description = text before them. */
 function tripletRow(words: string[]): OcrLineItem | null {
   const toks = words.map((t) => t.replace(/[|\]\[}{()]/g, "")).filter(Boolean);
@@ -212,7 +227,7 @@ function tripletRow(words: string[]): OcrLineItem | null {
   const firstAlpha = toks.findIndex((t) => /[A-Za-z\u0900-\u097F]{2,}/.test(t));
   const descToks = firstAlpha >= 0 && firstAlpha < best.q.i ? toks.slice(firstAlpha, best.q.i) : [];
   const between = toks.slice(best.q.i + 1, best.r.i).find((t) => !NUM_ONLY.test(t));
-  return { description: descToks.join(" ").trim() || "Item", quantity: best.q.v, unit: normUnit(between), rate: best.r.v, amount: best.a.v };
+  return { description: finalizeItemDescription(descToks.join(" ").trim()), quantity: best.q.v, unit: normUnit(between), rate: best.r.v, amount: best.a.v };
 }
 
 function scanTripletRows(lines: L[], from: number, dbg: (m: string) => void): OcrLineItem[] {
@@ -251,7 +266,10 @@ function confirmQtyFromTotals(lines: L[], rows: OcrLineItem[], dbg: (m: string) 
 
 function parseLineItems(lines: L[], dbg: (m: string) => void): { rows: OcrLineItem[]; flagged: number } | null {
   const out = parseLineItemsInner(lines, dbg);
-  if (out?.rows.length) confirmQtyFromTotals(lines, out.rows, dbg);
+  if (out?.rows.length) {
+    confirmQtyFromTotals(lines, out.rows, dbg);
+    out.rows = out.rows.map((r) => ({ ...r, description: normalizeItemDescription(r.description) || r.description }));
+  }
   return out;
 }
 
@@ -281,7 +299,7 @@ function scanRateAmountRows(lines: L[], from: number, dbg: (m: string) => void):
       dbg(`Row "${l.text}": rate ${rate} / amount ${amount} but qty could not be confirmed`);
       continue;
     }
-    out.push({ description: desc, quantity: q, rate, amount });
+    out.push({ description: finalizeItemDescription(desc), quantity: q, rate, amount });
     dbg(`Row "${l.text}": no qty column; ${q} x ${rate} = ${amount} (qty from ${how})`);
   }
   return out;
@@ -429,7 +447,7 @@ function parseLineItemsByHeader(lines: L[], dbg: (m: string) => void): { rows: O
     if (qty == null || rate == null || amount == null || !(qty > 0) || !(rate > 0)) {
       const t = tripletRow(words.map((w) => w.text));
       if (t) {
-        rows.push({ ...t, description: description || t.description, unit: unit ?? t.unit });
+        rows.push({ ...t, description: preferTripletDescription(description, t.description), unit: unit ?? t.unit });
         dbg(`Row "${l.text}": columns incomplete; recovered ${t.quantity} x ${t.rate} = ${t.amount}`);
         continue;
       }
@@ -437,7 +455,7 @@ function parseLineItemsByHeader(lines: L[], dbg: (m: string) => void): { rows: O
       if (amount != null && amount >= 1) {
         const rec = recoverQtyRate(cell.rate?.join("") ?? "", amount, totalsQty(lines));
         if (rec) {
-          rows.push({ description: description || "Item", quantity: rec.q, unit, rate: rec.r, amount });
+          rows.push({ description: finalizeItemDescription(description), quantity: rec.q, unit, rate: rec.r, amount });
           dbg(`Row "${l.text}": qty unreadable; recovered ${rec.q} x ${rec.r} = ${amount} (${rec.how})`);
           continue;
         }
@@ -454,7 +472,7 @@ function parseLineItemsByHeader(lines: L[], dbg: (m: string) => void): { rows: O
     if (Math.abs(qty * rate - amount) > Math.max(0.6, 0.005 * amount)) {
       const t = tripletRow(words.map((w) => w.text));
       if (t) {
-        rows.push({ ...t, description: description || t.description, unit: unit ?? t.unit });
+        rows.push({ ...t, description: preferTripletDescription(description, t.description), unit: unit ?? t.unit });
         dbg(`Row "${description}": ${qty} x ${rate} != ${amount}; recovered ${t.quantity} x ${t.rate} = ${t.amount} (decimal point restored)`);
         continue;
       }
@@ -462,7 +480,10 @@ function parseLineItemsByHeader(lines: L[], dbg: (m: string) => void): { rows: O
       flagged++;
       continue;
     }
-    rows.push({ description: fbDesc || description || "Item", quantity: qty, unit, rate, amount });
+    {
+      const t = tripletRow(words.map((w) => w.text));
+      rows.push({ description: finalizeItemDescription(t?.description, description, fbDesc), quantity: qty, unit: unit ?? t?.unit, rate, amount });
+    }
   }
   return { rows, flagged, head: head + 1 };
 }
@@ -664,6 +685,32 @@ export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
       if (best) {
         out.partyId = f(best.item.id, "fill", Math.min(best.score, 0.95));
         dbg(`Party: matched "${best.item.name}" by name/alias sound (${Math.round(best.score * 100)}%)`);
+      }
+    }
+  }
+  // Token coverage (after 0.95 name + skeleton fill attempts): bill tokens as an ordered prefix of the master.
+  // Unique score >= 0.95 fills; unique 0.6 is suggestion/flag only; ties never fill.
+  if (!out.partyId && partyName) {
+    const scored = pool
+      .map((p) => ({
+        p,
+        score: Math.max(0, ...namesOf(p).map((x) => tokenCoverageScore(partyName.text, x))),
+      }))
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score);
+    const top = scored[0];
+    if (top) {
+      const tied = scored.filter((x) => x.score === top.score);
+      if (tied.length === 1) {
+        if (top.score >= 0.95) {
+          out.partyId = f(top.p.id, "fill", top.score);
+          dbg(`Party: matched "${top.p.name}" by token coverage (${Math.round(top.score * 100)}%)`);
+        } else if (top.score >= 0.6) {
+          out.partyId = f(top.p.id, "flag", top.score, "Name shares a prefix only - confirm the party");
+          dbg(`Party: "${top.p.name}" token coverage ${Math.round(top.score * 100)}% (suggestion only)`);
+        }
+      } else {
+        dbg(`Party: token coverage tied between ${tied.map((t) => t.p.name).join(" / ")} (${Math.round(top.score * 100)}%) - not filled`);
       }
     }
   }

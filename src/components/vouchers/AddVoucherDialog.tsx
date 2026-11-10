@@ -91,6 +91,7 @@ import { normalizeFileUrlsField } from "@/lib/voucherAttachmentNormalize";
 import { resolveAuthoritativeFirestoreCompanyId } from "@/lib/resolveAuthoritativeFirestoreCompanyId";
 import { isLocalFileRef } from "@/lib/localPendingFiles";
 import { writeSelectedCompanyId } from "@/lib/selectedCompanyStorage";
+import { isPocketBaseCompany, setDialogActivePocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { normalizePrefix } from "@/lib/voucherNumberFormat";
 import { getNextVoucherNumberForCompany } from "@/lib/nextVoucherNumber";
 import { isRecurringVoucherGenerationEnabled } from "@/lib/recurringVoucherSettings";
@@ -1965,6 +1966,40 @@ export function AddVoucherDialog(props: any) {
     },
     [voucherFormActiveTab, postCopyNewFormSeed, apkLedgerPinsShellCompanyContext, setCompanyId, lastReseededTargetRef]
   );
+
+  const [dialogMastersPulling, setDialogMastersPulling] = useState(false);
+  useEffect(() => {
+    const dest = String(targetCompanyId || "").trim();
+    const shell = String(ctxCompanyId || "").trim();
+    if (!isOpen || !dest || dest === shell) {
+      setDialogActivePocketBaseCompanyId(null);
+      setDialogMastersPulling(false);
+      return () => setDialogActivePocketBaseCompanyId(null);
+    }
+    const targetRow = copyToCompanies.find((c) => c.id === dest) ?? null;
+    if (!isPocketBaseCompany(dest, targetRow)) {
+      setDialogActivePocketBaseCompanyId(null);
+      setDialogMastersPulling(false);
+      return () => setDialogActivePocketBaseCompanyId(null);
+    }
+    let cancelled = false;
+    setDialogActivePocketBaseCompanyId(dest);
+    setDialogMastersPulling(true);
+    void (async () => {
+      try {
+        const { pullPocketBaseVoucherFormMastersToLocal } = await import("@/lib/pocketbaseData/pbSync");
+        await pullPocketBaseVoucherFormMastersToLocal(dest);
+      } catch {
+        /* Offline: nested VoucherProvider keeps whatever is already in the SQLite mirror. */
+      } finally {
+        if (!cancelled) setDialogMastersPulling(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      setDialogActivePocketBaseCompanyId(null);
+    };
+  }, [isOpen, targetCompanyId, ctxCompanyId, copyToCompanies]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -4926,13 +4961,26 @@ export function AddVoucherDialog(props: any) {
             }}
           >
             {headerBlock}
+            {dialogMastersPulling ? (
+              <div
+                className="flex items-center gap-2 border-b bg-muted/70 px-3 py-1.5 text-xs text-muted-foreground"
+                role="status"
+                aria-live="polite"
+              >
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                Loading parties, items and accounts for this company…
+              </div>
+            ) : null}
             {/* Desktop: ONE horizontal scroller around form body + footer; header stays fixed. Inner wrapper min-width per voucher type. */}
             <div className="flex-1 flex flex-col min-h-0 overflow-x-auto overflow-y-hidden scrollbar-slim-dim">
               <div
-                className="flex flex-1 flex-col min-h-0 w-full"
+                className="relative flex flex-1 flex-col min-h-0 w-full"
                 style={{ minWidth: DESKTOP_VOUCHER_BODY_MIN_W[voucherFormActiveTab] ?? DESKTOP_VOUCHER_BODY_MIN_W_DEFAULT }}
               >
                 {bodyBlock}
+                {dialogMastersPulling ? (
+                  <div className="absolute inset-0 z-20 bg-background/40" aria-hidden />
+                ) : null}
               </div>
             </div>
             {/* Top handles z-[35] — ribbon z-20 ke upar; bottom jaisa resize. */}
@@ -5025,9 +5073,24 @@ export function AddVoucherDialog(props: any) {
             )}
           >
             {headerBlock}
+            {dialogMastersPulling ? (
+              <div
+                className="flex items-center gap-2 border-b bg-muted/70 px-3 py-1.5 text-xs text-muted-foreground"
+                role="status"
+                aria-live="polite"
+              >
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                Loading parties, items and accounts for this company…
+              </div>
+            ) : null}
             {/* Header fixed feel: form area scroll; min-h-0 ta flex child shrink ho sake */}
             {/* scrollbar-slim-dim: vertical bar mota default na ho — form ke horizontal jaisa patla */}
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain scrollbar-slim-dim">{bodyBlock}</div>
+            <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain scrollbar-slim-dim">
+              {bodyBlock}
+              {dialogMastersPulling ? (
+                <div className="absolute inset-0 z-20 bg-background/40" aria-hidden />
+              ) : null}
+            </div>
           </div>
         </DialogContent>
       )}

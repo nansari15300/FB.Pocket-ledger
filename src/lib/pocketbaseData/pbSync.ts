@@ -8,7 +8,8 @@
  * Direct mutation wrappers (setDoc/updateDoc/deleteDoc/addDoc on `companies/{id}/...`)
  *   -> `pbWriteAppDoc` for PocketBase companies.
  * Read path: `pullPocketBaseCompanyToLocal` -> SQLite mirror (`company_docs`), driven by the
- *   server change log (`pl_change_log`). Idle poll / live apply: selected company only.
+ *   server change log (`pl_change_log`). Idle poll / full catch-up: sidebar selected company only.
+ *   A voucher-dialog target may also be active for live apply + masters-only pull.
  *
  * Rows: one per app document, key = (company, app_id[, kind | coll]); the full document is
  * in `data` (timestamps encoded as `{__fsTs, seconds, nanoseconds}` like the outbox).
@@ -34,6 +35,7 @@ import {
 } from "@/lib/pocketbaseData/pbMapping";
 import {
   clearPocketBaseCompanyPruned,
+  activePocketBaseCompanyId,
   isActivePocketBaseCompanyId,
   listActivePocketBaseCompanyIds,
   listPocketBaseCompanyIds,
@@ -1132,7 +1134,9 @@ export async function applyPocketBaseRealtimeRecord(
     /* collection bump already refreshed open lists */
   }
   // A voucher / document from another device may carry a new file: fetch it to this device (debounced).
-  if (actionLower !== "delete" && !hardDeleted) queuePbFilesForCompany(hit.appCompanyId);
+  if (actionLower !== "delete" && !hardDeleted && hit.appCompanyId === activePocketBaseCompanyId()) {
+    queuePbFilesForCompany(hit.appCompanyId);
+  }
   return "applied";
 }
 
@@ -1161,9 +1165,18 @@ function groupRecords(
  * First run (or server URL change): full read of every data collection.
  * Later runs: only rows named in the server change log since the cursor.
  */
-export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { full?: boolean }): Promise<PbPullResult> {
+export async function pullPocketBaseCompanyToLocal(
+  companyId: string,
+  opts?: { full?: boolean; collections?: readonly string[] }
+): Promise<PbPullResult> {
   const auth = getValidPocketBaseAuth();
   if (!auth) return { full: false, changed: 0, collections: {} };
+  const allow = new Set<string>(PB_DATA_COLLECTIONS);
+  const pullCollections = (opts?.collections?.length
+    ? opts.collections.filter((c) => allow.has(c))
+    : PB_DATA_COLLECTIONS) as readonly string[];
+  if (!pullCollections.length) return { full: false, changed: 0, collections: {} };
+  const collectionScoped = !!opts?.collections?.length;
   const companyRec = await ensurePocketBaseCompany(companyId);
   const cf = `company = ${pbQuote(companyRec)}`;
   const cursor = opts?.full ? null : readCursor(companyId);
@@ -1180,7 +1193,7 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
     // killed / offline pull keeps what was already written (the cursor below is saved only after a full success).
     let totalDocs: number | null = 0;
     try {
-      const counts = await Promise.all(PB_DATA_COLLECTIONS.map((c) => pbServerCount(c, cf)));
+      const counts = await Promise.all(pullCollections.map((c) => pbServerCount(c, cf)));
       for (const n of counts) {
         if (n == null) {
           totalDocs = null;
@@ -1191,12 +1204,14 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
     } catch {
       totalDocs = null;
     }
-    setPbDataPullProgress({ active: true, companyId, collection: "", docs: 0, total: totalDocs }, true);
+    if (!collectionScoped) {
+      setPbDataPullProgress({ active: true, companyId, collection: "", docs: 0, total: totalDocs }, true);
+    }
     let docsDone = 0;
     try {
       const { notifyBrowserDbCollectionUpdated } = await import("@/lib/localCompanyDocMirror");
-      for (const coll of PB_DATA_COLLECTIONS) {
-        setPbDataPullProgress({ collection: coll });
+      for (const coll of pullCollections) {
+        if (!collectionScoped) setPbDataPullProgress({ collection: coll });
         const touched = new Set<string>();
         await pbListAll<PbRecord>(coll, cf, {
           discard: true,
@@ -1216,7 +1231,7 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
               }
             }
             docsDone += recs.length;
-            setPbDataPullProgress({ docs: docsDone });
+            if (!collectionScoped) setPbDataPullProgress({ docs: docsDone });
           },
         });
         for (const k of touched) {
@@ -1224,9 +1239,9 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
         }
       }
     } finally {
-      resetPbDataPullProgress();
+      if (!collectionScoped) resetPbDataPullProgress();
     }
-    await syncCompanyRoot(companyId, true);
+    if (!collectionScoped) await syncCompanyRoot(companyId, true);
     if (failedOut.n > 0 && docsDone === 0) {
       // Complete failure: 0 docs written, discard cursor to force full pull next time.
       console.warn("[pbSync] full pull: ALL writes failed (" + failedOut.n + ") - cursor not saved", companyId);
@@ -1238,11 +1253,13 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
       console.warn("[pbSync] full pull: partial write failure", failedOut.n, "docs - cursor saved anyway", companyId);
     }
     // Save cursor (even on partial failure, so next pull is incremental delta not full).
-    writeCursor(companyId, { atMs: maxAt, url: auth.url });
-    // First login / full pull: bring every server file of this company to the device too.
-    void import("@/lib/pocketbaseData/pbFilesPull")
-      .then((m) => m.queuePbFilesSync(companyId, { delayMs: 500 }))
-      .catch(() => {});
+    if (!collectionScoped) {
+      writeCursor(companyId, { atMs: maxAt, url: auth.url });
+      // First login / full pull: bring every server file of this company to the device too.
+      void import("@/lib/pocketbaseData/pbFilesPull")
+        .then((m) => m.queuePbFilesSync(companyId, { delayMs: 500 }))
+        .catch(() => {});
+    }
     return { full: true, changed, collections };
   }
 
@@ -1254,7 +1271,7 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
     { sort: "at_ms", fields: "coll,record_id,op,at_ms", maxPages: 20 }
   );
   if (!logs.length) {
-    if (isPocketBaseCompanyRootDirty(companyId)) await syncCompanyRoot(companyId, false);
+    if (!collectionScoped && isPocketBaseCompanyRootDirty(companyId)) await syncCompanyRoot(companyId, false);
     return { full: false, changed: 0, collections: {} };
   }
   let maxAt = cursor.atMs;
@@ -1264,7 +1281,7 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
     maxAt = Math.max(maxAt, Number(l.at_ms) || 0);
     const coll = String(l.coll || "");
     if (coll === "pl_companies") rootChanged = true;
-    if (!(PB_DATA_COLLECTIONS as readonly string[]).includes(coll) || !l.record_id) continue;
+    if (!(pullCollections as readonly string[]).includes(coll) || !l.record_id) continue;
     const s = idsByColl.get(coll) || new Set<string>();
     s.add(String(l.record_id));
     idsByColl.set(coll, s);
@@ -1294,7 +1311,7 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
       /* collection bump already refreshed open lists */
     }
   }
-  if (rootChanged || isPocketBaseCompanyRootDirty(companyId)) {
+  if (!collectionScoped && (rootChanged || isPocketBaseCompanyRootDirty(companyId))) {
     rootCache.delete(companyId);
     await syncCompanyRoot(companyId, rootChanged);
   }
@@ -1303,9 +1320,30 @@ export async function pullPocketBaseCompanyToLocal(companyId: string, opts?: { f
     console.warn("[pbSync] pull: local write failed for", failedOut.n, "docs - cursor not advanced", companyId);
     return { full: false, changed, collections, failed: failedOut.n };
   }
-  writeCursor(companyId, { atMs: maxAt, url: auth.url });
-  if (changed > 0) queuePbFilesForCompany(companyId);
+  if (!collectionScoped) {
+    writeCursor(companyId, { atMs: maxAt, url: auth.url });
+    if (changed > 0) queuePbFilesForCompany(companyId);
+  }
   return { full: false, changed, collections };
+}
+
+/** PocketBase collections the voucher form needs (parties / items / ledgers / groups). No vouchers or files. */
+export const PB_VOUCHER_FORM_MASTER_COLLECTIONS = [
+  "pl_parties",
+  "pl_bank_accounts",
+  "pl_staff",
+  "pl_items",
+  "pl_taxes",
+  "pl_expense_accounts",
+  "pl_groups",
+] as const;
+
+/**
+ * Dialog-only pull for a company that is not the sidebar selection.
+ * Does not advance the company pull cursor, so a later full/incremental sync is not short-circuited.
+ */
+export async function pullPocketBaseVoucherFormMastersToLocal(companyId: string): Promise<PbPullResult> {
+  return pullPocketBaseCompanyToLocal(companyId, { collections: PB_VOUCHER_FORM_MASTER_COLLECTIONS });
 }
 
 /** New / changed server rows may carry new files: queue the (debounced, incremental) device file pull. */

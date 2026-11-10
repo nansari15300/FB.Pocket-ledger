@@ -23,9 +23,11 @@ import {
   pbDeviceId,
   pocketBaseCompanyRecId,
   pullPocketBaseCompanyToLocalHealed,
+  pullPocketBaseVoucherFormMastersToLocal,
 } from "@/lib/pocketbaseData/pbSync";
 import {
   activePocketBaseCompanyId,
+  dialogActivePocketBaseCompanyId,
   isActivePocketBaseCompanyId,
   listActivePocketBaseCompanyIds,
   listPocketBaseCompanyIds,
@@ -210,6 +212,9 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
   let useFetch = typeof fetch === "function" && typeof ReadableStream !== "undefined";
   let lastCatchupAt = 0;
   const pendingPull = new Set<string>();
+  const pendingDialogMasters = new Set<string>();
+  let dialogMasterTimer: number | null = null;
+  let pullingDialogMasters = false;
   const liveQueue: Array<{ collection: string; action?: string; record: Record<string, unknown> }> = [];
   const myDevice = pbDeviceId();
   const topics = topicsFor(mode);
@@ -252,6 +257,33 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
   const schedulePull = () => {
     if (closed || pullTimer != null) return;
     pullTimer = window.setTimeout(() => void runPulls(), PULL_DEBOUNCE_MS);
+  };
+
+  const scheduleDialogMasters = () => {
+    if (closed || dialogMasterTimer != null) return;
+    dialogMasterTimer = window.setTimeout(() => void runDialogMasterPulls(), PULL_DEBOUNCE_MS);
+  };
+
+  const runDialogMasterPulls = async () => {
+    dialogMasterTimer = null;
+    if (pullingDialogMasters || closed) return;
+    pullingDialogMasters = true;
+    const ids = Array.from(pendingDialogMasters).filter((id) => id === dialogActivePocketBaseCompanyId());
+    pendingDialogMasters.clear();
+    try {
+      for (const id of ids) {
+        if (closed) break;
+        if (id !== dialogActivePocketBaseCompanyId()) continue;
+        try {
+          await pullPocketBaseVoucherFormMastersToLocal(id);
+        } catch (e) {
+          console.warn("[pbRealtime] dialog masters pull failed", id, e instanceof Error ? e.message : e);
+        }
+      }
+    } finally {
+      pullingDialogMasters = false;
+      if (pendingDialogMasters.size) scheduleDialogMasters();
+    }
   };
 
   const queueAll = (opts?: { force?: boolean }) => {
@@ -309,9 +341,15 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
     if (myDevice && rec?.deviceId === myDevice) return;
     const hit = appCompanyIdForPocketBaseRecord(companyRecId, listPocketBaseCompanyIds());
     if (hit.appCompanyId) {
-      if (!isActivePocketBaseCompanyId(hit.appCompanyId)) return;
-      pendingPull.add(hit.appCompanyId);
-      schedulePull();
+      if (hit.appCompanyId === activePocketBaseCompanyId()) {
+        pendingPull.add(hit.appCompanyId);
+        schedulePull();
+        return;
+      }
+      if (hit.appCompanyId === dialogActivePocketBaseCompanyId()) {
+        pendingDialogMasters.add(hit.appCompanyId);
+        scheduleDialogMasters();
+      }
     }
   };
 
@@ -568,8 +606,10 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
     window.removeEventListener(SELECTED_COMPANY_CHANGED_EVENT, onSelectedCompany);
     if (retryTimer != null) window.clearTimeout(retryTimer);
     if (pullTimer != null) window.clearTimeout(pullTimer);
+    if (dialogMasterTimer != null) window.clearTimeout(dialogMasterTimer);
     dropStream();
     pendingPull.clear();
+    pendingDialogMasters.clear();
     liveQueue.length = 0;
   };
 }

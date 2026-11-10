@@ -23,6 +23,8 @@ import { OcrFieldBubbles, ocrFieldForMissing, ocrFieldForSuggestion, useOcrTabBa
 import { cancelOcrHandoff, parkOcrSession, requestOcrVoucherSwitch, resumeOcrSession, sameVoucherBucket, takeOcrHandoff } from "./handoff";
 import { CreatePartyDialog } from "@/components/party/CreatePartyDialog";
 import { CreateItemDialog } from "@/components/items/CreateItemDialog";
+import { createItemSilent, findExistingItemByName } from "@/components/items/createItemSilent";
+import { baseUnitConversions, normalizeItemUnitName } from "@/components/items/itemUnitPrices";
 import { CreateTaxDialog } from "@/components/tax/CreateTaxDialog";
 import { PARTY_FORM_DEFAULT_ACCOUNT_TYPE_ID, PARTY_SYSTEM_CREDITORS_ID } from "@/lib/partySystemGroups";
 import { installOcrOriginalCapture, linkOcrOriginal, takeOcrOriginal } from "./ocrOriginals";
@@ -30,13 +32,17 @@ import { registerPreOcr } from "./ocrOriginals";
 import type { OcrRawResult } from "./types";
 import { isOcrSelectableParty } from "./types";
 import { resolveOcrItemUnit } from "./extras";
+import { inferItemGroupFromName } from "./extras";
+import { findOrCreateSheetSizeItemGroups, mergeMasterGroups, type MasterGroupLike } from "@/lib/masterEntityGroupWrite";
 import { billVatPercent, cleanItemName, partyNamePrefill, findVat13, isOwnCompany, otherPans, pickLedgerAccount } from "./extras";
 import { getBlobFromLocalFileRef, isLocalFileRef } from "@/lib/localPendingFiles";
 import { fetchPbAttachmentBlob } from "@/lib/pocketbaseData/pbAttachments";
 import { useCompany } from "@/hooks/useCompany";
+import { useAuth } from "@/hooks/useAuth";
 import { useVouchers } from "@/hooks/useVouchers";
 import { detectReceipt, AUTO_SWITCH_MIN_CONF, type ReceiptDetection } from "@/lib/ocr/receiptDetect";
 import { accountDisplayLabel, buildMoneyVoucherFill, pickChargeAccount, receiptNarration, suggestMaskedPayees } from "@/lib/ocr/receiptDetect/fillPaymentOut";
+import { paymentAmountFromBill } from "./fillPaymentOut";
 import { normalizeName } from "./normalize";
 import type { OcrFormAdapter } from "./adapters";
 import type { OcrItemLike, OcrParsedBill, OcrPartyLike } from "./types";
@@ -115,7 +121,7 @@ async function loadFirstFile(f: File | string, companyId?: string | null): Promi
 }
 
 /** Bump when parser/engine logic changes: shown in Show OCR text to prove the browser runs the new bundle. */
-export const OCR_BUILD = "2026-11-10.4";
+export const OCR_BUILD = "2026-11-10.7";
 
 const MONEY_TYPES = ["payment_out", "payment_in", "direct_expense", "direct_income", "contra"] as const;
 const ALL_TYPE_CHOICES = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"] as const;
@@ -134,11 +140,17 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const planAllowed = useOcrPlanAllowed();
   // Own company straight from the company profile (not only form props) - hard guard against offering ourselves as party
   const { company: profileCompany } = useCompany();
+  const { user } = useAuth();
   const ownRef = useRef<{ name: string | null; pan: string | null }>({ name: null, pan: null });
   // Bank-receipt masters (local in-memory context, no Firestore read): own Bank/Cash, parties, staff
-  const { processedAccounts: vAccounts, processedParties: vParties, processedStaff: vStaff, processedExpenseAccounts: vExp, vouchers: vVouchers } = useVouchers();
+  const { processedAccounts: vAccounts, processedParties: vParties, processedStaff: vStaff, processedExpenseAccounts: vExp, vouchers: vVouchers, processedItemGroups: vItemGroups, processedItems: vProcItems } = useVouchers();
   const mastersRef = useRef({ accounts: vAccounts, parties: vParties, staff: vStaff, expense: vExp, vouchers: vVouchers });
   mastersRef.current = { accounts: vAccounts, parties: vParties, staff: vStaff, expense: vExp, vouchers: vVouchers };
+  const itemGroupsRef = useRef<MasterGroupLike[]>((vItemGroups ?? []) as MasterGroupLike[]);
+  // Merge hook lists into the ref; do not replace, or just-created Sheet/size groups are lost mid Create All.
+  itemGroupsRef.current = mergeMasterGroups(itemGroupsRef.current, (vItemGroups ?? []) as MasterGroupLike[]);
+  const procItemsRef = useRef(vProcItems ?? []);
+  procItemsRef.current = vProcItems ?? [];
   {
     const pc = profileCompany as { name?: string; pan?: string; panNumber?: string } | null | undefined;
     ownRef.current = { name: pc?.name || o.ownName || null, pan: pc?.pan || pc?.panNumber || o.ownPan || null };
@@ -151,7 +163,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const [running, setRunning] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [ids, setIds] = useState<OcrIdentifiers | null>(null);
+  const lastBillRef = useRef<OcrParsedBill | null>(null);
   const [lastBill, setLastBill] = useState<OcrParsedBill | null>(null);
+  lastBillRef.current = lastBill;
   const [debugInfo, setDebugInfo] = useState<{ text: string; meanConfidence: number; reasons: string[]; filled: string[]; missing: string[] } | null>(null);
   const [suggestions, setSuggestions] = useState<OcrSuggestion[]>([]);
   const [receiptTarget, setReceiptTarget] = useState<string | null>(null);
@@ -160,7 +174,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(() => new Set());
   const [missingNow, setMissingNow] = useState<string[]>([]);
   const [createPrefill, setCreatePrefill] = useState<Record<string, string> | null>(null);
-  const [createItemFor, setCreateItemFor] = useState<{ index: number; name: string; unit?: string; rate: number } | null>(null);
+  const [createItemFor, setCreateItemFor] = useState<{ index: number; name: string; unit?: string; rate: number; groupId?: string; ocrGroups?: MasterGroupLike[] } | null>(null);
   const [createTaxOpen, setCreateTaxOpen] = useState(false);
   const [vatPct, setVatPct] = useState(13);
   const filledRef = useRef(new Map<string, unknown>());
@@ -240,6 +254,109 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     form.setValue(path, value as never, { shouldDirty: true, shouldValidate: false });
     filledRef.current.set(path, form.getValues(path));
   }, []);
+
+
+  const itemCreateApiRef = useRef<{
+    auto: (index: number, row: { description: string; unit?: string; rate: number }, known?: { id: string; name?: string; isDeleted?: boolean }[]) => Promise<{ ok: true; id: string; reused: boolean; name: string } | { ok: false; message: string }>;
+    manual: (index: number, row: { description: string; unit?: string; rate: number }) => Promise<void>;
+    all: (items: { id: string }[]) => Promise<void>;
+  }>(null as never);
+
+  const applyCreatedItemToLine = useCallback((index: number, id: string, billUnit?: string) => {
+    const A = optsRef.current.adapter.lineItems;
+    if (!A || !id) return;
+    write(`${A.path}.${index}.itemId`, id);
+    const item = optsRef.current.items.find((it) => it.id === id) ?? (procItemsRef.current as { id: string }[] | undefined)?.find((it) => it.id === id);
+    const unit = resolveOcrItemUnit(item as never, billUnit, optsRef.current.adapter.partySide === "seller" ? "purchase" : "sale");
+    if (unit) write(`${A.path}.${index}.unit`, unit);
+    pendingRef.current.items.push({ index, id });
+  }, [write]);
+
+  itemCreateApiRef.current = {
+    auto: async (index, row, known) => {
+      const name = cleanItemName(row.description);
+      const companyId = optsRef.current.companyId;
+      const uid = user?.uid;
+      if (!companyId || !uid) return { ok: false, message: "You must be logged in and have a company selected." };
+      const existingItems = [
+        ...(known ?? []),
+        ...optsRef.current.items,
+        ...((procItemsRef.current ?? []) as { id: string; name?: string; isDeleted?: boolean }[]),
+      ];
+      const reused = findExistingItemByName(existingItems, name);
+      if (reused) {
+        applyCreatedItemToLine(index, reused.id, row.unit);
+        setDoneIds((p) => new Set([...p, `create-item-${index}`]));
+        return { ok: true, id: reused.id, reused: true, name };
+      }
+      let groupId: string | undefined;
+      const inferred = inferItemGroupFromName(name);
+      if (inferred) {
+        try {
+          const found = await findOrCreateSheetSizeItemGroups({
+            company: profileCompany, companyId, userId: uid, size: inferred.size, existing: itemGroupsRef.current,
+          });
+          itemGroupsRef.current = mergeMasterGroups(itemGroupsRef.current, found.groups);
+          groupId = found.childId;
+        } catch {
+          /* still create the item without a group */
+        }
+      }
+      const isPurchase = optsRef.current.adapter.partySide === "seller";
+      const vat = findVat13(optsRef.current.taxes);
+      const u = normalizeItemUnitName(row.unit);
+      const res = await createItemSilent({
+        company: profileCompany, companyId, userId: uid, name, type: "item", groupId: groupId ?? null,
+        purchasePrice: isPurchase ? row.rate : 0, salePrice: isPurchase ? 0 : row.rate,
+        purchasePriceUnit: u || null, salePriceUnit: u || null, unitConversions: baseUnitConversions(u),
+        purchaseTaxId: isPurchase ? (vat?.id ?? null) : null, saleTaxId: isPurchase ? null : (vat?.id ?? null),
+        existingItems,
+      });
+      if (res.ok === false) return { ok: false, message: res.message };
+      applyCreatedItemToLine(index, res.id, row.unit);
+      setDoneIds((p) => new Set([...p, `create-item-${index}`]));
+      return { ok: true, id: res.id, reused: res.reused, name };
+    },
+    manual: async (index, row) => {
+      const name = cleanItemName(row.description);
+      let groupId: string | undefined;
+      const inferred = inferItemGroupFromName(name);
+      const companyId = optsRef.current.companyId;
+      const uid = user?.uid;
+      if (inferred && companyId && uid) {
+        try {
+          const found = await findOrCreateSheetSizeItemGroups({
+            company: profileCompany, companyId, userId: uid, size: inferred.size, existing: itemGroupsRef.current,
+          });
+          itemGroupsRef.current = mergeMasterGroups(itemGroupsRef.current, found.groups);
+          groupId = found.childId;
+        } catch { /* form still opens without group */ }
+      }
+      setCreateItemFor({ index, name, unit: row.unit, rate: row.rate, groupId, ocrGroups: itemGroupsRef.current });
+    },
+    all: async (items) => {
+      const billRows = lastBillRef.current?.lineItems?.value ?? [];
+      const known: { id: string; name?: string; isDeleted?: boolean }[] = [];
+      let created = 0, reused = 0, failed = 0;
+      const toastId = toast.loading(`Creating items 0/${items.length}`);
+      for (let i = 0; i < items.length; i++) {
+        toast.loading(`Creating items ${i + 1}/${items.length}`, { id: toastId });
+        const id = items[i].id;
+        const index = Number(id.slice("create-item-".length));
+        const row = billRows[index];
+        if (!row || Number.isNaN(index)) { failed++; continue; }
+        const res = await itemCreateApiRef.current.auto(index, row, known);
+        if (res.ok) {
+          if (res.reused) reused++; else created++;
+          known.push({ id: res.id, name: res.name });
+        } else failed++;
+      }
+      const summary = `${created} created, ${reused} reused, ${failed} failed`;
+      if (failed && !created && !reused) toast.error(`Create All failed (${summary})`, { id: toastId });
+      else toast.success(`Items: ${summary}`, { id: toastId });
+    },
+  };
+
 
   const run = useCallback(
     async (reason: "auto" | "refresh" | "handoff", reuse?: { raw?: OcrRawResult; selectedIds?: string[]; direct?: File }) => {
@@ -660,11 +777,14 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           ledgerMissing = !pick;
         }
 
-        // Single amount (payments / contra / adjustment)
+        // Single amount (payments / contra / adjustment): write only when paymentAmountFromBill says fill
         if (A.amount) {
-          if (bill.amount?.status === "fill") {
-            if (canWrite(A.amount)) write(A.amount, bill.amount.value);
+          const payAmt = paymentAmountFromBill(bill);
+          if (payAmt?.mode === "fill") {
+            if (canWrite(A.amount)) write(A.amount, payAmt.value);
             markFill("Amount", "amount");
+          } else if (payAmt?.mode === "suggest") {
+            missing.push(payAmt.note ? `Amount (${payAmt.note})` : "Amount");
           } else missing.push(bill.amount ? `Amount (${bill.amount.note ?? "not confirmed"})` : "Amount");
         }
 
@@ -698,6 +818,19 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         }
         const billIsOwn = isOwnCompany(bill.partyName?.value, identifiers.pan, own);
         if (billIsOwn) bill.debug?.push("Create party skipped: extracted name/PAN is our own company");
+        if (A.party && !curParty && bill.partyId?.status === "flag" && bill.partyId.value) {
+          const flagged = opt.parties.find((p) => p.id === bill.partyId!.value);
+          if (flagged) {
+            sg.push({
+              id: "use-party",
+              label: `Use ${flagged.name}`,
+              value: flagged.name,
+              confidence: bill.partyId.confidence,
+              reason: bill.partyId.note ?? "Name shares a prefix only - confirm the party",
+              apply: () => write(A.party!.path, flagged.id),
+            });
+          }
+        }
         if (A.party && !curParty && !billIsOwn && (bill.partyName?.value || identifiers.pan)) {
           sg.push({
             id: "create-party", label: "Create new party", value: [bill.partyName?.value, identifiers.pan && `PAN ${identifiers.pan}`, identifiers.phones[0]].filter(Boolean).join(" · "),
@@ -731,10 +864,13 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             if (r.itemId) return;
             sg.push({
               id: `create-item-${index}`, label: `Create item: ${cleanItemName(r.description)}`,
-              value: [r.description, r.unit, `rate ${r.rate}`].filter(Boolean).join(" · "),
-              confidence: 0.8, reason: "No existing item matched - opens Create Item prefilled (name, purchase rate, unit); you confirm Save, then it is set on line " + (index + 1),
+              value: [cleanItemName(r.description), r.unit, `rate ${r.rate}`].filter(Boolean).join(" | "),
+              confidence: 0.8, reason: "No existing item matched. Create opens Auto Create (no form) or Manual Create (prefilled form), then the item is set on line " + (index + 1),
               deferred: true,
-              apply: () => setCreateItemFor({ index, name: cleanItemName(r.description), unit: r.unit, rate: r.rate }),
+              apply: async (ctx) => {
+                if (ctx?.mode === "auto") { await itemCreateApiRef.current.auto(index, r); return; }
+                await itemCreateApiRef.current.manual(index, r);
+              },
             });
           });
           const vat = bill.vat?.value ?? 0;
@@ -771,10 +907,18 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           }
         }
         if (bill.tds) sg.push({ id: "tds", label: "TDS", value: String(bill.tds.value), confidence: bill.tds.confidence, reason: "TDS needs a TDS account + verification", blocked: "Set TDS account on the line manually (hint only, per spec)", apply: () => undefined });
-        if (A.amount && bill.amount && bill.amount.status !== "fill") {
-          sg.push({ id: "amount", label: "Amount", value: String(bill.amount.value), confidence: bill.amount.confidence, reason: bill.amount.note, apply: () => write(A.amount!, bill.amount!.value) });
-        } else if (A.amount && !bill.amount && bill.total) {
-          sg.push({ id: "amount-total", label: "Amount (= bill total)", value: String(bill.total.value), confidence: bill.total.confidence, reason: bill.total.note, apply: () => write(A.amount!, bill.total!.value) });
+        if (A.amount) {
+          const payAmt = paymentAmountFromBill(bill);
+          if (payAmt?.mode === "suggest") {
+            sg.push({
+              id: payAmt.source === "total" ? "amount-total" : "amount",
+              label: payAmt.source === "total" ? "Amount (= bill total)" : "Amount",
+              value: String(payAmt.value),
+              confidence: payAmt.confidence,
+              reason: payAmt.note,
+              apply: () => write(A.amount!, payAmt.value),
+            });
+          }
         }
         if (A.narration && bill.billNo && !String(F.getValues(A.narration) ?? "").includes(bill.billNo.value)) {
           sg.push({ id: "billno", label: "Bill No → narration", value: bill.billNo.value, confidence: bill.billNo.confidence, apply: () => {
@@ -989,13 +1133,19 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       document.dispatchEvent(new CustomEvent("prefill-create-item-from-row", {
         // Unit selects in CreateItemDialog only list units present in unitConversions -> seed the base unit row too,
         // otherwise purchase/sale price unit stays blank even though a value was passed.
-        detail: { type: "item", rowPayload: (() => {
-          const raw = String(createItemFor.unit ?? "").trim();
-          const u = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "";
+        detail: { type: "item", preserveGroupId: true, ocrGroups: createItemFor.ocrGroups ?? [], rowPayload: (() => {
+          const u = normalizeItemUnitName(createItemFor.unit);
+          const isPurchase = optsRef.current.adapter.partySide === "seller";
+          const vat = findVat13(optsRef.current.taxes);
           return {
-            name: createItemFor.name, purchasePrice: createItemFor.rate,
+            name: createItemFor.name,
+            purchasePrice: isPurchase ? createItemFor.rate : 0,
+            salePrice: isPurchase ? 0 : createItemFor.rate,
             purchasePriceUnit: u, salePriceUnit: u, openingBalanceUnit: u,
-            ...(u ? { unitConversions: [{ fromUnit: u, toUnit: "", conversionFactor: 1 }] } : {}),
+            groupId: createItemFor.groupId || "",
+            purchaseTaxId: isPurchase ? (vat?.id ?? "") : "",
+            saleTaxId: isPurchase ? "" : (vat?.id ?? ""),
+            ...(u ? { unitConversions: baseUnitConversions(u) } : {}),
           };
         })() },
       }));
@@ -1161,7 +1311,12 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         <>
           <OcrFieldBubbles
             bubbles={bubbles}
-            onApply={(sg) => { if (sg.id !== "switch") cancelSwitchCountdown(); void runApply([sg]); }}
+            onApply={(sg, mode) => {
+              if (sg.id !== "switch") cancelSwitchCountdown();
+              if (sg.id.startsWith("create-item-") && mode) { void sg.apply({ selectedIds: [], mode }); return; }
+              void runApply([sg]);
+            }}
+            onCreateAllItems={(items) => { cancelSwitchCountdown(); void itemCreateApiRef.current.all(items); }}
             onDismiss={(b) => {
               cancelSwitchCountdown();
               if (b.kind === "missing") setMissingNow((p) => p.filter((m) => ocrFieldForMissing(m) !== b.key));

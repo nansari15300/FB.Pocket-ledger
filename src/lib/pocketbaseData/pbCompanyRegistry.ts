@@ -152,8 +152,10 @@ export function listPocketBaseCompanyIds(): string[] {
 }
 
 /**
- * The company this tab is showing. Idle PocketBase pull / live apply use only this id
+ * The company this tab / header is showing. Full idle catch-up pulls use only this id
  * so unselected companies stay on their last SQLite snapshot.
+ * A voucher-dialog target may also be marked active (see setDialogActivePocketBaseCompanyId)
+ * for live apply + masters-only pull, without becoming the sidebar selection.
  */
 export function activePocketBaseCompanyId(): string {
   const selected = String(readSelectedCompanyId() || "").trim();
@@ -161,14 +163,37 @@ export function activePocketBaseCompanyId(): string {
   return isPocketBaseCompanyId(selected) ? selected : "";
 }
 
+/** Full catch-up / idle pulls: sidebar selected company only (not the dialog target). */
 export function listActivePocketBaseCompanyIds(): string[] {
   const id = activePocketBaseCompanyId();
   return id ? [id] : [];
 }
 
+/** Voucher-dialog target while the dialog is open and it differs from the sidebar company. */
+let dialogActiveCompanyId = "";
+
+export function setDialogActivePocketBaseCompanyId(companyId: string | null | undefined): void {
+  const id = String(companyId || "").trim();
+  if (!id || id === activePocketBaseCompanyId()) {
+    dialogActiveCompanyId = "";
+    return;
+  }
+  dialogActiveCompanyId = id;
+}
+
+export function dialogActivePocketBaseCompanyId(): string {
+  const id = String(dialogActiveCompanyId || "").trim();
+  if (!id) return "";
+  if (id === activePocketBaseCompanyId()) return "";
+  return isPocketBaseCompanyId(id) ? id : "";
+}
+
 export function isActivePocketBaseCompanyId(companyId: string | null | undefined): boolean {
   const id = String(companyId || "").trim();
-  return !!id && id === activePocketBaseCompanyId();
+  if (!id) return false;
+  if (id === activePocketBaseCompanyId()) return true;
+  const dialogId = dialogActivePocketBaseCompanyId();
+  return !!dialogId && id === dialogId;
 }
 
 /**

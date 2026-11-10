@@ -57,10 +57,43 @@ export function isOwnCompany(name: string | undefined | null, pan: string | unde
   return false;
 }
 
-/** "(Diesel <HSD>" -> "Diesel": drop leading punctuation and bracketed codes. */
-export function cleanItemName(desc: string): string {
-  const s = desc.replace(/<[^>]*>?/g, " ").replace(/\([^)]*\)/g, " ").replace(/^[^\p{L}\d]+/u, "").replace(/[^\p{L}\d)]+$/u, "").replace(/\s+/g, " ").trim();
+/** Inventory units that may leak into an OCR item name (qty + unit). MM is a size, not a qty unit. */
+const TRAILING_QTY_UNIT =
+  /\s+[\d,]+(?:\.\d+)?\s+(?:pcs?|nos?|pieces?|ltr|ltrs|litres?|liters?|kgs?|gms?|grams?|mtrs?|meters?|metres?|box(?:es)?|bags?|sets?|pkts?|packets?|doz(?:en)?|ft)\.?\s*$/i;
+
+/** Restore a size decimal OCR often drops ("3 5MM" / "3,5 mm" -> "3.5MM"). Does not change "35MM". */
+export function restoreItemSizeDecimal(s: string): string {
+  return s
+    .replace(/(\d)\s+(\d{1,2})\s*(mm)\b/gi, "$1.$2MM")
+    .replace(/(\d)\s*,\s*(\d{1,2})\s*(mm)\b/gi, "$1.$2MM")
+    .replace(/(\d+[.,]\d{1,2})\s*(mm)\b/gi, (_m, n: string) => `${String(n).replace(",", ".")}MM`);
+}
+
+/** "(Diesel <HSD>" -> "Diesel": drop leading punctuation, bracketed codes, leaked qty/unit; keep size. */
+/** Restore size decimals and strip a leaked trailing qty+unit. Keeps bill codes such as <HSD>. */
+export function normalizeItemDescription(desc: string): string {
+  const s = restoreItemSizeDecimal(desc.replace(/\s+/g, " ").trim()).replace(TRAILING_QTY_UNIT, "").replace(/\s+/g, " ").trim();
   return s || desc.trim();
+}
+
+/** "(Diesel <HSD>" -> "Diesel": drop leading punctuation, bracketed codes, leaked qty/unit; keep size. */
+export function cleanItemName(desc: string): string {
+  let s = desc.replace(/<[^>]*>?/g, " ").replace(/\([^)]*\)/g, " ").replace(/^[^\p{L}\d]+/u, "").replace(/[^\p{L}\d)]+$/u, "").replace(/\s+/g, " ").trim();
+  s = normalizeItemDescription(s);
+  return s || desc.trim();
+}
+
+export type InferredItemGroup = { parentName: "Sheet"; size: string };
+
+/** Sheet or Plate followed by a size like 3.5MM / 12MM -> parent "Sheet", child the size. */
+export function inferItemGroupFromName(raw: string): InferredItemGroup | null {
+  const name = cleanItemName(raw);
+  const kind = /\b(?:sheets?|plates?)\b/i.exec(name);
+  if (!kind || kind.index == null) return null;
+  const after = name.slice(kind.index + kind[0].length);
+  const size = /\b(\d+(?:\.\d+)?)MM\b/i.exec(after);
+  if (!size) return null;
+  return { parentName: "Sheet", size: `${size[1]}MM` };
 }
 
 /** Other PANs printed on the bill (9 digits), excluding ours - fallback counter-party when the parsed party was our own company. */
