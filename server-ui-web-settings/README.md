@@ -10,10 +10,10 @@ Both files are UTF-8 without BOM. They are new files, so no existing Server UI f
 ## 1. Add to `pb_public/index.html`
 
 ```html
-<link rel="stylesheet" href="/web-settings.css?v=20261110-2">
+<link rel="stylesheet" href="/web-settings.css?v=20261110-4">
 ...
 <script src="/app.js?v=..."></script>
-<script src="/web-settings.js?v=20261110-2"></script>   <!-- after app.js -->
+<script src="/web-settings.js?v=20261110-4"></script>   <!-- after app.js -->
 ```
 
 Inside `#view-web-hosting`, add an empty container for the Web Settings tab, for example:
