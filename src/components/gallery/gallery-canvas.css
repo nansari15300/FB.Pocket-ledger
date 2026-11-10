@@ -44,20 +44,31 @@ html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .pl-galler
   color: var(--gallery-canvas-caption, #ffffff) !important;
 }
 
-/* 1px green border on every file-preview tile face (Company Files and Unassigned).
-   box-sizing:border-box keeps the existing width/height; the selected-tile outline
-   stays as-is and remains distinct from this border. */
-html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .group > div:first-child,
+/* 1px green border on the TILE FACE only (both tabs).
+   Do not use a bare `.group > div:first-child`: Company Files embeds FilePreview,
+   whose root is also `.group`, so that selector painted a second green border on
+   the inner preview wrapper. Combined with FilePreview flushFrame's own
+   `border-blue-300`, the Company Files tile looked thicker than Unassigned
+   (which uses GalleryTilePreview and has no nested .group). */
+html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .group.flex.flex-col > div:first-child,
 html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas :has(> .pl-gallery-canvas-msg) {
   border: 1px solid #22c55e !important;
   box-sizing: border-box;
 }
-html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .group > div.ring-2 {
+
+/* Drop FilePreview's inner 1px (flushFrame border-blue-300) so only the outer green remains. */
+html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .group.flex.flex-col > div:first-child .relative.w-full.h-full.rounded-lg.overflow-hidden.border {
+  border-width: 0 !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .group.flex.flex-col > div.ring-2 {
   outline: 2px solid rgba(255, 255, 255, 0.85);
   outline-offset: 1px;
 }
 
-html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .group:hover > div:not(.ring-2) {
+html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .group.flex.flex-col:hover > div:not(.ring-2) {
   box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.45);
 }
 
@@ -67,6 +78,25 @@ html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .group:hov
 html body[class*="theme-"] [data-pl-gallery-grey-shell] > div:first-child {
   position: relative;
   z-index: 2;
+}
+
+/* Desktop only (same 640px / Tailwind sm breakpoint as the `hidden sm:flex`
+   top row). Mobile footer tabs are untouched — this row is already `hidden`
+   below sm. DOM order is [Add File] [Unassigned] [Company Files]; row-reverse
+   on the row and on the tab switch yields [Company Files] [Unassigned]
+   [+ Add File], packed to the right. */
+@media (min-width: 640px) {
+  html body[class*="theme-"] [data-pl-gallery-grey-shell] > div:first-child {
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: flex-start;
+    align-items: center;
+    width: 100%;
+  }
+
+  html body[class*="theme-"] [data-pl-gallery-grey-shell] > div:first-child > .flex {
+    flex-direction: row-reverse;
+  }
 }
 
 html body[class*="theme-"] [data-pl-gallery-company-footer],
