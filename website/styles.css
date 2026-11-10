@@ -90,6 +90,16 @@ img { max-width: 100%; display: block; }
 .marketing-settings-panel[hidden] {
   display: none !important;
 }
+/* Header auth buttons live in .marketing-auth-actions on most pages but in .pl-gate-tools on the
+ * country picker (/), where the rule above did not reach and `.btn { display: inline-flex }` beat
+ * [hidden] - so Sign in and Sign out showed together. Hide them by id on every page.
+ * #marketingSettingsBtn: old "Admin Panel" button (moved to Server UI); never show it. */
+#marketingLoginBtn[hidden],
+#marketingLogoutBtn[hidden],
+.btn.is-auth-hidden,
+#marketingSettingsBtn {
+  display: none !important;
+}
 .marketing-settings-panel {
   padding: 1.25rem 1rem 0;
   background: var(--paper);

@@ -180,6 +180,16 @@
             '<a class="btn btn-primary btn-sm" href="/app" id="goToAppBtn" data-i18n="goto_app">Go to App</a>' +
           "</div>" +
         "</header>" +
+        '<div class="pl-shell pl-gate-shell">' +
+          '<aside class="pl-side" aria-label="Website menu">' +
+            '<nav class="pl-side-nav" aria-label="Main">' +
+              '<a href="/videos/" data-i18n="demo">Demo</a>' +
+              '<a href="/downloads/" data-i18n="downloads">Downloads</a>' +
+              '<a href="/about-company/" data-i18n="about">About Us</a>' +
+              '<a href="#features" data-i18n="features">Features</a>' +
+            "</nav>" +
+          "</aside>" +
+          '<div class="pl-content">' +
         '<main class="pl-gate-main">' +
           '<h1 data-i18n="gate_h1">Where do you keep the books?</h1>' +
           '<p class="pl-gate-lead intro" data-intro="gate_lead">Open your country’s Pocket Ledger site. That country web runs on its own — including plans and payment. Main also takes subscriptions for people who stay on pocket-ledger.com. Each subdomain has its own terms; main is not responsible for a country site.</p>' +
@@ -197,27 +207,11 @@
                 '<div class="pl-gate-list" id="plCountryGrid" role="listbox"></div>' +
               "</div>" +
             "</div>" +
-            '<nav class="pl-gate-links" aria-label="Website">' +
-              '<a class="pl-gate-link-card" href="/videos/">' +
-                '<strong data-i18n="demo">Demo</strong>' +
-                '<span data-i18n="demo_desc">See Pocket Ledger on desktop, tablet and phone.</span>' +
-              "</a>" +
-              '<a class="pl-gate-link-card" href="/about-company/">' +
-                '<strong data-i18n="about">About Us</strong>' +
-                '<span data-i18n="about_desc">The software company behind Pocket Ledger.</span>' +
-              "</a>" +
-              '<a class="pl-gate-link-card" href="/downloads/">' +
-                '<strong data-i18n="downloads">Downloads</strong>' +
-                '<span data-i18n="downloads_desc">Windows EXE and Android APK.</span>' +
-              "</a>" +
-              '<a class="pl-gate-link-card" href="#features">' +
-                '<strong data-i18n="features">Features</strong>' +
-                '<span data-i18n="features_desc">Vouchers, ledgers, backup and more.</span>' +
-              "</a>" +
-            "</nav>" +
           "</div>" +
         "</main>" +
         '<footer class="pl-gate-foot"><span class="intro" data-intro="gate_foot">Each country site (np, in, us, nz) has its own terms and billing. pocket-ledger.com is not responsible for a country subdomain.</span> <a href="/terms/">Terms</a> · <span data-pl-web-version></span></footer>' +
+          "</div>" +
+        "</div>" +
       "</div>";
     var mainEl = root.querySelector(".pl-gate-main");
     var tpl = document.getElementById("plMainFeaturesTpl");

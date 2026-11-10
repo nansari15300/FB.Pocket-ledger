@@ -462,3 +462,21 @@ html[data-theme="dark"] .pl-country-chrome {
 @media (max-width: 640px) {
   .pl-flag-wave { width: 56px; height: 38px; }
 }
+
+/* Country picker (/) with the same left sidebar as the other public pages (css/public-shell.css).
+ * Demo / Downloads / About Us / Features are plain menu items in .pl-side-nav, not cards. */
+.pl-gate .pl-gate-shell {
+  flex: 1;
+  min-height: 0;
+  background: transparent;
+}
+.pl-gate .pl-gate-shell .pl-content { min-width: 0; }
+.pl-gate .pl-gate-shell .pl-gate-main {
+  margin: 0;
+  padding: 1.5rem 1.5rem 2.5rem;
+}
+.pl-gate .pl-gate-shell .pl-gate-row { grid-template-columns: minmax(16rem, 28rem); }
+@media (max-width: 860px) {
+  .pl-gate .pl-gate-shell .pl-gate-main { padding: 16px; }
+  .pl-gate .pl-gate-shell .pl-gate-row { grid-template-columns: 1fr; }
+}
