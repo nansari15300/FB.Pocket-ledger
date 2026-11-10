@@ -13,12 +13,9 @@
 
   var loginBtn = document.getElementById("marketingLoginBtn");
   var logoutBtn = document.getElementById("marketingLogoutBtn");
-  var settingsBtn = document.getElementById("marketingSettingsBtn");
   var appBtn = document.getElementById("goToAppBtn");
   var auth;
 
-  var isSuperAdminUser = false;
-  var ADMIN_PANEL_URL = "/admin-release/";
   // Same keys the app uses for a Pocket Ledger Server login (pbClient.ts / pbAppSession.ts).
   var PB_AUTH_KEY = "pl_pb_data_auth_v1";
   var PB_SESSION_KIND_KEY = "pl_app_session_kind_v1";
@@ -64,9 +61,13 @@
     }
   }
 
+  /** Website admin moved to the Server UI (Web Hosting > Settings). Drop any old
+   *  settings panel / "Admin Panel" button that a cached page may still carry. */
   function removeLegacySettingsPanel() {
-    var panel = document.getElementById("marketingSettingsPanel");
-    if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+    ["marketingSettingsPanel", "marketingSettingsBtn"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    });
   }
 
   function t(key, fallback) {
@@ -92,78 +93,20 @@
     return (auth && auth.currentUser) || readServerUser();
   }
 
-  function setUi(user, isSuperAdmin) {
+  function setUi(user) {
     loginBtn = document.getElementById("marketingLoginBtn");
     logoutBtn = document.getElementById("marketingLogoutBtn");
-    settingsBtn = document.getElementById("marketingSettingsBtn");
     appBtn = document.getElementById("goToAppBtn");
-    isSuperAdminUser = Boolean(user && isSuperAdmin);
     setVisible(loginBtn, !user);
     setVisible(logoutBtn, Boolean(user));
-    setVisible(settingsBtn, isSuperAdminUser);
     if (loginBtn) loginBtn.textContent = t("signin", "Sign in");
     if (logoutBtn) logoutBtn.textContent = t("signout", "Sign out");
-    if (settingsBtn) settingsBtn.textContent = t("admin_panel", "Admin Panel");
     if (appBtn) appBtn.textContent = user ? t("open_app", "Open App") : t("goto_app", "Go to App");
-    if (!isSuperAdminUser) {
-      setVisible(settingsBtn, false);
-      removeLegacySettingsPanel();
-    }
+    removeLegacySettingsPanel();
   }
 
-  function siteDataBase() {
-    return String(window.SITE_DATA_BASE || "https://np.pocket-ledger.com").replace(/\/+$/, "");
-  }
-
-  /** Admin Panel button: asks the Pocket Ledger Server (/api/pl/site/admin-check) with the
-   *  Pocket Ledger Server login token. Only a token issued by the same server counts. */
-  function resolveSuperAdmin(user) {
-    if (!user) return Promise.resolve(false);
-    var a = null;
-    try { a = JSON.parse(window.localStorage.getItem(PB_AUTH_KEY) || "null"); } catch (_) { a = null; }
-    if (!a || !a.token) return Promise.resolve(false);
-    if (a.expMs && Number(a.expMs) <= Date.now()) return Promise.resolve(false);
-    var base = siteDataBase();
-    if (String(a.url || "").replace(/\/+$/, "") !== base) return Promise.resolve(false);
-    return fetch(base + "/api/pl/site/admin-check", {
-      method: "GET",
-      headers: { Accept: "application/json", Authorization: a.token },
-      cache: "no-store",
-    }).then(function (res) {
-      return res.ok ? res.json() : null;
-    }).then(function (data) {
-      return Boolean(data && data.isAdmin === true);
-    }).catch(function () {
-      return false;
-    });
-  }
-
-  var adminCheckSeq = 0;
-  function refreshAdmin() {
-    var user = currentUser();
-    var seq = ++adminCheckSeq;
-    setUi(user, false);
-    if (!user) return;
-    resolveSuperAdmin(user).then(function (ok) {
-      if (seq !== adminCheckSeq) return;
-      var now = currentUser();
-      if (now) setUi(now, ok === true);
-    });
-  }
-
-  /** Header button for pages that do not carry it in their HTML (added once, from this shared script). */
-  function ensureSettingsBtn() {
-    if (document.getElementById("marketingSettingsBtn")) return;
-    var anchor = document.getElementById("marketingLogoutBtn") || document.getElementById("goToAppBtn");
-    if (!anchor || !anchor.parentNode) return;
-    var b = document.createElement("button");
-    b.type = "button";
-    b.className = "btn btn-outline btn-sm is-auth-hidden";
-    b.id = "marketingSettingsBtn";
-    b.hidden = true;
-    b.setAttribute("aria-hidden", "true");
-    b.textContent = "Admin Panel";
-    anchor.parentNode.insertBefore(b, anchor);
+  function refreshUi() {
+    setUi(currentUser());
   }
 
   // ---- Email + password sign-in: same flow as the app's LoginForm (default mode) ----
@@ -383,7 +326,7 @@
       // Identity only. Do not wipe Pocket Ledger Server — books follow Settings.
       auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).then(function () {
         close();
-        refreshAdmin();
+        refreshUi();
       }).catch(function (e) {
         var code = String((e && e.code) || "");
         if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") return;
@@ -423,7 +366,7 @@
           }
         }
         close();
-        refreshAdmin();
+        refreshUi();
       }).catch(function (err) {
         showError((err && err.message) || "An error occurred. Please try again.");
       }).finally(function () {
@@ -452,27 +395,18 @@
   function bindButtons() {
     loginBtn = document.getElementById("marketingLoginBtn");
     logoutBtn = document.getElementById("marketingLogoutBtn");
-    settingsBtn = document.getElementById("marketingSettingsBtn");
     appBtn = document.getElementById("goToAppBtn");
     bindOnce(loginBtn, "click", function () { openLoginModal(); });
     bindOnce(logoutBtn, "click", function () {
-      setVisible(settingsBtn, false);
       removeLegacySettingsPanel();
       clearServerSession();
       if (auth) {
-        auth.signOut().catch(function () { /* ignore */ }).then(function () { setUi(null, false); });
+        auth.signOut().catch(function () { /* ignore */ }).then(function () { setUi(null); });
       } else {
-        setUi(null, false);
+        setUi(null);
       }
     });
-    bindOnce(settingsBtn, "click", function () {
-      if (!isSuperAdminUser) {
-        setVisible(settingsBtn, false);
-        return;
-      }
-      window.location.href = ADMIN_PANEL_URL;
-    });
-    setUi(currentUser(), isSuperAdminUser);
+    setUi(currentUser());
   }
 
   function initFirebase() {
@@ -480,22 +414,21 @@
     if (!firebase.apps.length) firebase.initializeApp(window.POCKET_LEDGER_FIREBASE);
     auth = firebase.auth();
     auth.onAuthStateChanged(function () {
-      refreshAdmin();
+      refreshUi();
     });
   }
 
   function init() {
     removeLegacySettingsPanel();
-    ensureSettingsBtn();
     initFirebase();
     bindButtons();
-    refreshAdmin();
+    refreshUi();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
   document.addEventListener("pl-country-ready", bindButtons);
   document.addEventListener("pl-lang-applied", function () {
-    setUi(currentUser(), isSuperAdminUser);
+    setUi(currentUser());
   });
 }());
