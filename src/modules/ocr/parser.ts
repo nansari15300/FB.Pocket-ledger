@@ -11,6 +11,7 @@ import { amountsInLine, fixDigitConfusions, normalizeName, normalizeOcrLine, par
 import { bestUniqueMatch, nameScore, namesOf } from "./fuzzy";
 import { devanagariToRoman, nameSkeleton } from "./translit";
 import { isOcrSelectableParty } from "./types";
+import { ownNameRule, textHasOwnName, textHasOwnPan } from "./ownCompany";
 import type { OcrIdentifiers } from "./identifiers";
 import type {
   OcrItemLike,
@@ -490,17 +491,32 @@ export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
   const ownName = ctx.ownName ? normalizeName(ctx.ownName) : "";
 
   /* ---- Blocks: where is OUR company, where is the counter-party ---- */
-  const isOwnSeg = (s: Seg) =>
-    (own.length === 9 && s.text.replace(/(\d)[\s-](?=\d)/g, "$1").includes(own)) ||
-    (ownName.length >= 4 && normalizeName(s.text).includes(ownName));
+  // Own company: profile PAN (digits) or tolerant name prefix ("New parsa Engineering WorkShop Demo Company" matches
+  // "NEW PARSA ENGINEERING WORKSHOP"); a name split over two OCR lines is matched with the segment below it.
+  const ownRule = ownNameRule(ctx.ownName);
+  const ownKnown = own.length === 9 || !!ownRule;
+  const isOwnPanSeg = (s: Seg) => textHasOwnPan(s.text, own);
+  const isOwnNameSeg = (s: Seg) => (ownName.length >= 4 && normalizeName(s.text).includes(ownName)) || textHasOwnName(s.text, ownRule);
+  const isOwnSeg = (s: Seg) => isOwnPanSeg(s) || isOwnNameSeg(s);
+  const below = (s: Seg) => segs.find((t) => t.line === s.line + 1 && (t.x1 <= t.x0 || (t.x0 < s.x1 && t.x1 > s.x0)));
+  const ownNameAcross = (s: Seg) => {
+    const nx = below(s);
+    return !!nx && !isOwnNameSeg(nx) && textHasOwnName(`${s.text} ${nx.text}`, ownRule);
+  };
   const buyerLabelSeg = segs.find((s) => RX.buyerLabel.test(s.text));
   const buyerY = buyerLabelSeg?.y ?? null;
-  const ownSeg = segs.find(isOwnSeg);
+  const ownPanSeg = segs.find(isOwnPanSeg);
+  const ownNameSeg = segs.find(isOwnNameSeg) ?? segs.find(ownNameAcross);
+  const ownSeg = [ownPanSeg, ownNameSeg].filter((x): x is Seg => !!x).sort((a, b) => a.y - b.y)[0];
+  const sideOf = (s: Seg): "seller" | "buyer" =>
+    buyerY != null ? (s.y >= buyerY - 2 ? "buyer" : "seller") : RX.sellerLabel.test(s.text) || s.rel <= 0.2 ? "seller" : "buyer";
   let ourSide: "seller" | "buyer" | null = null;
-  if (ownSeg) {
-    if (buyerY != null) ourSide = ownSeg.y >= buyerY - 2 ? "buyer" : "seller";
-    else ourSide = RX.sellerLabel.test(ownSeg.text) || ownSeg.rel <= 0.2 ? "seller" : "buyer";
-  }
+  if (ownSeg) ourSide = sideOf(ownSeg);
+  // how we found ourselves: PAN 0.95, name 0.9, both agreeing 0.97
+  const ownBy: "pan" | "name" | "pan+name" | null = !ownSeg ? null
+    : ownPanSeg && ownNameSeg && sideOf(ownPanSeg) === sideOf(ownNameSeg) ? "pan+name"
+    : ownSeg === ownPanSeg ? "pan" : "name";
+  dbg(`Own company: ${ownKnown ? `profile "${ctx.ownName ?? "-"}" (match tokens: ${ownRule ? ownRule.tokens.slice(0, ownRule.need).join(" ") : "-"}) / PAN ${own || "-"}` : "no company name/PAN in profile"}; found by ${ownBy ?? "-"}${ownSeg ? ` at "${ownSeg.text}"` : ""}`);
   // Counter-party block: purchase -> seller (above the buyer block); sale -> buyer block
   const counterSide: "seller" | "buyer" = ourSide ? (ourSide === "buyer" ? "seller" : "buyer") : ctx.kind === "purchase" ? "seller" : "buyer";
   const sellerTop = buyerY != null ? (s: Seg) => s.y < buyerY - 2 : (s: Seg) => s.rel <= 0.3;
@@ -784,27 +800,57 @@ export function parseBill(raw: OcrRawResult, ctx: ParseContext): OcrParsedBill {
     }
   }
 
-  out.docType = detectDocType(lines, ourSide);
-  if (out.docType) dbg(`Document type: ${out.docType.type} (${out.docType.reason})`);
-  else dbg("Document type: not determined (own company PAN/name not found on bill)");
+  out.docType = detectDocType(lines, ourSide, { ownBy, ownKnown, counterPan: pans.length > 0, items: !!items?.rows.length });
+  if (out.docType) dbg(`Document type: ${out.docType.type} ${Math.round(out.docType.confidence * 100)}% (${out.docType.reason})`);
+  else dbg(`Document type: not determined (${ownKnown ? "not an invoice/bill, or a bank slip / receipt without our company" : "no company name/PAN in the company profile"})`);
   return out;
 }
 
-/** Bill type relative to OUR company: title keywords + which block our PAN/name is in. */
-function detectDocType(lines: L[], ourSide: "seller" | "buyer" | null): OcrParsedBill["docType"] {
+/**
+ * Bill type relative to OUR company.
+ * Invoices / bills (rules in order):
+ *   1. our company in the seller / header block (before Bill To / Customer) -> Sale; in the Customer / Bill To block -> Purchase
+ *      (PAN 0.95, name 0.90, both 0.97; "Tax Invoice" / "Bill To" with our name on the buyer side +0.03)
+ *   2. our company not on the bill at all -> Purchase (0.86 when the profile has a name/PAN and the bill is clearly an
+ *      invoice: Tax Invoice title, counter-party PAN or item lines; else 0.6 = suggestion only)
+ * Bank slips / cheques / deposit receipts never use the invoice rules (receipt detector / fallback).
+ */
+export function detectDocType(
+  lines: { text: string }[],
+  ourSide: "seller" | "buyer" | null,
+  ev: { ownBy?: "pan" | "name" | "pan+name" | null; ownKnown?: boolean; counterPan?: boolean; items?: boolean } = {},
+): OcrParsedBill["docType"] {
   const all = lines.map((l) => l.text).join("\n");
+  const taxInv = /tax\s*invoice|कर\s*बीजक/i.test(all);
+  const bankSlip = !taxInv && /\b(cheque|deposit\s*slip|deposit\s*voucher|cash\s*deposit|fund\s*transfer|beneficiary|transaction\s*id|connect\s*ips|fonepay|esewa|khalti)\b/i.test(all);
   const title =
     /credit\s*note|क्रेडिट\s*नोट/i.test(all) ? "credit_note"
     : /debit\s*note|डेबिट\s*नोट/i.test(all) ? "debit_note"
+    : taxInv ? "invoice"
     : /\b(money\s*)?receipt\b|रसिद|भरपाई/i.test(all) ? "receipt"
     : /payment\s*voucher|paid\s*to/i.test(all) ? "payment"
-    : /tax\s*invoice|invoice|\bbill\b|बीजक|बिल/i.test(all) ? "invoice"
+    : /invoice|\bbill\b|बीजक|बिल/i.test(all) || (ev.items && !bankSlip) ? "invoice"
     : null;
   if (!title) return undefined;
   if (title === "credit_note" || title === "debit_note") return { type: title, confidence: 0.9, reason: `title "${title.replace("_", " ")}"` };
   if (title === "payment") return { type: "payment_out", confidence: 0.8, reason: "payment voucher / paid to" };
-  if (!ourSide) return undefined;
-  const why = ourSide === "seller" ? "our company in seller/header block" : "our company in buyer (Party Name) block";
-  if (title === "receipt") return { type: ourSide === "seller" ? "payment_in" : "payment_out", confidence: 0.85, reason: `receipt; ${why}` };
-  return { type: ourSide === "seller" ? "sale" : "purchase", confidence: 0.9, reason: `invoice; ${why}` };
+  const by = ev.ownBy ?? "name";
+  const why = ourSide === "seller" ? `our company (${by}) in seller/header block` : `our company (${by}) in Customer / Bill To block`;
+  if (title === "receipt") {
+    if (!ourSide) return undefined;
+    return { type: ourSide === "seller" ? "payment_in" : "payment_out", confidence: 0.85, reason: `receipt; ${why}` };
+  }
+  if (bankSlip) return undefined; // bank documents: fallback (receipt detector), never the invoice rules
+  const base = by === "pan+name" ? 0.97 : by === "pan" ? 0.95 : 0.9;
+  if (ourSide === "seller") return { type: "sale", confidence: base, reason: `invoice issued BY us: ${why}` };
+  if (ourSide === "buyer") {
+    const kw = taxInv || /\bbill\s*to\b/i.test(all);
+    return { type: "purchase", confidence: Math.min(0.98, base + (kw ? 0.03 : 0)), reason: `invoice addressed TO us: ${why}${kw ? " + Tax Invoice / Bill To" : ""}` };
+  }
+  const strong = !!ev.ownKnown && (taxInv || !!ev.counterPan || !!ev.items);
+  return {
+    type: "purchase",
+    confidence: strong ? 0.86 : 0.6,
+    reason: ev.ownKnown ? "invoice; our company name/PAN not on the bill -> Purchase" : "invoice; company profile has no name/PAN -> Purchase (unconfirmed)",
+  };
 }

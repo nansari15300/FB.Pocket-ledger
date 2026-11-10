@@ -1,4 +1,5 @@
 /** Pure OCR decision helpers (shared by useVoucherOcr and the node regression test). */
+import { ownNameRule, textHasOwnName } from "./ownCompany";
 import type { OcrParsedBill } from "./types";
 import { normalizeName } from "./normalize";
 
@@ -50,6 +51,8 @@ export function isOwnCompany(name: string | undefined | null, pan: string | unde
   if (name && own.name) {
     const a = normalizeName(name), b = normalizeName(own.name);
     if (a && b && (a === b || (a.length > 6 && (a.includes(b) || b.includes(a))))) return true;
+    // tolerant prefix rule ("New parsa Engineering WorkShop Demo Company" vs "NEW PARSA ENGINEERING WORKSHOP PVT. LTD.")
+    if (textHasOwnName(name, ownNameRule(own.name))) return true;
   }
   return false;
 }

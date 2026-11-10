@@ -20,7 +20,7 @@ import { useOcrPlanAllowed } from "./gate";
 import { OcrFindAccountDialog } from "./OcrFindAccountDialog";
 import type { OcrSuggestion } from "./OcrSuggestionsDialog";
 import { OcrFieldBubbles, ocrFieldForMissing, ocrFieldForSuggestion, useOcrTabBadge, type OcrBubble } from "./OcrFieldBubbles";
-import { requestOcrVoucherSwitch, sameVoucherBucket, takeOcrHandoff } from "./handoff";
+import { cancelOcrHandoff, parkOcrSession, requestOcrVoucherSwitch, resumeOcrSession, sameVoucherBucket, takeOcrHandoff } from "./handoff";
 import { CreatePartyDialog } from "@/components/party/CreatePartyDialog";
 import { CreateItemDialog } from "@/components/items/CreateItemDialog";
 import { CreateTaxDialog } from "@/components/tax/CreateTaxDialog";
@@ -115,7 +115,7 @@ async function loadFirstFile(f: File | string, companyId?: string | null): Promi
 }
 
 /** Bump when parser/engine logic changes: shown in Show OCR text to prove the browser runs the new bundle. */
-export const OCR_BUILD = "2026-11-10.2";
+export const OCR_BUILD = "2026-11-10.4";
 
 const MONEY_TYPES = ["payment_out", "payment_in", "direct_expense", "direct_income", "contra"] as const;
 const ALL_TYPE_CHOICES = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"] as const;
@@ -186,6 +186,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       if (apTimerRef.current != null) window.clearInterval(apTimerRef.current);
       apTimerRef.current = null;
       setApCount(null);
+      savedRef.current = true;
       optsRef.current.autoPost();
     }, 1000);
   }, []);
@@ -197,6 +198,30 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const inputNoteRef = useRef("handoff (no OCR)");
   const optsRef = useRef(o);
   optsRef.current = o;
+  /** Auto Post fired (voucher saved) -> never park this OCR session for a remount. */
+  const savedRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+  /**
+   * Voucher-type switch. The bill (files + OCR text + ticked ids) is parked for the TARGET form only; the dialog then
+   * remounts the form. If this form is still mounted 1.5 s later the dialog refused the switch: drop the parked bill,
+   * give the original upload back and show the suggestions again (they were hidden for the switch).
+   */
+  const switchVoucher = useCallback((typ: string, raw: OcrRawResult, selectedIds: string[]) => {
+    const files = optsRef.current.files;
+    const original = takeOcrOriginal(files[0]);
+    const token = requestOcrVoucherSwitch(typ, files, { raw, original, selectedIds });
+    window.setTimeout(() => {
+      if (!mountedRef.current) return;
+      cancelOcrHandoff(token);
+      if (original && files[0]) linkOcrOriginal(files[0], original);
+      setDoneIds((p) => { if (!p.has("switch")) return p; const n = new Set(p); n.delete("switch"); return n; });
+      setSugOpen(true);
+    }, 1500);
+  }, []);
 
   const canWrite = useCallback((path: string) => {
     const { form } = optsRef.current;
@@ -418,7 +443,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                   reason: why,
                   blocked: !OCR_SWITCHABLE.includes(typ) ? "This voucher type cannot be opened from OCR" : opt.isEditing ? "Only for new vouchers" : undefined,
                   deferred: true,
-                  apply: () => requestOcrVoucherSwitch(typ, optsRef.current.files, { raw, original: takeOcrOriginal(optsRef.current.files[0]), selectedIds: [] }),
+                  apply: () => switchVoucher(typ, raw, []),
                 });
               }
             } else if (rc.voucherType && rc.voucherType !== cur) {
@@ -430,7 +455,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 reason: why,
                 blocked: !OCR_SWITCHABLE.includes(rc.voucherType) ? "This voucher type cannot be opened from OCR" : opt.isEditing ? "Only for new vouchers" : undefined,
                 deferred: true,
-                apply: () => requestOcrVoucherSwitch(rc.voucherType!, optsRef.current.files, { raw, original: takeOcrOriginal(optsRef.current.files[0]), selectedIds: [] }),
+                apply: () => switchVoucher(rc.voucherType!, raw, []),
               });
             }
             setLastBill(null);
@@ -668,7 +693,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             id: "switch", label: `Switch to ${nice} voucher`, value: `from: ${niceType(opt.currentVoucherType ?? A.voucherType)}`, confidence: bill.docType.confidence, reason: bill.docType.reason,
             blocked: supported ? (opt.isEditing ? "Only for new vouchers" : undefined) : "No return/note voucher form in this app",
             deferred: true,
-            apply: (ctx) => requestOcrVoucherSwitch(dt, optsRef.current.files, { raw, original: takeOcrOriginal(optsRef.current.files[0]), selectedIds: ctx?.selectedIds ?? [] }),
+            apply: (ctx) => switchVoucher(dt, raw, ctx?.selectedIds ?? []),
           });
         }
         const billIsOwn = isOwnCompany(bill.partyName?.value, identifiers.pan, own);
@@ -838,7 +863,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         setRunning(false);
       }
     },
-    [canWrite, write, running]
+    [canWrite, write, running, switchVoucher]
   );
 
   // Voucher-type switch hand-off: receive the attachment, then OCR it here.
@@ -847,8 +872,11 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   // that runs AFTER this hook's effect) cannot wipe them.
   const handoffFilesRef = useRef<{ files: (File | string)[]; until: number } | null>(null);
   useEffect(() => {
-    const h = takeOcrHandoff();
-    if (h?.files.length && o.setFiles) {
+    if (!o.setFiles || o.isEditing) return;
+    // only a form of the switch TARGET type takes the parked bill; a remount of this same form gets its session back
+    const formType = o.currentVoucherType ?? o.adapter.voucherType;
+    const h = takeOcrHandoff(formType) ?? resumeOcrSession(formType);
+    if (h?.files.length) {
       handoffRunRef.current = { raw: h.raw, selectedIds: h.selectedIds };
       handoffFilesRef.current = { files: h.files, until: Date.now() + 2500 };
       linkOcrOriginal(h.files[0], h.original ?? null);
@@ -857,6 +885,14 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       window.setTimeout(() => { const g = handoffFilesRef.current; if (g && Date.now() < g.until) setF(g.files); }, 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Unmount with a bill + OCR result (not saved): park it so an immediate remount of the same form type keeps it
+  useEffect(() => () => {
+    const opt = optsRef.current;
+    const raw = lastRawRef.current;
+    if (!raw || !opt.files.length || savedRef.current || opt.isEditing) return;
+    if ((opt.form as { formState?: { isSubmitSuccessful?: boolean } } | undefined)?.formState?.isSubmitSuccessful) return;
+    parkOcrSession(opt.currentVoucherType ?? opt.adapter.voucherType, { files: [...opt.files], raw, selectedIds: [] });
   }, []);
   useEffect(() => {
     const g = handoffFilesRef.current;
@@ -1038,7 +1074,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const cancelSwitchCountdown = useCallback(() => { setSwCancelledFor(sugListRef.current); setSwCount(null); }, []);
   useEffect(() => {
     const sw = suggestions.find((x) => x.id === "switch");
-    if (!autoSwitchOn || !visible || !sugOpen || !switchTarget || !sw || sw.blocked || swCancelledFor === suggestions || swFiredForRef.current === suggestions) {
+    // auto-switch only for a high-confidence type (>= AUTO_SWITCH_MIN_CONF); lower ones stay a manual suggestion
+    const swSure = (sw?.confidence ?? 0) >= AUTO_SWITCH_MIN_CONF;
+    if (!autoSwitchOn || !visible || !sugOpen || !switchTarget || !sw || sw.blocked || !swSure || swCancelledFor === suggestions || swFiredForRef.current === suggestions) {
       setSwCount(null);
       return;
     }

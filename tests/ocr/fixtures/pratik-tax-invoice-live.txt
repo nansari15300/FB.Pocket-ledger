@@ -1,0 +1,15 @@
+PRATIK TRADE CENTER PVT.LTD.
+Birgunj-10, Adarshanagar, Parsa
+Phone : 051-523456
+PAN No : 619727215
+TAX INVOICE
+Invoice No : SI-02833 Date : 2083/07/15
+Customer Name : NEW PARSA ENGINEERING WORKSHOP
+Address : Birgunj, Parsa
+PAN No : 303687786
+Mode of Payment : Credit
+S.N. Particulars Qty Unit Rate Amount
+1 HR SHEET 3.5MM 8.000 PCS 5,200.00 41,600.00
+Taxable Amount 41,600.00
+VAT 13% 5,408.00
+Grand Total 47,008.00
