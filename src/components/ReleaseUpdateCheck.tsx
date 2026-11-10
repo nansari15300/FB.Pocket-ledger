@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   androidDownloadAndInstallUpdate,
+  androidUpdateUsesPlayStore,
   canAndroidInAppUpdate,
 } from "@/lib/androidReleaseUpdate";
 import {
@@ -47,11 +48,14 @@ function ReleaseUpdateBanner({
   }, [electronAutoInstall]);
 
   const onInstall = useCallback(async () => {
-    const trackPlatform = update.kind === "desktop" ? "windows" : "android";
+    // Matches the admin Download analytics platforms: windows (EXE), android (APK), play (Play Store).
+    const trackPlatform =
+      update.kind === "desktop" ? "windows" : androidUpdateUsesPlayStore(update) ? "play" : "android";
     void recordReleaseUpdateDownload({
       platform: trackPlatform,
+      // The NEW version being installed.
       version: update.version,
-      fileName: update.url.split("/").pop() || "",
+      fileName: (update.url.split("?")[0].split("#")[0].split("/").pop() || "").slice(0, 160),
       source: "in_app_update",
     });
 

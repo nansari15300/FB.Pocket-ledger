@@ -1,46 +1,51 @@
-/* Scoped Gallery tile-canvas background. Applies in every app theme
+/* Scoped Gallery page background. Applies in every app theme
    (default body class is theme-pro / "Default", not theme-pl-gray).
-   Paint ONLY the tiles scroll area. Do not paint [data-pl-gallery-tab-body]
-   or the company/unassigned shells: those wrappers also contain the bottom
-   floating footer panel (date range, All Users, Select All, Full preview,
-   column controls). A min-height: 100% on those wrappers overflows and
-   clips the shrink-0 footer inside overflow-hidden.
-   Specificity beats globals.css `background-color: transparent !important`
-   on [data-pl-gallery-scroll]. Toolbar and bottom panels are left alone. */
+   Fills the whole gallery page container — main and [data-pl-gallery-grey-shell]
+   (behind the top Add File / tab row, the tiles, and the bottom footer) — so
+   shell padding cannot show as a light frame. Does not paint AppHeader or
+   other chrome outside main.
+   Do not paint [data-pl-gallery-tab-body] or the company/unassigned shells
+   with min-height: 100%: those wrappers contain the footer, and that combo
+   clipped the panel inside overflow-hidden.
+   Specificity beats globals.css transparent scroll rules and the later
+   theme-pro `main > div.h-full.flex { background: hsl(var(--background)) }`
+   rule that was forcing the grey-shell light. */
 
+html body[class*="theme-"] main:has([data-pl-gallery-grey-shell]),
+html body[class*="theme-"] [data-pl-gallery-grey-shell][data-pl-gallery-grey-shell][data-pl-gallery-grey-shell],
 html body[class*="theme-"] [data-pl-gallery-scroll][data-pl-gallery-scroll][data-pl-gallery-scroll].pl-gallery-canvas {
-  --gallery-canvas-bg: #4a4e55;
-  --gallery-canvas-caption: #f1f3f5;
-  --gallery-canvas-caption-muted: #dde1e6;
+  --gallery-canvas-bg: #6b7079;
+  --gallery-canvas-caption: #ffffff;
+  --gallery-canvas-caption-muted: #eef0f3;
   background-color: var(--gallery-canvas-bg) !important;
   background-image: none !important;
-  /* Fill the flex slot above the footer when the tile grid is short.
-     Do not use min-height: 100% — that is 100% of the shell, which also
-     includes the footer, and would cover/clip the panel. */
+}
+
+/* Tiles scroll fills the flex slot above the footer when the grid is short.
+   No min-height: 100% (that is 100% of the shell, which includes the footer). */
+html body[class*="theme-"] [data-pl-gallery-scroll][data-pl-gallery-scroll][data-pl-gallery-scroll].pl-gallery-canvas {
   flex: 1 1 auto;
   align-self: stretch;
   width: 100%;
   min-height: 0;
-  /* Stay below the in-flow footer sibling and the mobile fixed ribbon (z-56). */
   position: relative;
   z-index: 0;
 }
 
-/* File-name captions and other in-canvas messages (empty / uploading).
-   Tile card surfaces and size badges are left alone. */
+/* File-name captions and in-canvas messages. Tile faces and badges unchanged.
+   Contrast on #6b7079: #ffffff ~5.0:1 (AA); #eef0f3 ~4.4:1, still readable. */
 html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-tile-caption,
 html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-canvas-msg,
 html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-tile-caption.text-muted-foreground {
-  color: var(--gallery-canvas-caption-muted, #dde1e6) !important;
+  color: var(--gallery-canvas-caption-muted, #eef0f3) !important;
 }
 
 html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .pl-gallery-canvas-msg {
-  color: var(--gallery-canvas-caption, #f1f3f5) !important;
+  color: var(--gallery-canvas-caption, #ffffff) !important;
 }
 
-/* Keep existing selection rings visible on the charcoal canvas without restyling the tile face. */
 html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .group > div.ring-2 {
-  outline: 2px solid rgba(241, 243, 245, 0.8);
+  outline: 2px solid rgba(255, 255, 255, 0.85);
   outline-offset: 1px;
 }
 
@@ -48,9 +53,16 @@ html body[class*="theme-"] [data-pl-gallery-scroll].pl-gallery-canvas .group:hov
   box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.45);
 }
 
-/* Footer card is a later flex sibling of the scroll (not inside it).
-   Keep it stacked above the canvas. Do not override mobile fixed positioning. */
+/* Tabs and the footer card sit on top of the page color and stay clickable.
+   Footer is a later flex sibling of the scroll. Do not override mobile fixed
+   positioning on the collapsed ribbon (z-56). */
+html body[class*="theme-"] [data-pl-gallery-grey-shell] > div:first-child {
+  position: relative;
+  z-index: 2;
+}
+
 html body[class*="theme-"] [data-pl-gallery-company-footer],
 html body[class*="theme-"] [data-pl-gallery-unassigned-footer] {
+  position: relative;
   z-index: 2;
 }

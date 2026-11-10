@@ -30,6 +30,11 @@ function isAabArtifact(update: ReleaseUpdateInfo): boolean {
   return /\.aab(\?|$)/i.test(String(update.url || ""));
 }
 
+/** True when this Android update is installed through the Play Store (AAB or a Play link), not an APK. */
+export function androidUpdateUsesPlayStore(update: ReleaseUpdateInfo): boolean {
+  return isAabArtifact(update) || isPlayStoreUrl(String(update.url || ""));
+}
+
 export async function androidDownloadAndInstallUpdate(
   update: ReleaseUpdateInfo,
   onProgress?: (payload: AndroidUpdateProgress) => void
