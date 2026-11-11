@@ -103,7 +103,9 @@ import { sidebarEntityMenuLabel } from "@/lib/sidebarEntityMenuLabels";
 import { apkCloudCompanyOfflineViewOnly, apkCloudEntityMasterReadFromSqliteMirror, apkEntityWriteUsesLocalSqliteMirror } from "@/lib/apkOnlineFirestoreWritePolicy";
 import { useNavigatorOnline } from "@/hooks/useNavigatorOnline";
 import { itemStrippedRowToCreateItemFormPatch } from "@/lib/crossCompanyMasterPrefill";
-import { baseUnitConversions, collectItemUnits, computeItemUnitPrices } from "@/components/items/itemUnitPrices";
+import { baseUnitConversions, collectItemUnits, computeItemUnitPrices, normalizeItemUnitFields } from "@/components/items/itemUnitPrices";
+import { useItemUnitAutoNormalize } from "@/components/items/useItemUnitAutoNormalize";
+import { ItemMarginCard, SaleMarginPills, SaleUnitRateInput } from "@/components/items/ItemMarginCard";
 import { writeNewItemRecord } from "@/components/items/createItemSilent";
 import { upsertCompanyDocInBrowserDb, listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { enqueueCompanyDocOutbox } from "@/lib/localVoucherOutbox";
@@ -638,6 +640,8 @@ export function CreateItemDialog({
   }
 
   async function processAndSave(values: z.infer<typeof formSchema>, saveAndNew: boolean = false) {
+    // Save se pehle: price / low stock / opening unit sirf current units me se (hatai gayi → base unit)
+    values = normalizeItemUnitFields(values);
     if (!user || !companyId) {
       toast({ variant: "destructive", title: "Authentication Error", description: "You must be logged in and have a company selected." });
       return;
@@ -861,7 +865,19 @@ export function CreateItemDialog({
   }
 
   
-  const allUnits = collectItemUnits(watchedUnitConversions, [watchedPurchasePriceUnit, watchedSalePriceUnit, watchedOpeningBalanceUnit]);
+  // Units sirf Unit Conversions se — hatai gayi / stale price unit list me wapas nahi aati
+  const allUnits = useMemo(() => collectItemUnits(watchedUnitConversions), [watchedUnitConversions]);
+  useItemUnitAutoNormalize(form, watchedUnitConversions, { enabled: isOpen, chain: false });
+
+  /** Beech ki row hatne par agli row ka fromUnit = pichhli row ka toUnit (chain na toote). */
+  const removeUnitRow = (index: number) => {
+    const rows = (form.getValues("unitConversions") || []) as { fromUnit?: string; toUnit?: string }[];
+    const prevTo = index > 0 ? String(rows[index - 1]?.toUnit ?? "") : "";
+    removeUnit(index);
+    if (index > 0 && index < rows.length - 1) {
+      form.setValue(`unitConversions.${index}.fromUnit`, prevTo, { shouldDirty: true });
+    }
+  };
   const openingStockQty = form.watch('openingBalance') || 0;
   const openingStockRate = form.watch('openingBalanceRate') || 0;
   
@@ -1134,7 +1150,7 @@ const capitalizeFirstLetter = (str: string) => {
                                   </FormItem>
                               )}
                           />
-                          <Button type="button" variant="ghost" size="icon" onClick={() => removeUnit(index)}>
+                          <Button type="button" variant="ghost" size="icon" onClick={() => removeUnitRow(index)}>
                               <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                       </div>
@@ -1210,11 +1226,27 @@ const capitalizeFirstLetter = (str: string) => {
                             )} />
                           </div>
                       </div>
-                      <div className="grid grid-cols-[1fr_auto] items-end gap-2">
-                        <FormField control={form.control} name="salePrice" render={({ field }: any) => (<FormItem className="flex-1"><FormControl><Input type="number" placeholder="0.00" className="h-9" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <div className="flex flex-wrap items-end gap-2">
+                        <FormField control={form.control} name="salePrice" render={({ field }: any) => (<FormItem className="min-w-[6rem] flex-1"><FormControl><Input type="number" placeholder="0.00" className="h-9" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <SaleMarginPills
+                          isOpen={isOpen}
+                          units={allUnits}
+                          unitPrices={unitPrices}
+                          conversions={watchedUnitConversions}
+                          salePriceUnit={watchedSalePriceUnit}
+                          purchasePrice={watchedPurchasePrice}
+                          salePrice={watchedSalePrice}
+                          purchaseTaxRate={taxes.find((t) => t.id === watchedPurchaseTaxId)?.rate || 0}
+                          purchaseInclusive={!!watchedIsPurchaseTaxInclusive}
+                          saleTaxRate={taxes.find((t) => t.id === watchedSaleTaxId)?.rate || 0}
+                          saleInclusive={!!watchedIsSalePriceTaxInclusive}
+                          onSalePriceChange={(v) => form.setValue('salePrice', v, { shouldDirty: true, shouldValidate: true })}
+                        />
                         <FormField control={form.control} name="salePriceUnit" render={({ field }: any) => (<FormItem><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="w-28 h-9"><SelectValue placeholder="Unit"/></SelectTrigger></FormControl><SelectContent>{allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                     </div>
                 </div>
+                  {/* PC: Purchase Unit Prices | Margin | Sale Unit Prices ek row me; mobile par `contents` (order classes waise hi). */}
+                  <div className="contents sm:flex sm:col-span-2 sm:order-3 sm:min-w-0 sm:gap-4">
                   <ScrollArea className="order-2 sm:order-3 w-full">
 
                       <div className="space-y-2 border p-4 rounded-md min-w-[500px]">
@@ -1236,6 +1268,16 @@ const capitalizeFirstLetter = (str: string) => {
                       </div>
                       <ScrollBar orientation="horizontal"/>
                   </ScrollArea>
+                  <ItemMarginCard
+                    isOpen={isOpen}
+                    units={allUnits}
+                    unitPrices={unitPrices}
+                    conversions={watchedUnitConversions}
+                    salePriceUnit={watchedSalePriceUnit}
+                    saleTaxRate={taxes.find((t) => t.id === watchedSaleTaxId)?.rate || 0}
+                    saleInclusive={!!watchedIsSalePriceTaxInclusive}
+                    onSalePriceChange={(v) => form.setValue('salePrice', v, { shouldDirty: true, shouldValidate: true })}
+                  />
                   <ScrollArea className="order-4 sm:order-4 w-full">
 
                       <div className="space-y-2 border p-4 rounded-md min-w-[500px]">
@@ -1248,7 +1290,18 @@ const capitalizeFirstLetter = (str: string) => {
                               {allUnits.map((unit) => (
                                   <React.Fragment key={`sale-${unit}`}>
                                       <Input value={unit} readOnly tabIndex={-1} className="h-9 bg-muted cursor-not-allowed font-medium"/>
-                                      <Input type="number" value={Number(unitPrices[unit]?.sale).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
+                                      <SaleUnitRateInput
+                                        unit={unit}
+                                        rate={Number(unitPrices[unit]?.sale) || 0}
+                                        isOpen={isOpen}
+                                        units={allUnits}
+                                        unitPrices={unitPrices}
+                                        conversions={watchedUnitConversions}
+                                        salePriceUnit={watchedSalePriceUnit}
+                                        saleTaxRate={taxes.find((t) => t.id === watchedSaleTaxId)?.rate || 0}
+                                        saleInclusive={!!watchedIsSalePriceTaxInclusive}
+                                        onSalePriceChange={(v) => form.setValue('salePrice', v, { shouldDirty: true, shouldValidate: true })}
+                                      />
                                       <Input type="number" value={Number(unitPrices[unit]?.saleTax).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
                                       <Input type="number" value={Number(unitPrices[unit]?.sale + unitPrices[unit]?.saleTax).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
                                   </React.Fragment>
@@ -1257,6 +1310,7 @@ const capitalizeFirstLetter = (str: string) => {
                       </div>
                       <ScrollBar orientation="horizontal"/>
                   </ScrollArea>
+                  </div>
               </div>
               
               {/* Opening Stock first, then Opening Stock Summary below (do not revert to side-by-side). */}

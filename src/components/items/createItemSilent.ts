@@ -5,7 +5,7 @@ import type { Company } from "@/hooks/useCompany";
 import { apkCloudCompanyOfflineViewOnly, apkEntityWriteUsesLocalSqliteMirror } from "@/lib/apkOnlineFirestoreWritePolicy";
 import { upsertCompanyDocInBrowserDb } from "@/lib/localCompanyDocMirror";
 import { enqueueCompanyDocOutbox } from "@/lib/localVoucherOutbox";
-import { baseUnitConversions, normalizeItemUnitName } from "@/components/items/itemUnitPrices";
+import { baseUnitConversions, normalizeItemUnitName, normalizeItemUnits } from "@/components/items/itemUnitPrices";
 
 export function createLocalItemId(prefix = "item"): string {
   const rand =
@@ -104,6 +104,17 @@ export async function createItemSilent(input: SilentItemCreateInput): Promise<Si
   try {
     const unit = normalizeItemUnitName(input.purchasePriceUnit || input.salePriceUnit) || null;
     const unitConversions = baseUnitConversions(unit, Array.isArray(input.unitConversions) ? (input.unitConversions as { fromUnit?: string; toUnit?: string; conversionFactor?: number }[]) : []);
+    // Price / low stock / opening units sirf item ki units me se; bahar wali unit → base unit
+    const unitSel = normalizeItemUnits(
+      unitConversions,
+      {
+        purchasePriceUnit: normalizeItemUnitName(input.purchasePriceUnit) || unit || "",
+        salePriceUnit: normalizeItemUnitName(input.salePriceUnit) || unit || "",
+        lowStockWarningUnit: normalizeItemUnitName(input.lowStockWarningUnit),
+        openingBalanceUnit: unit || "",
+      },
+      { whenNoUnits: "keep" },
+    ).values;
     const id = await writeNewItemRecord({
       company: input.company,
       companyId: input.companyId,
@@ -118,7 +129,7 @@ export async function createItemSilent(input: SilentItemCreateInput): Promise<Si
         salePrice: Number(input.salePrice ?? 0) || 0,
         purchasePrice: Number(input.purchasePrice ?? 0) || 0,
         openingBalance: 0,
-        openingBalanceUnit: unit,
+        openingBalanceUnit: unitSel.openingBalanceUnit || null,
         openingBalanceTaxId: null,
         isOpeningBalanceTaxInclusive: false,
         openingBalanceDate: null,
@@ -130,10 +141,10 @@ export async function createItemSilent(input: SilentItemCreateInput): Promise<Si
         credit: 0,
         balance: 0,
         stockQty: 0,
-        salePriceUnit: normalizeItemUnitName(input.salePriceUnit) || unit,
-        purchasePriceUnit: normalizeItemUnitName(input.purchasePriceUnit) || unit,
+        salePriceUnit: unitSel.salePriceUnit || null,
+        purchasePriceUnit: unitSel.purchasePriceUnit || null,
         lowStockWarning: Number(input.lowStockWarning ?? 0) || 0,
-        lowStockWarningUnit: normalizeItemUnitName(input.lowStockWarningUnit) || null,
+        lowStockWarningUnit: unitSel.lowStockWarningUnit || null,
         saleTaxId: input.saleTaxId || null,
         purchaseTaxId: input.purchaseTaxId || null,
         isPurchasePriceTaxInclusive: false,

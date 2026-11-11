@@ -60,5 +60,26 @@ close("sale exclusive rate", sale.Kg.sale, 200);
 close("sale exclusive tax", sale.Kg.saleTax, 26);
 close("sale exclusive total", sale.Kg.sale + sale.Kg.saleTax, 226);
 
+// --- Item Master: units normalize (hatai gayi / chain se bahar ki unit → base unit = aakhri toUnit) ---
+const { normalizeItemUnits } = await import("../../src/components/items/itemUnitPrices");
+const hr = normalizeItemUnits([{ fromUnit: "Pcs", toUnit: "Kg", conversionFactor: 288 }], {
+  salePriceUnit: "Gm",
+  openingBalanceUnit: "Gm",
+  purchasePriceUnit: "Pcs",
+  lowStockWarningUnit: "",
+});
+eq("HR SHEET 12MM units", hr.units, ["Pcs", "Kg"]);
+eq("HR SHEET 12MM sale Gm -> Kg", hr.values.salePriceUnit, "Kg");
+eq("HR SHEET 12MM opening Gm -> Kg", hr.values.openingBalanceUnit, "Kg");
+eq("HR SHEET 12MM purchase stays Pcs", hr.values.purchasePriceUnit, "Pcs");
+eq("HR SHEET 12MM empty low stock stays ''", hr.values.lowStockWarningUnit, "");
+const box = normalizeItemUnits([{ fromUnit: "Box", toUnit: "Pcs", conversionFactor: 12 }], {
+  salePriceUnit: "Kg",
+  openingBalanceUnit: "Kg",
+  lowStockWarningUnit: "Kg",
+});
+eq("Box=12 Pcs units", box.units, ["Box", "Pcs"]);
+eq("Box=12 Pcs out-of-chain fields -> Pcs", [box.values.salePriceUnit, box.values.openingBalanceUnit, box.values.lowStockWarningUnit], ["Pcs", "Pcs", "Pcs"]);
+
 console.log(fail ? fail + " FAILURE(S)" : "ALL PASSED (0 failure(s))");
 process.exit(fail ? 1 : 0);

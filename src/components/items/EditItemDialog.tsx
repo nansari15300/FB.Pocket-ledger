@@ -147,6 +147,14 @@ import {
 import { usePersistedResizableDialogSize } from "@/lib/usePersistedResizableDialogSize";
 import { ResizableDialogEdgeHandles } from "@/components/ui/ResizableDialogEdgeHandles";
 import { MasterEntityDialogDragRibbon } from "@/components/ui/MasterEntityDialogDragRibbon";
+import {
+  chainUnitConversions,
+  computeItemUnitPrices,
+  deriveItemUnits,
+  normalizeItemUnitFields,
+} from "@/components/items/itemUnitPrices";
+import { useItemUnitAutoNormalize } from "@/components/items/useItemUnitAutoNormalize";
+import { ItemMarginCard, SaleMarginPills, SaleUnitRateInput } from "@/components/items/ItemMarginCard";
 
 
 const fileSchema = z.object({
@@ -250,11 +258,12 @@ function getFactorToSmallestUnit(conversions: SavedItemUnitConversion[], unit: s
 function listSavedItemUnits(item: { unitConversions?: unknown; openingBalanceUnit?: string }): string[] {
   const conversions = (item.unitConversions || []) as SavedItemUnitConversion[];
   const units = new Set<string>();
-  if (item.openingBalanceUnit) units.add(item.openingBalanceUnit);
   for (const c of conversions) {
     if (c.fromUnit) units.add(c.fromUnit);
     if (c.toUnit) units.add(c.toUnit);
   }
+  // Saved openingBalanceUnit sirf tab jab conversions me koi unit hi na ho (hatai gayi unit wapas na aaye)
+  if (units.size === 0 && item.openingBalanceUnit) units.add(item.openingBalanceUnit);
   return Array.from(units);
 }
 
@@ -448,7 +457,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
   );
   const currentStockUnits = useMemo(() => listSavedItemUnits(item), [item]);
   const defaultStockUnit =
-    item.openingBalanceUnit ||
+    (item.openingBalanceUnit && currentStockUnits.includes(item.openingBalanceUnit) ? item.openingBalanceUnit : "") ||
     itemSmallestUnit(savedUnitConversions, item.openingBalanceUnit) ||
     currentStockUnits[0] ||
     "";
@@ -456,8 +465,12 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
   useEffect(() => {
     if (!isOpen) return;
     const conversions = (item.unitConversions || []) as SavedItemUnitConversion[];
+    const savedOpeningUnit =
+      item.openingBalanceUnit && listSavedItemUnits(item).includes(item.openingBalanceUnit)
+        ? item.openingBalanceUnit
+        : "";
     setStockDisplayUnit(
-      item.openingBalanceUnit || itemSmallestUnit(conversions, item.openingBalanceUnit) || ""
+      savedOpeningUnit || itemSmallestUnit(conversions, item.openingBalanceUnit) || ""
     );
   }, [isOpen, item.id]);
 
@@ -627,7 +640,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
           });
         });
       } else {
-        form.reset(baseValues);
+        form.reset(normalizeItemUnitFields(baseValues, { chain: true }));
       }
       setFiles(item.fileUrls || []);
       initialFileUrlsRef.current = item.fileUrls || [];
@@ -670,6 +683,11 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
           isPurchasePriceTaxInclusive: values.isPurchasePriceTaxInclusive,
         };
       }
+    }
+
+    if (!catalogLocked) {
+      // Save se pehle: chain fromUnit sync + hatai gayi unit ki jagah base unit
+      submitValues = normalizeItemUnitFields(submitValues, { chain: true });
     }
 
     const filesSnap = files;
@@ -1003,88 +1021,42 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
   }
 
 
+    // Units badalte hi price / low stock / opening unit current units pe (hatai gayi → base unit)
+    useItemUnitAutoNormalize(form, watchedUnitConversions, { enabled: isOpen && !catalogLocked, chain: true });
+
+    /** Row i>0 ka fromUnit = row i-1 ka toUnit (UI jaisa) — stale fromUnit units / prices me na aaye. */
+    const chainedUnitConversions = useMemo(
+      () => (catalogLocked ? (watchedUnitConversions || []) : chainUnitConversions(watchedUnitConversions)),
+      [watchedUnitConversions, catalogLocked]
+    );
+
     const allUnits = useMemo(() => {
-      const set = new Set(
-        watchedUnitConversions?.flatMap((uc) => [uc.fromUnit, uc.toUnit]).filter(Boolean) || []
-      );
+      const set = new Set(deriveItemUnits(chainedUnitConversions));
       if (catalogLocked) {
         ADMIN_PANEL_SUBSCRIPTION_BILLING_UNITS.forEach((u) => set.add(u));
         set.add(ADMIN_PANEL_SUBSCRIPTION_YEARLY_UNIT);
+        const ob = watchedOpeningBalanceUnit;
+        if (ob) set.add(ob);
       }
-      const ob = watchedOpeningBalanceUnit;
-      if (ob) set.add(ob);
       return Array.from(set);
-    }, [watchedUnitConversions, catalogLocked, watchedOpeningBalanceUnit]);
+    }, [chainedUnitConversions, catalogLocked, watchedOpeningBalanceUnit]);
   
     const unitPrices = useMemo(() => {
-        const prices: Record<string, { purchase: number; sale: number; purchaseTax: number; saleTax: number; }> = {};
-        const conversions = watchedUnitConversions || [];
-        if (conversions.length === 0 || !conversions[0].toUnit) return prices;
-
-        const smallestUnit = conversions[conversions.length - 1].toUnit;
-
-        const purchaseTaxRate = taxes.find(t => t.id === watchedPurchaseTaxId)?.rate || 0;
-        const saleTaxRate = taxes.find(t => t.id === watchedSaleTaxId)?.rate || 0;
-
-        let basePurchasePrice = Number(watchedPurchasePrice) || 0;
-        if (watchedIsPurchaseTaxInclusive) {
-            basePurchasePrice = parseFloat((basePurchasePrice / (1 + purchaseTaxRate / 100)).toFixed(10));
-        }
-        if (watchedPurchasePriceUnit && smallestUnit && watchedPurchasePriceUnit !== smallestUnit) {
-            let factor = 1;
-            let current = watchedPurchasePriceUnit;
-            while (current !== smallestUnit) {
-                const conv = conversions.find((c) => c.fromUnit === current);
-                if (!conv) { factor = 0; break; }
-                factor *= Number(conv.conversionFactor) || 1;
-                current = conv.toUnit;
-            }
-            basePurchasePrice /= (factor || 1);
-        }
-
-        let baseSalePrice = Number(watchedSalePrice) || 0;
-        if (watchedIsSalePriceTaxInclusive) {
-            baseSalePrice = parseFloat((baseSalePrice / (1 + saleTaxRate / 100)).toFixed(10));
-        }
-        if (watchedSalePriceUnit && smallestUnit && watchedSalePriceUnit !== smallestUnit) {
-            let factor = 1;
-            let current = watchedSalePriceUnit;
-            while (current !== smallestUnit) {
-                const conv = conversions.find((c) => c.fromUnit === current);
-                if (!conv) { factor = 0; break; }
-                factor *= Number(conv.conversionFactor) || 1;
-                current = conv.toUnit;
-            }
-            baseSalePrice /= (factor || 1);
-        }
-
-        allUnits.forEach((unit) => {
-            let purchasePriceForUnit = basePurchasePrice;
-            let salePriceForUnit = baseSalePrice;
-
-            if (unit !== smallestUnit) {
-                let factor = 1;
-                let current = unit;
-                 while (current !== smallestUnit) {
-                  const conv = conversions.find((c) => c.fromUnit === current);
-                  if (!conv) { factor = 0; break; }
-                  factor *= Number(conv.conversionFactor) || 1;
-                  current = conv.toUnit;
-                }
-                purchasePriceForUnit *= factor;
-                salePriceForUnit *= factor;
-            }
-
-            prices[unit] = {
-                purchase: purchasePriceForUnit,
-                sale: salePriceForUnit,
-                purchaseTax: purchasePriceForUnit * (purchaseTaxRate / 100),
-                saleTax: salePriceForUnit * (saleTaxRate / 100),
-            };
+        const conversions = chainedUnitConversions;
+        if (conversions.length === 0 || !conversions[0].toUnit) return {} as ReturnType<typeof computeItemUnitPrices>;
+        return computeItemUnitPrices({
+            conversions,
+            units: allUnits,
+            purchasePrice: watchedPurchasePrice,
+            salePrice: watchedSalePrice,
+            purchasePriceUnit: watchedPurchasePriceUnit,
+            salePriceUnit: watchedSalePriceUnit,
+            purchaseTaxRate: taxes.find(t => t.id === watchedPurchaseTaxId)?.rate || 0,
+            saleTaxRate: taxes.find(t => t.id === watchedSaleTaxId)?.rate || 0,
+            purchaseInclusive: !!watchedIsPurchaseTaxInclusive,
+            saleInclusive: !!watchedIsSalePriceTaxInclusive,
         });
-
-        return prices;
-    }, [allUnits, watchedUnitConversions, watchedPurchasePrice, watchedSalePrice, watchedPurchasePriceUnit, watchedSalePriceUnit, watchedPurchaseTaxId, watchedSaleTaxId, taxes, watchedIsPurchaseTaxInclusive, watchedIsSalePriceTaxInclusive]);
+    }, [allUnits, chainedUnitConversions, watchedPurchasePrice, watchedSalePrice, watchedPurchasePriceUnit, watchedSalePriceUnit, watchedPurchaseTaxId, watchedSaleTaxId, taxes, watchedIsPurchaseTaxInclusive, watchedIsSalePriceTaxInclusive]);
     
     useEffect(() => {
         const openingStockUnit = form.getValues('openingBalanceUnit');
@@ -1111,7 +1083,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
 
     const openingStockByUnit = useMemo(() => {
         const stock: Record<string, number> = {};
-        const conversions = watchedUnitConversions || [];
+        const conversions = chainedUnitConversions;
         if (conversions.length === 0 || !watchedOpeningBalanceUnit || !openingStockQty) return stock;
 
         const getFactorToSmallest = (unit: string): number => {
@@ -1137,7 +1109,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
         });
 
         return stock;
-    }, [watchedUnitConversions, openingStockQty, watchedOpeningBalanceUnit, allUnits]);
+    }, [chainedUnitConversions, openingStockQty, watchedOpeningBalanceUnit, allUnits]);
 
 
     const capitalizeFirstLetter = (str: string) => {
@@ -1441,11 +1413,28 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                             <FormField control={form.control} name="saleTaxId" render={({ field }: any) => (<FormItem><Select onValueChange={(value) => { if (value === "add-new") { setTaxFieldToApply("saleTaxId"); setIsCreateTaxOpen(true); } else field.onChange(value === "none" ? "" : value);}} value={field.value}><FormControl><SelectTrigger className="w-full h-9"><SelectValue placeholder="Select Tax"/></SelectTrigger></FormControl><SelectContent><SelectItem value="none">None</SelectItem>{taxes.map(t => <SelectItem key={t.id} value={t.id}>{t.name} @ {t.rate}%</SelectItem>)}<SelectItem value="add-new" className="text-primary">+ Add New Tax</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
                         </div>
                     </div>
-                    <div className="grid grid-cols-[1fr_auto] items-end gap-2">
-                       <FormField control={form.control} name="salePrice" render={({ field }: any) => (<FormItem className="flex-1"><FormControl><Input type="number" placeholder="0.00" className={cn("h-9", catalogLocked && "bg-muted cursor-not-allowed")} readOnly={catalogLocked} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))} /></FormControl><FormMessage /></FormItem>)} />
+                    <div className="flex flex-wrap items-end gap-2">
+                       <FormField control={form.control} name="salePrice" render={({ field }: any) => (<FormItem className="min-w-[6rem] flex-1"><FormControl><Input type="number" placeholder="0.00" className={cn("h-9", catalogLocked && "bg-muted cursor-not-allowed")} readOnly={catalogLocked} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))} /></FormControl><FormMessage /></FormItem>)} />
+                       <SaleMarginPills
+                         isOpen={isOpen}
+                         units={allUnits}
+                         unitPrices={unitPrices}
+                         conversions={chainedUnitConversions}
+                         salePriceUnit={watchedSalePriceUnit}
+                         purchasePrice={watchedPurchasePrice}
+                         salePrice={watchedSalePrice}
+                         purchaseTaxRate={taxes.find(t => t.id === watchedPurchaseTaxId)?.rate || 0}
+                         purchaseInclusive={!!watchedIsPurchaseTaxInclusive}
+                         saleTaxRate={taxes.find(t => t.id === watchedSaleTaxId)?.rate || 0}
+                         saleInclusive={!!watchedIsSalePriceTaxInclusive}
+                         disabled={catalogLocked}
+                         onSalePriceChange={(v) => form.setValue('salePrice', v, { shouldDirty: true, shouldValidate: true })}
+                       />
                        <FormField control={form.control} name="salePriceUnit" render={({ field }: any) => (<FormItem><Select onValueChange={field.onChange} value={field.value} disabled={catalogLocked}><FormControl><SelectTrigger className="w-28 h-9"><SelectValue placeholder="Unit"/></SelectTrigger></FormControl><SelectContent>{allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                    </div>
                </div>
+                {/* PC: Purchase Unit Prices | Margin | Sale Unit Prices ek row me; mobile par `contents` (order classes waise hi). */}
+                <div className="contents sm:flex sm:col-span-2 sm:order-3 sm:min-w-0 sm:gap-4">
                 <ScrollArea className="order-2 sm:order-3 w-full">
                     <div className="space-y-2 border p-4 rounded-md min-w-[500px]">
                         <FormLabel className="text-base font-semibold">Purchase Unit Prices</FormLabel>
@@ -1466,6 +1455,17 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                     </div>
                     <ScrollBar orientation="horizontal"/>
                 </ScrollArea>
+                <ItemMarginCard
+                  isOpen={isOpen}
+                  units={allUnits}
+                  unitPrices={unitPrices}
+                  conversions={chainedUnitConversions}
+                  salePriceUnit={watchedSalePriceUnit}
+                  saleTaxRate={taxes.find(t => t.id === watchedSaleTaxId)?.rate || 0}
+                  saleInclusive={!!watchedIsSalePriceTaxInclusive}
+                  disabled={catalogLocked}
+                  onSalePriceChange={(v) => form.setValue('salePrice', v, { shouldDirty: true, shouldValidate: true })}
+                />
                  <ScrollArea className="order-4 sm:order-4 w-full">
                     <div className="space-y-2 border p-4 rounded-md min-w-[500px]">
                         <FormLabel className="text-base font-semibold">Sale Unit Prices</FormLabel>
@@ -1477,7 +1477,19 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                             {allUnits.map((unit) => (
                                 <React.Fragment key={`sale-${unit}`}>
                                     <Input value={unit} readOnly tabIndex={-1} className="h-9 bg-muted cursor-not-allowed font-medium"/>
-                                    <Input type="number" value={Number(unitPrices[unit]?.sale).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
+                                    <SaleUnitRateInput
+                                      unit={unit}
+                                      rate={Number(unitPrices[unit]?.sale) || 0}
+                                      isOpen={isOpen}
+                                      units={allUnits}
+                                      unitPrices={unitPrices}
+                                      conversions={chainedUnitConversions}
+                                      salePriceUnit={watchedSalePriceUnit}
+                                      saleTaxRate={taxes.find(t => t.id === watchedSaleTaxId)?.rate || 0}
+                                      saleInclusive={!!watchedIsSalePriceTaxInclusive}
+                                      disabled={catalogLocked}
+                                      onSalePriceChange={(v) => form.setValue('salePrice', v, { shouldDirty: true, shouldValidate: true })}
+                                    />
                                     <Input type="number" value={Number(unitPrices[unit]?.saleTax).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
                                     <Input type="number" value={Number(unitPrices[unit]?.sale + unitPrices[unit]?.saleTax).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
                                 </React.Fragment>
@@ -1486,6 +1498,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                     </div>
                     <ScrollBar orientation="horizontal"/>
                 </ScrollArea>
+                </div>
             </div>
             
             <div className="space-y-4">
