@@ -2520,14 +2520,37 @@ export function AddVoucherDialog(props: any) {
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     if (!isDesktop) return;
-    const t = e.target as HTMLElement;
+    const t = e.target as HTMLElement | null;
+    // Press started inside an open modal/popup (OCR settings gear, master create, calendar …): that
+    // surface owns the gesture — text selection there must never drag the voucher underneath.
+    if (t?.closest?.('[role="dialog"], [role="alertdialog"], [data-radix-popper-content-wrapper]')) return;
     // Ribbon drag only — interactive controls (and radix triggers) must not start a window drag.
-    if (t.closest("button, a, input, textarea, select, [role='switch'], [role='combobox'], [data-radix-select-trigger]"))
+    if (t?.closest("button, a, input, textarea, select, [role='switch'], [role='combobox'], [data-radix-select-trigger]"))
       return;
+    const el = e.target as HTMLElement;
+    if (el && el.isContentEditable) return;
     e.preventDefault();
     dragRef.current = { startX: e.clientX, startY: e.clientY, startLeft: dialogPosition.x, startTop: dialogPosition.y };
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let armed = false;
     const onMove = (e: MouseEvent) => {
       if (!dragRef.current) return;
+      // A plain press (people press to start selecting text, then move) must not drag the window:
+      // arm only after a real ribbon drag, and drop the gesture as soon as text is being selected.
+      if (!armed) {
+        if (Math.abs(e.clientX - startX) < 4 && Math.abs(e.clientY - startY) < 4) return;
+        // If the browser is already selecting text under the press, this is a copy gesture, not a
+        // window drag: hand the gesture back to the browser.
+        const sel = typeof window !== "undefined" ? window.getSelection() : null;
+        if (sel && !sel.isCollapsed) {
+          dragRef.current = null;
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+          return;
+        }
+        armed = true;
+      }
       const x = Math.max(0, dragRef.current.startLeft + e.clientX - dragRef.current.startX);
       const y = Math.max(0, dragRef.current.startTop + e.clientY - dragRef.current.startY);
       setDialogPosition({ x, y });

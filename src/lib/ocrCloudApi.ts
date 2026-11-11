@@ -77,6 +77,8 @@ export type OcrCloudStatus = {
   canUse: boolean;
   /** Admin only: shared users of the company and whether each may use cloud OCR. */
   sharedUsers?: OcrCloudSharedUser[];
+  /** Admin only: the server can encrypt + store a key (PL_VISION_MASTER_KEY configured). */
+  canSaveKey?: boolean;
 };
 
 export type OcrCloudCompanyOptions = {
@@ -159,6 +161,7 @@ function normalizeStatus(raw: unknown): OcrCloudStatus {
     canUse: asBool(o.canUse),
   };
   if (typeof o.keyLast4 === "string" && o.keyLast4) out.keyLast4 = o.keyLast4;
+  if (typeof o.canSaveKey === "boolean") out.canSaveKey = o.canSaveKey;
   if (Array.isArray(o.sharedUsers)) {
     out.sharedUsers = o.sharedUsers
       .filter((u): u is Record<string, unknown> => !!u && typeof u === "object")
