@@ -54,7 +54,7 @@ function SecondsRow({ id, label, draft, setDraft, onCommit, onOk, disabled }: { 
 
 function Section({ title, hint, children }: { title: string; hint?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="space-y-2.5 px-5 py-4">
+    <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
       <div>
         <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
         {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p> : null}
@@ -65,20 +65,21 @@ function Section({ title, hint, children }: { title: string; hint?: React.ReactN
 }
 
 function RadioRow<T extends string>({ name, value, options, onChange }: { name: string; value: T; options: readonly (readonly [T, string, string?])[]; onChange: (v: T) => void }) {
+  // Each option sits in ONE row and sizes to its own text (no full-width boxes).
   return (
-    <div className="grid gap-1.5 sm:grid-cols-2">
+    <div className="flex flex-wrap items-start gap-1.5">
       {options.map(([v, label, sub]) => (
         <label
           key={v}
           className={cn(
-            "flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2 text-xs transition-colors",
+            "inline-flex w-fit max-w-full cursor-pointer items-start gap-2 rounded-md border px-2.5 py-1.5 text-xs transition-colors",
             value === v ? "border-emerald-500 bg-emerald-50 dark:border-emerald-500/70 dark:bg-emerald-950/30" : "border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/60"
           )}
         >
-          <input type="radio" name={name} checked={value === v} onChange={() => onChange(v)} className="mt-0.5 accent-emerald-600" />
-          <span>
+          <input type="radio" name={name} checked={value === v} onChange={() => onChange(v)} className="mt-0.5 shrink-0 accent-emerald-600" />
+          <span className="min-w-0">
             <span className="block font-medium">{label}</span>
-            {sub ? <span className="block text-[11px] text-muted-foreground">{sub}</span> : null}
+            {sub ? <span className="block text-[11px] leading-snug text-muted-foreground">{sub}</span> : null}
           </span>
         </label>
       ))}
@@ -148,11 +149,13 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
   if (!companyId) return <Section title="Google Online OCR" hint={hint}><p className="text-xs text-muted-foreground">Select a company first.</p>{engineRadio}</Section>;
   if (loading && !status) return <Section title="Google Online OCR" hint={hint}><p className="text-xs text-muted-foreground">Checking online OCR status…</p>{engineRadio}</Section>;
   if (!status) {
+    const msg = `Online OCR status unavailable${error ? `: ${error}` : ""}. Offline OCR is used.`;
     return (
       <Section title="Google Online OCR" hint={hint}>
-        <div className="flex items-center justify-between gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs dark:bg-slate-800">
-          <span>Online OCR status unavailable{error ? `: ${error}` : ""}. Offline OCR is used.</span>
-          <button type="button" onClick={reload} className="shrink-0 rounded-md border px-2 py-1 text-[11px] font-medium hover:bg-white dark:hover:bg-slate-700">Retry</button>
+        <div className="flex items-start gap-2 rounded-md bg-slate-100 px-2 py-2 text-xs dark:bg-slate-800">
+          {/* Narrow block: the message wraps in the middle, Retry stays a small button on the right. */}
+          <span className="min-w-0 flex-1 break-words whitespace-normal text-[11px] leading-snug">{msg}</span>
+          <button type="button" onClick={reload} className="shrink-0 rounded-md border px-1.5 py-1 text-[10px] font-medium leading-none hover:bg-white dark:hover:bg-slate-700">Retry</button>
         </div>
         {engineRadio}
       </Section>
@@ -182,7 +185,7 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
       title="Google Online OCR"
       hint={<>{hint} Only you (admin) can see or change the key. <a href={GOOGLE_VISION_URL} target="_blank" rel="noreferrer" className="font-medium text-emerald-700 underline dark:text-emerald-400">Enable Vision API</a> · <a href={GOOGLE_KEY_URL} target="_blank" rel="noreferrer" className="font-medium text-emerald-700 underline dark:text-emerald-400">Create API key</a></>}
     >
-      <div className="space-y-2 rounded-md border border-slate-200 p-3 dark:border-slate-700">
+      <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-700 dark:bg-slate-950/40">
         <div className="flex items-center justify-between gap-2 text-xs">
           <span className="font-medium">Google Vision API key</span>
           <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", status.hasKey ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300")}>
@@ -313,10 +316,9 @@ function OcrSettingsGear({
       </DialogTrigger>
       <DialogContent
         className={cn(
-          // 30% of the screen wide, 80% of the screen tall (small screens keep a safe inset).
-          "flex h-[80vh] max-h-[80vh] w-[30vw] max-w-[30vw] min-w-[min(100vw-1.5rem,340px)] flex-col gap-0 overflow-hidden p-0",
-          "max-xl:w-[46vw] max-xl:max-w-[46vw]",
-          "max-sm:h-[calc(100vh-1.5rem)] max-sm:max-h-[calc(100vh-1.5rem)] max-sm:w-[calc(100vw-1.5rem)] max-sm:max-w-[calc(100vw-1.5rem)] max-sm:min-w-0",
+          // Exactly 30% of the screen wide, 80% of the screen tall (small screens keep a safe inset).
+          "flex h-[80vh] max-h-[80vh] w-[30vw] max-w-[30vw] flex-col gap-0 overflow-hidden p-0",
+          "max-sm:h-[calc(100vh-1.5rem)] max-sm:max-h-[calc(100vh-1.5rem)] max-sm:w-[calc(100vw-1.5rem)] max-sm:max-w-[calc(100vw-1.5rem)]",
           OCR_SETTINGS_DIALOG_CONTENT_CN
         )}
         overlayClassName={OCR_SETTINGS_DIALOG_OVERLAY_CN}
@@ -328,7 +330,7 @@ function OcrSettingsGear({
           <DialogTitle className="text-base">OCR settings</DialogTitle>
           <p className="text-xs text-muted-foreground">How bills are read and filled on this device.</p>
         </DialogHeader>
-        <div className="min-h-0 flex-1 divide-y divide-slate-200 overflow-y-auto overscroll-contain dark:divide-slate-700">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-slate-50 px-3 py-3 dark:bg-slate-950/40">
           <GoogleOcrSection companyId={companyId} open={open} enginePref={enginePref} />
           <Section title="Field popups" hint="How a popup points at its field.">
             <RadioRow
