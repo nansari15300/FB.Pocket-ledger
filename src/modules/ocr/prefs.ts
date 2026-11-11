@@ -4,8 +4,8 @@ import { useSyncExternalStore } from "react";
 
 export type OcrConnectorStyle = "tail" | "line";
 export type OcrNarrationStyle = "full" | "short";
-/** auto = Google online OCR when the server allows it for this user/company, else offline tesseract. */
-export type OcrEnginePref = "auto" | "offline";
+/** auto = online OCR when allowed, else tesseract; offline = tesseract only; online = cloud only (no tesseract fallback). */
+export type OcrEnginePref = "auto" | "offline" | "online";
 export type OcrPrefs = {
   enabled: boolean;
   autoPost: boolean;
@@ -46,7 +46,7 @@ function normalize(raw: Partial<OcrPrefs> | null | undefined): OcrPrefs {
     ...(raw ?? {}),
     connectorStyle: raw?.connectorStyle === "line" ? "line" : "tail",
     narrationStyle: raw?.narrationStyle === "short" ? "short" : "full",
-    engine: raw?.engine === "offline" ? "offline" : "auto",
+    engine: raw?.engine === "offline" || raw?.engine === "online" ? raw.engine : "auto",
   };
 }
 

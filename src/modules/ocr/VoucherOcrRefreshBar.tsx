@@ -15,6 +15,9 @@ export function VoucherOcrRefreshBar({ ocr }: { ocr: VoucherOcrApi }) {
   const [dbgOpen, setDbgOpen] = useState(false);
   if (!ocr.visible) return null;
   const d = ocr.debugInfo;
+  const rb = ocr.readBy;
+  const readByLabel = rb ? (rb.engine === "google" ? "Google" : rb.engine === "azure" ? "Azure" : "Local") : null;
+  const readByNote = rb && rb.engine === "tesseract" && rb.note ? rb.note : undefined;
   return (
     <div className="mb-1 flex flex-wrap items-center gap-2 px-[2px]" data-pl-ocr-refresh-bar="">
       {ocr.preReading ? (
@@ -26,6 +29,15 @@ export function VoucherOcrRefreshBar({ ocr }: { ocr: VoucherOcrApi }) {
         {ocr.running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
         Refresh OCR
       </Button>
+      {readByLabel && rb ? (
+        <span
+          className="inline-flex h-7 max-w-full items-center rounded-md border border-slate-200 bg-slate-50 px-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+          data-pl-ocr-read-by={rb.engine}
+          title={readByNote}
+        >
+          Read by: {readByLabel}
+        </span>
+      ) : null}
       {ocr.canFindAccount ? (
         <Button type="button" size="sm" variant="outline" className={OCR_BAR_PILL_CN} onClick={ocr.openFindAccount}>
           <UserSearch className="h-3.5 w-3.5" /> Find account

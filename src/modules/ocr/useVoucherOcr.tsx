@@ -123,7 +123,7 @@ async function loadFirstFile(f: File | string, companyId?: string | null): Promi
 }
 
 /** Bump when parser/engine logic changes: shown in Show OCR text to prove the browser runs the new bundle. */
-export const OCR_BUILD = "2026-11-10.12";
+export const OCR_BUILD = "2026-11-11.1";
 
 const MONEY_TYPES = ["payment_out", "payment_in", "direct_expense", "direct_income", "contra"] as const;
 const ALL_TYPE_CHOICES = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"] as const;
@@ -212,6 +212,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   useEffect(() => { if (!apPrefOn) cancelAutoPostCountdown(); }, [apPrefOn, cancelAutoPostCountdown]);
   const [preReading, setPreReading] = useState<string | null>(null);
   const lastRawRef = useRef<OcrRawResult | null>(null);
+  const [readBy, setReadBy] = useState<{ engine: "google" | "azure" | "tesseract"; note?: string } | null>(null);
   const inputNoteRef = useRef("handoff (no OCR)");
   const optsRef = useRef(o);
   optsRef.current = o;
@@ -385,6 +386,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           raw = await runOcrOnFile(src.blob, src.mime, { companyId: opt.companyId, enginePref: getOcrPrefs().engine });
         }
         lastRawRef.current = raw;
+        setReadBy({ engine: raw.engine === "google" || raw.engine === "azure" ? raw.engine : "tesseract", note: raw.engineNote });
         const lowConf = raw.meanConfidence < 55;
         if (lowConf) {
           toast.message("OCR: image is not very clear", { id: tId, description: "Please confirm the highlighted fields. Nothing will be auto-saved.", duration: 5000, position: "top-right" });
@@ -1483,6 +1485,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     refresh: () => void run("refresh"),
     openFindAccount: () => setFindOpen(true),
     debugInfo,
+    /** Which engine produced the current file's text (Refresh bar "Read by" badge). */
+    readBy,
     /** = number of suggestion BUBBLES (suggestions merged per field, e.g. Create party + Pick existing = 1). */
     suggestionsCount: new Set(liveBubbles.suggestions.filter((x) => !x.blocked).map((x) => ocrFieldForSuggestion(x.id))).size,
     /** OCR bar "Suggestions (n)": toggles all bubbles show / hide. */

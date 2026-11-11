@@ -2,8 +2,8 @@
 /**
  * OCR engine.
  * - Online (optional): Google Cloud Vision or Azure Image Analysis Read through the Pocket Ledger Server (`./cloud/ocrCloudClient`), only when the
- *   user's engine pref is "auto", the device is online, the file is an image/PDF page, and the server status says
- *   `canUse` (server OCR on + company enabled + user allowed + key saved). Any error / timeout -> offline path.
+ *   user's engine pref is "auto" or "online", the device is online, the file is an image/PDF page, and the server status says
+ *   `canUse` (server OCR on + company enabled + user allowed + key saved). "online" never falls back to tesseract (throws instead). Any error / timeout in "auto" -> offline path.
  * - Offline (default fallback): tesseract.js (own Web Worker) + locally bundled assets under `public/ocr/`
  *   (worker, wasm core, eng+nep traineddata). No CDN calls.
  */
@@ -75,7 +75,7 @@ function isAndroidWebView() {
 export type RunOcrOptions = {
   /** Active company (server checks the user's online OCR permission for it). */
   companyId?: string | null;
-  /** "auto" (default) tries the saved online provider first when allowed; "offline" = tesseract only. */
+  /** "auto" (default) tries the saved online provider first when allowed; "offline" = tesseract only; "online" = cloud only, no tesseract fallback. */
   enginePref?: OcrEnginePref;
 };
 
@@ -128,7 +128,8 @@ async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promi
     ]);
     const text = String(res?.text ?? "");
     if (text.replace(/\s+/g, "").length < 8) return { raw: null, note: "Online OCR returned no text" };
-    const provider = status.provider === "azure" ? "azure" as const : "google" as const;
+    const fromVision = res && typeof res === "object" && "provider" in (res as object) ? (res as { provider?: unknown }).provider : undefined;
+    const provider = fromVision === "azure" || fromVision === "google" ? fromVision : status.provider === "azure" ? "azure" as const : "google" as const;
     return { raw: rawFromCloudText(text, { engine: provider, note: `JPEG ${img.w}x${img.h} ${img.kb} KB` }), note: "" };
   } catch (e) {
     const code = ocrCloudErrorCode(e);
@@ -139,10 +140,12 @@ async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promi
   }
 }
 
-/** Online OCR when allowed (see `tryCloudOcr`), otherwise / on any failure the offline tesseract multi-pass. */
+/** Online OCR when allowed (see `tryCloudOcr`). "auto" falls back to tesseract on any miss; "online" never calls tesseract and throws instead. */
 export async function runOcrOnFile(file: Blob, mime: string, opts: RunOcrOptions = {}): Promise<OcrRawResult> {
+  const pref = opts.enginePref ?? "auto";
   const cloud = await tryCloudOcr(file, mime, opts).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})` }));
   if (cloud.raw) return cloud.raw;
+  if (pref === "online") throw new Error(cloud.note || "Online OCR failed");
   const raw = await runTesseractOnFile(file, mime);
   return { ...raw, engine: "tesseract", engineNote: cloud.note || undefined };
 }

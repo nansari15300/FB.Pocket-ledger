@@ -150,15 +150,16 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
       options={[
         ["auto", "Auto", "Online OCR when available, else offline"],
         ["offline", "Offline only", "Always this device (tesseract)"],
+        ["online", "Online only", "Always online OCR, no offline fallback"],
       ] as const}
     />
   );
-  const hint = "Online OCR (Google Cloud Vision or Azure Image Analysis) reads handwriting and Nepali much better. Needs internet; offline OCR is always the fallback.";
+  const hint = "Online OCR (Google Cloud Vision or Azure Image Analysis) reads handwriting and Nepali much better. Needs internet. Auto falls back to this device if online OCR is unavailable; Online only does not.";
   const title = "Online OCR";
   if (!companyId) return <Section title={title} hint={hint}><p className="text-xs text-muted-foreground">Select a company first.</p>{engineRadio}</Section>;
   if (loading && !status) return <Section title={title} hint={hint}><p className="text-xs text-muted-foreground">Checking online OCR status…</p>{engineRadio}</Section>;
   if (!status) {
-    const msg = `Online OCR status unavailable${error ? `: ${error}` : ""}. Offline OCR is used.`;
+    const msg = `Online OCR status unavailable${error ? `: ${error}` : ""}. Auto will use offline OCR; Online only will fail.`;
     return (
       <Section title={title} hint={hint}>
         <div className="flex items-start gap-2 rounded-md bg-slate-100 px-2 py-2 text-xs dark:bg-slate-800">
@@ -173,7 +174,8 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
   if (!status.serverOcrEnabled) {
     return (
       <Section title={title} hint={hint}>
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Online OCR is disabled by the server. Offline OCR works as usual.</p>
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Online OCR is disabled by the server. Auto and Offline only still use this device; Online only will fail.</p>
+        {engineRadio}
       </Section>
     );
   }
@@ -182,9 +184,9 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
     return (
       <Section title={title} hint={hint}>
         <p className={cn("rounded-md px-3 py-2 text-xs", status.canUse ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300")}>
-          {status.canUse ? "Enabled for you in this company." : "Not enabled for you in this company. Ask the company admin. Offline OCR is used."}
+          {status.canUse ? "Enabled for you in this company." : "Not enabled for you in this company. Ask the company admin. Auto will use offline OCR; Online only will fail."}
         </p>
-        {status.canUse ? engineRadio : null}
+        {engineRadio}
       </Section>
     );
   }
@@ -440,7 +442,7 @@ export function VoucherOcrHeaderToggles({ className }: { className?: string }) {
             seconds={clampAutoPostSeconds(p.autoPostSeconds)}
             switchOn={p.autoSwitchVoucher !== false}
             switchSeconds={clampAutoPostSeconds(p.autoSwitchSeconds)}
-            enginePref={p.engine === "offline" ? "offline" : "auto"}
+            enginePref={p.engine === "offline" || p.engine === "online" ? p.engine : "auto"}
             companyId={companyId ?? null}
           />
           <Pill
