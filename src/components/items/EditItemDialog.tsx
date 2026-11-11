@@ -179,6 +179,10 @@ const formSchema = z.object({
   unitConversions: z.array(unitConversionSchema).optional(),
   salePriceUnit: z.string().optional(),
   purchasePriceUnit: z.string().optional(),
+  /** Low stock alert threshold (qty). 0 = koi warning nahi. */
+  lowStockWarning: z.coerce.number().min(0).optional(),
+  /** Low stock threshold kis unit me hai (item ke all units me se). */
+  lowStockWarningUnit: z.string().optional(),
   saleTaxId: z.string().optional(),
   purchaseTaxId: z.string().optional(),
   /** Statement opening row — item ledger */
@@ -242,6 +246,8 @@ function getInitialFormValues(item?: Item): z.infer<typeof formSchema> {
             openingBalanceDate: undefined,
             salePriceUnit: "",
             purchasePriceUnit: "",
+            lowStockWarning: 0,
+            lowStockWarningUnit: "",
             saleTaxId: "",
             purchaseTaxId: "",
             openingBalanceNarration: "",
@@ -267,6 +273,8 @@ function getInitialFormValues(item?: Item): z.infer<typeof formSchema> {
         unitConversions: item.unitConversions || [],
         salePriceUnit: item.salePriceUnit || "",
         purchasePriceUnit: (item as any).purchasePriceUnit || "",
+        lowStockWarning: Number((item as any).lowStockWarning ?? 0) || 0,
+        lowStockWarningUnit: (item as any).lowStockWarningUnit || "",
         saleTaxId: item.saleTaxId || "",
         purchaseTaxId: item.purchaseTaxId || "",
         openingBalanceNarration: item.openingBalanceNarration ?? "",
@@ -511,6 +519,8 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
         unitConversions: item.unitConversions || [],
         salePriceUnit: item.salePriceUnit || "",
         purchasePriceUnit: (item as any).purchasePriceUnit || "",
+        lowStockWarning: Number((item as any).lowStockWarning ?? 0) || 0,
+        lowStockWarningUnit: (item as any).lowStockWarningUnit || "",
         saleTaxId: item.saleTaxId || "",
         purchaseTaxId: item.purchaseTaxId || "",
         openingBalanceNarration: item.openingBalanceNarration ?? "",
@@ -687,6 +697,8 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
           unitConversions: submitValues.unitConversions || [],
           salePriceUnit: submitValues.salePriceUnit || null,
           purchasePriceUnit: submitValues.purchasePriceUnit || null,
+          lowStockWarning: Number(submitValues.lowStockWarning ?? 0) || 0,
+          lowStockWarningUnit: submitValues.lowStockWarningUnit || null,
           saleTaxId: submitValues.saleTaxId || null,
           purchaseTaxId: submitValues.purchaseTaxId || null,
           openingBalanceNarration: narrationClean,
@@ -1305,6 +1317,13 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                         <FormField control={form.control} name="purchasePrice" render={({ field }: any) => (<FormItem><FormControl><Input type="number" placeholder="0.00" className={cn("h-9", catalogLocked && "bg-muted cursor-not-allowed")} readOnly={catalogLocked} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))} /></FormControl><FormMessage /></FormItem>)} />
                         <FormField control={form.control} name="purchasePriceUnit" render={({ field }: any) => (<FormItem><Select onValueChange={field.onChange} value={field.value} disabled={catalogLocked}><FormControl><SelectTrigger className="w-28 h-9"><SelectValue placeholder="Unit"/></SelectTrigger></FormControl><SelectContent>{allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                     </div>
+                    <div className="space-y-2">
+                        <FormLabel>Low Stock Warning</FormLabel>
+                        <div className="flex flex-nowrap items-start gap-2">
+                            <FormField control={form.control} name="lowStockWarning" render={({ field }: any) => (<FormItem className="min-w-0 flex-1"><FormControl><Input type="number" min={0} step="any" placeholder="0 (off)" className={cn("h-9", catalogLocked && "bg-muted cursor-not-allowed")} readOnly={catalogLocked} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))} /></FormControl><FormMessage /><p className="text-xs text-muted-foreground">Stock isse kam/barabar ho to dashboard ke Low Stock me dikhega. 0 = off.</p></FormItem>)} />
+                            <FormField control={form.control} name="lowStockWarningUnit" render={({ field }: any) => (<FormItem className="shrink-0"><Select onValueChange={field.onChange} value={field.value || ""} disabled={catalogLocked}><FormControl><SelectTrigger className="w-28 h-9"><SelectValue placeholder="Unit"/></SelectTrigger></FormControl><SelectContent>{allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                        </div>
+                    </div>
                </div>
                 <div className="order-3 sm:order-2 space-y-4 border p-4 rounded-md">
                     <div className="space-y-2">
@@ -1548,41 +1567,38 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
             </div>
             </div>
 
-              <DialogFooter className={cn(MASTER_DIALOG_FOOTER_ROW_CLASS, "sticky bottom-0 z-10")}>
+              <DialogFooter className={cn(MASTER_DIALOG_FOOTER_ROW_CLASS, "sticky bottom-0 z-10 !justify-end")}>
                 <DialogClose asChild>
                   <Button type="button" variant="ghost" className={MASTER_DIALOG_CANCEL_GRAY_PILL_BTN_CLASS}>
                     Cancel
                   </Button>
                 </DialogClose>
-                <div className="flex min-w-0 flex-1 justify-center px-1">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="inline-flex max-w-full min-w-0 shrink" tabIndex={0}>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            className="shrink-0 px-3 sm:px-4"
-                            onClick={() => setIsDeleteDialogOpen(true)}
-                            disabled={hasTransactions || apkOfflineViewOnly || catalogLocked}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4 shrink-0" /> Delete
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      {hasTransactions && (
-                        <TooltipContent>
-                          <p>Cannot delete an item with existing transactions.</p>
-                        </TooltipContent>
-                      )}
-                      {!hasTransactions && apkOfflineViewOnly && (
-                        <TooltipContent>
-                          <p>Offline — view only.</p>
-                        </TooltipContent>
-                      )}
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        data-pl-master-delete-btn=""
+                        className="shrink-0 whitespace-nowrap px-3 sm:px-4"
+                        onClick={() => setIsDeleteDialogOpen(true)}
+                        disabled={hasTransactions || apkOfflineViewOnly || catalogLocked}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4 shrink-0" /> Delete
+                      </Button>
+                    </TooltipTrigger>
+                    {hasTransactions && (
+                      <TooltipContent>
+                        <p>Cannot delete an item with existing transactions.</p>
+                      </TooltipContent>
+                    )}
+                    {!hasTransactions && apkOfflineViewOnly && (
+                      <TooltipContent>
+                        <p>Offline — view only.</p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </TooltipProvider>
                 <Button
                   type="submit"
                   disabled={
@@ -1592,6 +1608,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                     openingBalanceDateMissing
                   }
                   className="shrink-0"
+                  data-pl-master-save-btn=""
                 >
                   {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Save Changes

@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { chromeProPillCn } from "@/lib/chromePillButton";
 import { proDashboardRibbonClass } from "@/lib/proTheme";
 import { DASHBOARD_VIEW_DETAILS_TABLE_CN } from "@/lib/dashboardViewDetailsTableClass";
+import { financialSummaryHairlineRowClass } from "@/components/reports/FinancialSummary/financialSummaryCardStyles";
 import {
     LEDGER_HEADER_PILL_CN,
     LEDGER_HEADER_PILL_ICON_SIZE_CN,
@@ -463,6 +464,11 @@ type FinancialSummaryCardsProps = {
     voucherDateChartKind?: "bar" | "line";
     /** Dashboard: Outstanding jaisa `col-span-1` cell — Auto recurring card (optional) */
     recurringSummarySlot?: React.ReactNode;
+    /**
+     * Tab active hai? `false` → Summary ke server calls (receivables/payables aggregation) nahi chalte.
+     * Dashboard Summary tab hi `true` bhejta hai.
+     */
+    active?: boolean;
 };
 
 /** Dashboard Chart tab: avoid Recharts ResponsiveContainer resize storms while scrolling. */
@@ -590,6 +596,7 @@ export function FinancialSummaryCards({
     showVoucherDateCharts = false,
     voucherDateChartKind = "bar",
     recurringSummarySlot,
+    active = true,
 }: FinancialSummaryCardsProps) {
     /** Live snapshot / SQLite merge nayi array de — current frame (scroll/click) pe heavy recompute mat lagao. */
     const vouchers = useDeferredValue(vouchersProp);
@@ -631,7 +638,7 @@ export function FinancialSummaryCards({
         companyId: company?.id,
         storageOption: company?.storageOption,
         receivablesDateRange,
-        enabled: true,
+        enabled: active,
     });
 
     const [cashFlowDateRange, setCashFlowDateRange] = useState<DateRange | undefined>(() => currentDashboardMonthRange());
@@ -2926,177 +2933,6 @@ export function FinancialSummaryCards({
         );
     };
 
-    /** Stock card: compact report = pehle; full dashboard = top-5 ke niche full-width row. */
-    const renderStockSummaryDashboardCard = () => (
-            <Card
-                className={cn(
-                    compact ? "financial-summary-stock-card" : "w-full min-h-0 self-stretch",
-                    "transition-colors flex flex-col",
-                    dashboardCardRibbonClass,
-                    compact ? cardWrapperClass : "overflow-hidden",
-                    ribbonTone(0)
-                )}
-            >
-                <CardHeader className={`flex flex-row items-center justify-between p-4 space-y-0 shrink-0 ${headerClass} overflow-hidden`}>
-                    <CardTitle className={`text-base whitespace-nowrap ${titleClass} min-w-0`}>Stock Summary</CardTitle>
-                    {compact ? (
-                        <ReportMonthYearFilter dateRange={stockSummaryScopeAll ? undefined : stockDateRange} setDateRange={(r) => { setStockSummaryScopeAll(!r?.from); setStockDateRange(r); }} dateSystem={dateSystem} />
-                    ) : (
-                        <MonthYearFilter dateRange={stockSummaryScopeAll ? undefined : stockDateRange} setDateRange={(r) => { setStockSummaryScopeAll(!r?.from); setStockDateRange(r); }} dateSystem={dateSystem} />
-                    )}
-                </CardHeader>
-                <CardContent className={cn("p-4 pt-0 flex flex-col min-h-0", contentClass)}>
-                    <ScrollArea className={cn("flex-1 min-h-0 pr-3 -mr-1", compact && "min-h-0", !compact && "max-h-[min(42vh,320px)] md:max-h-none")}>
-                        <div
-                            className={cn(
-                                "space-y-6 pb-4",
-                                !compact && "md:grid md:grid-cols-3 md:gap-6 md:space-y-0 md:items-start",
-                            )}
-                        >
-                            <div className="text-center pt-2 md:pt-4">
-                                <p className="text-xs text-muted-foreground">Total Stock Value</p>
-                                <div className="flex items-center justify-center gap-2">
-                                    <p className={cn('text-2xl font-bold whitespace-nowrap', overallStockSummary.totalStockValue >= 0 ? 'text-green-600' : 'text-red-600')}>
-                                        {formatCurrency(overallStockSummary.totalStockValue, {noSuffix: true, duration: 2})}
-                                    </p>
-                                </div>
-                            </div>
-                            <div className={cn("space-y-6", !compact && "md:space-y-0 md:contents")}>
-                                <div>
-                                    <h4 className="text-xs font-semibold mb-2 text-center">Top 5 Sale Items</h4>
-                                    <div className="space-y-2">
-                                        {overallStockSummary.topSaleItems.map((item, index) => (
-                                            <div key={`sale-top-${item.id}-${index}`} className="flex justify-between items-center text-sm border-t pt-2 gap-2">
-                                                <span className="font-semibold min-w-0 truncate">{item.name}</span>
-                                                <div className="text-right shrink-0 whitespace-nowrap">
-                                                    <p className="font-bold text-green-600">{formatCurrency(item.salesValue, {noSuffix: true, duration: 2})}</p>
-                                                    <p className="text-xs text-muted-foreground">{item.salesQty.toFixed(2)} {item.smallestUnit}</p>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div>
-                                    <h4 className="text-xs font-semibold mb-2 text-center">Top 5 Purchase Items</h4>
-                                    <div className="space-y-2">
-                                        {overallStockSummary.topPurchaseItems.map((item, index) => (
-                                            <div key={`purchase-top-${item.id}-${index}`} className="flex justify-between items-center text-sm border-t pt-2 gap-2">
-                                                <span className="font-semibold min-w-0 truncate">{item.name}</span>
-                                                <div className="text-right shrink-0 whitespace-nowrap">
-                                                    <p className="font-bold text-red-600">{formatCurrency(item.purchaseValue, {noSuffix: true, duration: 2})}</p>
-                                                    <p className="text-xs text-muted-foreground">{item.purchaseQty.toFixed(2)} {item.smallestUnit}</p>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </ScrollArea>
-                    {showVoucherDateCharts && !compact && (
-                        <div className="mt-3 pt-2 border-t border-border/60">
-                            {/* Item master `createdAt`: din ke hisaab se kitne naye items (Chart tab only). */}
-                            {renderDashboardMiniBar(
-                                dashboardStockItemAdds,
-                                "New items by date (count)",
-                                "#0d9488",
-                                true,
-                                dashboardStockItemAddsPointsByDay
-                            )}
-                        </div>
-                    )}
-                    {showDetails && (
-                        <div className="shrink-0 text-right pt-2">
-                            <Dialog open={stockSummaryOpen} onOpenChange={setStockSummaryOpen}>
-                                <DialogTrigger asChild>
-                                    <Button variant="link" size="sm" className="h-auto p-0">View Details</Button>
-                                </DialogTrigger>
-                                <DialogContent 
-                                    className="dashboard-financial-popup max-w-4xl p-0 h-[90vh] rounded-lg flex flex-col"
-                                    onPointerDownOutside={(e) => {
-                                        const target = e.target as HTMLElement;
-                                        // Prevent closing when clicking on Select dropdown (portal)
-                                        if (target.closest('[data-radix-select-content]')) {
-                                            e.preventDefault();
-                                        }
-                                    }}
-                                    onInteractOutside={(e) => {
-                                        const target = e.target as HTMLElement;
-                                        // Prevent closing when clicking on Select dropdown (portal)
-                                        if (target.closest('[data-radix-select-content]')) {
-                                            e.preventDefault();
-                                        }
-                                    }}
-                                >
-                                    <DialogHeader className="px-4 pt-4 pb-2 border-b flex flex-row justify-between items-center">
-                                        <div className="flex flex-col"><DialogTitle className="font-bold text-black">Stock Summary Details</DialogTitle></div>
-                                        <div 
-                                            className="flex items-center gap-2 mr-12"
-                                            onClick={(e) => e.stopPropagation()}
-                                            onPointerDown={(e) => e.stopPropagation()}
-                                        >
-                                            <div 
-                                                onClick={(e) => e.stopPropagation()} 
-                                                onPointerDown={(e) => e.stopPropagation()}
-                                                className="[&_button]:h-9"
-                                            >
-                                                <MonthYearFilter dateRange={stockSummaryScopeAll ? undefined : stockDateRange} setDateRange={(r) => { setStockSummaryScopeAll(!r?.from); setStockDateRange(r); }} dateSystem={dateSystem} />
-                                            </div>
-                                            <Button 
-                                                variant="outline" 
-                                                size="sm" 
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handlePrintStock();
-                                                }} 
-                                                className="h-9 flex items-center gap-2"
-                                            >
-                                                Print <Printer className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    </DialogHeader>
-                                    <div className="flex-1 px-4 py-4 flex flex-col min-h-0 min-w-0">
-                                        <div className="border rounded-lg flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
-                                            <div className="flex-1 min-h-0 min-w-0 overflow-x-auto overflow-y-auto overscroll-x-contain">
-                                                {/* border-b-2 hata: View Details me row line patli (shadcn Table jaisa) */}
-                                                <table className="w-full min-w-max border-collapse">
-                                                        <thead className="sticky top-0 bg-background z-10">
-                                                            <tr>
-                                                                <th className="h-9 px-4 text-left align-middle font-bold text-black whitespace-nowrap border-b border-border/75 border-r border-border/40">Item Name</th>
-                                                                <th className="h-9 px-4 text-right align-middle font-bold text-black whitespace-nowrap border-b border-border/75 border-r border-border/40">Quantity</th>
-                                                                <th className="h-9 px-4 text-right align-middle font-bold text-black whitespace-nowrap border-b border-border/75 border-r border-border/40">Rate</th>
-                                                                <th className="h-9 px-4 text-right align-middle font-bold text-black whitespace-nowrap border-b border-border/75">Value</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {overallStockSummary.items.map((item, i) => (
-                                                                <tr key={i}>
-                                                                    <td className="px-4 py-2 align-middle font-medium whitespace-nowrap border-b border-border/65 border-r border-border/40">{item.name}</td>
-                                                                    <td className="px-4 py-2 text-right align-middle whitespace-nowrap border-b border-border/65 border-r border-border/40">{item.qty.toFixed(2)} {item.unit}</td>
-                                                                    <td className="px-4 py-2 text-right align-middle whitespace-nowrap border-b border-border/65 border-r border-border/40">{formatCurrency(item.rate, {noSuffix: true})}</td>
-                                                                    <td className="px-4 py-2 text-right align-middle font-bold whitespace-nowrap border-b border-border/65">{formatCurrency(item.value, {noSuffix: true})}</td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                        <tfoot className="bg-muted/50">
-                                                            <tr>
-                                                                <td className="px-4 py-2 align-middle font-bold whitespace-nowrap border-r" colSpan={3}>Total Stock Value</td>
-                                                                <td className="px-4 py-2 text-right align-middle font-bold text-green-600 whitespace-nowrap">{formatCurrency(overallStockSummary.totalStockValue, {noSuffix: true})}</td>
-                                                            </tr>
-                                                        </tfoot>
-                                                    </table>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </DialogContent>
-                            </Dialog>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-    );
-
     return (
         <div
             {...(showVoucherDateCharts && !compact ? { "data-pl-dashboard-summary-charts": "" } : {})}
@@ -3194,7 +3030,6 @@ export function FinancialSummaryCards({
                     </div>
                 </DialogContent>
             </Dialog>
-            {compact && renderStockSummaryDashboardCard()}
             <TopSummaryRowWrap
                 compact={compact}
                 className={topSummaryRowWrapClass}
@@ -4389,10 +4224,6 @@ export function FinancialSummaryCards({
                 </CardContent>
             </Card>
             </TopSummaryRowWrap>
-
-            {!compact && (
-                <div className="w-full min-w-0 shrink-0">{renderStockSummaryDashboardCard()}</div>
-            )}
 
             {can("view_voucher_type_summaries") && !compact && (
                 <div className="col-span-full grid w-full min-w-0 grid-cols-1 items-stretch gap-[5px] sm:grid-cols-2 lg:grid-cols-4">

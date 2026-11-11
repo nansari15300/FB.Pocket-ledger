@@ -72,6 +72,8 @@ export type SilentItemCreateInput = {
   salePrice?: number;
   purchasePriceUnit?: string | null;
   salePriceUnit?: string | null;
+  lowStockWarning?: number | null;
+  lowStockWarningUnit?: string | null;
   unitConversions?: unknown[];
   purchaseTaxId?: string | null;
   saleTaxId?: string | null;
@@ -130,6 +132,8 @@ export async function createItemSilent(input: SilentItemCreateInput): Promise<Si
         stockQty: 0,
         salePriceUnit: normalizeItemUnitName(input.salePriceUnit) || unit,
         purchasePriceUnit: normalizeItemUnitName(input.purchasePriceUnit) || unit,
+        lowStockWarning: Number(input.lowStockWarning ?? 0) || 0,
+        lowStockWarningUnit: normalizeItemUnitName(input.lowStockWarningUnit) || null,
         saleTaxId: input.saleTaxId || null,
         purchaseTaxId: input.purchaseTaxId || null,
         isPurchasePriceTaxInclusive: false,

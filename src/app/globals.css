@@ -3846,9 +3846,9 @@ button.day_selected.is-today.has-transactions {
      ============================================ */
   
   /* All buttons â€” pro chrome pill exclude */
-  button:not(.border-0):not(.pl-chrome-btn-drop):not(.pl-master-list-row-name):not(.pl-master-list-row-name-strong):not([data-pl-list-name]):not([data-pl-txn-icon-btn]):not([data-pl-fresh-info]):not([data-pl-footer-fresh-info]):not([data-pl-header-preview-switch]),
-  [role="button"]:not(.border-0):not(.pl-chrome-btn-drop):not(.pl-master-list-row-name):not(.pl-master-list-row-name-strong):not([data-pl-list-name]):not([data-pl-txn-icon-btn]):not([data-pl-fresh-info]):not([data-pl-footer-fresh-info]):not([data-pl-header-preview-switch]),
-  [type="button"]:not(.border-0):not(.pl-chrome-btn-drop):not(.pl-master-list-row-name):not(.pl-master-list-row-name-strong):not([data-pl-list-name]):not([data-pl-txn-icon-btn]):not([data-pl-fresh-info]):not([data-pl-footer-fresh-info]):not([data-pl-header-preview-switch]),
+  button:not(.border-0):not(.pl-chrome-btn-drop):not(.pl-master-list-row-name):not(.pl-master-list-row-name-strong):not([data-pl-list-name]):not([data-pl-txn-icon-btn]):not([data-pl-fresh-info]):not([data-pl-footer-fresh-info]):not([data-pl-header-preview-switch]):not([data-pl-stock-top-select]),
+  [role="button"]:not(.border-0):not(.pl-chrome-btn-drop):not(.pl-master-list-row-name):not(.pl-master-list-row-name-strong):not([data-pl-list-name]):not([data-pl-txn-icon-btn]):not([data-pl-fresh-info]):not([data-pl-footer-fresh-info]):not([data-pl-header-preview-switch]):not([data-pl-stock-top-select]),
+  [type="button"]:not(.border-0):not(.pl-chrome-btn-drop):not(.pl-master-list-row-name):not(.pl-master-list-row-name-strong):not([data-pl-list-name]):not([data-pl-txn-icon-btn]):not([data-pl-fresh-info]):not([data-pl-footer-fresh-info]):not([data-pl-header-preview-switch]):not([data-pl-stock-top-select]),
   [type="submit"]:not(.border-0):not(.pl-chrome-btn-drop):not(.pl-master-list-row-name):not(.pl-master-list-row-name-strong):not([data-pl-list-name]):not([data-pl-txn-icon-btn]):not([data-pl-fresh-info]):not([data-pl-footer-fresh-info]):not([data-pl-header-preview-switch]) {
     border-width: 3px !important;
     border-color: #000000 !important;
@@ -3963,6 +3963,20 @@ button.day_selected.is-today.has-transactions {
     border-width: 3px !important;
     border-color: #000000 !important;
   }
+
+  /*
+   * Stock Summary Top-5 row dividers: sirf hairlines (exactly 1px).
+   * Upar ke theme rules sab `*card*` / `*summary*` elements ko 3px border dete hain,
+   * isliye plain `border-t` rows moti (3px) dikh rahi thin. Attribute selector
+   * ki specificity + later order se ye rows 1px par lock rehti hain.
+   */
+  [data-pl-summary-hairline-row] {
+    border-top-width: 1px !important;
+    border-bottom-width: 0 !important;
+    border-left-width: 0 !important;
+    border-right-width: 0 !important;
+    border-top-style: solid !important;
+  }
   
   /* Dashboard summary cards */
   [class*="summary"]:not(.pl-dashboard-tone-card),
@@ -4039,7 +4053,7 @@ button.day_selected.is-today.has-transactions {
     border-color: rgb(147 197 253) !important;
     background-color: #fff !important;
   }
-  
+
   /* Checkbox borders */
   [type="checkbox"],
   [class*="checkbox"],
@@ -5739,7 +5753,7 @@ body.theme-pro .pl-settings-list-shell {
 body.theme-pro main input:not([type="checkbox"]):not([type="radio"]):not([data-pl-mlc-search-input]):not([placeholder="Search transactions"]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-gallery-search-pill]):not([data-pl-gallery-columns-input]),
 body.theme-pro main textarea:not(.pl-company-profile-field):not([data-pl-manage-share-field]),
 body.theme-pro main select:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-online-trigger-page-size]),
-body.theme-pro main button[role="combobox"]:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-mobile-txn-pager-select]):not([data-pl-gallery-page-select]),
+body.theme-pro main button[role="combobox"]:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-mobile-txn-pager-select]):not([data-pl-gallery-page-select]):not([data-pl-stock-top-select]),
 body.theme-pro main button[data-theme-detail="date-range"]:not(.pl-chrome-btn-drop):not(.pl-company-profile-field) {
   border-color: #000 !important;
   border-width: 1px !important;
@@ -7309,11 +7323,12 @@ body[class*="theme-"] main .rounded-lg.border.bg-card:not([data-pl-list-row]):no
 body[class*="theme-"] main .rounded-lg.border.bg-card.shadow-sm:not([data-pl-list-row]):not(.pl-dashboard-tone-card):not([data-pl-mobile-transaction-card]):not([data-pl-company-profile-chrome]):not(.pl-company-profile-bordered-panel):not([data-pl-online-trigger-log]):not([data-pl-gallery-company-footer]),
 body[class*="theme-"] [data-pl-main-sidebar] .rounded-md.border:not([data-pl-sidebar-brand-icon]):not(.pl-chrome-btn-drop),
 body[class*="theme-"] [data-pl-main-sidebar] .rounded-lg.border:not([data-pl-sidebar-brand-icon]):not(.pl-chrome-btn-drop),
-body[class*="theme-"] header .rounded-lg.border:not([data-pl-header-preview-switch]),
+body[class*="theme-"] header .rounded-lg.border:not([data-pl-header-preview-switch]):not([data-pl-stock-top-select]),
 body[class*="theme-"] header .rounded-full.border:not([data-pl-header-preview-switch]):not([data-theme-header="sync-button"]),
 body[class*="theme-"] .pl-chrome-card:not(.pl-recon-share-list-card):not([class*="pl-chrome-tone-"]),
 body[class*="theme-"] .pl-settings-list-shell,
 body[class*="theme-"] main .border-2:not(.pl-dashboard-tone-card):not(.pl-dashboard-footer-tab):not([data-pl-mobile-transaction-card]),
+body[class*="theme-"] main .border-2:not(.pl-dashboard-tone-card):not(.pl-dashboard-footer-tab):not([data-pl-mobile-transaction-card]):not([data-pl-stock-top-select]),
 body[class*="theme-"] [data-pl-main-sidebar] .border-2:not([class*="pl-chrome-tone-"]),
 body[class*="theme-"] header .border-2:not([class*="pl-chrome-tone-"]):not([data-pl-header-preview-switch]) {
   border-width: 1px !important;
@@ -7608,7 +7623,7 @@ body[class*="theme-"] main hr {
 body[class*="theme-"] main input:not([type="checkbox"]):not([type="radio"]):not([data-pl-mlc-search-input]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-gallery-search-pill]):not([data-pl-gallery-columns-input]),
 body[class*="theme-"] main textarea:not(.pl-company-profile-field):not([data-pl-manage-share-field]),
 body[class*="theme-"] main select:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-online-trigger-page-size]),
-body[class*="theme-"] main button[role="combobox"]:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-mobile-txn-pager-select]):not([data-pl-gallery-page-select]),
+body[class*="theme-"] main button[role="combobox"]:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-mobile-txn-pager-select]):not([data-pl-gallery-page-select]):not([data-pl-stock-top-select]),
 body[class*="theme-"] main button[data-theme-detail="date-range"]:not(.pl-company-profile-field):not([data-pl-manage-share-field]) {
   border-width: 1px !important;
   border-color: #000 !important;
@@ -7738,7 +7753,7 @@ body.theme-pure-white main [class*="pl-chrome-tone-"] {
 body.theme-pure-white main input:not([type="checkbox"]):not([type="radio"]):not([data-pl-mlc-search-input]),
 body.theme-pure-white main textarea,
 body.theme-pure-white main select:not([data-pl-online-trigger-page-size]),
-body.theme-pure-white main button[role="combobox"],
+body.theme-pure-white main button[role="combobox"]:not([data-pl-stock-top-select]),
 body.theme-pure-white main button[data-theme-detail="date-range"] {
   background-color: #ffffff !important;
 }
@@ -7789,7 +7804,7 @@ body:not(.theme-pro):not(.theme-pure-white).theme-colorfull main {
 body:not(.theme-pro):not(.theme-pure-white) main input:not([type="checkbox"]):not([type="radio"]):not([data-pl-mlc-search-input]):not([placeholder="Search transactions"]),
 body:not(.theme-pro):not(.theme-pure-white) main textarea,
 body:not(.theme-pro):not(.theme-pure-white) main select:not([data-pl-online-trigger-page-size]),
-body:not(.theme-pro):not(.theme-pure-white) main button[role="combobox"],
+body:not(.theme-pro):not(.theme-pure-white) main button[role="combobox"]:not([data-pl-stock-top-select]),
 body:not(.theme-pro):not(.theme-pure-white) main button[data-theme-detail="date-range"] {
   background-color: hsl(var(--muted) / 0.85) !important;
 }
@@ -16598,4 +16613,134 @@ html body[class*="theme-"] main button[role="combobox"][data-pl-gallery-page-sel
   background-image: none !important;
   color: rgb(30 58 138) !important;
   box-shadow: none !important;
+}
+
+/*
+ * Dashboard "Stock" tab ka Top-N select: theme ke 3px black / gray-fill rules se aage.
+ * Repeated attribute = high specificity, file ke end me hone se cascade me last jeetta hai.
+ * NOTE: 'button' tag assume nahi karte - Radix version ke hisaab se trigger button/div ho sakta hai,
+ * isliye sirf [data-pl-stock-top-select] attribute pe target karte hain.
+ */
+html body[class*="theme-"] main [data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select],
+html body[class*="theme-"] main [data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select]:hover,
+html body[class*="theme-"] main [data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select]:focus,
+html body[class*="theme-"] main [data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select]:focus-visible,
+html body[class*="theme-"] main [data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select]:active,
+html body[class*="theme-"] main [data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-state="open"],
+html body[class*="theme-"] main [data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][aria-expanded="true"] {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: rgb(59 130 246) !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  color: #000000 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  outline-offset: 0 !important;
+}
+html body[class*="theme-"] main [data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select] svg,
+html body[class*="theme-"] main [data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select][data-pl-stock-top-select] svg * {
+  color: rgb(59 130 246) !important;
+  stroke: rgb(59 130 246) !important;
+  opacity: 1 !important;
+}
+
+/*
+ * Stock Summary card wrapper: hover par card ke andar ki 1px hairline dividers 2px dikhne lagti thin
+ * (translateY subpixel blend). Isliye lift neutral + dividers device-pixel-exact gradient par lock.
+ */
+html body[class*="theme-"] main [data-pl-stock-summary-card],
+html body[class*="theme-"] main [data-pl-stock-summary-card]:hover,
+html body[class*="theme-"] main [data-pl-stock-summary-card]:focus-within {
+  transform: none !important;
+}
+html body[class*="theme-"] main [data-pl-stock-summary-card] [data-pl-summary-hairline-row],
+html body[class*="theme-"] main [data-pl-stock-summary-card] [data-pl-summary-hairline-row]:hover {
+  border-top-width: 0 !important;
+  border-bottom-width: 0 !important;
+  border-image: none !important;
+  background-image: linear-gradient(to bottom, rgb(0 0 0 / 0.18) 0, rgb(0 0 0 / 0.18) 1px, transparent 1px) !important;
+  background-repeat: no-repeat !important;
+  background-size: 100% 1px !important;
+  background-position: top left !important;
+  transform: none !important;
+}
+
+/*
+ * Master dialogs (Item create/edit) footer: theme ke nth-child pastel rules ko paas karke
+ * Delete = light red pill, Save = light green pill (border + bold text same family).
+ * Repeated attribute = specificity bomb (file end = cascade last), :not(:disabled) se disabled state gray rehta hai.
+ */
+html body[class*="theme-"] button[data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn]:not(:disabled) {
+  background-color: #fef2f2 !important;
+  background-image: none !important;
+  color: #b91c1c !important;
+  font-weight: 600 !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: #dc2626 !important;
+  box-shadow: none !important;
+}
+html body[class*="theme-"] button[data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn]:not(:disabled):hover {
+  background-color: #fee2e2 !important;
+  color: #991b1b !important;
+  border-color: #b91c1c !important;
+}
+html body[class*="theme-"] button[data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn]:not(:disabled) {
+  background-color: #f0fdf4 !important;
+  background-image: none !important;
+  color: #15803d !important;
+  font-weight: 600 !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: #16a34a !important;
+  box-shadow: none !important;
+}
+html body[class*="theme-"] button[data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn][data-pl-master-save-btn]:not(:disabled):hover {
+  background-color: #dcfce7 !important;
+  color: #166534 !important;
+  border-color: #15803d !important;
+}
+
+/* Delete pill ka disabled state bhi light red rehna chahiye (theme ka gray wash nahi). */
+html body[class*="theme-"] button[data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn][data-pl-master-delete-btn]:disabled {
+  background-color: #fef2f2 !important;
+  background-image: none !important;
+  color: #f87171 !important;
+  font-weight: 600 !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: #fca5a5 !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+  cursor: not-allowed !important;
+}
+
+/* Save & New = Create Item jaisa hi light-green outline pill (pehle white text light bg par gayab ho jata tha). */
+html body[class*="theme-"] button(:disabled) {
+  background-color: #f0fdf4 !important;
+  background-image: none !important;
+  color: #15803d !important;
+  font-weight: 600 !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: #16a34a !important;
+  box-shadow: none !important;
+}
+html body[class*="theme-"] button(:disabled):hover {
+  background-color: #dcfce7 !important;
+  color: #166534 !important;
+  border-color: #15803d !important;
+}
+html body[class*="theme-"] button {
+  background-color: #f7f7f7 !important;
+  background-image: none !important;
+  color: #9ca3af !important;
+  border-color: #d1d5db !important;
+  opacity: 1 !important;
+}
+/* Create Item dialog ka Delete hamesha disabled - boot pe zyada dim (Edit Item ke enabled look se clear difference). */
+html body[class*="theme-"] [data-pl-master-delete-btn].opacity-40,
+html body[class*="theme-"] button[data-pl-master-delete-btn][aria-disabled="true"] {
+  opacity: 0.45 !important;
 }

@@ -22,6 +22,16 @@ export const financialSummaryRowClass = cn(
   "flex items-center justify-between py-2 text-sm border-b border-foreground/20"
 );
 
+/**
+ * Hairline (exactly 1px) horizontal divider — row ke upar, text se pehle.
+ * Global theme CSS card borders ko 3px !important karti hai; stock card ke Top-5 rows ki line 1px chahiye,
+ * isliye dedicated attribute selector (theme CSS se neeche) + inline 1px fallback.
+ */
+export const financialSummaryHairlineRowClass = cn(
+  "flex items-center justify-between gap-2 border-t border-t-[color:var(--border)]",
+  "[border-top-width:1px] [border-top-style:solid]"
+);
+
 /** Subtotal / total row */
 export const financialSummaryTotalRowClass = cn(
   "flex items-center justify-between py-2.5 text-sm font-semibold border-t border-foreground/30"

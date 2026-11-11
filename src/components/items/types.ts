@@ -12,6 +12,8 @@ export type Item = {
   openingBalanceNarration?: string;
   stockQty?: number;
   lowStockWarning?: number;
+  /** Low stock threshold kis unit me hai (Pcs/Kg/Gm …). */
+  lowStockWarningUnit?: string;
   salePrice: number;
   purchasePrice: number;
   debit: number;

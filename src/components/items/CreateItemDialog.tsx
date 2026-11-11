@@ -51,7 +51,6 @@ import {
 } from "@/lib/masterDialogFooterStyles";
 import { refineMasterOpeningBalanceDateRequired } from "@/lib/masterOpeningBalanceDateRequired";
 import { useMasterOpeningBalanceDateRequired } from "@/hooks/useMasterOpeningBalanceDateRequired";
-import { BTN_SAVE_NEW_CLASS } from "@/components/vouchers/voucherButtonStyles";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   cnMasterEntityDialogContent,
@@ -161,6 +160,10 @@ const formSchema = z.object({
   unitConversions: z.array(unitConversionSchema).optional(),
   salePriceUnit: z.string().optional(),
   purchasePriceUnit: z.string().optional(),
+  /** Low stock alert threshold (qty). 0 = koi warning nahi. */
+  lowStockWarning: z.coerce.number().min(0).optional(),
+  /** Low stock threshold kis unit me hai (item ke all units me se). */
+  lowStockWarningUnit: z.string().optional(),
   saleTaxId: z.string().optional(),
   purchaseTaxId: z.string().optional(),
   openingBalanceNarration: z.string().optional(),
@@ -185,6 +188,8 @@ function getInitialFormValues(itemType: 'item' | 'service' | 'finished_good' = '
         openingBalanceDate: undefined,
         salePriceUnit: "",
         purchasePriceUnit: "",
+        lowStockWarning: 0,
+        lowStockWarningUnit: "",
         saleTaxId: "",
         purchaseTaxId: "",
         openingBalanceNarration: "",
@@ -685,6 +690,8 @@ export function CreateItemDialog({
           createdAt: new Date().toISOString(),
           salePriceUnit: values.salePriceUnit || null,
           purchasePriceUnit: values.purchasePriceUnit || null,
+          lowStockWarning: Number(values.lowStockWarning ?? 0) || 0,
+          lowStockWarningUnit: values.lowStockWarningUnit || null,
           saleTaxId: values.saleTaxId || null,
           purchaseTaxId: values.purchaseTaxId || null,
           isPurchasePriceTaxInclusive: values.isPurchasePriceTaxInclusive || false,
@@ -822,6 +829,8 @@ export function CreateItemDialog({
           createdAt: serverTimestamp(),
           salePriceUnit: values.salePriceUnit || null,
           purchasePriceUnit: values.purchasePriceUnit || null,
+          lowStockWarning: Number(values.lowStockWarning ?? 0) || 0,
+          lowStockWarningUnit: values.lowStockWarningUnit || null,
           saleTaxId: values.saleTaxId || null,
           purchaseTaxId: values.purchaseTaxId || null,
           isPurchasePriceTaxInclusive: values.isPurchasePriceTaxInclusive || false,
@@ -1170,6 +1179,13 @@ const capitalizeFirstLetter = (str: string) => {
                           <FormField control={form.control} name="purchasePrice" render={({ field }: any) => (<FormItem><FormControl><Input type="number" placeholder="0.00" className="h-9" {...field} /></FormControl><FormMessage /></FormItem>)} />
                           <FormField control={form.control} name="purchasePriceUnit" render={({ field }: any) => (<FormItem><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="w-28 h-9"><SelectValue placeholder="Unit"/></SelectTrigger></FormControl><SelectContent>{allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                       </div>
+                      <div className="space-y-2">
+                          <FormLabel>Low Stock Warning</FormLabel>
+                          <div className="flex flex-nowrap items-start gap-2">
+                              <FormField control={form.control} name="lowStockWarning" render={({ field }: any) => (<FormItem className="min-w-0 flex-1"><FormControl><Input type="number" min={0} step="any" placeholder="0 (off)" className="h-9" {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))} /></FormControl><FormMessage /><p className="text-xs text-muted-foreground">Stock isse kam/barabar ho to dashboard ke Low Stock me dikhega. 0 = off.</p></FormItem>)} />
+                              <FormField control={form.control} name="lowStockWarningUnit" render={({ field }: any) => (<FormItem className="shrink-0"><Select onValueChange={field.onChange} value={field.value || ""}><FormControl><SelectTrigger className="w-28 h-9"><SelectValue placeholder="Unit"/></SelectTrigger></FormControl><SelectContent>{allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                          </div>
+                      </div>
                 </div>
                   <div className="order-3 sm:order-2 space-y-4 border p-4 rounded-md">
 
@@ -1409,25 +1425,43 @@ const capitalizeFirstLetter = (str: string) => {
               </div>
 
             </div>
-              <DialogFooter className={MASTER_DIALOG_FOOTER_ROW_CLASS}>
+              <DialogFooter className={cn(MASTER_DIALOG_FOOTER_ROW_CLASS, "!justify-end")}>
                 <DialogClose asChild>
                   <Button type="button" variant="ghost" className={MASTER_DIALOG_CANCEL_GRAY_PILL_BTN_CLASS}>
                     Cancel
                   </Button>
                 </DialogClose>
-                <div className="flex min-w-0 flex-1 justify-center px-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className={cn(BTN_SAVE_NEW_CLASS, "shrink-0 px-4")}
-                    onClick={(e) => handleFormSubmit(e, { saveAndNew: true })}
-                    disabled={isLoading || isCompressing || apkOfflineViewOnly || openingBalanceDateMissing}
-                  >
-                    {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Save &amp; New
-                  </Button>
-                </div>
-                <Button type="submit" disabled={isLoading || isCompressing || !companyId || apkOfflineViewOnly || openingBalanceDateMissing} className="shrink-0">
+                {/* Naya item abhi bana nahi — Delete yahan hamesha disabled (Edit Item jaisa hi pill). */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        data-pl-master-delete-btn=""
+                        className="shrink-0 whitespace-nowrap px-3 sm:px-4 opacity-40"
+                        disabled
+                      >
+                        <Trash2 className="mr-2 h-4 w-4 shrink-0" /> Delete
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>New item — delete karne ke liye pehle save karein.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  data-pl-master-save-new-btn=""
+                  className="shrink-0 whitespace-nowrap px-4"
+                  onClick={(e) => handleFormSubmit(e, { saveAndNew: true })}
+                  disabled={isLoading || isCompressing || apkOfflineViewOnly || openingBalanceDateMissing}
+                >
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save &amp; New
+                </Button>
+                <Button type="submit" disabled={isLoading || isCompressing || !companyId || apkOfflineViewOnly || openingBalanceDateMissing} className="shrink-0" data-pl-master-save-btn="">
                   {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Create Item
                 </Button>

@@ -13,6 +13,8 @@ export function dashboardKeepAlivePanelIdsForTab(tabId: string): string[] {
   switch (normalizeDashboardVisibleCard(tabId)) {
     case "financial-summaries":
       return ["financial-summaries"];
+    case "stock-summary":
+      return ["stock-summary"];
     case "dashboard-charts":
       return ["dashboard-charts"];
     case "bank-cash-summary":
@@ -38,6 +40,7 @@ export function normalizeDashboardVisibleCard(saved: string | null | undefined):
   if (saved === "dashboard-charts") return "financial-summaries";
   const allowed = new Set([
     "financial-summaries",
+    "stock-summary",
     "bank-cash-summary",
     "daybook",
     "recent-transactions",
@@ -153,6 +156,7 @@ export function dashboardMasterCollectionPathsForTab(tabId: string): Set<string>
       ]);
     case "dashboard-charts":
     case "financial-summaries":
+    case "stock-summary":
       return new Set([
         "vouchers",
         "parties",
@@ -180,5 +184,6 @@ export function dashboardTabLoadsRecentTransactionPipeline(tabId: string): boole
 
 /** Tab needs stock / stat card voucher scans. */
 export function dashboardTabLoadsSummaryStockStats(tabId: string): boolean {
-  return normalizeDashboardVisibleCard(tabId) === "financial-summaries";
+  const tab = normalizeDashboardVisibleCard(tabId);
+  return tab === "financial-summaries" || tab === "stock-summary";
 }

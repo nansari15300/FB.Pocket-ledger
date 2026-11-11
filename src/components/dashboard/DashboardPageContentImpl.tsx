@@ -164,6 +164,7 @@ import {
 } from '@/hooks/use-transactions';
 import { useFeatureAccess } from '@/hooks/use-feature-access';
 import { FinancialSummaryCards } from '@/components/reports/FinancialSummaryCards';
+import { DashboardStockSummaryCard } from '@/components/reports/FinancialSummary/DashboardStockSummaryCard';
 import { shouldReplaceWithMasterDetailCanonical } from "@/lib/maybeReplaceMasterDetailUrl";
 import { isDashboardRedirectGuardActive } from "@/lib/protectFromUnwantedDashboardRedirect";
 import { orderedCashFlowCategories } from "@/lib/cashFlowCategoryOrder";
@@ -773,6 +774,13 @@ export function DashboardPageContentImpl() {
     if (dashboardTabShouldKeepAlivePanel(visibleCard)) {
       setDashboardKeepAliveDaybook(true);
     }
+  }, [visibleCard]);
+  /** Stock tab: first open ke baad DOM me rakho — tab switch par Summary ka poora compute dubara na chale. */
+  const [stockTabOpened, setStockTabOpened] = useState(
+    () => readDashboardVisibleCardFromStorage() === "stock-summary"
+  );
+  useEffect(() => {
+    if (visibleCard === "stock-summary") setStockTabOpened(true);
   }, [visibleCard]);
   const [onlineSyncPrefsEpoch, setOnlineSyncPrefsEpoch] = useState(0);
   useEffect(() => {
@@ -2253,6 +2261,7 @@ export function DashboardPageContentImpl() {
         loading={loading}
         showDetails={reportsEnabled}
         compact={false}
+        active={summaryTabVisible && paneComputationActive}
         showVoucherDateCharts={showVoucherDateCharts}
         voucherDateChartKind={summaryChartKind}
         recurringSummarySlot={
@@ -2628,7 +2637,7 @@ export function DashboardPageContentImpl() {
         dashboardSingleTabFill && "flex min-h-0 flex-1 flex-col overflow-hidden",
       )}
     >
-      {dashboardKeepAliveSummary && (
+      {dashboardKeepAliveSummary && summaryTabVisible && (
         <div
           aria-hidden={!summaryTabVisible}
           style={{ display: summaryTabVisible ? "block" : "none" }}
@@ -2646,6 +2655,25 @@ export function DashboardPageContentImpl() {
               {renderFinancialSummaries(isReportsEnabled, true, summaryChartsPane)}
             </div>
           ) : null}
+        </div>
+      )}
+      {stockTabOpened && (
+        <div
+          aria-hidden={visibleCard !== "stock-summary"}
+          style={{ display: visibleCard === "stock-summary" ? "block" : "none" }}
+          className="min-w-0 w-full p-[20px]"
+          data-pl-dashboard-stock=""
+        >
+          {/*
+            Stock tab: sirf Stock Summary card. Vouchers sirf is tab ke aktif hone par diye jaate hain,
+            isliye stock scan / koi bhi server call background tab me nahi chalti.
+          */}
+          <DashboardStockSummaryCard
+            vouchers={visibleCard === "stock-summary" ? vouchers : []}
+            processedItems={processedItems}
+            showDetails={isReportsEnabled}
+            active={visibleCard === "stock-summary"}
+          />
         </div>
       )}
       {visibleCard === "bank-cash-summary" && can("view_bank_cash_summary") && (
@@ -2688,6 +2716,7 @@ export function DashboardPageContentImpl() {
     { id: "financial-summaries", title: "Summary" },
     { id: "dashboard-charts", title: "Chart" },
     { id: "dashboard-line-charts", title: "Line" },
+    { id: "stock-summary", title: "Stock" },
     { id: "bank-cash-summary", title: "Bank" },
     { id: "daybook", title: "Daybook" },
     { id: "recent-transactions", title: "Recent" },
@@ -2697,6 +2726,7 @@ export function DashboardPageContentImpl() {
     "financial-summaries":
       "border-pink-500 bg-pink-300 text-pink-950 dark:border-pink-400 dark:bg-pink-700 dark:text-pink-50",
     "bank-cash-summary": "border-emerald-500 bg-emerald-300 text-emerald-950 dark:border-emerald-400 dark:bg-emerald-700 dark:text-emerald-50",
+    "stock-summary": "border-teal-500 bg-teal-300 text-teal-950 dark:border-teal-400 dark:bg-teal-700 dark:text-teal-50",
     daybook: "border-sky-500 bg-sky-300 text-sky-950 dark:border-sky-400 dark:bg-sky-700 dark:text-sky-50",
     "recent-transactions": "border-violet-500 bg-violet-300 text-violet-950 dark:border-violet-400 dark:bg-violet-700 dark:text-violet-50",
     "dashboard-charts":
@@ -2715,8 +2745,10 @@ export function DashboardPageContentImpl() {
         ? TrendingUp
         : card.id === "daybook"
           ? FileTextIcon
-          : card.id === "bank-cash-summary"
-            ? Landmark
+          : card.id === "stock-summary"
+            ? Package
+            : card.id === "bank-cash-summary"
+              ? Landmark
             : card.id === "dashboard-charts"
               ? BarChart3
               : card.id === "dashboard-line-charts"
@@ -3057,7 +3089,7 @@ export function DashboardPageContentImpl() {
           data-pl-dashboard-footer-tabs=""
           className={cn(
             "grid w-full min-w-0 shrink-0 grid-flow-col items-stretch gap-0.5 overflow-hidden border-0 bg-background px-0",
-            showRecentCompactBottomControls ? "grid-cols-5" : "grid-cols-4",
+            showRecentCompactBottomControls ? "grid-cols-6" : "grid-cols-5",
             isMobile ? "h-8" : "h-[38px]",
             /* Mobile Recent: footer chevron hidden => bottom tabs bhi hide (sirf up-chevron dikhe). */
             showRecentCompactBottomControls && recentFooterButtonsHidden && "hidden",
@@ -3068,8 +3100,8 @@ export function DashboardPageContentImpl() {
             isMobile || isRealMobile
               ? {
                   gridTemplateColumns: showRecentCompactBottomControls
-                    ? "1.44fr 1fr 1fr 1fr 1fr"
-                    : "1.44fr 1fr 1fr 1fr",
+                    ? "1.44fr 1fr 1fr 1fr 1fr 1fr"
+                    : "1.44fr 1fr 1fr 1fr 1fr",
                 }
               : undefined
           }
@@ -3085,6 +3117,7 @@ export function DashboardPageContentImpl() {
           {renderDashboardFooterTab(dashboardCards[3])}
           {renderDashboardFooterTab(dashboardCards[4])}
           {renderDashboardFooterTab(dashboardCards[5])}
+          {renderDashboardFooterTab(dashboardCards[6])}
           {/* Mobile Recent: Change date tab (right end), existing BS/AD pickers reuse. */}
           {showRecentCompactBottomControls ? (
           <div data-pl-footer-tab="recent-change-date" className="col-span-1 flex min-h-0 min-w-0 overflow-hidden rounded-md border-2 border-violet-400 bg-violet-100 text-violet-950 dark:border-violet-600 dark:bg-violet-900 dark:text-violet-50">

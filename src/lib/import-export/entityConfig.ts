@@ -69,6 +69,7 @@ export const ENTITY_CONFIGS: EntityConfig[] = [
       { key: "purchasePrice", header: "Purchase Price", format: (v) => (v == null ? 0 : Number(v)) },
       { key: "openingBalanceUnit", header: "Opening Balance Unit" },
       { key: "lowStockWarning", header: "Low Stock Warning", format: (v) => (v == null ? "" : Number(v)) },
+      { key: "lowStockWarningUnit", header: "Low Stock Warning Unit" },
     ],
   },
   {
