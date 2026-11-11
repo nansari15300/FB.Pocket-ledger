@@ -155,6 +155,7 @@ import {
 } from "@/components/items/itemUnitPrices";
 import { useItemUnitAutoNormalize } from "@/components/items/useItemUnitAutoNormalize";
 import { ItemMarginCard, SaleMarginPills, SaleUnitRateInput } from "@/components/items/ItemMarginCard";
+import { LOW_STOCK_LABEL_CN, LOW_STOCK_PILL_CN, LOW_STOCK_SELECT_CN } from "@/components/items/lowStockStyles";
 
 
 const fileSchema = z.object({
@@ -1397,11 +1398,11 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                         <FormField control={form.control} name="purchasePrice" render={({ field }: any) => (<FormItem><FormControl><Input type="number" placeholder="0.00" className={cn("h-9", catalogLocked && "bg-muted cursor-not-allowed")} readOnly={catalogLocked} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))} /></FormControl><FormMessage /></FormItem>)} />
                         <FormField control={form.control} name="purchasePriceUnit" render={({ field }: any) => (<FormItem><Select onValueChange={field.onChange} value={field.value} disabled={catalogLocked}><FormControl><SelectTrigger className="w-28 h-9"><SelectValue placeholder="Unit"/></SelectTrigger></FormControl><SelectContent>{allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                     </div>
-                    <div className="space-y-2">
-                        <FormLabel>Low Stock Warning</FormLabel>
+                    <div className="space-y-2" data-pl-low-stock="">
+                        <FormLabel className={LOW_STOCK_LABEL_CN}>Low Stock Warning</FormLabel>
                         <div className="flex flex-nowrap items-start gap-2">
-                            <FormField control={form.control} name="lowStockWarning" render={({ field }: any) => (<FormItem className="min-w-0 flex-1"><FormControl><Input type="number" min={0} step="any" placeholder="0 (off)" className={cn("h-9", catalogLocked && "bg-muted cursor-not-allowed")} readOnly={catalogLocked} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))} /></FormControl><FormMessage /><p className="text-xs text-muted-foreground">Stock isse kam/barabar ho to dashboard ke Low Stock me dikhega. 0 = off.</p></FormItem>)} />
-                            <FormField control={form.control} name="lowStockWarningUnit" render={({ field }: any) => (<FormItem className="shrink-0"><Select onValueChange={field.onChange} value={field.value || ""} disabled={catalogLocked}><FormControl><SelectTrigger className="w-28 h-9"><SelectValue placeholder="Unit"/></SelectTrigger></FormControl><SelectContent>{allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                            <FormField control={form.control} name="lowStockWarning" render={({ field }: any) => (<FormItem className="min-w-0 flex-1"><FormControl><Input type="number" min={0} step="any" placeholder="0 (off)" className={cn("h-9", catalogLocked && "bg-muted cursor-not-allowed", LOW_STOCK_PILL_CN)} readOnly={catalogLocked} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))} /></FormControl><FormMessage /><p className="text-xs text-muted-foreground">Stock isse kam/barabar ho to dashboard ke Low Stock me dikhega. 0 = off.</p></FormItem>)} />
+                            <FormField control={form.control} name="lowStockWarningUnit" render={({ field }: any) => (<FormItem className="shrink-0"><Select onValueChange={field.onChange} value={field.value || ""} disabled={catalogLocked}><FormControl><SelectTrigger className={cn("w-28 h-9", LOW_STOCK_SELECT_CN)}><SelectValue placeholder="Unit"/></SelectTrigger></FormControl><SelectContent>{allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                         </div>
                     </div>
                </div>
