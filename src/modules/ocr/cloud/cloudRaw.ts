@@ -1,8 +1,8 @@
-/** Online (Google Vision) OCR text -> the same `OcrRawResult` shape the tesseract path returns. Pure (no DOM). */
+/** Online (Google Vision / Azure Read) OCR text -> the same `OcrRawResult` shape the tesseract path returns. Pure (no DOM). */
 import { joinSpacedOcrText } from "@/lib/ocr/devanagariJoin";
 import type { OcrRawResult } from "../types";
 
-export type OcrEngineName = "google" | "tesseract";
+export type OcrEngineName = "google" | "azure" | "tesseract";
 
 export function rawFromCloudText(text: string, opts: { engine: OcrEngineName; note?: string; pageWidth?: number; pageHeight?: number }): OcrRawResult {
   const j = joinSpacedOcrText(String(text ?? ""));

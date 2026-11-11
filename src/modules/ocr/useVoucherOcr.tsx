@@ -1005,7 +1005,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         const devDump =
           true
             ? [
-                `--- OCR build ${OCR_BUILD} | ${raw.engine === "google" ? "online Google Vision" : "engine PSM 6 + sparse 11"} | input ${inputNoteRef.current} ---`,
+                `--- OCR build ${OCR_BUILD} | ${raw.engine === "azure" ? "online Azure Read" : raw.engine === "google" ? "online Google Vision" : "engine PSM 6 + sparse 11"} | input ${inputNoteRef.current} ---`,
                 `OCR engine: ${raw.engine ?? "tesseract"}${raw.engineNote ? ` (${raw.engineNote})` : ""}`,
                 `--- dev dump: input ${inputNoteRef.current} | page ${raw.pageWidth ?? "?"}x${raw.pageHeight}px | ${raw.lines.length} lines ---`,
                 ...raw.lines.map((l, i) => `L${i} y=${Math.round(l.y ?? 0)}: ${(l.words ?? []).map((w) => `${w.text}@${Math.round(w.x0)}`).join(" ")}`),

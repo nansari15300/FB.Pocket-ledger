@@ -60,8 +60,8 @@ export type OcrRawResult = {
   preprocess?: string;
   /** Standard vs enhanced retry pass summary (only when the retry ran). */
   passNote?: string;
-  /** Which OCR engine produced the text (debug dump "OCR engine: google|tesseract"). */
-  engine?: "google" | "tesseract";
+  /** Which OCR engine produced the text (debug dump "OCR engine: google|azure|tesseract"). */
+  engine?: "google" | "azure" | "tesseract";
   /** Why the online engine was skipped / failed (tesseract fallback), or other engine detail. */
   engineNote?: string;
 };

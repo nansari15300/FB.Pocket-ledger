@@ -119,9 +119,17 @@ const GOOGLE_VISION_URL = "https://console.cloud.google.com/apis/library/vision.
 function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string | null; open: boolean; enginePref: OcrEnginePref }) {
   const { status, error, loading, reload } = useOcrCloudStatus(companyId, open);
   const [keyDraft, setKeyDraft] = useState("");
+  const [provider, setProvider] = useState<"google" | "azure">("google");
+  const [endpointDraft, setEndpointDraft] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  React.useEffect(() => {
+    if (status?.provider === "azure" || status?.provider === "google") setProvider(status.provider);
+    if (status?.endpointHost) {
+      setEndpointDraft((cur) => (cur.trim() ? cur : `https://${status.endpointHost}/`));
+    }
+  }, [status?.provider, status?.endpointHost]);
   const act = async (name: string, fn: () => Promise<string | void>) => {
     setBusy(name);
     setMsg(null);
@@ -140,18 +148,19 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
       value={enginePref}
       onChange={(v) => setOcrPrefs({ engine: v })}
       options={[
-        ["auto", "Auto", "Google when available, else offline"],
+        ["auto", "Auto", "Online OCR when available, else offline"],
         ["offline", "Offline only", "Always this device (tesseract)"],
       ] as const}
     />
   );
-  const hint = "Google Cloud Vision reads handwriting and Nepali much better. Needs internet; offline OCR is always the fallback.";
-  if (!companyId) return <Section title="Google Online OCR" hint={hint}><p className="text-xs text-muted-foreground">Select a company first.</p>{engineRadio}</Section>;
-  if (loading && !status) return <Section title="Google Online OCR" hint={hint}><p className="text-xs text-muted-foreground">Checking online OCR status…</p>{engineRadio}</Section>;
+  const hint = "Online OCR (Google Cloud Vision or Azure Image Analysis) reads handwriting and Nepali much better. Needs internet; offline OCR is always the fallback.";
+  const title = "Online OCR";
+  if (!companyId) return <Section title={title} hint={hint}><p className="text-xs text-muted-foreground">Select a company first.</p>{engineRadio}</Section>;
+  if (loading && !status) return <Section title={title} hint={hint}><p className="text-xs text-muted-foreground">Checking online OCR status…</p>{engineRadio}</Section>;
   if (!status) {
     const msg = `Online OCR status unavailable${error ? `: ${error}` : ""}. Offline OCR is used.`;
     return (
-      <Section title="Google Online OCR" hint={hint}>
+      <Section title={title} hint={hint}>
         <div className="flex items-start gap-2 rounded-md bg-slate-100 px-2 py-2 text-xs dark:bg-slate-800">
           {/* Narrow block: the message wraps in the middle, Retry stays a small button on the right. */}
           <span className="min-w-0 flex-1 break-words whitespace-normal text-[11px] leading-snug">{msg}</span>
@@ -163,7 +172,7 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
   }
   if (!status.serverOcrEnabled) {
     return (
-      <Section title="Google Online OCR" hint={hint}>
+      <Section title={title} hint={hint}>
         <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Online OCR is disabled by the server. Offline OCR works as usual.</p>
       </Section>
     );
@@ -171,7 +180,7 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
   if (!status.isAdmin) {
     // shared user: status only, never any key information
     return (
-      <Section title="Google Online OCR" hint={hint}>
+      <Section title={title} hint={hint}>
         <p className={cn("rounded-md px-3 py-2 text-xs", status.canUse ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300")}>
           {status.canUse ? "Enabled for you in this company." : "Not enabled for you in this company. Ask the company admin. Offline OCR is used."}
         </p>
@@ -180,24 +189,48 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
     );
   }
   const users = status.sharedUsers ?? [];
+  const savedProvider = status.provider === "azure" ? "azure" : "google";
+  const replacingOther = !!(status.hasKey && savedProvider !== provider);
+  const canSave = !!keyDraft.trim() && (provider === "google" || !!endpointDraft.trim()) && !busy;
+  const providerLabel = provider === "azure" ? "Azure" : "Google";
   return (
     <Section
-      title="Google Online OCR"
-      hint={<>{hint} Only you (admin) can see or change the key. <a href={GOOGLE_VISION_URL} target="_blank" rel="noreferrer" className="font-medium text-emerald-700 underline dark:text-emerald-400">Enable Vision API</a> · <a href={GOOGLE_KEY_URL} target="_blank" rel="noreferrer" className="font-medium text-emerald-700 underline dark:text-emerald-400">Create API key</a></>}
+      title={title}
+      hint={<>{hint} Only you (admin) can see or change the key. {provider === "google" ? <><a href={GOOGLE_VISION_URL} target="_blank" rel="noreferrer" className="font-medium text-emerald-700 underline dark:text-emerald-400">Enable Vision API</a> · <a href={GOOGLE_KEY_URL} target="_blank" rel="noreferrer" className="font-medium text-emerald-700 underline dark:text-emerald-400">Create API key</a></> : <span>Paste the Azure Computer Vision key and endpoint (https://&lt;name&gt;.cognitiveservices.azure.com/).</span>}</>}
     >
       <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-700 dark:bg-slate-950/40">
         <div className="flex items-center justify-between gap-2 text-xs">
-          <span className="font-medium">Google Vision API key</span>
+          <span className="font-medium">{provider === "azure" ? "Azure Computer Vision" : "Google Vision API key"}</span>
           <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", status.hasKey ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300")}>
-            {status.hasKey ? `Saved ••••${status.keyLast4 ?? ""}` : "No key"}
+            {status.hasKey ? `${savedProvider === "azure" ? "Azure" : "Google"} ••••${status.keyLast4 ?? ""}` : "No key"}
           </span>
         </div>
+        <RadioRow
+          name="pl-ocr-provider"
+          value={provider}
+          onChange={(v) => { if (v === "google" || v === "azure") setProvider(v); }}
+          options={[
+            ["google", "Google", "Cloud Vision API"],
+            ["azure", "Azure", "Image Analysis Read"],
+          ] as const}
+        />
+        {provider === "azure" ? (
+          <input
+            type="text"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="https://your-resource.cognitiveservices.azure.com/"
+            value={endpointDraft}
+            onChange={(e) => setEndpointDraft(e.target.value)}
+            className="h-9 w-full rounded-md border border-slate-300 bg-transparent px-2 text-sm dark:border-slate-600"
+          />
+        ) : null}
         <div className="flex flex-col gap-1.5 sm:flex-row">
           <input
             type="password"
             autoComplete="off"
             spellCheck={false}
-            placeholder={status.hasKey ? "Paste a new key to replace" : "Paste API key (AIza…)"}
+            placeholder={status.hasKey ? "Paste a new key to replace" : (provider === "azure" ? "Paste Azure subscription key" : "Paste API key (AIza…)")}
             value={keyDraft}
             onChange={(e) => setKeyDraft(e.target.value)}
             className="h-9 min-w-0 flex-1 rounded-md border border-slate-300 bg-transparent px-2 text-sm dark:border-slate-600"
@@ -205,8 +238,15 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
           <div className="flex gap-1.5">
             <button
               type="button"
-              disabled={!keyDraft.trim() || !!busy}
-              onClick={() => act("save", async () => { await ocrCloud.saveKey(keyDraft.trim()); setKeyDraft(""); return "Key saved on the server."; })}
+              disabled={!canSave}
+              onClick={() => act("save", async () => {
+                await ocrCloud.saveKey(keyDraft.trim(), companyId, {
+                  provider,
+                  ...(provider === "azure" ? { endpoint: endpointDraft.trim() } : {}),
+                });
+                setKeyDraft("");
+                return `${providerLabel} key saved on the server.`;
+              })}
               className="h-9 flex-1 rounded-md bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 sm:flex-none"
             >
               {busy === "save" ? "Saving…" : "Save"}
@@ -214,12 +254,13 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
             <button
               type="button"
               disabled={!status.hasKey || !!busy}
-              title={status.companyEnabled ? "Read a small test image with Google" : "Enable Google OCR for this company first"}
+              title={status.companyEnabled ? `Read a small test image with ${savedProvider === "azure" ? "Azure" : "Google"}` : "Enable online OCR for this company first"}
               onClick={() => act("test", async () => {
                 const r = await ocrCloud.vision(companyId, await testImageBase64());
                 const t = String(r?.text ?? "").replace(/\s+/g, " ").trim();
-                if (!t) throw new Error("Google returned no text");
-                return `Test OK - Google read: "${t.slice(0, 60)}"`;
+                if (!t) throw new Error("Online OCR returned no text");
+                const used = status.provider === "azure" ? "Azure" : "Google";
+                return `Test OK - ${used} read: "${t.slice(0, 60)}"`;
               })}
               className="h-9 flex-1 rounded-md border border-slate-300 px-3 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-800 sm:flex-none"
             >
@@ -227,10 +268,18 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
             </button>
           </div>
         </div>
+        {replacingOther ? (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-[11px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Saving this key replaces the other provider&apos;s key. Only one provider can be saved at a time.</p>
+        ) : null}
+        {provider === "azure" ? (
+          <p className="text-[11px] text-muted-foreground">Azure Free (F0): 20 calls/minute, 5,000 calls/month. Nepali / Devanagari printed text is supported. If Central India rejects Read, create the resource in a region that supports Image Analysis 4.0.</p>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">Tip: in Google Cloud restrict the key to &quot;Cloud Vision API&quot; only and set a budget alert / daily quota. About 1000 images a month are free.</p>
+        )}
         {status.hasKey ? (
           confirmDelete ? (
             <div className="flex flex-wrap items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-900 dark:bg-red-950/40 dark:text-red-200">
-              <span className="flex-1">Delete the saved key? Google OCR stops for every company using it.</span>
+              <span className="flex-1">Delete the saved key? Online OCR stops for every company using it.</span>
               <button type="button" disabled={!!busy} onClick={() => act("delete", async () => { await ocrCloud.deleteKey(); setConfirmDelete(false); return "Key deleted."; })} className="rounded-md bg-red-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-red-700 disabled:opacity-50">
                 {busy === "delete" ? "Deleting…" : "Delete"}
               </button>
@@ -240,11 +289,10 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
             <button type="button" disabled={!!busy} onClick={() => setConfirmDelete(true)} className="text-[11px] font-medium text-red-600 hover:underline disabled:opacity-50 dark:text-red-400">Delete key</button>
           )
         ) : null}
-        <p className="text-[11px] text-muted-foreground">Tip: in Google Cloud restrict the key to &quot;Cloud Vision API&quot; only and set a budget alert / daily quota. About 1000 images a month are free.</p>
       </div>
       <SwitchRow
         id="pl-ocr-google-company"
-        label="Enable Google OCR for this company"
+        label="Enable online OCR for this company"
         sub={status.hasKey ? undefined : "Save a key first"}
         checked={status.companyEnabled}
         disabled={!!busy || !status.hasKey}
@@ -263,7 +311,7 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
                 <Switch
                   checked={u.allowed}
                   disabled={!!busy || !status.companyEnabled}
-                  aria-label={`Allow Google OCR for ${u.name || u.email || u.userId}`}
+                  aria-label={`Allow online OCR for ${u.name || u.email || u.userId}`}
                   onCheckedChange={(v) => act(`user:${u.userId}`, async () => { await ocrCloud.setCompany({ company: companyId, sharedUserId: u.userId, allowed: v === true }); })}
                 />
               </li>

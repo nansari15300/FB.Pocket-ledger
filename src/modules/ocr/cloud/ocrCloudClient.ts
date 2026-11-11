@@ -64,10 +64,11 @@ export function ocrCloudErrorCode(e: unknown): OcrCloudErrorCode | "timeout" {
 export function ocrCloudErrorText(e: unknown): string {
   switch (ocrCloudErrorCode(e)) {
     case "disabled": return "Online OCR is turned off on the server or for this company.";
-    case "no_key": return "No Google Vision key is saved yet.";
+    case "no_key": return "No online OCR key is saved yet.";
     case "forbidden": return "You do not have permission for this.";
-    case "quota": return "Google quota / billing limit reached.";
-    case "network": return "Server or Google could not be reached.";
+    case "quota": return "Online OCR quota or rate limit reached.";
+    case "network": return "Server or the OCR service could not be reached.";
+    case "region_unsupported": return "This Azure region does not support Image Analysis Read. Create the resource in a supported region, or use Google OCR.";
     case "not_signed_in": return "Sign in to Pocket Ledger Server first.";
     case "timeout": return "Timed out.";
     default: return e instanceof Error && e.message ? e.message : "Something went wrong.";
@@ -76,7 +77,10 @@ export function ocrCloudErrorText(e: unknown): string {
 
 export const ocrCloud = {
   vision: (companyId: string, imageBase64: string, opts?: { signal?: AbortSignal; languageHints?: string[] }) => ocrCloudVision(companyId, imageBase64, opts),
-  async saveKey(key: string, companyId?: string) { await saveOcrCloudKey(key, companyId); invalidateOcrCloudStatus(); },
+  async saveKey(key: string, companyId?: string, opts?: { provider?: "google" | "azure"; endpoint?: string }) {
+    await saveOcrCloudKey(key, companyId, opts);
+    invalidateOcrCloudStatus();
+  },
   async deleteKey(companyId?: string) { await deleteOcrCloudKey(companyId); invalidateOcrCloudStatus(); },
   async setCompany(o: OcrCloudCompanyOptions) { await setOcrCloudCompany(o); invalidateOcrCloudStatus(o.company); },
 };

@@ -245,3 +245,30 @@ Generic message काफी है।
 - Endpoint नाम `/api/ocr-cloud/*` न बदलें
 - Allrounder 1 ये न छुए: `src/modules/ocr/**`, `src/lib/ocr/**`, `tests/ocr/**`
 - Server endpoints तैयार होने पर OCR Master और Bot Leader को file list और टेस्ट का नतीजा बताएँ
+
+## Azure Computer Vision (Image Analysis 4.0 Read) — 2026-11-11
+
+कंपनी एडमिन OCR सेटिंग्स में **Google** या **Azure** चुन सकता है। एक समय पर एक ही प्रोवाइडर की कुंजी सहेजी जाती है (नया सेव दूसरी कुंजी को बदल देता है)।
+
+### सर्वर
+
+- नया migration: `sub-server/pb_migrations/1763700000_ocr_azure.js` — `user_vision_keys` पर वैकल्पिक फ़ील्ड `provider` (text, max 16) और `endpoint` (text, max 300)। Idempotent (फ़ील्ड पहले से हो तो छोड़ देता है)। पुरानी पंक्तियाँ बिना `provider` के Google मानी जाती हैं। `1763200000` न छुएँ।
+- Hook: `pb_hooks/lib/ocr_cloud.js` — Azure Image Analysis 4.0 `POST {origin}/computervision/imageanalysis:analyze?api-version=2024-02-01&features=read`, हेडर `Ocp-Apim-Subscription-Key`, बॉडी `application/octet-stream` (JSVM में `$filesystem.fileFromBytes(...).reader.open()` को `$http.send` io.Reader के रूप में)। जवाब `readResult.blocks[].lines[].text` को मौजूदा `{ text, pages }` आकार में बदला जाता है।
+- Endpoint SSRF जाँच: सिर्फ़ `https` और होस्ट `*.cognitiveservices.azure.com` या `*.api.cognitive.microsoft.com` (कोई IP, localhost, credentials, या नकली होस्ट नहीं)। स्टोर में सिर्फ़ origin; status में सिर्फ़ `endpointHost`।
+- Azure कुंजी प्रारूप: 32-अंकीय hex। Google `AIza…` वैसा ही।
+- त्रुटि मैपिंग: Azure 401 / अवैध कुंजी → `no_key`; 429 → `quota`; क्षेत्र/feature-not-supported → `region_unsupported` (साफ़ संदेश, raw Azure बॉडी नहीं)।
+- Azure दर: लगभग 20 कॉल/मिनट (`PL_OCR_AZURE_RATE` / `PL_OCR_AZURE_COMPANY_RATE`, डिफ़ॉल्ट 20)। F0 सीमा: 20/मिनट, 5000/महीना।
+- टेस्ट ओवरराइड: `PL_OCR_AZURE_URL` (उत्पादन में सेट न करें)। `getMasterKey` और Google व्यवहार अपरिवर्तित।
+
+### क्लाइंट
+
+- OCR सेटिंग्स: प्रोवाइडर रेडियो (Google / Azure), Azure पर endpoint फ़ील्ड, मौजूदा Save / Test, F0 संकेत, और चेतावनी कि सेव दूसरी कुंजी बदल देता है।
+- `src/lib/ocrCloudApi.ts` (Allrounder 2): केवल additive — `saveOcrCloudKey` पर वैकल्पिक `provider`/`endpoint`; status में वैकल्पिक `provider`/`endpointHost`; त्रुटि कोड `region_unsupported`। पुराने Google-only कॉल वैसे ही काम करते हैं।
+
+### डिप्लॉय (Server master)
+
+एक साथ कॉपी करें, फिर PocketBase restart: migration `1763700000_ocr_azure.js` + `pb_hooks/lib/ocr_cloud.js`। Router `ocr_cloud.pb.js` नहीं बदला। Migration के बिना Azure सेव 500 देगा।
+
+### खुला / सावधानी
+
+Microsoft दस्तावेज़ के अनुसार कुछ क्षेत्रों (जैसे Central India) में Image Analysis 4.0 Read उपलब्ध नहीं हो सकता। लाइव कुंजी से जाँचें; अगर क्षेत्र असमर्थित हो तो UI `region_unsupported` दिखाएगा। Nepali / Devanagari मुद्रित पाठ Read में समर्थित है।

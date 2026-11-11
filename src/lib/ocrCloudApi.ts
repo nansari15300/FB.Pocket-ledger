@@ -37,9 +37,10 @@ export type OcrCloudErrorCode =
   | "quota"
   | "network"
   | "not_signed_in"
+  | "region_unsupported"
   | "unknown";
 
-const SERVER_ERROR_CODES: ReadonlySet<string> = new Set(["disabled", "no_key", "forbidden", "quota", "network"]);
+const SERVER_ERROR_CODES: ReadonlySet<string> = new Set(["disabled", "no_key", "forbidden", "quota", "network", "region_unsupported"]);
 
 export class OcrCloudError extends Error {
   code: OcrCloudErrorCode;
@@ -77,6 +78,10 @@ export type OcrCloudStatus = {
   canUse: boolean;
   /** Admin only: shared users of the company and whether each may use cloud OCR. */
   sharedUsers?: OcrCloudSharedUser[];
+  /** Admin only: saved provider ("google" | "azure"). Omitted when no key. */
+  provider?: "google" | "azure";
+  /** Admin only, Azure: hostname of the saved endpoint (never the full URL). */
+  endpointHost?: string;
 };
 
 export type OcrCloudCompanyOptions = {
@@ -159,6 +164,8 @@ function normalizeStatus(raw: unknown): OcrCloudStatus {
     canUse: asBool(o.canUse),
   };
   if (typeof o.keyLast4 === "string" && o.keyLast4) out.keyLast4 = o.keyLast4;
+  if (o.provider === "azure" || o.provider === "google") out.provider = o.provider;
+  if (typeof o.endpointHost === "string" && o.endpointHost) out.endpointHost = o.endpointHost;
   if (Array.isArray(o.sharedUsers)) {
     out.sharedUsers = o.sharedUsers
       .filter((u): u is Record<string, unknown> => !!u && typeof u === "object")
@@ -182,11 +189,17 @@ export async function getOcrCloudStatus(companyId: string): Promise<OcrCloudStat
 
 /** Admin: save (or replace) the Google Vision key on the server. The key is not kept on this device.
  *  `companyId` lets the server verify the caller is an admin of the company whose settings are open. */
-export async function saveOcrCloudKey(key: string, companyId?: string): Promise<void> {
+export async function saveOcrCloudKey(
+  key: string,
+  companyId?: string,
+  opts?: { provider?: "google" | "azure"; endpoint?: string }
+): Promise<void> {
   const k = String(key || "").trim();
   if (!k) throw new OcrCloudError("no_key", "Key is empty");
   const body: Record<string, unknown> = { key: k };
   if (companyId) body.company = companyId;
+  if (opts?.provider) body.provider = opts.provider;
+  if (opts?.endpoint) body.endpoint = opts.endpoint;
   await call<unknown>("/api/ocr-cloud/key", { method: "POST", body });
 }
 
