@@ -151,6 +151,7 @@ export function parseOcrQtyToken(raw: string, ctx?: { rate?: number; amount?: nu
   if (comma3) {
     add(Number(comma3[1]));
     add(Number(comma3[1] + comma3[2]));
+    add(Number(`${comma3[1]}.${comma3[2]}`));
   }
   if (/^\d{1,12}(?:\.\d{1,4})?$/.test(s)) add(Number(s));
   const strict = parseStrictAmount(s);

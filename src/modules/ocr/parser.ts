@@ -222,6 +222,8 @@ function tripletRow(words: string[]): OcrLineItem | null {
       if (comma3) {
         const dec = Number(comma3[1]);
         if (dec > 0 && (v == null || dec !== v)) nums.push({ i, v: dec, shifted: false, k: 0 });
+        const asDec = Number(comma3[1] + "." + comma3[2]);
+        if (asDec > 0 && asDec !== dec) nums.push({ i, v: asDec, shifted: false, k: 0 });
       }
     }
   });
@@ -376,9 +378,13 @@ function parseLineItemsByHeader(lines: L[], dbg: (m: string) => void): { rows: O
   let cols: { col: Col; cx: number; x0: number }[] = [];
   for (let i = 0; i < lines.length; i++) {
     const found: { col: Col; cx: number; x0: number }[] = [];
-    for (const w of lines[i].words) {
+    const headWords = lines[i].words;
+    for (let wi = 0; wi < headWords.length; wi++) {
+      const w = headWords[wi];
       const t = w.text.replace(/[|\]\[}{]/g, "");
+      const prev = wi > 0 ? headWords[wi - 1].text.replace(/[|\]\[}{]/g, "") : "";
       for (const c of Object.keys(RX.head) as Col[]) {
+        if (c === "qty" && (/^alt$/i.test(prev) || /^alt\s*qty$/i.test(t))) continue;
         if (RX.head[c].test(t) && !found.some((x) => x.col === c)) found.push({ col: c, cx: (w.x0 + w.x1) / 2, x0: w.x0 });
       }
     }
@@ -469,7 +475,8 @@ function parseLineItemsByHeader(lines: L[], dbg: (m: string) => void): { rows: O
         continue;
       }
       // qty unreadable (e.g. "es66"): qty = amount / rate, rate decimal restored if needed, confirmed by Total Qty when printed
-      if (amount != null && amount >= 1) {
+      // Skip rows with no item name (e.g. a stray "44.00  1,661.60" under the table).
+      if (amount != null && amount >= 1 && description.replace(/[^A-Za-z\u0900-\u097F]/g, "").length >= 3) {
         const rec = recoverQtyRate(cell.rate?.join("") ?? "", amount, totalsQty(lines));
         if (rec) {
           rows.push({ description: finalizeItemDescription(description), quantity: canonicalOcrQty(rec.q), unit, rate: rec.r, amount });
@@ -478,8 +485,8 @@ function parseLineItemsByHeader(lines: L[], dbg: (m: string) => void): { rows: O
         }
       }
       const numericCells = [qty, rate, amount].filter((x) => x != null).length;
-      if (numericCells < 2) {
-        dbg(`Row "${l.text}": ignored (not an item row - ${numericCells} number column(s))`);
+      if (numericCells < 2 || description.replace(/[^A-Za-z\u0900-\u097F]/g, "").length < 3) {
+        dbg(`Row "${l.text}": ignored (not an item row - ${numericCells} number column(s), desc="${description}")`);
         continue;
       }
       dbg(`Row "${l.text}": missing qty/rate/amount (qty=${qty} rate=${rate} amount=${amount})`);
@@ -513,6 +520,22 @@ export type ParseContext = {
   ownPan?: string | null;
   ownName?: string | null;
 };
+
+/** OCR often splits "3,097.20" into "3,097" + "20". Merge those tokens on a line. */
+function mergeSplitAmountWords(words: OcrWord[]): OcrWord[] {
+  const out: OcrWord[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const a = words[i];
+    const b = words[i + 1];
+    if (b && /^(?:\d{1,3}(?:,\d{3})+|\d{4,})$/.test(a.text) && /^\d{2}$/.test(b.text)) {
+      out.push({ ...a, text: `${a.text}.${b.text}`, x1: b.x1, y0: Math.min(a.y0, b.y0), y1: Math.max(a.y1, b.y1) });
+      i += 1;
+      continue;
+    }
+    out.push(a);
+  }
+  return out;
+}
 
 const localYmd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -552,7 +575,11 @@ export function parseBill(rawIn: OcrRawResult, ctx: ParseContext): OcrParsedBill
   const H = raw.pageHeight || 1;
   const W = raw.pageWidth || Math.max(1, ...raw.lines.flatMap((l) => (l.words ?? []).map((w) => w.x1)));
   const lines: L[] = raw.lines
-    .map((l) => ({ text: normalizeOcrLine(l.text.replace(/[|]/g, " ")), conf: l.confidence / 100, rel: l.y / H, y: l.y, words: l.words ?? [] }))
+    .map((l) => {
+      const words = mergeSplitAmountWords(l.words ?? []);
+      const text = normalizeOcrLine((words.length ? words.map((w) => w.text).join(" ") : l.text).replace(/[|]/g, " "));
+      return { text, conf: l.confidence / 100, rel: l.y / H, y: l.y, words };
+    })
     .filter((l) => l.text);
   const segs = buildSegments(lines, W);
   const out: OcrParsedBill = { debug: [] };

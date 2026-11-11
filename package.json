@@ -20,7 +20,7 @@
     "tsc": "node --max-old-space-size=4096 node_modules/typescript/bin/tsc --noEmit -p tsconfig.typecheck.json",
     "typecheck:light": "node --max-old-space-size=4096 node_modules/typescript/bin/tsc --noEmit -p tsconfig.typecheck.json",
     "test:loans": "npx --yes tsx src/modules/loans/calculations/loanCalculation.selftest.ts",
-    "test:ocr": "npx --yes tsx tests/ocr/jayOilBill.selftest.mts && npx --yes tsx tests/ocr/liveDump.selftest.mts && npx --yes tsx tests/ocr/partyAlias.selftest.mts",
+    "test:ocr": "npx --yes tsx tests/ocr/jayOilBill.selftest.mts && npx --yes tsx tests/ocr/liveDump.selftest.mts && npx --yes tsx tests/ocr/partyAlias.selftest.mts && npx --yes tsx tests/ocr/pratikAzureLayout.selftest.mts",
     "test:masters": "npx --yes tsx tests/masters/aliasName.selftest.mts",
     "ci": "npm install && npm run build",
     "sidecar:build": "cd desktop-sidecar && go build -trimpath -ldflags \"-s -w\" -o ../src-tauri/binaries/pl-sidecar-x86_64-pc-windows-msvc.exe .",

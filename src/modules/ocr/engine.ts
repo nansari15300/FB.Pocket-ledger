@@ -130,7 +130,7 @@ async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promi
     if (text.replace(/\s+/g, "").length < 8) return { raw: null, note: "Online OCR returned no text" };
     const fromVision = res && typeof res === "object" && "provider" in (res as object) ? (res as { provider?: unknown }).provider : undefined;
     const provider = fromVision === "azure" || fromVision === "google" ? fromVision : status.provider === "azure" ? "azure" as const : "google" as const;
-    return { raw: rawFromCloudText(text, { engine: provider, note: `JPEG ${img.w}x${img.h} ${img.kb} KB` }), note: "" };
+    return { raw: rawFromCloudText(text, { engine: provider, note: `JPEG ${img.w}x${img.h} ${img.kb} KB`, pageWidth: img.w, pageHeight: img.h, pages: res?.pages }), note: "" };
   } catch (e) {
     const code = ocrCloudErrorCode(e);
     if (process.env.NODE_ENV !== "production") console.warn("[OCR] Online OCR failed, using offline OCR", code, e);
