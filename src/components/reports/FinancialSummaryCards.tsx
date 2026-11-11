@@ -637,6 +637,13 @@ export function FinancialSummaryCards({
     const [cashFlowDateRange, setCashFlowDateRange] = useState<DateRange | undefined>(() => currentDashboardMonthRange());
     const [taxDateRange, setTaxDateRange] = useState<DateRange | undefined>(() => currentDashboardMonthRange());
     const [stockDateRange, setStockDateRange] = useState<DateRange | undefined>(() => currentDashboardMonthRange());
+    /**
+     * Stock Summary card starts on the full period on purpose: stock is a running quantity, so a
+     * month window would hide every item that did not move this month (and show Rs. 0.00 even when
+     * the item ledger clearly holds stock). Explicit month picking still filters it.
+     */
+    const [stockSummaryScopeAll, setStockSummaryScopeAll] = useState(true);
+    useEffect(() => { setStockSummaryScopeAll(true); }, [dateSystem]);
     const [dashboardCardScopes, setDashboardCardScopes] = useState<
         Record<string, DashboardSummaryCardScope>
     >({});
@@ -1297,8 +1304,9 @@ export function FinancialSummaryCards({
 
     // STOCK SUMMARY DETAILS
     const overallStockSummary = useMemo(() => {
+        // Default = full period (all stock). Only an explicitly picked month filters the list.
         let filteredVouchers = vouchers;
-        if (stockDateRange?.from) {
+        if (!stockSummaryScopeAll && stockDateRange?.from) {
             const fromDate = startOfDay(stockDateRange.from);
             const toDate = stockDateRange.to ? endOfDay(stockDateRange.to) : endOfDay(fromDate);
             filteredVouchers = vouchers.filter(v => {
@@ -1388,7 +1396,7 @@ export function FinancialSummaryCards({
         // Filter items to only show those with transactions in the selected date range
         // If date range is selected, only show items that have sales or purchases in that period
         let filteredItems = itemsWithSales;
-        if (stockDateRange?.from) {
+        if (!stockSummaryScopeAll && stockDateRange?.from) {
             filteredItems = itemsWithSales.filter(item => 
                 item.salesQty > 0 || item.purchaseQty > 0 || item.salesValue > 0 || item.purchaseValue > 0
             );
@@ -1402,7 +1410,7 @@ export function FinancialSummaryCards({
         const topPurchaseItems = [...filteredItems].filter(i => i.purchaseQty > 0 || i.purchaseValue > 0).sort((a,b) => b.purchaseValue - a.purchaseValue).slice(0, 5);
 
         return { items: filteredItems, totalStockValue: totalValue, topSaleItems, topPurchaseItems };
-    }, [processedItems, vouchers, stockDateRange]);
+    }, [processedItems, vouchers, stockDateRange, stockSummaryScopeAll]);
 
     // Bank & Cash Summary
     const bankCashSummary = useMemo(() => {
@@ -2932,9 +2940,9 @@ export function FinancialSummaryCards({
                 <CardHeader className={`flex flex-row items-center justify-between p-4 space-y-0 shrink-0 ${headerClass} overflow-hidden`}>
                     <CardTitle className={`text-base whitespace-nowrap ${titleClass} min-w-0`}>Stock Summary</CardTitle>
                     {compact ? (
-                        <ReportMonthYearFilter dateRange={stockDateRange} setDateRange={setStockDateRange} dateSystem={dateSystem} />
+                        <ReportMonthYearFilter dateRange={stockSummaryScopeAll ? undefined : stockDateRange} setDateRange={(r) => { setStockSummaryScopeAll(!r?.from); setStockDateRange(r); }} dateSystem={dateSystem} />
                     ) : (
-                        <MonthYearFilter dateRange={stockDateRange} setDateRange={setStockDateRange} dateSystem={dateSystem} />
+                        <MonthYearFilter dateRange={stockSummaryScopeAll ? undefined : stockDateRange} setDateRange={(r) => { setStockSummaryScopeAll(!r?.from); setStockDateRange(r); }} dateSystem={dateSystem} />
                     )}
                 </CardHeader>
                 <CardContent className={cn("p-4 pt-0 flex flex-col min-h-0", contentClass)}>
@@ -3032,7 +3040,7 @@ export function FinancialSummaryCards({
                                                 onPointerDown={(e) => e.stopPropagation()}
                                                 className="[&_button]:h-9"
                                             >
-                                                <MonthYearFilter dateRange={stockDateRange} setDateRange={setStockDateRange} dateSystem={dateSystem} />
+                                                <MonthYearFilter dateRange={stockSummaryScopeAll ? undefined : stockDateRange} setDateRange={(r) => { setStockSummaryScopeAll(!r?.from); setStockDateRange(r); }} dateSystem={dateSystem} />
                                             </div>
                                             <Button 
                                                 variant="outline" 
