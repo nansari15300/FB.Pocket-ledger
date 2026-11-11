@@ -16717,7 +16717,7 @@ html body[class*="theme-"] button[data-pl-master-delete-btn][data-pl-master-dele
 }
 
 /* Save & New = Create Item jaisa hi light-green outline pill (pehle white text light bg par gayab ho jata tha). */
-html body[class*="theme-"] button(:disabled) {
+html body[class*="theme-"] button[data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn]:not(:disabled) {
   background-color: #f0fdf4 !important;
   background-image: none !important;
   color: #15803d !important;
@@ -16727,12 +16727,12 @@ html body[class*="theme-"] button(:disabled) {
   border-color: #16a34a !important;
   box-shadow: none !important;
 }
-html body[class*="theme-"] button(:disabled):hover {
+html body[class*="theme-"] button[data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn]:not(:disabled):hover {
   background-color: #dcfce7 !important;
   color: #166534 !important;
   border-color: #15803d !important;
 }
-html body[class*="theme-"] button {
+html body[class*="theme-"] button[data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn][data-pl-master-save-new-btn]:disabled {
   background-color: #f7f7f7 !important;
   background-image: none !important;
   color: #9ca3af !important;
