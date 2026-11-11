@@ -218,6 +218,51 @@ function computeItemStockQty(values: ItemFormValues): number {
   return (values.openingBalance || 0) * (factor || 1);
 }
 
+type SavedItemUnitConversion = {
+  fromUnit?: string;
+  toUnit?: string;
+  conversionFactor?: number;
+};
+
+/** Same chain as useVouchers / ItemList: factor from a unit down to the last conversion's toUnit. Missing link => 0. */
+function itemSmallestUnit(conversions: SavedItemUnitConversion[], openingBalanceUnit?: string): string {
+  return conversions.length > 0
+    ? String(conversions[conversions.length - 1]?.toUnit || "")
+    : (openingBalanceUnit || "");
+}
+
+function getFactorToSmallestUnit(conversions: SavedItemUnitConversion[], unit: string): number {
+  if (!unit || conversions.length === 0) return 1;
+  const smallestUnit = itemSmallestUnit(conversions);
+  if (!smallestUnit || unit === smallestUnit) return 1;
+  let factor = 1;
+  let currentUnit = unit;
+  for (let i = 0; i < 10; i++) {
+    const conv = conversions.find((c) => c.fromUnit === currentUnit);
+    if (!conv) return 0;
+    factor *= Number(conv.conversionFactor) || 1;
+    currentUnit = conv.toUnit || "";
+    if (currentUnit === smallestUnit) break;
+  }
+  return factor;
+}
+
+function listSavedItemUnits(item: { unitConversions?: unknown; openingBalanceUnit?: string }): string[] {
+  const conversions = (item.unitConversions || []) as SavedItemUnitConversion[];
+  const units = new Set<string>();
+  if (item.openingBalanceUnit) units.add(item.openingBalanceUnit);
+  for (const c of conversions) {
+    if (c.fromUnit) units.add(c.fromUnit);
+    if (c.toUnit) units.add(c.toUnit);
+  }
+  return Array.from(units);
+}
+
+function qtyInSavedItemUnit(stockInSmallest: number, conversions: SavedItemUnitConversion[], unit: string): number {
+  const factor = getFactorToSmallestUnit(conversions, unit);
+  return factor > 0 ? stockInSmallest / factor : 0;
+}
+
 /** Form load: legacy ungrouped ids → system branch (Products / Services). */
 function normalizeItemEditGroupId(
   groupId: string | null | undefined,
@@ -387,11 +432,34 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
     preferSqliteMirror: sqliteListsOnlyNoSnapshot,
     onFields: onLiveAttachmentFields,
   });
-  const { processedItemGroups, processedTaxes } = useVouchers();
+  const { processedItemGroups, processedTaxes, processedItems } = useVouchers();
   const processedItemGroupsRef = useRef(processedItemGroups);
   const processedTaxesRef = useRef(processedTaxes);
   processedItemGroupsRef.current = processedItemGroups;
   processedTaxesRef.current = processedTaxes;
+
+  const liveStockItem = useMemo(
+    () => processedItems.find((row) => row.id === item.id) ?? null,
+    [processedItems, item.id]
+  );
+  const savedUnitConversions = useMemo(
+    () => (item.unitConversions || []) as SavedItemUnitConversion[],
+    [item.unitConversions]
+  );
+  const currentStockUnits = useMemo(() => listSavedItemUnits(item), [item]);
+  const defaultStockUnit =
+    item.openingBalanceUnit ||
+    itemSmallestUnit(savedUnitConversions, item.openingBalanceUnit) ||
+    currentStockUnits[0] ||
+    "";
+  const [stockDisplayUnit, setStockDisplayUnit] = useState(defaultStockUnit);
+  useEffect(() => {
+    if (!isOpen) return;
+    const conversions = (item.unitConversions || []) as SavedItemUnitConversion[];
+    setStockDisplayUnit(
+      item.openingBalanceUnit || itemSmallestUnit(conversions, item.openingBalanceUnit) || ""
+    );
+  }, [isOpen, item.id]);
 
   const handleGroupCreated = (newGroupId: string) => {
     form.setValue('groupId', newGroupId);
@@ -1083,6 +1151,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
         {children ? <DialogPlainOpener onOpen={() => setIsOpen(true)}>{children}</DialogPlainOpener> : null}
         {/* Mobile: 85vh height, 98vw width. PC: 90% screen height & width (90vh / 90vw) so dialog uses most of viewport. */}
         <DialogContent
+            data-pl-item-form-dialog=""
             hideCloseButton={dialogResizable}
             overlayClassName={externallyControlled ? NESTED_LEDGER_MASTER_EDIT_OVERLAY_CN : undefined}
             className={cn(
@@ -1143,13 +1212,52 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                 </TabsList>
               </Tabs>
                  <div className="space-y-4 py-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div data-pl-item-top-card="" className="border p-4 rounded-md"><div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2"><FormField
                 control={form.control}
                 name="name"
                 render={({ field }: any) => (
                   <FormItem>
-                    <FormLabel>Item Name</FormLabel>
+                    <div className="flex items-center justify-between gap-2">
+                      <FormLabel>Item Name</FormLabel>
+                      {itemType === "item" && liveStockItem ? (() => {
+                        const stockUnit =
+                          stockDisplayUnit && currentStockUnits.includes(stockDisplayUnit)
+                            ? stockDisplayUnit
+                            : defaultStockUnit;
+                        const selectedQty = qtyInSavedItemUnit(
+                          Number(liveStockItem.stockQty) || 0,
+                          savedUnitConversions,
+                          stockUnit
+                        );
+                        return (
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span
+                              className={cn(
+                                "shrink-0 tabular-nums text-sm",
+                                selectedQty >= 0 ? "text-green-600" : "text-red-600"
+                              )}
+                            >
+                              {selectedQty.toFixed(2)}
+                            </span>
+                            {currentStockUnits.length > 0 ? (
+                              <Select value={stockUnit} onValueChange={setStockDisplayUnit}>
+                                <SelectTrigger className="h-6 w-auto min-w-0 shrink-0 rounded-sm px-1.5 py-0 text-xs gap-1">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {currentStockUnits.map((u) => (
+                                    <SelectItem key={u} value={u}>
+                                      {qtyInSavedItemUnit(Number(liveStockItem.stockQty) || 0, savedUnitConversions, u).toFixed(2)} {u}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : null}
+                          </div>
+                        );
+                      })() : null}
+                    </div>
                     <FormControl>
                       <Input
                         placeholder="e.g., T-Shirt (Red)"
@@ -1230,7 +1338,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                   </FormItem>
                 )}
               />
-            </div>
+            </div></div>
             
             <div className="space-y-4 border p-4 rounded-md">
                 <FormLabel className="text-base font-semibold">Unit Conversions</FormLabel>
@@ -1342,13 +1450,13 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                     <div className="space-y-2 border p-4 rounded-md min-w-[500px]">
                         <FormLabel className="text-base font-semibold">Purchase Unit Prices</FormLabel>
                         <div className="grid grid-cols-[1fr_1fr_1fr_1fr] gap-x-2 gap-y-2 items-center pr-4">
-                            <FormLabel>Unit</FormLabel>
+                            <FormLabel className="pl-[18px]">Unit</FormLabel>
                             <FormLabel className="text-right">Rate</FormLabel>
                             <FormLabel className="text-right">Tax</FormLabel>
                             <FormLabel className="text-right">Total</FormLabel>
                             {allUnits.map((unit) => (
                                 <React.Fragment key={`purchase-${unit}`}>
-                                    <p className="font-medium text-sm">{unit}</p>
+                                    <Input value={unit} readOnly tabIndex={-1} className="h-9 bg-muted cursor-not-allowed font-medium"/>
                                     <Input type="number" value={Number(unitPrices[unit]?.purchase).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
                                     <Input type="number" value={Number(unitPrices[unit]?.purchaseTax).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
                                     <Input type="number" value={Number(unitPrices[unit]?.purchase + unitPrices[unit]?.purchaseTax).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
@@ -1362,13 +1470,13 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                     <div className="space-y-2 border p-4 rounded-md min-w-[500px]">
                         <FormLabel className="text-base font-semibold">Sale Unit Prices</FormLabel>
                          <div className="grid grid-cols-[1fr_1fr_1fr_1fr] gap-x-2 gap-y-2 items-center pr-4">
-                            <FormLabel>Unit</FormLabel>
+                            <FormLabel className="pl-[18px]">Unit</FormLabel>
                             <FormLabel className="text-right">Rate</FormLabel>
                             <FormLabel className="text-right">Tax</FormLabel>
                             <FormLabel className="text-right">Total</FormLabel>
                             {allUnits.map((unit) => (
                                 <React.Fragment key={`sale-${unit}`}>
-                                    <p className="font-medium text-sm">{unit}</p>
+                                    <Input value={unit} readOnly tabIndex={-1} className="h-9 bg-muted cursor-not-allowed font-medium"/>
                                     <Input type="number" value={Number(unitPrices[unit]?.sale).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
                                     <Input type="number" value={Number(unitPrices[unit]?.saleTax).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
                                     <Input type="number" value={Number(unitPrices[unit]?.sale + unitPrices[unit]?.saleTax).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
@@ -1497,7 +1605,8 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                  </div>
                 </div>
                 </div>
-                  <FormItem>
+                  <div className="flex flex-wrap items-start gap-4">
+                  <FormItem className="shrink-0">
                     <FormLabel>Attach Files (Optional)</FormLabel>
                     {!canAttachDocuments ? (
                       <p className="text-xs text-muted-foreground">
@@ -1544,11 +1653,14 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                     </RestrictedFileUploader>
                     )}
                   </FormItem>
+                  <div className="min-w-[16rem] flex-1">
                   <EntityOpeningBalanceNarrationField
                     control={form.control}
                     name="openingBalanceNarration"
                     detailLabel="item"
                   />
+                  </div>
+                  </div>
               </div>
                 <div className="space-y-2 border p-4 rounded-md">
                     <FormLabel className="text-base font-semibold">Opening Stock Summary</FormLabel>

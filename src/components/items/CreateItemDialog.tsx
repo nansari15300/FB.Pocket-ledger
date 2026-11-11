@@ -944,6 +944,7 @@ const capitalizeFirstLetter = (str: string) => {
         {children && <DialogTrigger asChild>{children}</DialogTrigger>}
         {/* Mobile: 85vh height, 98vw width. PC: 90% screen height & width (90vh / 90vw) so dialog uses most of viewport. */}
         <DialogContent
+            data-pl-item-form-dialog=""
             overlayClassName={NESTED_VOUCHER_MASTER_CREATE_OVERLAY_CN}
             hideCloseButton={dialogResizable}
             className={cn(
@@ -1002,7 +1003,7 @@ const capitalizeFirstLetter = (str: string) => {
 
               {tabsInRibbon ? null : itemTypeTabs}
               <div className="space-y-4 py-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div data-pl-item-top-card="" className="border p-4 rounded-md"><div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2"><FormField
                   control={form.control}
                   name="name"
@@ -1072,7 +1073,7 @@ const capitalizeFirstLetter = (str: string) => {
                     </FormItem>
                   )}
                 />
-              </div>
+              </div></div>
               
               {/* Unit Conversions: horizontal scroll so Base Unit + delete icon visible on small screens (do not remove overflow-x-auto). */}
               <div className="space-y-4 border p-4 rounded-md">
@@ -1219,13 +1220,13 @@ const capitalizeFirstLetter = (str: string) => {
                       <div className="space-y-2 border p-4 rounded-md min-w-[500px]">
                           <FormLabel className="text-base font-semibold">Purchase Unit Prices</FormLabel>
                           <div className="grid grid-cols-[1fr_1fr_1fr_1fr] gap-x-2 gap-y-2 items-center pr-4">
-                              <FormLabel>Unit</FormLabel>
+                              <FormLabel className="pl-[18px]">Unit</FormLabel>
                               <FormLabel className="text-right">Rate</FormLabel>
                               <FormLabel className="text-right">Tax</FormLabel>
                               <FormLabel className="text-right">Total</FormLabel>
                               {allUnits.map((unit) => (
                                   <React.Fragment key={`purchase-${unit}`}>
-                                      <p className="font-medium text-sm">{unit}</p>
+                                      <Input value={unit} readOnly tabIndex={-1} className="h-9 bg-muted cursor-not-allowed font-medium"/>
                                       <Input type="number" value={Number(unitPrices[unit]?.purchase).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
                                       <Input type="number" value={Number(unitPrices[unit]?.purchaseTax).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
                                       <Input type="number" value={Number(unitPrices[unit]?.purchase + unitPrices[unit]?.purchaseTax).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
@@ -1240,13 +1241,13 @@ const capitalizeFirstLetter = (str: string) => {
                       <div className="space-y-2 border p-4 rounded-md min-w-[500px]">
                           <FormLabel className="text-base font-semibold">Sale Unit Prices</FormLabel>
                           <div className="grid grid-cols-[1fr_1fr_1fr_1fr] gap-x-2 gap-y-2 items-center pr-4">
-                              <FormLabel>Unit</FormLabel>
+                              <FormLabel className="pl-[18px]">Unit</FormLabel>
                               <FormLabel className="text-right">Rate</FormLabel>
                               <FormLabel className="text-right">Tax</FormLabel>
                               <FormLabel className="text-right">Total</FormLabel>
                               {allUnits.map((unit) => (
                                   <React.Fragment key={`sale-${unit}`}>
-                                      <p className="font-medium text-sm">{unit}</p>
+                                      <Input value={unit} readOnly tabIndex={-1} className="h-9 bg-muted cursor-not-allowed font-medium"/>
                                       <Input type="number" value={Number(unitPrices[unit]?.sale).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
                                       <Input type="number" value={Number(unitPrices[unit]?.saleTax).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>
                                       <Input type="number" value={Number(unitPrices[unit]?.sale + unitPrices[unit]?.saleTax).toFixed(2) || '0.00'} readOnly className="h-9 bg-muted cursor-not-allowed text-right"/>

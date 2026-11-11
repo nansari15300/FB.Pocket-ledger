@@ -16304,6 +16304,53 @@ html body [data-pl-header-row="desktop"] :is(button, a, [role="button"], [data-p
 }
 /* === end Theme Master: mobile pinch zoom === */
 
+/* Theme Master: Pro item form gray bg + 3D cards */
+/* === Theme Master: Default/Pro (theme-pro) Add/Edit Item form gray bg + 3D section cards (Nov 2026) ===
+   Hooks: EditItemDialog.tsx + CreateItemDialog.tsx DialogContent has
+   pl-master-entity-form-chrome (shared master chrome) + sm:max-w-5xl (unique to these two dialogs).
+   No data-* hook on the dialog. Recommend Item Master add data-pl-item-form-dialog="" on both DialogContent roots.
+   Overrides Pro emerald shell (globals.css ~5320) for this dialog only. Party/bank/staff/etc. and other themes untouched.
+   Section cards (Unit Conversions, Purchase/Sale Price, unit prices, Opening Stock): .border.p-4.rounded-md
+   use the same Pro emerald gradient as the old dialog shell (globals.css ~5320): #ecfdf5 + linear-gradient(90deg, rgba(236, 253, 245, 0.98), #fff 50%, rgba(209, 250, 229, 0.92)). */
+html :is(body.theme-pro, html.theme-pro body) .pl-master-entity-form-chrome.sm\:max-w-5xl:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) {
+  background-color: #e5e7eb !important;
+  background-image: none !important;
+}
+html :is(body.theme-pro, html.theme-pro body) .pl-master-entity-form-chrome.sm\:max-w-5xl:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) .border.p-4.rounded-md:not(.border-dashed):not(.border-2) {
+  background-color: #ecfdf5 !important;
+  background-image: linear-gradient(90deg, rgba(236, 253, 245, 0.98) 0%, #ffffff 50%, rgba(209, 250, 229, 0.92) 100%) !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 6px 14px rgba(15,23,42,.12) !important;
+  transition: transform 150ms ease, box-shadow 150ms ease !important;
+}
+html :is(body.theme-pro, html.theme-pro body) .pl-master-entity-form-chrome.sm\:max-w-5xl:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) .border.p-4.rounded-md:not(.border-dashed):not(.border-2):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 4px rgba(0,0,0,.08), 0 12px 24px rgba(15,23,42,.18) !important;
+}
+/* === end Theme Master: Pro item form gray bg + 3D cards === */
+
+/* Theme Master: Pro item form stock unit dropdown = box, not pill */
+/* === Theme Master: Default/Pro (theme-pro) Item Name stock-unit SelectTrigger = short box (Nov 2026) ===
+   Hook: EditItemDialog.tsx ~1244 SelectTrigger next to Item Name / green stock qty:
+   class "h-6 w-auto ... rounded-sm px-1.5 py-0 text-xs" (CreateItemDialog does not have this control yet).
+   Pill came only from Pro master-form rules (~5327-5368): border-radius 9999px + height var(--pl-master-pill-h) 2.5rem.
+   Other themes already honor rounded-sm/h-6, so this override is Pro only. Colors untouched.
+   Top-fields card (Item Master wrapping Item/Service, Name, HS Code, Group, Alias in border p-4 rounded-md):
+   existing selector .border.p-4.rounded-md already matches; no change. */
+html :is(body.theme-pro, html.theme-pro body) .pl-master-entity-form-chrome.sm\:max-w-5xl button.h-6.rounded-sm[role="combobox"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) {
+  border-radius: 4px !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  max-height: 24px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  line-height: 1.15 !important;
+  box-sizing: border-box !important;
+}
+html :is(body.theme-pro, html.theme-pro body) .pl-master-entity-form-chrome.sm\:max-w-5xl button.h-6.rounded-sm[role="combobox"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3):not(#pl-theme-master-none-4):not(#pl-theme-master-none-5) svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+/* === end Theme Master: Pro item form stock unit dropdown = box === */
 
 /* Reuse company attachment â€” list rows match green dialog theme border */
 [data-pl-reuse-row],
@@ -16743,4 +16790,14 @@ html body[class*="theme-"] button[data-pl-master-save-new-btn][data-pl-master-sa
 html body[class*="theme-"] [data-pl-master-delete-btn].opacity-40,
 html body[class*="theme-"] button[data-pl-master-delete-btn][aria-disabled="true"] {
   opacity: 0.45 !important;
+}
+
+/* Item Master (2026-11-11, Ansari Ji): Add/Edit Item dialog - pill fields ke upar ke labels pill ke gol hisse (h-9 = 36px, radius 18px) se andar. */
+/* pl-item-form-dialog label inset */
+[data-pl-item-form-dialog] .space-y-2 > label:not(.text-base),
+[data-pl-item-form-dialog] .space-y-2 > div.flex:has(> label:not(.text-base)),
+/* Unit Prices / Opening Stock Summary tables: Rate, Tax, Total, Quantity headings */
+[data-pl-item-form-dialog] .grid > label.text-right {
+  padding-left: 18px;
+  padding-right: 18px;
 }
