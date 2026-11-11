@@ -313,8 +313,9 @@ function OcrSettingsGear({
       </DialogTrigger>
       <DialogContent
         className={cn(
-          // 60% of the screen wide, 80% of the screen tall (small screens keep a safe inset).
-          "flex h-[80vh] max-h-[80vh] w-[60vw] max-w-[60vw] min-w-[min(100vw-1.5rem,360px)] flex-col gap-0 overflow-hidden p-0",
+          // 30% of the screen wide, 80% of the screen tall (small screens keep a safe inset).
+          "flex h-[80vh] max-h-[80vh] w-[30vw] max-w-[30vw] min-w-[min(100vw-1.5rem,340px)] flex-col gap-0 overflow-hidden p-0",
+          "max-xl:w-[46vw] max-xl:max-w-[46vw]",
           "max-sm:h-[calc(100vh-1.5rem)] max-sm:max-h-[calc(100vh-1.5rem)] max-sm:w-[calc(100vw-1.5rem)] max-sm:max-w-[calc(100vw-1.5rem)] max-sm:min-w-0",
           OCR_SETTINGS_DIALOG_CONTENT_CN
         )}
