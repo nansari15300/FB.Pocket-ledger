@@ -1227,8 +1227,8 @@ const capitalizeFirstLetter = (str: string) => {
                             )} />
                           </div>
                       </div>
-                      <div className="flex flex-wrap items-end gap-2">
-                        <FormField control={form.control} name="salePrice" render={({ field }: any) => (<FormItem className="min-w-[6rem] flex-1"><FormControl><Input type="number" placeholder="0.00" className="h-9" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <div className="flex flex-wrap items-end gap-2 pt-2">
+                        <FormField control={form.control} name="salePrice" render={({ field }: any) => (<FormItem className="min-w-[6rem] flex-1"><FormLabel className="pl-[18px]">Price</FormLabel><FormControl><Input type="number" placeholder="0.00" className="h-9" {...field} /></FormControl><FormMessage /></FormItem>)} />
                         <SaleMarginPills
                           isOpen={isOpen}
                           units={allUnits}
@@ -1243,7 +1243,7 @@ const capitalizeFirstLetter = (str: string) => {
                           saleInclusive={!!watchedIsSalePriceTaxInclusive}
                           onSalePriceChange={(v) => form.setValue('salePrice', v, { shouldDirty: true, shouldValidate: true })}
                         />
-                        <FormField control={form.control} name="salePriceUnit" render={({ field }: any) => (<FormItem><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="w-28 h-9"><SelectValue placeholder="Unit"/></SelectTrigger></FormControl><SelectContent>{allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                        <FormField control={form.control} name="salePriceUnit" render={({ field }: any) => (<FormItem><FormLabel className="pl-[18px]">Unit</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="w-28 h-9"><SelectValue placeholder="Unit"/></SelectTrigger></FormControl><SelectContent>{allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                     </div>
                 </div>
                   {/* PC: Purchase Unit Prices | Margin | Sale Unit Prices ek row me; mobile par `contents` (order classes waise hi). */}

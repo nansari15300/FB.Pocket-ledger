@@ -242,30 +242,37 @@ export function SaleMarginPills(
   const onApply = (m: ParsedMargin) => applyForUnit(props, unit, purchaseRate, m);
   return (
     <div className="flex shrink-0 items-end gap-2">
-      <MarginInput
-        isOpen={isOpen}
-        purchaseRate={purchaseRate}
-        saleRate={saleRate}
-        fixedMode="amount"
-        disabled={disabled}
-        placeholder="Margin"
-        title="Margin amount (tax ke bina)"
-        ariaLabel="Margin amount"
-        className="w-24"
-        onApply={onApply}
-      />
-      <MarginInput
-        isOpen={isOpen}
-        purchaseRate={purchaseRate}
-        saleRate={saleRate}
-        fixedMode="percent"
-        disabled={disabled}
-        placeholder="%"
-        title="Margin % (tax ke bina)"
-        ariaLabel="Margin percent"
-        className="w-20"
-        onApply={onApply}
-      />
+      {/* Har pill ke upar chhota label (FormItem jaisa space-y-2 > label → pill ke gol kinare se andar) */}
+      <div className="space-y-2">
+        <FormLabel className="pl-[18px]">Amount</FormLabel>
+        <MarginInput
+          isOpen={isOpen}
+          purchaseRate={purchaseRate}
+          saleRate={saleRate}
+          fixedMode="amount"
+          disabled={disabled}
+          placeholder="Margin"
+          title="Margin amount (tax ke bina)"
+          ariaLabel="Margin amount"
+          className="w-24"
+          onApply={onApply}
+        />
+      </div>
+      <div className="space-y-2">
+        <FormLabel className="pl-[18px]">%</FormLabel>
+        <MarginInput
+          isOpen={isOpen}
+          purchaseRate={purchaseRate}
+          saleRate={saleRate}
+          fixedMode="percent"
+          disabled={disabled}
+          placeholder="%"
+          title="Margin % (tax ke bina)"
+          ariaLabel="Margin percent"
+          className="w-20"
+          onApply={onApply}
+        />
+      </div>
     </div>
   );
 }

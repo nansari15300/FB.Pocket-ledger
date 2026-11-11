@@ -28,6 +28,7 @@ import { useCompany } from "@/hooks/useCompany";
 import { openPrintDirect } from "@/lib/printDirect";
 import { MonthYearFilter } from "@/components/dashboard/MonthYearFilter";
 import { financialSummaryHairlineRowClass } from "@/components/reports/FinancialSummary/financialSummaryCardStyles";
+import { StockSectionDetailsDialog } from "@/components/reports/FinancialSummary/StockSectionDetailsDialog";
 
 // Helper function to safely convert date
 const safeToDate = (date: any): Date | null => {
@@ -55,6 +56,9 @@ type StockSummaryItem = {
 type OverallStockSummary = {
   items: StockSummaryItem[];
   totalStockValue: number;
+  allSaleItems: StockSummaryItem[];
+  allPurchaseItems: StockSummaryItem[];
+  allLowStockItems: Array<StockSummaryItem & { warningLevel: number }>;
   topSaleItems: StockSummaryItem[];
   topPurchaseItems: StockSummaryItem[];
   lowStockItems: Array<StockSummaryItem & { warningLevel: number }>;
@@ -92,11 +96,21 @@ export function DashboardStockSummaryCard({
   const [stockSummaryOpen, setStockSummaryOpen] = useState(false);
   /** Top items list size — user 5 / 10 / 15 / 20 choose kar sakta hai. */
   const [topN, setTopN] = useState<number>(10);
+  const [sectionDetails, setSectionDetails] = useState<"sale" | "purchase" | "low-stock" | null>(null);
 
   const overallStockSummary = useMemo<OverallStockSummary>(() => {
     // Tab band hai → kuch mat ginо (server/local scan bhi nahi).
     if (!active) {
-      return { items: [], totalStockValue: 0, topSaleItems: [], topPurchaseItems: [], lowStockItems: [] };
+      return {
+        items: [],
+        totalStockValue: 0,
+        allSaleItems: [],
+        allPurchaseItems: [],
+        allLowStockItems: [],
+        topSaleItems: [],
+        topPurchaseItems: [],
+        lowStockItems: [],
+      };
     }
     // Default = full period (all stock). Only an explicitly picked month filters the list.
     let filteredVouchers = vouchers;
@@ -207,14 +221,14 @@ export function DashboardStockSummaryCard({
 
     filteredItems = [...filteredItems].sort((a, b) => Number(b.value) - Number(a.value));
 
-    const topSaleItems = [...filteredItems]
+    const allSaleItems = [...filteredItems]
       .filter((i) => i.salesQty > 0 || i.salesValue > 0)
-      .sort((a, b) => b.salesValue - a.salesValue)
-      .slice(0, topN);
-    const topPurchaseItems = [...filteredItems]
+      .sort((a, b) => b.salesValue - a.salesValue);
+    const topSaleItems = allSaleItems.slice(0, topN);
+    const allPurchaseItems = [...filteredItems]
       .filter((i) => i.purchaseQty > 0 || i.purchaseValue > 0)
-      .sort((a, b) => b.purchaseValue - a.purchaseValue)
-      .slice(0, topN);
+      .sort((a, b) => b.purchaseValue - a.purchaseValue);
+    const topPurchaseItems = allPurchaseItems.slice(0, topN);
 
     // Low stock: item master ka `lowStockWarning` threshold; qty usse kam/barabar = low.
     // Threshold apni unit me ho sakta hai (Pcs/Kg/Gm) — compare karne se pehle smallest unit me convert.
@@ -246,7 +260,7 @@ export function DashboardStockSummaryCard({
       }
       warningById.set(String(raw?.id ?? ""), warnInSmallest);
     }
-    const lowStockItems = filteredItems
+    const allLowStockItems = filteredItems
       .map((item) => ({ ...item, warningLevel: warningById.get(item.id) ?? 0 }))
       .filter((item) => item.warningLevel > 0 && Number(item.qty) <= item.warningLevel)
       .sort((a, b) => {
@@ -256,12 +270,15 @@ export function DashboardStockSummaryCard({
         if (bGap !== aGap) return bGap - aGap;
         if (Number(a.qty) !== Number(b.qty)) return Number(a.qty) - Number(b.qty);
         return a.name.localeCompare(b.name);
-      })
-      .slice(0, topN);
+      });
+    const lowStockItems = allLowStockItems.slice(0, topN);
 
     return {
       items: filteredItems,
       totalStockValue: totalValue,
+      allSaleItems,
+      allPurchaseItems,
+      allLowStockItems,
       topSaleItems,
       topPurchaseItems,
       lowStockItems,
@@ -435,6 +452,19 @@ export function DashboardStockSummaryCard({
                       ))
                     )}
                   </div>
+                  {showDetails && (
+                    <div className="shrink-0 text-right pt-2">
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="h-auto p-0"
+                        type="button"
+                        onClick={() => setSectionDetails("sale")}
+                      >
+                        View Details
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -468,6 +498,19 @@ export function DashboardStockSummaryCard({
                       ))
                     )}
                   </div>
+                  {showDetails && (
+                    <div className="shrink-0 text-right pt-2">
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="h-auto p-0"
+                        type="button"
+                        onClick={() => setSectionDetails("purchase")}
+                      >
+                        View Details
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -503,6 +546,19 @@ export function DashboardStockSummaryCard({
                       ))
                     )}
                   </div>
+                  {showDetails && (
+                    <div className="shrink-0 text-right pt-2">
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="h-auto p-0"
+                        type="button"
+                        onClick={() => setSectionDetails("low-stock")}
+                      >
+                        View Details
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -614,6 +670,18 @@ export function DashboardStockSummaryCard({
             </Dialog>
           </div>
       )}
+      <StockSectionDetailsDialog
+        open={sectionDetails !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setSectionDetails(null);
+        }}
+        section={sectionDetails}
+        saleItems={overallStockSummary.allSaleItems}
+        purchaseItems={overallStockSummary.allPurchaseItems}
+        lowStockItems={overallStockSummary.allLowStockItems}
+        stockDateRange={stockDateRange}
+        setStockDateRange={setStockDateRange}
+      />
     </Card>
   );
 }

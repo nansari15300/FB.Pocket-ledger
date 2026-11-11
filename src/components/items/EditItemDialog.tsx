@@ -1414,8 +1414,8 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                             <FormField control={form.control} name="saleTaxId" render={({ field }: any) => (<FormItem><Select onValueChange={(value) => { if (value === "add-new") { setTaxFieldToApply("saleTaxId"); setIsCreateTaxOpen(true); } else field.onChange(value === "none" ? "" : value);}} value={field.value}><FormControl><SelectTrigger className="w-full h-9"><SelectValue placeholder="Select Tax"/></SelectTrigger></FormControl><SelectContent><SelectItem value="none">None</SelectItem>{taxes.map(t => <SelectItem key={t.id} value={t.id}>{t.name} @ {t.rate}%</SelectItem>)}<SelectItem value="add-new" className="text-primary">+ Add New Tax</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
                         </div>
                     </div>
-                    <div className="flex flex-wrap items-end gap-2">
-                       <FormField control={form.control} name="salePrice" render={({ field }: any) => (<FormItem className="min-w-[6rem] flex-1"><FormControl><Input type="number" placeholder="0.00" className={cn("h-9", catalogLocked && "bg-muted cursor-not-allowed")} readOnly={catalogLocked} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))} /></FormControl><FormMessage /></FormItem>)} />
+                    <div className="flex flex-wrap items-end gap-2 pt-2">
+                       <FormField control={form.control} name="salePrice" render={({ field }: any) => (<FormItem className="min-w-[6rem] flex-1"><FormLabel className="pl-[18px]">Price</FormLabel><FormControl><Input type="number" placeholder="0.00" className={cn("h-9", catalogLocked && "bg-muted cursor-not-allowed")} readOnly={catalogLocked} {...field} value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))} /></FormControl><FormMessage /></FormItem>)} />
                        <SaleMarginPills
                          isOpen={isOpen}
                          units={allUnits}
@@ -1431,7 +1431,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                          disabled={catalogLocked}
                          onSalePriceChange={(v) => form.setValue('salePrice', v, { shouldDirty: true, shouldValidate: true })}
                        />
-                       <FormField control={form.control} name="salePriceUnit" render={({ field }: any) => (<FormItem><Select onValueChange={field.onChange} value={field.value} disabled={catalogLocked}><FormControl><SelectTrigger className="w-28 h-9"><SelectValue placeholder="Unit"/></SelectTrigger></FormControl><SelectContent>{allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                       <FormField control={form.control} name="salePriceUnit" render={({ field }: any) => (<FormItem><FormLabel className="pl-[18px]">Unit</FormLabel><Select onValueChange={field.onChange} value={field.value} disabled={catalogLocked}><FormControl><SelectTrigger className="w-28 h-9"><SelectValue placeholder="Unit"/></SelectTrigger></FormControl><SelectContent>{allUnits.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                    </div>
                </div>
                 {/* PC: Purchase Unit Prices | Margin | Sale Unit Prices ek row me; mobile par `contents` (order classes waise hi). */}
