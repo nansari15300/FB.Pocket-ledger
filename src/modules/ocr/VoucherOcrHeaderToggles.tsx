@@ -1,6 +1,6 @@
 "use client";
 /** Add Voucher header: OCR / Auto Post / Overwrite pills + one OCR-settings gear (dialog, when OCR is on). */
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Settings } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -115,58 +115,6 @@ async function testImageBase64(): Promise<string> {
 const GOOGLE_KEY_URL = "https://console.cloud.google.com/apis/credentials";
 const GOOGLE_VISION_URL = "https://console.cloud.google.com/apis/library/vision.googleapis.com";
 
-function KeyRow({
-  hasKey,
-  keyLast4,
-  keyDraft,
-  setKeyDraft,
-  busy,
-  onSave,
-  extra,
-}: {
-  hasKey: boolean;
-  keyLast4?: string;
-  keyDraft: string;
-  setKeyDraft: (v: string) => void;
-  busy: string | null;
-  onSave: () => void;
-  extra?: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-2 rounded-md border border-slate-200 p-3 dark:border-slate-700">
-      <div className="flex items-center justify-between gap-2 text-xs">
-        <span className="font-medium">Google Vision API key</span>
-        <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", hasKey ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300")}>
-          {hasKey ? `Saved ••••${keyLast4 ?? ""}` : "No key"}
-        </span>
-      </div>
-      <div className="flex flex-col gap-1.5 sm:flex-row">
-        <input
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          placeholder={hasKey ? "Paste a new key to replace" : "Paste API key (AIza…)"}
-          value={keyDraft}
-          onChange={(e) => setKeyDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && keyDraft.trim() && !busy) onSave(); }}
-          className="h-9 min-w-0 flex-1 rounded-md border border-slate-300 bg-transparent px-2 text-sm dark:border-slate-600"
-        />
-        <div className="flex gap-1.5">
-          <button
-            type="button"
-            disabled={!keyDraft.trim() || !!busy}
-            onClick={onSave}
-            className="h-9 flex-1 rounded-md bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 sm:flex-none"
-          >
-            {busy === "save" ? "Saving…" : "Save"}
-          </button>
-          {extra}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string | null; open: boolean; enginePref: OcrEnginePref }) {
   const { status, error, loading, reload } = useOcrCloudStatus(companyId, open);
   const [keyDraft, setKeyDraft] = useState("");
@@ -200,21 +148,12 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
   if (!companyId) return <Section title="Google Online OCR" hint={hint}><p className="text-xs text-muted-foreground">Select a company first.</p>{engineRadio}</Section>;
   if (loading && !status) return <Section title="Google Online OCR" hint={hint}><p className="text-xs text-muted-foreground">Checking online OCR status…</p>{engineRadio}</Section>;
   if (!status) {
-    // The status call itself failed — this is NOT "server turned it off". Say so, retry, and still
-    // let the admin paste a key here (the user cannot be locked out of setting one).
     return (
       <Section title="Google Online OCR" hint={hint}>
-        <div className="flex items-center justify-between gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          <span>Could not reach the server for the OCR status{error ? ` (${error})` : ""}. This does not mean it is off. Offline OCR is used meanwhile.</span>
+        <div className="flex items-center justify-between gap-2 rounded-md bg-slate-100 px-3 py-2 text-xs dark:bg-slate-800">
+          <span>Online OCR status unavailable{error ? `: ${error}` : ""}. Offline OCR is used.</span>
           <button type="button" onClick={reload} className="shrink-0 rounded-md border px-2 py-1 text-[11px] font-medium hover:bg-white dark:hover:bg-slate-700">Retry</button>
         </div>
-        <KeyRow
-          hasKey={false}
-          keyDraft={keyDraft}
-          setKeyDraft={setKeyDraft}
-          busy={busy}
-          onSave={() => act("save", async () => { await ocrCloud.saveKey(keyDraft.trim(), companyId); setKeyDraft(""); return "Key saved on the server."; })}
-        />
         {engineRadio}
       </Section>
     );
@@ -223,13 +162,6 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
     return (
       <Section title="Google Online OCR" hint={hint}>
         <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Online OCR is disabled by the server. Offline OCR works as usual.</p>
-        <KeyRow
-          hasKey={false}
-          keyDraft={keyDraft}
-          setKeyDraft={setKeyDraft}
-          busy={busy}
-          onSave={() => act("save", async () => { await ocrCloud.saveKey(keyDraft.trim(), companyId); setKeyDraft(""); return "Key saved on the server."; })}
-        />
       </Section>
     );
   }
@@ -250,46 +182,53 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
       title="Google Online OCR"
       hint={<>{hint} Only you (admin) can see or change the key. <a href={GOOGLE_VISION_URL} target="_blank" rel="noreferrer" className="font-medium text-emerald-700 underline dark:text-emerald-400">Enable Vision API</a> · <a href={GOOGLE_KEY_URL} target="_blank" rel="noreferrer" className="font-medium text-emerald-700 underline dark:text-emerald-400">Create API key</a></>}
     >
-      <KeyRow
-        hasKey={status.hasKey}
-        keyLast4={status.keyLast4}
-        keyDraft={keyDraft}
-        setKeyDraft={setKeyDraft}
-        busy={busy}
-        onSave={() => act("save", async () => { await ocrCloud.saveKey(keyDraft.trim(), companyId); setKeyDraft(""); return "Key saved on the server."; })}
-        extra={
-          <button
-            type="button"
-            disabled={!status.hasKey || !!busy}
-            title={status.companyEnabled ? "Read a small test image with Google" : "Enable Google OCR for this company first"}
-            onClick={() => act("test", async () => {
-              const r = await ocrCloud.vision(companyId, await testImageBase64());
-              const t = String(r?.text ?? "").replace(/\s+/g, " ").trim();
-              if (!t) throw new Error("Google returned no text");
-              return `Test OK - Google read: "${t.slice(0, 60)}"`;
-            })}
-            className="h-9 flex-1 rounded-md border border-slate-300 px-3 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-800 sm:flex-none"
-          >
-            {busy === "test" ? "Testing…" : "Test"}
-          </button>
-        }
-      />
-      <div className="space-y-2">
-        {msg ? (
-          <p className={cn("rounded-md px-3 py-2 text-xs", msg.ok ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" : "bg-red-50 text-red-900 dark:bg-red-950/40 dark:text-red-200")}>
-            {msg.text}
-          </p>
-        ) : null}
-        {status.canSaveKey === false ? (
-          <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-            The server has no key-encryption master key yet (PL_VISION_MASTER_KEY), so a pasted key cannot be saved.
-          </p>
-        ) : null}
+      <div className="space-y-2 rounded-md border border-slate-200 p-3 dark:border-slate-700">
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="font-medium">Google Vision API key</span>
+          <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", status.hasKey ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300")}>
+            {status.hasKey ? `Saved ••••${status.keyLast4 ?? ""}` : "No key"}
+          </span>
+        </div>
+        <div className="flex flex-col gap-1.5 sm:flex-row">
+          <input
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={status.hasKey ? "Paste a new key to replace" : "Paste API key (AIza…)"}
+            value={keyDraft}
+            onChange={(e) => setKeyDraft(e.target.value)}
+            className="h-9 min-w-0 flex-1 rounded-md border border-slate-300 bg-transparent px-2 text-sm dark:border-slate-600"
+          />
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              disabled={!keyDraft.trim() || !!busy}
+              onClick={() => act("save", async () => { await ocrCloud.saveKey(keyDraft.trim()); setKeyDraft(""); return "Key saved on the server."; })}
+              className="h-9 flex-1 rounded-md bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 sm:flex-none"
+            >
+              {busy === "save" ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              disabled={!status.hasKey || !!busy}
+              title={status.companyEnabled ? "Read a small test image with Google" : "Enable Google OCR for this company first"}
+              onClick={() => act("test", async () => {
+                const r = await ocrCloud.vision(companyId, await testImageBase64());
+                const t = String(r?.text ?? "").replace(/\s+/g, " ").trim();
+                if (!t) throw new Error("Google returned no text");
+                return `Test OK - Google read: "${t.slice(0, 60)}"`;
+              })}
+              className="h-9 flex-1 rounded-md border border-slate-300 px-3 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-800 sm:flex-none"
+            >
+              {busy === "test" ? "Testing…" : "Test"}
+            </button>
+          </div>
+        </div>
         {status.hasKey ? (
           confirmDelete ? (
             <div className="flex flex-wrap items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-900 dark:bg-red-950/40 dark:text-red-200">
               <span className="flex-1">Delete the saved key? Google OCR stops for every company using it.</span>
-              <button type="button" disabled={!!busy} onClick={() => act("delete", async () => { await ocrCloud.deleteKey(companyId); setConfirmDelete(false); return "Key deleted."; })} className="rounded-md bg-red-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+              <button type="button" disabled={!!busy} onClick={() => act("delete", async () => { await ocrCloud.deleteKey(); setConfirmDelete(false); return "Key deleted."; })} className="rounded-md bg-red-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-red-700 disabled:opacity-50">
                 {busy === "delete" ? "Deleting…" : "Delete"}
               </button>
               <button type="button" onClick={() => setConfirmDelete(false)} className="rounded-md border px-2.5 py-1 text-[11px] font-medium">Cancel</button>
@@ -357,20 +296,6 @@ function OcrSettingsGear({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(String(seconds));
   const [swDraft, setSwDraft] = useState(String(switchSeconds));
-  /**
-   * While this modal is up, the voucher dialog below must not claim the mouse at all: its purple
-   * ribbon starts a window drag on mousedown, which moved the voucher while text here was being
-   * selected. `inert` removes it from hit-testing and focus while the settings are open.
-   */
-  useEffect(() => {
-    if (!open || typeof document === "undefined") return;
-    const own = document.querySelector('[data-ocr-settings-open="1"]');
-    const scenes = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'))
-      .filter((n) => n !== own && !n.contains(own) && !own?.contains(n));
-    const prev = scenes.map((n) => n.inert);
-    scenes.forEach((n) => { n.inert = true; });
-    return () => scenes.forEach((n, i) => { n.inert = prev[i]; });
-  }, [open]);
   const commit = () => { const v = clampAutoPostSeconds(draft); setOcrPrefs({ autoPostSeconds: v }); setDraft(String(v)); };
   const commitSw = () => { const v = clampAutoPostSeconds(swDraft); setOcrPrefs({ autoSwitchSeconds: v }); setSwDraft(String(v)); };
   return (
@@ -395,11 +320,6 @@ function OcrSettingsGear({
         )}
         overlayClassName={OCR_SETTINGS_DIALOG_OVERLAY_CN}
         data-ocr-settings-open="1"
-        // Nothing typed/selected here may reach the voucher dialog underneath (its ribbon starts a
-        // window drag on mousedown, which moved the voucher while selecting text in this popup).
-        onPointerDownCapture={(e) => e.stopPropagation()}
-        onMouseDownCapture={(e) => e.stopPropagation()}
-        onMouseUpCapture={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         aria-describedby={undefined}
       >
