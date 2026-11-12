@@ -9,6 +9,7 @@
 import { parseDocDates, defaultVoucherDateWindow, resolveBillDate } from "@/lib/ocr/dates";
 import { joinSpacedOcrText } from "@/lib/ocr/devanagariJoin";
 import { canonicalizeNepaliBill } from "@/lib/ocr/nepaliBill";
+import { rebuildCellPerLineTable } from "./cellTable";
 import { amountsInLine, fixDigitConfusions, normalizeName, normalizeOcrLine, parseStrictAmount } from "./normalize";
 import { bestUniqueMatch, nameScore, namesOf, tokenCoverageScore } from "./fuzzy";
 import { devanagariToRoman, nameSkeleton } from "./translit";
@@ -547,25 +548,31 @@ export function prepareOcrRawForParse(raw: OcrRawResult): { raw: OcrRawResult; n
   const joined = joinSpacedOcrText(raw.text ?? "");
   const src = joined.joined ? joined.text.split(/\r?\n/).filter((t) => t.trim()) : raw.lines.map((l) => l.text);
   const canon = canonicalizeNepaliBill(src);
-  if (!joined.joined && !canon.applied) return { raw, notes: [] };
   const texts = canon.applied ? canon.lines : src;
-  const n = texts.length;
+  // Online OCR without word boxes (Azure/Vision text only): table cells arrive one per line -> rebuild rows + totals
+  const noGeometry = !raw.lines.some((l) => (l.words?.length ?? 0) > 0);
+  const cells = noGeometry ? rebuildCellPerLineTable(texts) : null;
+  if (!joined.joined && !canon.applied && !cells) return { raw, notes: [] };
+  const rows: { text: string; words?: OcrWord[] }[] = cells ? cells.lines : texts.map((t) => ({ text: t }));
+  const n = rows.length;
   const conf = raw.meanConfidence || 90;
+  const lines = rows.map((r, i) => {
+    const y = 40 + i * 30;
+    const words = r.words?.length
+      ? r.words.map((w) => ({ ...w, y0: y, y1: y + 20, conf: w.conf || conf }))
+      // synthetic word boxes by character offset (10px per char) so table columns line up
+      : [...r.text.matchAll(/\S+/g)].map((m) => ({ text: m[0], x0: (m.index ?? 0) * 10, x1: ((m.index ?? 0) + m[0].length) * 10, y0: y, y1: y + 20, conf }));
+    return { text: r.text.replace(/\s+/g, " ").trim(), confidence: conf, y, words };
+  });
   return {
     raw: {
       ...raw,
-      text: texts.join("\n"),
-      // synthetic word boxes by character offset (10px per char) so table columns line up
-      lines: texts.map((t, i) => ({
-        text: t.replace(/\s+/g, " ").trim(),
-        confidence: conf,
-        y: 40 + i * 30,
-        words: [...t.matchAll(/\S+/g)].map((m) => ({ text: m[0], x0: (m.index ?? 0) * 10, x1: ((m.index ?? 0) + m[0].length) * 10, y0: 40 + i * 30, y1: 60 + i * 30, conf })),
-      })),
+      text: canon.applied || joined.joined ? texts.join("\n") : raw.text,
+      lines,
       pageHeight: 40 + 30 * Math.max(20, n),
-      pageWidth: Math.max(400, ...texts.map((t) => t.length * 10)),
+      pageWidth: Math.max(400, ...lines.flatMap((l) => l.words.map((w) => w.x1))),
     },
-    notes: [...(joined.joined ? ["Spaced OCR text (Vision): characters re-joined"] : []), ...canon.notes],
+    notes: [...(joined.joined ? ["Spaced OCR text (Vision): characters re-joined"] : []), ...canon.notes, ...(cells?.notes ?? [])],
   };
 }
 

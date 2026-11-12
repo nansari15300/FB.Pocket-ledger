@@ -296,3 +296,15 @@ Fix (Ansari Ji: plan ?ahi, ???? fix; server PC ?? deploy ????; commit ????):
 - Server `sub-server/pb_hooks/lib/ocr_cloud.js` `parseAzureResult`: `readResult` lines + `boundingPolygon` / words ?? Google-???? `pages[].blocks[].paragraphs[].words` + `width`/`height` (metadata) ??? ??? ???? ??? `ocrCloudApi.ts` ???? ??? ? `pages` ?? extra fields ???? ?? pass-through ????
 - Client `cloudRaw.ts` + `engine.ts`: boxes ?? visual row group; parser `ALT QTY` ?? qty ???? ???? ?????; `39,800` ? 39.800 ?? rate?qty=amount ????; `3,097 20` ? 3097.20?
 - Tests: `tools/ocr-cloud-test.mjs` polygon mapping; `tests/ocr/pratikAzureLayout.selftest.mts` 14 lines + totals? Deploy Server master + Ansari Ji ?? ??? ???
+
+## Azure text-only (बिना word boxes) — line items / totals — 2026-11-12
+
+समस्या: live server का `ocr_cloud.js` (40884 B) Azure का सिर्फ़ `pages: [{ text }]` देता है, कोई box नहीं। Client हर text line को अलग line बनाता था, `words` खाली रहते थे। Parser का header / qty×rate=amount / totals वाला हिस्सा `words` और एक ही line पर label+amount माँगता है, इसलिए Pratik बिल में items और total नहीं भरे (dump में `L0 y=40:` खाली दिखता था)।
+
+Fix (OCR build `2026-11-12.1`, सिर्फ़ client, server deploy ज़रूरी नहीं; commit नहीं हुआ):
+- नई `src/modules/ocr/cellTable.ts`: एक-cell-प्रति-line वाला table पहचानती है (S.N / HS CODE / PARTICULARS / ALT QTY / QTY / UOM / RATE / AMOUNT), cells को qty×rate=amount से item row में जोड़ती है (S.N न हो या "12 8311" जुड़ा हो तब भी), QTY लेती है ALT QTY नहीं। Totals: "SUB TOTAL" / "DISCOUNT" / "TAXABLE AMOUNT" / "VAT 13%" / "GRAND TOTAL" को आगे वाली amount line से जोड़ती है।
+- `parser.ts` `prepareOcrRawForParse`: जब किसी line में box नहीं, तब `cellTable` चलता है; rows को header column के x पर रखा जाता है ताकि मौजूदा header parser वैसे ही चले।
+- `cloud/cloudRaw.ts`: geometry rows में raw text के 50% से कम अक्षर हों (या words में text न हो) तो text lines पर fallback; खाली rows नहीं बनतीं।
+- `useVoucherOcr.tsx`: dev dump में box न हो तो `(no boxes) <text>` दिखता है।
+- Test: `tests/ocr/pratikAzureText.selftest.mts` (असली raw text, 4 हालात: `[{text}]`, pages नहीं, खाली-text words, कम geometry) → 12 items + 84,343.30 / 10,964.63 / 95,307.93। सारे `tests/ocr/*.selftest.mts` pass, `npm run typecheck` pass, `tools/ocr-cloud-test.mjs` 55/55।
+- 43595 B geometry वाला lib deploy होने पर भी यह fallback नुकसान नहीं करता (geometry सही हो तो वही चलती है)।

@@ -157,8 +157,14 @@ export function rawFromCloudText(text: string, opts: RawFromCloudOpts): OcrRawRe
   const fbW = opts.pageWidth && opts.pageWidth > 0 ? opts.pageWidth : 0;
   const fbH = opts.pageHeight && opts.pageHeight > 0 ? opts.pageHeight : 0;
   const extracted = opts.pages != null ? wordsFromCloudPages(opts.pages, fbW, fbH) : { words: [] as OcrWord[], width: fbW, height: fbH };
-  const grouped = groupOcrWordsIntoLines(extracted.words);
-  if (grouped.length) {
+  const grouped = groupOcrWordsIntoLines(extracted.words).filter((l) => l.text.trim());
+  // Geometry must carry the text: words without text / boxes (or a pages shape we do not know) would give empty rows.
+  // Use it only when its rows hold at least half of the plain text's characters; else one line per text line.
+  const chars = (s: string) => s.replace(/\s+/g, "").length;
+  const geomChars = grouped.reduce((a, l) => a + chars(l.text), 0);
+  const textChars = chars(j.text);
+  const geometryOk = grouped.length > 0 && geomChars > 0 && (textChars === 0 || geomChars >= textChars * 0.5);
+  if (geometryOk) {
     const pageWidth = extracted.width || fbW || Math.max(1, ...grouped.flatMap((l) => (l.words ?? []).map((w) => w.x1)));
     const pageHeight = extracted.height || fbH || Math.max(1, ...grouped.map((l) => l.y + 20));
     const meanConfidence = grouped.reduce((a, l) => a + l.confidence, 0) / grouped.length;
@@ -184,7 +190,7 @@ export function rawFromCloudText(text: string, opts: RawFromCloudOpts): OcrRawRe
     pageHeight: h,
     pageWidth: fbW || opts.pageWidth,
     altText: "",
-    preprocess: `online (${opts.engine})${j.joined ? ", spaced characters re-joined" : ""}`,
+    preprocess: `online (${opts.engine})${j.joined ? ", spaced characters re-joined" : ""}${grouped.length ? `, word boxes ignored (${geomChars}/${textChars} chars)` : ", text lines (no word boxes)"}`,
     engine: opts.engine,
     engineNote: opts.note,
   };

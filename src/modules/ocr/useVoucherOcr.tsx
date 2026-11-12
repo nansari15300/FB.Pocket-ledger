@@ -123,7 +123,7 @@ async function loadFirstFile(f: File | string, companyId?: string | null): Promi
 }
 
 /** Bump when parser/engine logic changes: shown in Show OCR text to prove the browser runs the new bundle. */
-export const OCR_BUILD = "2026-11-11.1";
+export const OCR_BUILD = "2026-11-12.1";
 
 const MONEY_TYPES = ["payment_out", "payment_in", "direct_expense", "direct_income", "contra"] as const;
 const ALL_TYPE_CHOICES = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"] as const;
@@ -1010,7 +1010,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 `--- OCR build ${OCR_BUILD} | ${raw.engine === "azure" ? "online Azure Read" : raw.engine === "google" ? "online Google Vision" : "engine PSM 6 + sparse 11"} | input ${inputNoteRef.current} ---`,
                 `OCR engine: ${raw.engine ?? "tesseract"}${raw.engineNote ? ` (${raw.engineNote})` : ""}`,
                 `--- dev dump: input ${inputNoteRef.current} | page ${raw.pageWidth ?? "?"}x${raw.pageHeight}px | ${raw.lines.length} lines ---`,
-                ...raw.lines.map((l, i) => `L${i} y=${Math.round(l.y ?? 0)}: ${(l.words ?? []).map((w) => `${w.text}@${Math.round(w.x0)}`).join(" ")}`),
+                ...raw.lines.map((l, i) => `L${i} y=${Math.round(l.y ?? 0)}: ${l.words?.length ? l.words.map((w) => `${w.text}@${Math.round(w.x0)}`).join(" ") : `(no boxes) ${l.text}`}`),
                 `--- 2nd pass (sparse) ---`,
                 ...(raw.altText ?? "").split(/\r?\n/).filter((t) => t.trim()),
               ]
