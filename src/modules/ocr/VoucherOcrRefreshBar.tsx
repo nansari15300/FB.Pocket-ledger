@@ -5,7 +5,7 @@ import { CheckCheck, FileText, ListChecks, Loader2, RefreshCw, UserSearch } from
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 /* Same stacking as Add New master from a voucher: above AddVoucherDialog (overlay z-80 / content z-81). */
-import { NESTED_VOUCHER_MASTER_CREATE_CONTENT_CN, NESTED_VOUCHER_MASTER_CREATE_OVERLAY_CN } from "@/lib/dialogShellChrome";
+import { NESTED_VOUCHER_OCR_DEBUG_CONTENT_CN, NESTED_VOUCHER_OCR_DEBUG_OVERLAY_CN } from "@/lib/dialogShellChrome";
 import type { VoucherOcrApi } from "./useVoucherOcr";
 import { AiChatButton } from "./ai/AiChatDialog";
 
@@ -67,8 +67,8 @@ export function VoucherOcrRefreshBar({ ocr }: { ocr: VoucherOcrApi }) {
       {d ? (
         <Dialog open={dbgOpen} onOpenChange={setDbgOpen}>
           <DialogContent
-            overlayClassName={NESTED_VOUCHER_MASTER_CREATE_OVERLAY_CN}
-            className={`${NESTED_VOUCHER_MASTER_CREATE_CONTENT_CN} max-h-[90vh] max-w-2xl overflow-y-auto`}
+            overlayClassName={NESTED_VOUCHER_OCR_DEBUG_OVERLAY_CN}
+            className={`${NESTED_VOUCHER_OCR_DEBUG_CONTENT_CN} max-h-[90vh] max-w-2xl overflow-y-auto`}
             onFocusOutside={(e) => e.preventDefault()}
           >
             <DialogHeader>

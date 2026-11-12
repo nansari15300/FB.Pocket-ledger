@@ -24,17 +24,18 @@ export const VOUCHER_DIALOG_CALENDAR_POPOVER_CN = "z-[102]";
 export const NESTED_VOUCHER_ATTACHMENT_REUSE_OVERLAY_CN = "z-[100] bg-black/45 backdrop-blur-sm";
 export const NESTED_VOUCHER_ATTACHMENT_REUSE_CONTENT_CN = "!z-[101]";
 
-/** Add New master (party/staff/expense/item) opened from voucher add/edit — above z-[81] shell. */
-export const NESTED_VOUCHER_MASTER_CREATE_OVERLAY_CN = "z-[92] bg-black/45 backdrop-blur-sm";
-export const NESTED_VOUCHER_MASTER_CREATE_CONTENT_CN = "!z-[93]";
+/** Add New master (party/staff/expense/item/account/tax) opened from voucher add/edit — above z-[81] shell AND above
+ * the OCR field bubbles (`OCR_LAYER_Z = 100`), so an OCR "Create new" form can never be covered by a bubble. */
+export const NESTED_VOUCHER_MASTER_CREATE_OVERLAY_CN = "z-[120] bg-black/45 backdrop-blur-sm";
+export const NESTED_VOUCHER_MASTER_CREATE_CONTENT_CN = "!z-[121]";
 
-/** Add New Group nested inside master add/edit dialog (parent content z-[93]). */
-export const NESTED_MASTER_GROUP_DIALOG_OVERLAY_CN = "z-[94] bg-black/45 backdrop-blur-sm";
-export const NESTED_MASTER_GROUP_DIALOG_CONTENT_CN = "!z-[95]";
+/** Add New Group nested inside master add/edit dialog (parent content z-[121]). */
+export const NESTED_MASTER_GROUP_DIALOG_OVERLAY_CN = "z-[122] bg-black/45 backdrop-blur-sm";
+export const NESTED_MASTER_GROUP_DIALOG_CONTENT_CN = "!z-[123]";
 
-/** AlertDialogs inside voucher add/edit (IC pay mode, change detected, delete confirm) — above master create z-[93]. */
-export const NESTED_VOUCHER_ALERT_OVERLAY_CN = "z-[94] bg-black/45 backdrop-blur-sm";
-export const NESTED_VOUCHER_ALERT_CONTENT_CN = "!z-[95]";
+/** AlertDialogs inside voucher add/edit (IC pay mode, change detected, delete confirm) — above master create z-[121]. */
+export const NESTED_VOUCHER_ALERT_OVERLAY_CN = "z-[124] bg-black/45 backdrop-blur-sm";
+export const NESTED_VOUCHER_ALERT_CONTENT_CN = "!z-[125]";
 
 /** Spread onto AlertDialogContent (or small DialogContent) nested inside voucher add/edit. */
 export const NESTED_VOUCHER_ALERT_SHELL = {
@@ -54,6 +55,10 @@ export const NESTED_VOUCHER_HISTORY_CONTENT_CN = "z-[97]";
 /** AlertDialogs inside voucher history (delete all history) — above history shell z-[97]. */
 export const NESTED_VOUCHER_HISTORY_ALERT_OVERLAY_CN = "z-[98] bg-black/45 backdrop-blur-sm";
 export const NESTED_VOUCHER_HISTORY_ALERT_CONTENT_CN = "!z-[99]";
+
+/** OCR debug ("Show OCR text") opened inside New Trxn — must sit above the field bubbles (OCR_LAYER_Z = 100). */
+export const NESTED_VOUCHER_OCR_DEBUG_OVERLAY_CN = "z-[101] bg-black/45 backdrop-blur-sm";
+export const NESTED_VOUCHER_OCR_DEBUG_CONTENT_CN = "!z-[102]";
 
 /**
  * OCR settings gear (New Trxn header) — a top-level modal above everything else in the voucher,

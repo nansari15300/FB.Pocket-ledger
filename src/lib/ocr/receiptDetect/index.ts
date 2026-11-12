@@ -30,6 +30,9 @@ export const DETECTORS: ReceiptFormatDetector[] = [
   genericBankDetector,
 ];
 const MIN_CONF = 0.6;
+/** A single clear keyword is enough for the AI-summary path (it has no full paper text to score). */
+const KEYWORD_CONF = 0.5;
+const MIN_CONNECTIPS_CONF = 0.45;
 const NAME_MIN = 0.9;
 const NAME_GAP = 0.03;
 
@@ -45,6 +48,13 @@ export function detectReceiptFormat(text: string): { det: ReceiptFormatDetector;
   for (const det of DETECTORS) {
     const c = det.detect(text);
     if (c >= MIN_CONF && (!best || c > best.confidence)) best = { det, confidence: c };
+  }
+  if (!best) {
+    // AI-summary text (no full paper transcription): one decisive keyword is enough to pick the money path.
+    for (const det of DETECTORS) {
+      const c = det.detect(text);
+      if (c >= KEYWORD_CONF && c > MIN_CONNECTIPS_CONF && (!best || c > best.confidence)) best = { det, confidence: c };
+    }
   }
   return best;
 }

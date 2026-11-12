@@ -27,6 +27,8 @@ function ocrCoveredByModal(): Element | null {
     if (el.closest("[data-ocr-bubbles]")) continue;
     const z = Number(getComputedStyle(el).zIndex);
     if (Number.isFinite(z) && z > OCR_LAYER_Z) return el;
+    // Same layer as the bubbles (OCR debug dialog): a position fix wins, so treat it as above.
+    if (Number.isFinite(z) && z === OCR_LAYER_Z) return el;
   }
   return null;
 }
@@ -61,6 +63,8 @@ export type OcrBubble = {
   kind: "suggest" | "missing";
   title: string;
   items: OcrSuggestion[];
+  /** "OCR could not find: …" note merged from the missing-field bubble (one popup per field). */
+  note?: string;
   /** Auto-switch countdown (seconds left) shown on the primary "Switch" button. */
   countdown?: number;
 };
@@ -739,6 +743,8 @@ function CreateItemChoiceButton({
 
 function suggestionActionLabel(s: OcrSuggestion, countdown?: number): string {
   if (s.id === "switch" || s.id.startsWith("switch-")) return s.id === "switch" && countdown != null ? `Switch (${countdown})` : "Switch";
+  // Deferred = opens a master form (create account / party) or a picker: name the action, not "Open".
+  if (s.id.startsWith("create-account")) return "Create new";
   if (s.deferred) return "Open";
   return "Apply";
 }
@@ -874,6 +880,7 @@ function BubbleView({
         </div>
 
         <div data-ocr-bubble-body="" className="min-h-0" style={{ maxHeight: listMaxH, overflowY: "auto", overscrollBehavior: "contain" }}>
+        {b.note ? <p className="mt-1 break-words text-[11px] leading-snug text-amber-700">{b.note}</p> : null}
         {missing ? (
           <div className="mt-1.5">
             {b.items[0] ? (

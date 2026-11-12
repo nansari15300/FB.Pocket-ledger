@@ -24,6 +24,8 @@ import type { OcrSuggestion } from "./OcrSuggestionsDialog";
 import { OcrFieldBubbles, ocrFieldForMissing, ocrFieldForSuggestion, useOcrTabBadge, type OcrBubble } from "./OcrFieldBubbles";
 import { cancelOcrHandoff, parkOcrSession, requestOcrVoucherSwitch, resumeOcrSession, sameVoucherBucket, takeOcrHandoff } from "./handoff";
 import { CreatePartyDialog } from "@/components/party/CreatePartyDialog";
+import { CreateBankAccountDialog } from "@/components/bank-cash/CreateBankAccountDialog";
+import { classifyAiReceipt } from "@/lib/ocr/receiptDetect/aiClassify";
 import { CreateItemDialog } from "@/components/items/CreateItemDialog";
 import { createItemSilent, findExistingItemByName } from "@/components/items/createItemSilent";
 import { baseUnitConversions, normalizeItemUnitName } from "@/components/items/itemUnitPrices";
@@ -178,6 +180,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const [dismissedMissingKeys, setDismissedMissingKeys] = useState<Set<string>>(() => new Set());
   const [missingNow, setMissingNow] = useState<string[]>([]);
   const [createPrefill, setCreatePrefill] = useState<Record<string, string> | null>(null);
+  /** OCR "Create account" — prefilled bank/cash ledger from the slip (side = which voucher field it fills). */
+  const [createAccountFor, setCreateAccountFor] = useState<{ side: "from" | "to"; prefill: { accountName?: string; accountType?: "Bank" | "Cash" } } | null>(null);
   const [createItemFor, setCreateItemFor] = useState<{ index: number; name: string; unit?: string; rate: number; groupId?: string; ocrGroups?: MasterGroupLike[] } | null>(null);
   const [createTaxOpen, setCreateTaxOpen] = useState(false);
   const [vatPct, setVatPct] = useState(13);
@@ -220,9 +224,15 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   /** Auto Post fired (voucher saved) -> never park this OCR session for a remount. */
   const savedRef = useRef(false);
   const mountedRef = useRef(true);
+  /** Live OCR run (Gemini call): aborted when the voucher closes or the user presses Stop on the toast. */
+  const ocrAbortRef = useRef<AbortController | null>(null);
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+      // Voucher closed while reading: cancel the request so no Gemini quota is spent on a dead form.
+      ocrAbortRef.current?.abort();
+    };
   }, []);
   /**
    * Voucher-type switch. The bill (files + OCR text + ticked ids) is parked for the TARGET form only; the dialog then
@@ -371,13 +381,26 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       if (!first || running) return;
       setRunning(true);
       const lead = reason === "refresh" ? "Re-reading bill" : reason === "handoff" ? "Filling from the bill already read" : "Reading bill";
-      const tId = toast.loading(`${lead}…`);
+      const ac = new AbortController();
+      ocrAbortRef.current = ac;
+      /** Stop button on the toast: cancels the in-flight Gemini/Azure request and stops the fallback chain. */
+      const StopButton = () => (
+        <button
+          type="button"
+          onClick={() => ac.abort()}
+          className="ml-2 shrink-0 rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900 hover:bg-amber-100"
+        >
+          Stop
+        </button>
+      );
+      const tId = toast.loading(<span className="flex items-center gap-1">{lead}…<StopButton /></span>);
       /** Engine names go into the same toast so a silent Gemini->Azure fallback is visible. */
       const seen: string[] = [];
       const onEngine = (name: string) => {
+        if (ac.signal.aborted) return;
         if (!seen.includes(name)) seen.push(name);
         const label = seen.join(" → ");
-        toast.loading(reason === "handoff" ? `${lead}…` : `${lead} by ${label}…`, { id: tId });
+        toast.loading(<span className="flex items-center gap-1">{reason === "handoff" ? `${lead}…` : `${lead} by ${label}…`}<StopButton /></span>, { id: tId });
       };
       try {
         // Prefer the ORIGINAL full-resolution upload (attachment state holds the compressed copy)
@@ -399,6 +422,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             ownAccounts: (mastersRef.current.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ accountName: a.accountName, accountNumber: a.accountNumber, bankName: a.bankName, accountType: a.accountType })),
             aiDocType: aiDocTypeForVoucher(opt.currentVoucherType ?? null, opt.adapter.partySide),
             onEngine,
+            signal: ac.signal,
           });
         }
         lastRawRef.current = raw;
@@ -411,12 +435,24 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         /* ---------- Money documents (connectIPS, Prabhu, generic bank, handwritten): detect + classify + fill ---------- */
         {
           const M = mastersRef.current;
-          const rc: ReceiptDetection = detectReceipt(`${raw.text}\n${raw.altText ?? ""}`, {
+          const textRc: ReceiptDetection = detectReceipt(`${raw.text}\n${raw.altText ?? ""}`, {
             ownAccounts: (M.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType, branch: (a as { branch?: string }).branch })),
             parties: (M.parties ?? []).filter((p) => !(p as { isDeleted?: boolean }).isDeleted).map((p) => ({ id: p.id, name: String((p as { name?: string }).name ?? ""), aliasName: (p as { aliasName?: string }).aliasName })),
             staff: (M.staff ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => ({ id: x.id, name: String((x as { name?: string }).name ?? "") })),
             companyName: own.name ?? undefined,
           });
+          /* Gemini already answered the money question (bank_flow + both accounts). Its JSON knows the
+           * customer/beneficiary sections the compact summary text lacks, so prefer its type — but keep
+           * the text parser's amount/date/charge payload when it has one. */
+          const aiRc = raw.ai ? classifyAiReceipt(raw.ai.data, {
+            ownAccounts: (M.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType, branch: (a as { branch?: string }).branch })),
+            parties: (M.parties ?? []).filter((p) => !(p as { isDeleted?: boolean }).isDeleted).map((p) => ({ id: p.id, name: String((p as { name?: string }).name ?? ""), aliasName: (p as { aliasName?: string }).aliasName })),
+            staff: (M.staff ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => ({ id: x.id, name: String((x as { name?: string }).name ?? "") })),
+            companyName: own.name ?? undefined,
+          }) : null;
+          const rc: ReceiptDetection = aiRc
+            ? { ...aiRc, parsed: aiRc.parsed ?? textRc.parsed, format: textRc.parsed ? textRc.format : aiRc.format, confidence: Math.max(aiRc.confidence, textRc.confidence) }
+            : textRc;
           if (rc.format && rc.format !== "tax_invoice") {
             const cur = opt.currentVoucherType ?? opt.adapter.voucherType;
             const highUnique = !!rc.voucherType && rc.typeConfidence >= AUTO_SWITCH_MIN_CONF;
@@ -491,6 +527,13 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                     const id = fromIds[i];
                     if (id) rExtra.push({ id: `account-${id}`, label: `Use ${name}`, value: name, reason: fromHit.reason, apply: () => write(accPath, id) });
                   });
+                  // Neither bank is in Bank/Cash: let the user create the missing ledger prefilled from the slip.
+                  const accName = rc.parsed?.sender?.accountName || rc.parsed?.sender?.bankName || own.name || "";
+                  rExtra.push({
+                    id: "create-account-from", label: "Create bank account (From)", value: accName || "from this slip",
+                    confidence: 0.7, reason: "Opens Create Bank/Cash prefilled — you confirm Save, then it fills From", deferred: true,
+                    apply: () => setCreateAccountFor({ side: "from", prefill: { accountName: accName || undefined, accountType: "Bank" } }),
+                  });
                 }
                 if (direction === "contra" && pf.to) {
                   const toHit = pf.to;
@@ -504,6 +547,12 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                     (toHit.candidateNames ?? []).forEach((name, i) => {
                       const id = toIds[i];
                       if (id) rExtra.push({ id: `account-${id}`, label: `Use ${name} (to)`, value: name, reason: toHit.reason, apply: () => write(toPath, id) });
+                    });
+                    const toName = rc.parsed?.beneficiary?.accountName || rc.parsed?.beneficiary?.bankName || "";
+                    rExtra.push({
+                      id: "create-account-to", label: "Create bank account (To)", value: toName || "from this slip",
+                      confidence: 0.7, reason: "Opens Create Bank/Cash prefilled — you confirm Save, then it fills To", deferred: true,
+                      apply: () => setCreateAccountFor({ side: "to", prefill: { accountName: toName || undefined, accountType: "Bank" } }),
                     });
                   }
                 }
@@ -1070,8 +1119,15 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           }
         }
       } catch (e) {
-        toast.error("OCR failed", { id: tId, description: e instanceof Error ? e.message : String(e), duration: 5000, position: "top-right" });
+        const aborted = ac.signal.aborted || (e as { name?: string })?.name === "AbortError";
+        if (aborted) {
+          // Stopped by the user or the voucher was closed: no error toast, no fallback engine.
+          toast.dismiss(tId);
+        } else {
+          toast.error("OCR failed", { id: tId, description: e instanceof Error ? e.message : String(e), duration: 5000, position: "top-right" });
+        }
       } finally {
+        if (ocrAbortRef.current === ac) ocrAbortRef.current = null;
         setRunning(false);
       }
     },
@@ -1380,7 +1436,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     if (sugOpen) {
       for (const s of liveBubbles.suggestions) {
         const key = ocrFieldForSuggestion(s.id);
-        const b = out.get(`s:${key}`) ?? { key, kind: "suggest" as const, title: "", items: [] };
+        // One popup per field: a "could not find" note joins the same field's suggestion popup instead of stacking two.
+        const miss = out.get(`m:${key}`);
+        if (miss) { out.delete(`m:${key}`); }
+        const b = out.get(`s:${key}`) ?? { key, kind: "suggest" as const, title: "", items: [], note: miss?.title };
         b.items.push(s);
         out.set(`s:${key}`, b);
       }
@@ -1443,6 +1502,24 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               onPartyCreated={pickParty}
             />
           ) : null}
+          {createAccountFor ? (
+            <CreateBankAccountDialog
+              isOpen
+              onOpenChange={(v) => { if (!v) setCreateAccountFor(null); }}
+              initialPrefill={createAccountFor.prefill}
+              contextNote="Opened from OCR: this bank account was on the slip but is not in Bank/Cash yet. Save it, then it goes into the voucher."
+              onAccountCreated={(id: string) => {
+                const A = optsRef.current.adapter;
+                const side = createAccountFor.side;
+                const path = side === "to" ? (A.toAccountPath ?? "toAccountId") : A.voucherType === "contra" ? (A.fromAccountPath ?? "fromAccountId") : (A.accountPath ?? "accountId");
+                setCreateAccountFor(null);
+                if (id) {
+                  write(path, id);
+                  toast.success(`OCR: ${side === "to" ? "To" : "From"} account linked — will be recognised next time`);
+                }
+              }}
+            />
+          ) : null}
           {createItemFor ? (
             <CreateItemDialog
               isOpen
@@ -1459,8 +1536,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               }}
             />
           ) : null}
-          <CreateTaxDialog
-            isOpen={createTaxOpen}
+          <CreateTaxDialog            isOpen={createTaxOpen}
             onOpenChange={setCreateTaxOpen}
             prefillTaxName={`VAT ${vatPct}%`}
             prefillTaxRate={vatPct}

@@ -88,6 +88,8 @@ export type RunOcrOptions = {
   ownAccounts?: OcrAiReadInput["ownAccounts"];
   /** Called as each engine starts (Gemini / Google / Azure / Offline) so the "reading…" toast can name the real engine. */
   onEngine?: (name: string) => void;
+  /** Abort the in-flight AI/cloud request (voucher closed, or the user pressed Stop on the toast). */
+  signal?: AbortSignal;
   /** AI engine: document type whose taught rules the server adds (aiDocTypeForVoucher). */
   aiDocType?: string;
 };
@@ -139,8 +141,11 @@ async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promi
   }
   if (!status.serverOcrEnabled) return { raw: null, note: "Online OCR off on server" };
   if (!status.canUse) return { raw: null, note: !status.companyEnabled ? "Online OCR off for this company" : !status.hasKey ? "no online OCR key" : "Online OCR not allowed for this user" };
+  if (opts.signal?.aborted) return { raw: null, note: "Online OCR cancelled" };
   const ac = new AbortController();
   let t: ReturnType<typeof setTimeout> | undefined;
+  const onOuterAbort = () => ac.abort();
+  opts.signal?.addEventListener("abort", onOuterAbort, { once: true });
   try {
     const img = await cloudJpeg(file, mime);
     const res = await Promise.race([
@@ -159,6 +164,7 @@ async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promi
     return { raw: null, note: `Online OCR failed (${code})` };
   } finally {
     if (t) clearTimeout(t);
+    opts.signal?.removeEventListener("abort", onOuterAbort);
   }
 }
 
@@ -175,10 +181,15 @@ async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<
   if (!status.aiReady) return { raw: null, note: "AI OCR not installed on the server yet" };
   if (!status.serverOcrEnabled) return { raw: null, note: "AI OCR off on server" };
   if (!status.canUse) return { raw: null, note: !status.companyEnabled ? "AI: online OCR off for this company" : status.isAdmin && status.companyHasKey === false ? "AI: no Gemini key saved" : "AI: not allowed for this user or no Gemini key" };
+  if (opts.signal?.aborted) return { raw: null, note: "AI: cancelled" };
   const ac = new AbortController();
   let t: ReturnType<typeof setTimeout> | undefined;
+  /** Caller's Stop / voucher closed cancels the Gemini request too (no wasted quota). */
+  const onOuterAbort = () => ac.abort();
+  opts.signal?.addEventListener("abort", onOuterAbort, { once: true });
   try {
     const img = await cloudJpeg(file, mime);
+    if (ac.signal.aborted) return { raw: null, note: "AI: cancelled" };
     const res = await Promise.race([
       ocrAiRead({ companyId: opts.companyId, imageBase64: img.b64, mimeType: "image/jpeg", ownCompany: opts.ownCompany, ownAccounts: opts.ownAccounts, docType: opts.aiDocType, signal: ac.signal }),
       new Promise<never>((_, rej) => { t = setTimeout(() => { ac.abort(); rej(new Error("AI OCR timed out")); }, AI_TIMEOUT_MS); }),
@@ -207,6 +218,7 @@ async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<
     return { raw: null, note: `AI failed (${code === "timeout" ? "timed out" : ocrAiErrorText(e)})` };
   } finally {
     if (t) clearTimeout(t);
+    opts.signal?.removeEventListener("abort", onOuterAbort);
   }
 }
 
@@ -217,15 +229,19 @@ async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<
  */
 export async function runOcrOnFile(file: Blob, mime: string, opts: RunOcrOptions = {}): Promise<OcrRawResult> {
   const pref = opts.enginePref ?? "auto";
+  /** Stop means stop: no fallback engine should start after an abort. */
+  const aborted = () => !!opts.signal?.aborted;
   const engineName = (e: string) => (e === "gemini" ? "Gemini" : e === "azure" ? "Azure" : e === "google" ? "Google" : "Offline");
   const stage = (e: string) => { try { opts.onEngine?.(engineName(e)); } catch { /* UI only */ } };
   if (pref === "ai") {
     stage("gemini");
     const ai = await tryAiOcr(file, mime, opts).catch((e) => ({ raw: null, note: `AI failed (${ocrAiErrorText(e)})` }));
     if (ai.raw) return ai.raw;
+    if (aborted()) throw new DOMException("OCR cancelled", "AbortError");
     stage("cloud");
     const cloud = await tryCloudOcr(file, mime, { ...opts, enginePref: "auto" }).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})` }));
     if (cloud.raw) return { ...cloud.raw, engineNote: [ai.note, cloud.raw.engineNote].filter(Boolean).join(" -> ") };
+    if (aborted()) throw new DOMException("OCR cancelled", "AbortError");
     stage("tesseract");
     const raw = await runTesseractOnFile(file, mime);
     return { ...raw, engine: "tesseract", engineNote: [ai.note, cloud.note].filter(Boolean).join("; ") || undefined };
