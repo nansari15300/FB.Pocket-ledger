@@ -86,6 +86,8 @@ export type RunOcrOptions = {
   ownCompany?: { name?: string | null; pan?: string | null };
   /** Our own Bank/Cash ledgers — the server matches full account numbers to prove a contra transfer. */
   ownAccounts?: OcrAiReadInput["ownAccounts"];
+  /** Called as each engine starts (Gemini / Google / Azure / Offline) so the "reading…" toast can name the real engine. */
+  onEngine?: (name: string) => void;
   /** AI engine: document type whose taught rules the server adds (aiDocTypeForVoucher). */
   aiDocType?: string;
 };
@@ -211,22 +213,35 @@ async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<
 /**
  * Online OCR when allowed (see `tryCloudOcr`). "auto" falls back to tesseract on any miss; "online" never calls tesseract and throws instead.
  * "ai": Gemini first; on a miss online OCR (as "auto"), then tesseract, with the AI reason kept in `engineNote`.
+ * `onEngine` reports which engine is actually used, in order, so the UI can show "reading… by Gemini/Azure/Offline".
  */
 export async function runOcrOnFile(file: Blob, mime: string, opts: RunOcrOptions = {}): Promise<OcrRawResult> {
   const pref = opts.enginePref ?? "auto";
+  const engineName = (e: string) => (e === "gemini" ? "Gemini" : e === "azure" ? "Azure" : e === "google" ? "Google" : "Offline");
+  const stage = (e: string) => { try { opts.onEngine?.(engineName(e)); } catch { /* UI only */ } };
   if (pref === "ai") {
+    stage("gemini");
     const ai = await tryAiOcr(file, mime, opts).catch((e) => ({ raw: null, note: `AI failed (${ocrAiErrorText(e)})` }));
     if (ai.raw) return ai.raw;
+    stage("cloud");
     const cloud = await tryCloudOcr(file, mime, { ...opts, enginePref: "auto" }).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})` }));
     if (cloud.raw) return { ...cloud.raw, engineNote: [ai.note, cloud.raw.engineNote].filter(Boolean).join(" -> ") };
+    stage("tesseract");
     const raw = await runTesseractOnFile(file, mime);
     return { ...raw, engine: "tesseract", engineNote: [ai.note, cloud.note].filter(Boolean).join("; ") || undefined };
   }
-  const cloud = await tryCloudOcr(file, mime, opts).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})` }));
-  if (cloud.raw) return cloud.raw;
-  if (pref === "online") throw new Error(cloud.note || "Online OCR failed");
+  if (pref !== "offline") {
+    stage("cloud");
+    const cloud = await tryCloudOcr(file, mime, opts).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})` }));
+    if (cloud.raw) return cloud.raw;
+    if (pref === "online") throw new Error(cloud.note || "Online OCR failed");
+    stage("tesseract");
+    const raw = await runTesseractOnFile(file, mime);
+    return { ...raw, engine: "tesseract", engineNote: cloud.note || undefined };
+  }
+  stage("tesseract");
   const raw = await runTesseractOnFile(file, mime);
-  return { ...raw, engine: "tesseract", engineNote: cloud.note || undefined };
+  return { ...raw, engine: "tesseract", engineNote: "offline only (OCR settings)" };
 }
 
 /** Offline tesseract multi-pass (unchanged behaviour). */

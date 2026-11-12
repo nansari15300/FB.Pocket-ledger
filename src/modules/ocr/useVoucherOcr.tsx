@@ -370,7 +370,15 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       const first = reuse?.direct ?? opt.files[0];
       if (!first || running) return;
       setRunning(true);
-      const tId = toast.loading(reason === "refresh" ? "OCR: re-reading bill…" : reason === "handoff" ? "OCR: filling from the bill already read…" : "OCR: reading bill…");
+      const lead = reason === "refresh" ? "Re-reading bill" : reason === "handoff" ? "Filling from the bill already read" : "Reading bill";
+      const tId = toast.loading(`${lead}…`);
+      /** Engine names go into the same toast so a silent Gemini->Azure fallback is visible. */
+      const seen: string[] = [];
+      const onEngine = (name: string) => {
+        if (!seen.includes(name)) seen.push(name);
+        const label = seen.join(" → ");
+        toast.loading(reason === "handoff" ? `${lead}…` : `${lead} by ${label}…`, { id: tId });
+      };
       try {
         // Prefer the ORIGINAL full-resolution upload (attachment state holds the compressed copy)
         let raw: OcrRawResult;
@@ -390,6 +398,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             ownCompany: { name: ownRef.current.name, pan: ownRef.current.pan },
             ownAccounts: (mastersRef.current.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ accountName: a.accountName, accountNumber: a.accountNumber, bankName: a.bankName, accountType: a.accountType })),
             aiDocType: aiDocTypeForVoucher(opt.currentVoucherType ?? null, opt.adapter.partySide),
+            onEngine,
           });
         }
         lastRawRef.current = raw;
@@ -1024,7 +1033,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             : [];
         if (process.env.NODE_ENV !== "production") console.debug("[OCR] dump\n" + [...(bill.debug ?? []), ...devDump].join("\n"));
         setDebugInfo({ text: raw.text, meanConfidence: raw.meanConfidence, reasons: [...(bill.debug ?? []), ...devDump], filled: [...filled], missing: [...new Set(missing)] });
-        toast.success(filled.length ? `OCR filled: ${filled.join(", ")}` : "OCR: nothing could be filled safely", { id: tId, duration: 3000, position: "top-right" });
+        toast.success(filled.length ? `OCR filled by ${seen.length ? seen[seen.length - 1] : "Offline"}: ${filled.join(", ")}` : "OCR: nothing could be filled safely", { id: tId, duration: 3000, position: "top-right" });
 
         // Missing fields: arrow bubbles on those fields (stay until OK / X)
         setMissingNow([...new Set(missing)]);
