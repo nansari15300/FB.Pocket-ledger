@@ -231,6 +231,8 @@ export type OcrAiReadInput = {
   hint?: string;
   /** Document type in focus: the server adds the taught rules of this type (+ general). */
   docType?: string;
+  /** OUR own bank/cash ledgers (full account numbers): the server checks them instead of asking Gemini to compare names. */
+  ownAccounts?: { accountName?: string | null; accountNumber?: string | null; bankName?: string | null; accountType?: string | null }[];
   signal?: AbortSignal;
 };
 
@@ -245,6 +247,14 @@ export async function ocrAiRead(input: OcrAiReadInput): Promise<OcrAiResult> {
   if (input.ownCompany) body.ownCompany = { name: input.ownCompany.name ?? "", pan: input.ownCompany.pan ?? "" };
   if (input.hint) body.hint = input.hint;
   if (input.docType) body.docType = input.docType;
+  if (input.ownAccounts && input.ownAccounts.length) {
+    body.ownAccounts = input.ownAccounts.slice(0, 40).map((a) => ({
+      accountName: a.accountName ?? "",
+      accountNumber: String(a.accountNumber ?? "").replace(/[^\d]/g, ""),
+      bankName: a.bankName ?? "",
+      accountType: a.accountType ?? "",
+    }));
+  }
   const raw = await call<Record<string, unknown>>("/api/ocr-cloud/ai-read", { method: "POST", body, timeoutMs: AI_READ_TIMEOUT_MS, signal: input.signal });
   const u = (raw?.usage && typeof raw.usage === "object" ? raw.usage : {}) as Record<string, unknown>;
   const n = (v: unknown) => (Number.isFinite(Number(v)) ? Math.max(0, Math.round(Number(v))) : 0);

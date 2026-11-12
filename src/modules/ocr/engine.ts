@@ -19,7 +19,7 @@ import { resolvePdfJsWorkerHref } from "@/lib/pdfjsWorkerSrc";
 import { getOcrCloudStatusCached, ocrCloud, ocrCloudErrorCode } from "./cloud/ocrCloudClient";
 import { rawFromCloudText } from "./cloud/cloudRaw";
 import { getOcrPrefs, type OcrEnginePref } from "./prefs";
-import { getOcrAiStatusCached, ocrAiErrorCode, ocrAiErrorText, ocrAiRead } from "./ai/aiClient";
+import { getOcrAiStatusCached, ocrAiErrorCode, ocrAiErrorText, ocrAiRead, type OcrAiReadInput } from "./ai/aiClient";
 import { aiFallbackText } from "./ai/aiVoucher";
 
 type TWorker = {
@@ -84,6 +84,8 @@ export type RunOcrOptions = {
   enginePref?: OcrEnginePref;
   /** Our company (name + PAN) so the AI knows whether we are buyer or seller. */
   ownCompany?: { name?: string | null; pan?: string | null };
+  /** Our own Bank/Cash ledgers — the server matches full account numbers to prove a contra transfer. */
+  ownAccounts?: OcrAiReadInput["ownAccounts"];
   /** AI engine: document type whose taught rules the server adds (aiDocTypeForVoucher). */
   aiDocType?: string;
 };
@@ -176,7 +178,7 @@ async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<
   try {
     const img = await cloudJpeg(file, mime);
     const res = await Promise.race([
-      ocrAiRead({ companyId: opts.companyId, imageBase64: img.b64, mimeType: "image/jpeg", ownCompany: opts.ownCompany, docType: opts.aiDocType, signal: ac.signal }),
+      ocrAiRead({ companyId: opts.companyId, imageBase64: img.b64, mimeType: "image/jpeg", ownCompany: opts.ownCompany, ownAccounts: opts.ownAccounts, docType: opts.aiDocType, signal: ac.signal }),
       new Promise<never>((_, rej) => { t = setTimeout(() => { ac.abort(); rej(new Error("AI OCR timed out")); }, AI_TIMEOUT_MS); }),
     ]);
     const d = res.data;

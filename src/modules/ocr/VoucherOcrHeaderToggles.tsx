@@ -360,8 +360,8 @@ function BankAliasesSection({ companyId, open }: { companyId: string; open: bool
       <p className="text-xs font-medium">Our own names on bank slips</p>
       <p className="text-[11px] text-muted-foreground">
         Bank slips often print our name only as the sender (e.g. <span className="font-mono">ACCOUNTFT:Nabiullah Ansari</span>). Add it here so a
-        bank-to-bank transfer is read as <span className="font-medium">Contra</span> instead of &quot;other&quot;. These names are used only for this
-        company.
+        bank-to-bank transfer is read as <span className="font-medium">Contra</span> instead of &quot;other&quot;. Small OCR spelling differences are
+        matched automatically (5-10 letters off still works). Names are used only for this company.
       </p>
       <div className="flex flex-col gap-1.5 sm:flex-row">
         <select

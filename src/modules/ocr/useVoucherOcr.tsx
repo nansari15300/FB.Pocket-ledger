@@ -384,7 +384,13 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           if (process.env.NODE_ENV !== "production") {
             console.info(`[OCR] input: ${orig ? "ORIGINAL upload" : "stored attachment (compressed)"} ${src.mime} ${(src.blob.size / 1024).toFixed(0)} KB`);
           }
-          raw = await runOcrOnFile(src.blob, src.mime, { companyId: opt.companyId, enginePref: getOcrPrefs().engine, ownCompany: { name: ownRef.current.name, pan: ownRef.current.pan }, aiDocType: aiDocTypeForVoucher(opt.currentVoucherType ?? null, opt.adapter.partySide) });
+          raw = await runOcrOnFile(src.blob, src.mime, {
+            companyId: opt.companyId,
+            enginePref: getOcrPrefs().engine,
+            ownCompany: { name: ownRef.current.name, pan: ownRef.current.pan },
+            ownAccounts: (mastersRef.current.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ accountName: a.accountName, accountNumber: a.accountNumber, bankName: a.bankName, accountType: a.accountType })),
+            aiDocType: aiDocTypeForVoucher(opt.currentVoucherType ?? null, opt.adapter.partySide),
+          });
         }
         lastRawRef.current = raw;
         setReadBy({ engine: raw.engine === "google" || raw.engine === "azure" || raw.engine === "gemini" ? raw.engine : "tesseract", note: raw.engineNote });
