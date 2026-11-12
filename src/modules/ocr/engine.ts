@@ -18,7 +18,7 @@ import { publicAssetUrl } from "@/lib/webAppBasePath";
 import { resolvePdfJsWorkerHref } from "@/lib/pdfjsWorkerSrc";
 import { getOcrCloudStatusCached, ocrCloud, ocrCloudErrorCode } from "./cloud/ocrCloudClient";
 import { rawFromCloudText } from "./cloud/cloudRaw";
-import type { OcrEnginePref } from "./prefs";
+import { getOcrPrefs, type OcrEnginePref } from "./prefs";
 import { getOcrAiStatusCached, ocrAiErrorCode, ocrAiErrorText, ocrAiRead } from "./ai/aiClient";
 import { aiFallbackText } from "./ai/aiVoucher";
 
@@ -84,6 +84,8 @@ export type RunOcrOptions = {
   enginePref?: OcrEnginePref;
   /** Our company (name + PAN) so the AI knows whether we are buyer or seller. */
   ownCompany?: { name?: string | null; pan?: string | null };
+  /** AI engine: document type whose taught rules the server adds (aiDocTypeForVoucher). */
+  aiDocType?: string;
 };
 
 const CLOUD_MAX_BYTES = 3.8 * 1024 * 1024;
@@ -105,6 +107,12 @@ function blobToBase64(b: Blob): Promise<string> {
 }
 
 /** Preprocessed (standard grayscale stretch; PDFs -> first page) JPEG, capped below ~3.8 MB for Vision. */
+/** AI chat "Attach this bill": same JPEG the AI scan sends (size-capped). */
+export async function aiChatJpeg(file: Blob, mime: string): Promise<{ b64: string }> {
+  const j = await cloudJpeg(file, mime);
+  return { b64: j.b64 };
+}
+
 async function cloudJpeg(file: Blob, mime: string): Promise<{ b64: string; w: number; h: number; kb: number }> {
   for (const [side, q] of [[2400, 0.85], [2000, 0.8], [1600, 0.72], [1280, 0.65]] as const) {
     const { canvas } = await fileToOcrCanvasInfo(file, mime, side, "standard");
@@ -132,7 +140,8 @@ async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promi
   try {
     const img = await cloudJpeg(file, mime);
     const res = await Promise.race([
-      ocrCloud.vision(opts.companyId, img.b64, { signal: ac.signal, languageHints: ["ne", "hi", "en"] }),
+      // provider: Google / Azure picked in Switch Engine (also used by Auto and the AI fallback); "" = server's latest key
+      ocrCloud.vision(opts.companyId, img.b64, { signal: ac.signal, languageHints: ["ne", "hi", "en"], provider: getOcrPrefs().onlineProvider || undefined }),
       new Promise<never>((_, rej) => { t = setTimeout(() => { ac.abort(); rej(new Error("Online OCR timed out")); }, CLOUD_TIMEOUT_MS); }),
     ]);
     const text = String(res?.text ?? "");
@@ -167,7 +176,7 @@ async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<
   try {
     const img = await cloudJpeg(file, mime);
     const res = await Promise.race([
-      ocrAiRead({ companyId: opts.companyId, imageBase64: img.b64, mimeType: "image/jpeg", ownCompany: opts.ownCompany, signal: ac.signal }),
+      ocrAiRead({ companyId: opts.companyId, imageBase64: img.b64, mimeType: "image/jpeg", ownCompany: opts.ownCompany, docType: opts.aiDocType, signal: ac.signal }),
       new Promise<never>((_, rej) => { t = setTimeout(() => { ac.abort(); rej(new Error("AI OCR timed out")); }, AI_TIMEOUT_MS); }),
     ]);
     const d = res.data;
@@ -183,7 +192,7 @@ async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<
         preprocess: "ai (gemini)",
         passNote: `model ${res.model || "-"}, tokens in ${u.promptTokens} / out ${u.outputTokens}${u.thoughtsTokens ? ` / thinking ${u.thoughtsTokens}` : ""} / total ${u.totalTokens}`,
         meanConfidence: d.uncertain_fields.length ? 80 : 95,
-        engineNote: `${res.model || "Gemini"} | tokens ${u.totalTokens} (in ${u.promptTokens}, out ${u.outputTokens}) | JPEG ${img.w}x${img.h} ${img.kb} KB`,
+        engineNote: `${res.model || "Gemini"}${res.rulesUsed ? ` | taught rules ${res.rulesUsed}` : ""} | tokens ${u.totalTokens} (in ${u.promptTokens}, out ${u.outputTokens}) | JPEG ${img.w}x${img.h} ${img.kb} KB`,
         ai: res,
       },
       note: "",

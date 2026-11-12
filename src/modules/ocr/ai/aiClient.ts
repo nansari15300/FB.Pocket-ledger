@@ -4,13 +4,16 @@
  * - GET    /api/ocr-cloud/ai-status?company=
  * - POST   /api/ocr-cloud/ai-key      { provider: "gemini", key, model? }   (admin; key sent once, never stored here)
  * - DELETE /api/ocr-cloud/ai-key      { provider: "gemini" }
- * - POST   /api/ocr-cloud/ai-read     { company, provider, imageBase64, mimeType, ownCompany, hint? }
+ * - POST   /api/ocr-cloud/ai-read     { company, provider, imageBase64, mimeType, ownCompany, hint?, docType? }
+ * - POST   /api/ocr-cloud/ai-chat     { company, messages (last 12), docType?, imageBase64?, voucherJson? }  (AI chat / teaching)
+ * - GET / POST / DELETE /api/ocr-cloud/ai-rules   taught rules (server folder outside pb_data; delete = soft remove)
  * Uses the signed-in PocketBase session (`pbRequest`). Does not touch `@/lib/ocrCloudApi` (owned by another bot).
  * The server never returns the key; error texts from the server never contain it.
  */
 import { useCallback, useEffect, useState } from "react";
 import { PocketBaseNotSignedInError, PocketBaseRequestError, pbRequest } from "@/lib/pocketbaseData/pbClient";
 import { normalizeAiVoucher, type OcrAiResult } from "./aiVoucher";
+import { normalizeProposedRule, normalizeRulesList, type OcrAiDocTypeKey, type OcrAiProposedRule, type OcrAiRulesList } from "./aiChatModel";
 
 export type OcrAiProvider = "gemini";
 export type OcrAiErrorCode = "disabled" | "no_key" | "forbidden" | "quota" | "network" | "not_signed_in" | "timeout" | "unknown";
@@ -163,6 +166,8 @@ export type OcrAiReadInput = {
   ownCompany?: { name?: string | null; pan?: string | null };
   /** Extra per-document-type rules (phase 3: taught rules). */
   hint?: string;
+  /** Document type in focus: the server adds the taught rules of this type (+ general). */
+  docType?: string;
   signal?: AbortSignal;
 };
 
@@ -176,6 +181,7 @@ export async function ocrAiRead(input: OcrAiReadInput): Promise<OcrAiResult> {
   };
   if (input.ownCompany) body.ownCompany = { name: input.ownCompany.name ?? "", pan: input.ownCompany.pan ?? "" };
   if (input.hint) body.hint = input.hint;
+  if (input.docType) body.docType = input.docType;
   const raw = await call<Record<string, unknown>>("/api/ocr-cloud/ai-read", { method: "POST", body, timeoutMs: AI_READ_TIMEOUT_MS, signal: input.signal });
   const u = (raw?.usage && typeof raw.usage === "object" ? raw.usage : {}) as Record<string, unknown>;
   const n = (v: unknown) => (Number.isFinite(Number(v)) ? Math.max(0, Math.round(Number(v))) : 0);
@@ -185,6 +191,7 @@ export async function ocrAiRead(input: OcrAiReadInput): Promise<OcrAiResult> {
     model: typeof raw.model === "string" ? raw.model : "",
     data: normalizeAiVoucher(raw.data),
     usage: { promptTokens: n(u.promptTokens), outputTokens: n(u.outputTokens), thoughtsTokens: n(u.thoughtsTokens), totalTokens: n(u.totalTokens) },
+    rulesUsed: n(raw.rulesUsed),
   };
 }
 
@@ -223,4 +230,61 @@ export function useOcrAiStatus(companyId: string | null | undefined, enabled = t
   }, [companyId, enabled, tick]);
   const live = !!(enabled && companyId && state.key === companyId);
   return { status: live ? state.status : null, error: live ? state.error : null, reload };
+}
+
+/* ---- AI chat / teaching (ai-plan.md Phase 1 + 3) ---- */
+const AI_CHAT_TIMEOUT_MS = 95_000;
+
+export type OcrAiChatInput = {
+  companyId: string;
+  /** Last N text turns only (see chatPayload). */
+  messages: { role: "user" | "model"; text: string }[];
+  docType?: string;
+  /** Only for the turn where the user attached the bill. */
+  imageBase64?: string;
+  mimeType?: string;
+  voucherJson?: unknown;
+  ownCompany?: { name?: string | null; pan?: string | null };
+  signal?: AbortSignal;
+};
+
+export type OcrAiChatResult = {
+  reply: string;
+  proposedRule: OcrAiProposedRule | null;
+  model: string;
+  usage: { promptTokens: number; outputTokens: number; totalTokens: number };
+  rulesUsed: number;
+};
+
+export async function ocrAiChat(input: OcrAiChatInput): Promise<OcrAiChatResult> {
+  const body: Record<string, unknown> = { company: input.companyId, provider: "gemini", messages: input.messages };
+  if (input.docType) body.docType = input.docType;
+  if (input.imageBase64) {
+    body.imageBase64 = String(input.imageBase64).replace(/^data:[^;,]*;base64,/, "");
+    body.mimeType = input.mimeType || "image/jpeg";
+  }
+  if (input.voucherJson != null) body.voucherJson = input.voucherJson;
+  if (input.ownCompany) body.ownCompany = { name: input.ownCompany.name ?? "", pan: input.ownCompany.pan ?? "" };
+  const raw = await call<Record<string, unknown>>("/api/ocr-cloud/ai-chat", { method: "POST", body, timeoutMs: AI_CHAT_TIMEOUT_MS, signal: input.signal });
+  const u = (raw?.usage && typeof raw.usage === "object" ? raw.usage : {}) as Record<string, unknown>;
+  const n = (v: unknown) => (Number.isFinite(Number(v)) ? Math.max(0, Math.round(Number(v))) : 0);
+  return {
+    reply: typeof raw?.reply === "string" && raw.reply.trim() ? raw.reply : "(no answer)",
+    proposedRule: normalizeProposedRule(raw?.proposedRule),
+    model: typeof raw?.model === "string" ? raw.model : "",
+    usage: { promptTokens: n(u.promptTokens), outputTokens: n(u.outputTokens), totalTokens: n(u.totalTokens) },
+    rulesUsed: n(raw?.rulesUsed),
+  };
+}
+
+export async function listOcrAiRules(companyId: string): Promise<OcrAiRulesList> {
+  return normalizeRulesList(await call<unknown>(`/api/ocr-cloud/ai-rules?company=${encodeURIComponent(companyId)}`, { method: "GET" }));
+}
+
+export async function saveOcrAiRule(companyId: string, rule: OcrAiProposedRule, source: "chat" | "manual" = "chat"): Promise<void> {
+  await call<unknown>("/api/ocr-cloud/ai-rules", { method: "POST", body: { company: companyId, docType: rule.docType, text: rule.text.trim(), source } });
+}
+
+export async function removeOcrAiRule(companyId: string, docType: OcrAiDocTypeKey, id: string): Promise<void> {
+  await call<unknown>("/api/ocr-cloud/ai-rules", { method: "DELETE", body: { company: companyId, docType, id } });
 }

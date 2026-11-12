@@ -82,7 +82,13 @@ export type OcrCloudStatus = {
   provider?: "google" | "azure";
   /** Admin only, Azure: hostname of the saved endpoint (never the full URL). */
   endpointHost?: string;
+  /** Admin only (newer servers): every saved vision key, one per provider, masked. */
+  keys?: { google?: OcrCloudKeyInfo; azure?: OcrCloudKeyInfo };
+  /** Newer servers, every member: providers the company's key owner has a key for (no key data). */
+  providers?: ("google" | "azure")[];
 };
+
+export type OcrCloudKeyInfo = { last4?: string; endpointHost?: string };
 
 export type OcrCloudCompanyOptions = {
   company: string;
@@ -101,11 +107,15 @@ export type OcrCloudVisionPage = {
 export type OcrCloudVisionResult = {
   text: string;
   pages?: OcrCloudVisionPage[];
+  /** Newer servers: which provider's key read the image. */
+  provider?: "google" | "azure";
 };
 
 export type OcrCloudVisionOptions = {
   languageHints?: string[];
   signal?: AbortSignal;
+  /** Optional: use this provider's key (newer servers keep Google and Azure keys side by side). Omitted = latest saved key. */
+  provider?: "google" | "azure";
 };
 
 function readServerCode(data: unknown): string {
@@ -166,6 +176,20 @@ function normalizeStatus(raw: unknown): OcrCloudStatus {
   if (typeof o.keyLast4 === "string" && o.keyLast4) out.keyLast4 = o.keyLast4;
   if (o.provider === "azure" || o.provider === "google") out.provider = o.provider;
   if (typeof o.endpointHost === "string" && o.endpointHost) out.endpointHost = o.endpointHost;
+  if (o.keys && typeof o.keys === "object") {
+    const k = o.keys as Record<string, unknown>;
+    const one = (v: unknown): OcrCloudKeyInfo | undefined => {
+      if (!v || typeof v !== "object") return undefined;
+      const r = v as Record<string, unknown>;
+      return {
+        ...(typeof r.last4 === "string" && r.last4 ? { last4: r.last4 } : {}),
+        ...(typeof r.endpointHost === "string" && r.endpointHost ? { endpointHost: r.endpointHost } : {}),
+      };
+    };
+    const g = one(k.google), a = one(k.azure);
+    out.keys = { ...(g ? { google: g } : {}), ...(a ? { azure: a } : {}) };
+  }
+  if (Array.isArray(o.providers)) out.providers = o.providers.filter((p): p is "google" | "azure" => p === "google" || p === "azure");
   if (Array.isArray(o.sharedUsers)) {
     out.sharedUsers = o.sharedUsers
       .filter((u): u is Record<string, unknown> => !!u && typeof u === "object")
@@ -204,8 +228,11 @@ export async function saveOcrCloudKey(
 }
 
 /** Admin: delete the saved Google Vision key from the server. */
-export async function deleteOcrCloudKey(companyId?: string): Promise<void> {
-  await call<unknown>("/api/ocr-cloud/key", { method: "DELETE", body: companyId ? { company: companyId } : {} });
+export async function deleteOcrCloudKey(companyId?: string, provider?: "google" | "azure"): Promise<void> {
+  // provider (optional) = delete only that provider's key; omitted = every vision key (old behaviour)
+  const body: Record<string, unknown> = companyId ? { company: companyId } : {};
+  if (provider) body.provider = provider;
+  await call<unknown>("/api/ocr-cloud/key", { method: "DELETE", body });
 }
 
 /** Admin: enable/disable cloud OCR for a company, or grant/revoke one shared user. */
@@ -228,14 +255,16 @@ export async function ocrCloudVision(
   const img = String(imageBase64 || "").replace(/^data:[^;,]*;base64,/, "");
   const body: Record<string, unknown> = { company: companyId, imageBase64: img };
   if (opts.languageHints?.length) body.languageHints = opts.languageHints;
+  if (opts.provider) body.provider = opts.provider;
   const raw = await call<unknown>("/api/ocr-cloud/vision", {
     method: "POST",
     body,
     timeoutMs: VISION_TIMEOUT_MS,
     signal: opts.signal,
   });
-  const o = (raw && typeof raw === "object" ? raw : {}) as { text?: unknown; pages?: unknown };
+  const o = (raw && typeof raw === "object" ? raw : {}) as { text?: unknown; pages?: unknown; provider?: unknown };
   const out: OcrCloudVisionResult = { text: typeof o.text === "string" ? o.text : "" };
+  if (o.provider === "google" || o.provider === "azure") out.provider = o.provider;
   if (Array.isArray(o.pages)) {
     out.pages = o.pages
       .filter((p): p is Record<string, unknown> => !!p && typeof p === "object")

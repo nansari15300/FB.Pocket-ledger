@@ -11,6 +11,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { UseFormReturn } from "react-hook-form";
 import { toast } from "sonner";
 import { runOcrOnFile } from "./engine";
+import { aiDocTypeForVoucher } from "./ai/aiChatModel";
 import { parseBill } from "./parser";
 import { extractIdentifiers, type OcrIdentifiers } from "./identifiers";
 import { learnTemplateParty, lookupTemplateParty } from "./templates";
@@ -123,7 +124,7 @@ async function loadFirstFile(f: File | string, companyId?: string | null): Promi
 }
 
 /** Bump when parser/engine logic changes: shown in Show OCR text to prove the browser runs the new bundle. */
-export const OCR_BUILD = "2026-11-12.3";
+export const OCR_BUILD = "2026-11-12.6";
 
 const MONEY_TYPES = ["payment_out", "payment_in", "direct_expense", "direct_income", "contra"] as const;
 const ALL_TYPE_CHOICES = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"] as const;
@@ -383,7 +384,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           if (process.env.NODE_ENV !== "production") {
             console.info(`[OCR] input: ${orig ? "ORIGINAL upload" : "stored attachment (compressed)"} ${src.mime} ${(src.blob.size / 1024).toFixed(0)} KB`);
           }
-          raw = await runOcrOnFile(src.blob, src.mime, { companyId: opt.companyId, enginePref: getOcrPrefs().engine, ownCompany: { name: ownRef.current.name, pan: ownRef.current.pan } });
+          raw = await runOcrOnFile(src.blob, src.mime, { companyId: opt.companyId, enginePref: getOcrPrefs().engine, ownCompany: { name: ownRef.current.name, pan: ownRef.current.pan }, aiDocType: aiDocTypeForVoucher(opt.currentVoucherType ?? null, opt.adapter.partySide) });
         }
         lastRawRef.current = raw;
         setReadBy({ engine: raw.engine === "google" || raw.engine === "azure" || raw.engine === "gemini" ? raw.engine : "tesseract", note: raw.engineNote });
@@ -1474,6 +1475,14 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     [visible, ids, findOpen, lastBill, o.parties, o.adapter.party, pickParty, bubbles, runApply, createPrefill, createItemFor, createTaxOpen, write]
   );
 
+  // AI chat (OCR bar): current bill / last AI JSON / own company, read on demand (refs, no re-render)
+  const getBillForChat = useCallback(() => {
+    const f = optsRef.current.files[0];
+    return f ? loadFirstFile(f, optsRef.current.companyId) : Promise.resolve(null);
+  }, []);
+  const getAiVoucherJson = useCallback(() => lastRawRef.current?.ai?.data ?? null, []);
+  const getOwnCompany = useCallback(() => ({ name: ownRef.current.name, pan: ownRef.current.pan }), []);
+
   useEffect(() => { if (!visible) cancelAutoPostCountdown(); }, [visible, cancelAutoPostCountdown]);
 
   return {
@@ -1507,6 +1516,12 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     /** Auto Post countdown seconds left (null = not running). */
     autoPostCountdown: apCount,
     cancelAutoPostCountdown,
+    /** AI chat / teaching (OCR bar button). */
+    companyId: o.companyId ?? null,
+    aiDocType: aiDocTypeForVoucher(o.currentVoucherType ?? null, o.adapter.partySide),
+    getBillForChat,
+    getAiVoucherJson,
+    getOwnCompany,
   };
 }
 

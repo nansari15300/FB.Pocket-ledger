@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 /* Same stacking as Add New master from a voucher: above AddVoucherDialog (overlay z-80 / content z-81). */
 import { NESTED_VOUCHER_MASTER_CREATE_CONTENT_CN, NESTED_VOUCHER_MASTER_CREATE_OVERLAY_CN } from "@/lib/dialogShellChrome";
 import type { VoucherOcrApi } from "./useVoucherOcr";
+import { AiChatButton } from "./ai/AiChatDialog";
 
 /** One pill style for every OCR bar button (same as Refresh OCR). */
 const OCR_BAR_PILL_CN = "h-7 gap-1 text-xs";
@@ -38,6 +39,9 @@ export function VoucherOcrRefreshBar({ ocr }: { ocr: VoucherOcrApi }) {
         >
           Read by: {readByLabel}
         </span>
+      ) : null}
+      {ocr.companyId ? (
+        <AiChatButton companyId={ocr.companyId} docType={ocr.aiDocType} getBill={ocr.hasFile ? ocr.getBillForChat : undefined} getVoucherJson={ocr.getAiVoucherJson} getOwnCompany={ocr.getOwnCompany} className={OCR_BAR_PILL_CN} />
       ) : null}
       {ocr.canFindAccount ? (
         <Button type="button" size="sm" variant="outline" className={OCR_BAR_PILL_CN} onClick={ocr.openFindAccount}>

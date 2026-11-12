@@ -48,7 +48,7 @@ export type OcrAiVoucher = {
   notes: string | null;
 };
 export type OcrAiUsage = { promptTokens: number; outputTokens: number; thoughtsTokens: number; totalTokens: number };
-export type OcrAiResult = { provider: "gemini"; model: string; data: OcrAiVoucher; usage: OcrAiUsage };
+export type OcrAiResult = { provider: "gemini"; model: string; data: OcrAiVoucher; usage: OcrAiUsage; /** Taught rules the server added to the prompt. */ rulesUsed?: number };
 
 const DOC_TYPES: readonly OcrAiDocType[] = ["purchase", "sale", "receipt", "payment", "expense", "other"];
 

@@ -76,12 +76,13 @@ export function ocrCloudErrorText(e: unknown): string {
 }
 
 export const ocrCloud = {
-  vision: (companyId: string, imageBase64: string, opts?: { signal?: AbortSignal; languageHints?: string[] }) => ocrCloudVision(companyId, imageBase64, opts),
+  vision: (companyId: string, imageBase64: string, opts?: { signal?: AbortSignal; languageHints?: string[]; provider?: "google" | "azure" }) => ocrCloudVision(companyId, imageBase64, opts),
   async saveKey(key: string, companyId?: string, opts?: { provider?: "google" | "azure"; endpoint?: string }) {
     await saveOcrCloudKey(key, companyId, opts);
     invalidateOcrCloudStatus();
   },
-  async deleteKey(companyId?: string) { await deleteOcrCloudKey(companyId); invalidateOcrCloudStatus(); },
+  /** provider = delete only that key (Google and Azure have their own slots); omitted = all vision keys. */
+  async deleteKey(companyId?: string, provider?: "google" | "azure") { await deleteOcrCloudKey(companyId, provider); invalidateOcrCloudStatus(); },
   async setCompany(o: OcrCloudCompanyOptions) { await setOcrCloudCompany(o); invalidateOcrCloudStatus(o.company); },
 };
 

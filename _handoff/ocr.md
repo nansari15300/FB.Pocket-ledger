@@ -352,3 +352,11 @@ Migration के बिना AI वाले endpoints साफ़ संद�
 - नई `src/modules/ocr/ai/aiClient.ts` (server calls `pbRequest` से; `src/lib/ocrCloudApi.ts` नहीं छुआ) और `ai/aiVoucher.ts` (Gemini JSON → bill + जाँच: qty×rate=amount, sum=Sub Total, Sub Total−Discount=Taxable, VAT 13%, Taxable+VAT=Grand, PAN 9 अंक, AD↔BS मिति; null fields पर raw_text parser का cross-check; party/item मिलान मौजूदा helpers से)।
 - `engine.ts`: AI → online → local fallback; `parser.ts` अंत में AI answer लगाता है; badge «AI (Gemini)» + tokens tooltip; `OCR_BUILD = 2026-11-12.2`।
 - Tests: नया `tests/ocr/aiGeminiPratik.selftest.mts` (mock Pratik JSON सही; row 2 की गलत amount flag होती है; गलत VAT; 8-अंक PAN; null fields; unsure field; own company)। सारे `tests/ocr/*.selftest.mts` pass, `npm run typecheck` pass।
+
+## AI chat / सिखाना (2026-11-12, OCR_BUILD 2026-11-12.4)
+
+- OCR bar «AI chat» + OCR settings AI card «Open AI chat / teaching» → `src/modules/ocr/ai/AiChatDialog.tsx` (model `aiChatModel.ts`, labels `aiChatStrings.ts`, API `aiClient.ts`)।
+- Stacking: chat dialog का z-index **inline** (2147483002) है — `tailwind.config` `src/modules/**` scan नहीं करता, इसलिए वहाँ लिखी arbitrary class (`z-[...]`, `w-[...]`) बनती ही नहीं। OCR module में ऐसी class न लिखें; inline style या `src/lib/dialogShellChrome.ts` वाली constants इस्तेमाल करें।
+- AI scan अब voucher प्रकार (`aiDocTypeForVoucher`) भेजता है, server उस प्रकार के सिखाए नियम जोड़ता है; «Read by» tooltip में «taught rules N»।
+- Settings: «AI (Gemini)» key box अब «Online OCR» section के अंदर (Azure box के नीचे, company switch के ऊपर)। Switch बंद हो तो hint।
+- Server: `lib/ocr_ai_training.js` + ai-chat / ai-rules routes; नियम `C:\PocketLedger-AI-Training` में। पूरा विवरण: `_handoff/ai-plan.md` खंड 12।

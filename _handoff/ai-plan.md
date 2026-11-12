@@ -233,10 +233,21 @@ AI को हर बार नियम चाहिए (उसे पिछल�
 
 | चरण | स्थिति |
 |---|---|
-| Phase 1 — Chat window | शुरू नहीं हुआ (मालिक तय होना है) |
+| Phase 1 — Chat window | **MVP पूरा, 2026-11-12 (server 16:37 NPT deploy)।** OCR bar में «AI chat» बटन और OCR settings → Online OCR → AI (Gemini) card में «Open AI chat / teaching»। खंड 12 देखें। |
 | Phase 2 — AI से बिल scan (Gemini OCR engine) | **Code पूरा और Server PC पर deploy, 2026-11-12, 10:19 NPT।** OCR settings में «AI (Gemini)» engine, server `ocr_cloud.js` में Gemini, migration `1763800000_ocr_ai_keys.js` (collection `user_ai_keys` बनी), हमारी जाँच, fallback (Azure / Google, फिर local)। **बाकी:** अंसारी जी OCR settings में Gemini key डालें और Pratik बिल पर test करें। |
-| Phase 3 — हर कागज़-प्रकार को सिखाना | शुरू नहीं हुआ। Server में `hint` (सिखाए नियम) भेजने की जगह पहले से तैयार है। |
+| Phase 3 — हर कागज़-प्रकार को सिखाना | **MVP पूरा, 2026-11-12।** Chat में Gemini नियम सुझाता है → «Save rule» → server folder `C:\PocketLedger-AI-Training\<companyId>\<docType>.json`; हर AI scan में general + उस प्रकार के नियम (3000 अक्षर तक) जाते हैं। खंड 12 देखें। |
 | Phase 4 — और providers | DeepSeek अगला उम्मीदवार (खंड 10.9); अंसारी जी की इजाज़त के बिना कोई code नहीं। |
+
+
+## 12. AI chat / सिखाना (MVP, 2026-11-12)
+
+- **कहाँ:** Add / Edit voucher में OCR bar पर «AI chat»; OCR settings → Online OCR → «AI (Gemini)» card (Azure box के नीचे, company switch के ऊपर) में «Open AI chat / teaching»। Company switch बंद हो तो card में साफ़ hint दिखता है।
+- **Chat:** history सिर्फ़ इसी browser session में (sessionStorage); हर संदेश पर आख़िरी 12 text संदेश जाते हैं; बिल फ़ोटो / AI JSON सिर्फ़ उसी संदेश के साथ जिसमें «Attach this bill» / «Send AI result» चुना हो। Gemini उसी भाषा में जवाब देता है जिसमें आप लिखते हैं (भाषा ज़बरदस्ती नहीं)। Dialog और card के labels app की language setting (UI / Intro) के हिसाब से (en / hi / ne, बाकी भाषाओं में English) — OCR-local table `src/modules/ocr/ai/aiChatStrings.ts`।
+- **नियम:** Gemini एक छोटा general नियम (`proposed_rule`) सुझाता है; admin बदल कर «Save rule» दबाते हैं। «Saved rules» tab: प्रकार-वार list, हाथ से नया नियम, Remove (soft: फाइल में `_removed` में रहता है, history भी)। सिर्फ़ company admin नियम बदल सकते हैं; allowed users पढ़ सकते हैं।
+- **Folder:** `C:\PocketLedger-AI-Training` (env `PL_OCR_AI_TRAINING_DIR` से बदल सकते हैं), pb_data से बाहर, पहले save पर बनता है: `README.txt`, `<companyId>\company.json`, `<companyId>\general|purchase|sale|receipt|payment|expense|other.json`। Code कभी कुछ delete नहीं करता; खराब (invalid JSON) फाइल को कभी overwrite नहीं करता और scan नहीं रुकता। प्रति प्रकार 60 नियम, प्रति नियम 600 अक्षर।
+- **Server (OCR-owned):** नई `pb_hooks/lib/ocr_ai_training.js`; `lib/ocr_cloud.js` में `aiChat`, `aiRulesList`, `aiRuleSave`, `aiRuleRemove` और ai-read में नियम जोड़ना; routes `POST /api/ocr-cloud/ai-chat`, `GET|POST|DELETE /api/ocr-cloud/ai-rules`। ai-read जैसा ही gate (company switch, allowed users, admin की key) और वही rate limit / daily cap। Chat: temperature 0.3, max output 2048 tokens।
+- **Tests:** `tools/ocr-cloud-test.mjs` 107/107 (27 नए AI chat / rules cases); `tests/ocr/aiChat.selftest.mts` 37/37; बाकी OCR selftests pass; tsc pass।
+- **खुले सवाल:** नियमों की संख्या बढ़ने पर prompt cap (3000 अक्षर) काफ़ी है या नहीं; chat history server पर रखनी है या नहीं (अभी नहीं)।
 
 ---
 

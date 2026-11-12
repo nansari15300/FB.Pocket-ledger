@@ -24,7 +24,10 @@ export type OcrPrefs = {
   narrationStyle: OcrNarrationStyle;
   /** OCR engine preference (default auto). */
   engine: OcrEnginePref;
+  /** Last online provider picked in Switch Engine (Google / Azure each have their own key). "" = whichever key the server has. */
+  onlineProvider: OcrOnlineProvider;
 };
+export type OcrOnlineProvider = "google" | "azure" | "";
 export const AUTO_POST_SECONDS_MIN = 1;
 export const AUTO_POST_SECONDS_MAX = 60;
 export function clampAutoPostSeconds(v: unknown): number {
@@ -39,7 +42,7 @@ export function clampAutoPostSeconds(v: unknown): number {
 export const OCR_LAYER_Z = 100;
 
 const KEY = "pl.ocr.prefs.v1";
-const DEFAULTS: OcrPrefs = { enabled: true, autoPost: false, overwriteEdited: false, autoPostSeconds: 10, autoSwitchVoucher: true, autoSwitchSeconds: 10, connectorStyle: "tail", narrationStyle: "full", engine: "auto" };
+const DEFAULTS: OcrPrefs = { enabled: true, autoPost: false, overwriteEdited: false, autoPostSeconds: 10, autoSwitchVoucher: true, autoSwitchSeconds: 10, connectorStyle: "tail", narrationStyle: "full", engine: "auto", onlineProvider: "" };
 const subs = new Set<() => void>();
 let cache: OcrPrefs | null = null;
 
@@ -50,6 +53,7 @@ function normalize(raw: Partial<OcrPrefs> | null | undefined): OcrPrefs {
     connectorStyle: raw?.connectorStyle === "line" ? "line" : "tail",
     narrationStyle: raw?.narrationStyle === "short" ? "short" : "full",
     engine: raw?.engine === "offline" || raw?.engine === "online" || raw?.engine === "ai" ? raw.engine : "auto",
+    onlineProvider: raw?.onlineProvider === "google" || raw?.onlineProvider === "azure" ? raw.onlineProvider : "",
   };
 }
 
