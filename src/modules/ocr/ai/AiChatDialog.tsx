@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 /**
  * AI chat / teaching (OCR-owned, ai-plan.md Phase 1 + 3).
  */
@@ -9,7 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { aiChatJpeg } from "../engine";
-import { OcrAiError, listOcrAiRules, ocrAiChat, ocrAiErrorText, removeOcrAiRule, saveOcrAiRule } from "./aiClient";
+import { OcrAiError, getOcrAiStatus, getOcrAiStatusCached, invalidateOcrAiStatus, listOcrAiRules, ocrAiChat, ocrAiErrorText, removeOcrAiRule, saveOcrAiRule, setOcrAiModel, type OcrAiLimits, type OcrAiModelOption } from "./aiClient";
+import { AiChatUsageChips } from "./AiChatUsageChips";
+import { AiModelPicker } from "./AiModelPicker";
+import { clearUsage, loadUsage, recordUsage, type AiChatUsageState } from "./aiChatUsage";
 import { useAiChatStrings, type AiChatStrings } from "./aiChatStrings";
 import {
   OCR_AI_DOC_TYPES,
@@ -41,8 +44,30 @@ const CHAT_CONTENT_STYLE: React.CSSProperties = {
   overflow: "hidden",
   padding: 0,
   border: "none",
-  boxShadow: "0 25px 60px -10px rgba(0,0,0,0.35), 0 10px 25px -5px rgba(0,0,0,0.2)",
+  boxShadow: "0 18px 40px -12px rgba(15,23,42,0.22), 0 6px 16px -6px rgba(15,23,42,0.12)",
 };
+
+/** WhatsApp-style chat canvas (neutral beige) — kept subtle so bubbles pop. */
+const CHAT_CANVAS_BG = "#efeae2";
+/** Left chat-list panel — light gray. */
+const SIDEBAR_BG = "#eceff3";
+/** Sky-blue accent (header, send button, active states). */
+const ACCENT = "#0ea5e9";
+const BUBBLE_OUT = "#dff3fd";
+const BUBBLE_IN = "#ffffff";
+
+/** Input box height: 3x of 10% then reduced 40% → ~18% of the popup height. */
+const CHAT_INPUT_H = "max(88px, 18%)";
+/** Input area strip — same light gray family as the sidebar. */
+const INPUT_BG = "#f0f2f5";
+
+/** Fallback list when /ai-status has not answered yet (server adds its own list on top). */
+const FALLBACK_MODELS: OcrAiModelOption[] = [
+  { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash Lite", note: "fastest · cheapest · default" },
+  { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash", note: "balanced" },
+  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", note: "legacy · being retired" },
+  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", note: "most accurate · slowest" },
+];
 
 export type AiChatDialogProps = {
   open: boolean;
@@ -65,7 +90,7 @@ function DocTypeSelect({ value, onChange, disabled, t }: { value: OcrAiDocTypeKe
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value as OcrAiDocTypeKey)}
-      className="h-7 rounded-lg border border-violet-200 bg-violet-50 px-2 text-xs text-violet-800 focus:outline-none focus:ring-2 focus:ring-violet-400"
+      className="h-7 rounded-md border border-black/10 bg-white px-2 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#0ea5e9]"
     >
       {OCR_AI_DOC_TYPES.map((k) => <option key={k} value={k}>{t.docTypes[k]}</option>)}
     </select>
@@ -119,12 +144,12 @@ function InfoPopup({ intro }: { intro: string }) {
         <span
           onMouseEnter={show}
           onMouseLeave={hide}
-          className="absolute left-0 top-7 z-[9999] w-72 rounded-2xl border border-slate-100 bg-white p-4 shadow-2xl"
-          style={{ boxShadow: "0 16px 48px -8px rgba(109,40,217,0.2), 0 6px 16px -4px rgba(0,0,0,0.12)" }}
+          className="absolute left-0 top-7 z-[9999] w-72 rounded-lg border border-black/10 bg-white p-3.5"
+          style={{ boxShadow: "0 10px 30px -8px rgba(15,23,42,0.18), 0 4px 12px -4px rgba(15,23,42,0.10)" }}
         >
           {/* Arrow */}
-          <span className="absolute -top-1.5 left-3 h-3 w-3 rotate-45 border-l border-t border-slate-100 bg-white" />
-          <span className="relative mb-1.5 block text-[13px] font-semibold text-violet-700">About this chat</span>
+          <span className="absolute -top-1.5 left-3 h-3 w-3 rotate-45 border-l border-t border-black/10 bg-white" />
+          <span className="relative mb-1.5 block text-[12px] font-medium text-slate-700">About this chat</span>
           <span className="block text-[12px] leading-[1.65] text-slate-600">{intro}</span>
         </span>
       )}
@@ -143,53 +168,53 @@ function ChatHistorySidebar({ sessions, activeId, onSelect, onDelete, onNew }: {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   return (
     <aside
-      className="flex w-48 shrink-0 flex-col"
-      style={{ background: "linear-gradient(180deg, #1e1b4b 0%, #312e81 60%, #4c1d95 100%)" }}
+      className="flex w-48 shrink-0 flex-col border-r border-black/5"
+      style={{ background: SIDEBAR_BG }}
     >
       {/* Header */}
       <div className="shrink-0 px-3 pb-2 pt-4">
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-violet-300">Chats</p>
+        <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-slate-500">Chats</p>
         <button
           type="button"
           onClick={onNew}
-          className="flex w-full items-center gap-2 rounded-xl border border-violet-500/40 bg-white/10 px-3 py-2 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/20"
+          className="flex w-full items-center gap-2 rounded-lg border border-black/10 bg-white px-3 py-2 text-xs font-normal text-slate-700 transition hover:bg-slate-50"
         >
           <Plus className="h-3.5 w-3.5" /> New chat
         </button>
       </div>
 
       {/* Session list */}
-      <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-violet-500/40">
+      <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300">
         {sessions.length === 0 && (
-          <li className="px-2 py-6 text-center text-[11px] text-violet-400">No history yet</li>
+          <li className="px-2 py-6 text-center text-[11px] text-slate-400">No history yet</li>
         )}
         {sessions.map((s) => (
           <li
             key={s.id}
             className={cn(
-              "group relative flex cursor-pointer items-start gap-1.5 rounded-xl px-2.5 py-2 text-[11px] transition",
+              "group relative flex cursor-pointer items-start gap-1.5 rounded-lg px-2.5 py-2 text-[11px] transition",
               activeId === s.id
-                ? "bg-white/20 font-semibold text-white"
-                : "text-violet-200 hover:bg-white/10 hover:text-white"
+                ? "bg-[#e0f2fe]/80 text-slate-800"
+                : "text-slate-600 hover:bg-black/5 hover:text-slate-800"
             )}
           >
             <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onSelect(s)}>
               <span className="flex items-center gap-1.5 leading-snug">
-                <MessageSquare className="h-3 w-3 shrink-0 opacity-70" />
+                <MessageSquare className="h-3 w-3 shrink-0 opacity-60" />
                 <span className="truncate">{s.title}</span>
               </span>
-              <span className="ml-4.5 mt-0.5 block text-[10px] opacity-50">
+              <span className="ml-4.5 mt-0.5 block text-[10px] text-slate-400">
                 {new Date(s.createdAt).toLocaleDateString()}
               </span>
             </button>
             {confirmId === s.id ? (
               <span className="flex shrink-0 flex-col gap-0.5">
                 <button type="button" onClick={() => { onDelete(s.id); setConfirmId(null); }}
-                  className="rounded-lg bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white hover:bg-red-600">
+                  className="rounded-md bg-red-500 px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-red-600">
                   Del
                 </button>
                 <button type="button" onClick={() => setConfirmId(null)}
-                  className="rounded-lg border border-violet-400/50 px-1.5 py-0.5 text-[10px] text-violet-200 hover:bg-white/10">
+                  className="rounded-md border border-slate-300 px-1.5 py-0.5 text-[10px] text-slate-600 hover:bg-slate-100">
                   No
                 </button>
               </span>
@@ -197,7 +222,7 @@ function ChatHistorySidebar({ sessions, activeId, onSelect, onDelete, onNew }: {
               <button
                 type="button"
                 onClick={() => setConfirmId(s.id)}
-                className="shrink-0 rounded-lg p-0.5 text-violet-400/70 transition hover:bg-red-500/20 hover:text-red-400"
+                className="shrink-0 rounded-md p-0.5 text-slate-400 transition hover:bg-red-500/10 hover:text-red-500"
                 title="Delete this chat"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -221,6 +246,14 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
   const [rules, setRules] = useState<OcrAiRulesList | null>(null);
   const [rulesBusy, setRulesBusy] = useState<string | null>(null);
   const [rulesMsg, setRulesMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [usage, setUsage] = useState<AiChatUsageState>(() => loadUsage(companyId));
+  const [limits, setLimits] = useState<OcrAiLimits | undefined>(undefined);
+  const [models, setModels] = useState<OcrAiModelOption[]>(FALLBACK_MODELS);
+  const [activeModel, setActiveModel] = useState<string>("gemini-3.5-flash-lite");
+  const [canChangeModel, setCanChangeModel] = useState(false);
+  const [modelStatusLoaded, setModelStatusLoaded] = useState(false);
+  const [modelBusy, setModelBusy] = useState(false);
+  const [modelErr, setModelErr] = useState<string | null>(null);
   const [newType, setNewType] = useState<OcrAiDocTypeKey>(docType ?? "general");
   const [newText, setNewText] = useState("");
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
@@ -284,6 +317,41 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
   }, [open]);
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // Ribbon budget + model picker: server status (defaults keep the picker usable while it loads).
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    getOcrAiStatusCached(companyId, { timeoutMs: 12000 })
+      .then((s) => {
+        if (!alive) return;
+        if (s.limits) setLimits(s.limits);
+        if (s.models?.length) setModels(s.models);
+        setActiveModel(s.modelActive ?? s.model ?? "");
+        setCanChangeModel(s.isAdmin === true || s.canChangeModel === true);
+        setModelStatusLoaded(true);
+      })
+      .catch(() => { if (alive) setModelStatusLoaded(false); });
+    return () => { alive = false; };
+  }, [open, companyId]);
+
+  // Not loaded yet: let the signed-in user try (the server still enforces admin-only).
+  const canPickModel = modelStatusLoaded ? canChangeModel : true;
+
+  const switchModel = async (id: string) => {
+    if (!id || id === activeModel || modelBusy) return;
+    setModelBusy(true); setModelErr(null);
+    try {
+      const r = await setOcrAiModel(id);
+      setActiveModel(r.model);
+      invalidateOcrAiStatus(companyId);
+      const s = await getOcrAiStatus(companyId);
+      setModels(s.models ?? []);
+      setActiveModel(s.modelActive ?? r.model);
+    } catch (e) {
+      setModelErr(ocrAiErrorText(e));
+    } finally { setModelBusy(false); }
+  };
+
   const loadRules = async () => {
     setRulesBusy("load"); setRulesMsg(null);
     try { setRules(await listOcrAiRules(companyId)); }
@@ -300,17 +368,20 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
     const wantBill = attachBill, wantJson = attachJson, fileToSend = attachedFile;
     setAttachBill(false); setAttachJson(false); clearAttachedFile();
     const ac = new AbortController(); abortRef.current = ac;
+    const hadImage = !!(fileToSend || (wantBill && getBill));
     try {
       let imageBase64: string | undefined, mimeType: string | undefined;
       if (fileToSend) { const r = await aiChatJpeg(fileToSend.file, fileToSend.file.type); imageBase64 = r.b64; mimeType = "image/jpeg"; }
       else if (wantBill && getBill) { const b = await getBill(); if (!b) throw new Error(t.noBill); imageBase64 = (await aiChatJpeg(b.blob, b.mime)).b64; mimeType = "image/jpeg"; }
       const voucherJson = wantJson && getVoucherJson ? getVoucherJson() ?? undefined : undefined;
       const r = await ocrAiChat({ companyId, messages: chatPayload(next), docType, imageBase64, mimeType, voucherJson, ownCompany: getOwnCompany?.(), signal: ac.signal });
+      setUsage(recordUsage(companyId, { ok: true, promptTokens: r.usage.promptTokens, outputTokens: r.usage.outputTokens, totalTokens: r.usage.totalTokens, hadImage }));
       const finalTurns = [...next, { id: newTurnId(), role: "model" as const, text: r.reply === "(no answer)" ? t.noAnswer : r.reply, at: Date.now(), proposedRule: r.proposedRule, tokens: r.usage.totalTokens }];
       setTurns(finalTurns);
       const sid = flushToHistory(finalTurns, activeSessionId);
       if (!activeSessionId) setActiveSessionId(sid);
     } catch (e) {
+      setUsage(recordUsage(companyId, { ok: false }));
       setTurns((cur) => [...cur, { id: newTurnId(), role: "model", text: chatErrorText(e, t), at: Date.now(), error: true }]);
     } finally { abortRef.current = null; setSending(false); }
   };
@@ -345,10 +416,10 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
       type="button"
       onClick={() => { setTab(k); if (k === "rules" && !rules && !rulesBusy) void loadRules(); }}
       className={cn(
-        "rounded-full px-4 py-1 text-xs font-semibold transition-all",
+        "rounded-full px-3 py-1 text-[11px] transition-colors",
         tab === k
-          ? "bg-white text-violet-700 shadow-md"
-          : "text-white/70 hover:bg-white/10 hover:text-white"
+          ? "bg-white/95 font-medium text-[#0ea5e9]"
+          : "font-normal text-white/75 hover:bg-white/10 hover:text-white"
       )}
     >
       {label}
@@ -362,40 +433,48 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
       </DialogPrimitive.Portal>
       <DialogContent
         overlayClassName="hidden"
+        hideCloseButton
         style={CHAT_CONTENT_STYLE}
         className="flex flex-col gap-0 overflow-hidden p-0"
         onFocusOutside={(e) => e.preventDefault()}
         onClick={(e) => e.stopPropagation()}
         data-pl-ocr-ai-chat=""
       >
-        {/* ── Gradient Header ── */}
+        {/* ── Header (WhatsApp green) ── */}
         <DialogHeader
-          className="shrink-0 px-5 pb-3 pt-4 text-left"
-          style={{ background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #9333ea 100%)" }}
+          className="shrink-0 px-4 pb-2.5 pt-3 text-left"
+          style={{ background: ACCENT }}
         >
-          <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-2 text-base font-bold text-white">
-              <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-2">
+            <DialogTitle className="flex items-center gap-2 text-sm font-semibold text-white">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20">
                 <Bot className="h-4 w-4 text-white" />
               </div>
               {t.title}
               {/* Info popup — hover (desktop) + click/touch (mobile) */}
               <InfoPopup intro={t.intro.replace("{n}", String(AI_CHAT_SEND_LAST))} />
             </DialogTitle>
-            {/* Close button */}
-            <DialogPrimitive.Close className="rounded-full p-1.5 text-white/70 transition hover:bg-white/20 hover:text-white">
-              <X className="h-4 w-4" />
-            </DialogPrimitive.Close>
+            <div className="flex min-w-0 items-center gap-2">
+              <AiChatUsageChips
+                state={usage}
+                limits={limits}
+                onClear={() => setUsage(clearUsage(companyId))}
+              />
+              {/* Close button */}
+              <DialogPrimitive.Close className="shrink-0 rounded-full p-1.5 text-white/80 transition hover:bg-white/15 hover:text-white">
+                <X className="h-4 w-4" />
+              </DialogPrimitive.Close>
+            </div>
           </div>
           {/* Tabs */}
-          <div className="mt-2.5 flex items-center gap-1 rounded-full bg-white/10 p-0.5 backdrop-blur-sm" style={{ width: "fit-content" }}>
+          <div className="mt-2 flex items-center gap-1" style={{ width: "fit-content" }}>
             {tabBtn("chat", t.tabChat)}
             {tabBtn("rules", `${t.tabRules}${rules ? ` (${rulesCount(rules)})` : ""}`)}
           </div>
         </DialogHeader>
 
         {/* ── Body ── */}
-        <div className="flex min-h-0 flex-1 overflow-hidden" style={{ background: "#f8f7ff" }}>
+        <div className="flex min-h-0 flex-1 overflow-hidden" style={{ background: CHAT_CANVAS_BG }}>
           {/* Left sidebar */}
           <ChatHistorySidebar
             sessions={sessions}
@@ -412,13 +491,13 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                 {/* Messages */}
                 <div
                   ref={listRef}
-                  className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-violet-200"
-                  style={{ background: "linear-gradient(180deg, #f8f7ff 0%, #faf5ff 100%)" }}
+                  className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-black/15"
+                  style={{ background: CHAT_CANVAS_BG }}
                 >
                   {!turns.length ? (
-                    <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
-                      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg shadow-violet-200">
-                        <Sparkles className="h-7 w-7 text-white" />
+                    <div className="flex flex-col items-center justify-center gap-2.5 py-10 text-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full" style={{ background: ACCENT }}>
+                        <Sparkles className="h-6 w-6 text-white" />
                       </div>
                       <p className="text-xs leading-relaxed text-slate-500" style={{ maxWidth: "280px" }}>
                         {t.emptyExample}
@@ -429,51 +508,55 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                   {turns.map((turn) => (
                     <div key={turn.id} className={cn("flex gap-2", turn.role === "user" ? "justify-end" : "justify-start")}>
                       {turn.role === "model" && (
-                        <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 shadow-sm">
+                        <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full" style={{ background: ACCENT }}>
                           <Bot className="h-3.5 w-3.5 text-white" />
                         </div>
                       )}
                       <div
-                        style={{ maxWidth: "78%" }}
+                        style={{
+                          maxWidth: "78%",
+                          background: turn.role === "user" ? BUBBLE_OUT : turn.error ? "#fef2f2" : BUBBLE_IN,
+                        }}
                         className={cn(
-                          "space-y-1.5 rounded-2xl px-3.5 py-2.5 text-xs shadow-sm",
+                          "space-y-1.5 rounded-lg px-3 py-2 text-xs shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]",
                           turn.role === "user"
-                            ? "rounded-tr-sm bg-gradient-to-br from-indigo-500 via-violet-600 to-purple-600 text-white shadow-violet-200"
+                            ? "rounded-tr-none text-slate-800"
                             : turn.error
-                            ? "rounded-tl-sm border border-red-100 bg-red-50 text-red-800"
-                            : "rounded-tl-sm border border-violet-100 bg-white text-slate-700 shadow-violet-100"
+                            ? "rounded-tl-none border border-red-200 text-red-800"
+                            : "rounded-tl-none text-slate-800"
                         )}
                       >
                         <p className="whitespace-pre-wrap break-words leading-relaxed">{turn.text}</p>
                         {turn.hadImage || turn.hadJson ? (
-                          <p className="text-[10px] opacity-70">
+                          <p className="text-[10px] text-slate-500">
                             {[turn.hadImage && "📎 " + t.billSent, turn.hadJson && "📊 " + t.jsonSent].filter(Boolean).join(" · ")}
                           </p>
                         ) : null}
                         {turn.tokens ? (
-                          <p className={cn("text-[10px]", turn.role === "user" ? "text-white/60" : "text-violet-400")}>
+                          <p className="text-[10px] text-slate-400">
                             {t.tokens} {turn.tokens}
                           </p>
                         ) : null}
                         {turn.proposedRule ? (
-                          <div className="mt-2 space-y-2 rounded-xl border border-violet-200 bg-violet-50 p-2.5">
-                            <p className="text-[11px] font-bold text-violet-700">{t.proposedRule}</p>
+                          <div className="mt-2 space-y-2 rounded-lg border border-black/10 bg-slate-50 p-2.5">
+                            <p className="text-[11px] font-medium text-slate-700">{t.proposedRule}</p>
                             <DocTypeSelect value={turn.proposedRule.docType} disabled={turn.ruleSaved} onChange={(v) => editRule(turn.id, { ...turn.proposedRule!, docType: v })} t={t} />
                             <textarea
                               value={turn.proposedRule.text}
                               disabled={turn.ruleSaved}
                               onChange={(e) => editRule(turn.id, { ...turn.proposedRule!, text: e.target.value })}
                               rows={3}
-                              className="w-full rounded-xl border border-violet-200 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-400"
+                              className="w-full rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#0ea5e9]"
                             />
                             {turn.ruleSaved ? (
-                              <p className="text-[11px] font-semibold text-emerald-600">✓ {t.saved}</p>
+                              <p className="text-[11px] font-medium text-emerald-600">✓ {t.saved}</p>
                             ) : (
                               <button
                                 type="button"
                                 disabled={!turn.proposedRule.text.trim() || rulesBusy === `save:${turn.id}`}
                                 onClick={() => void saveProposed(turn)}
-                                className="flex items-center gap-1 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-3 py-1 text-[11px] font-semibold text-white shadow-sm disabled:opacity-50"
+                                className="flex items-center gap-1 rounded-lg px-3 py-1 text-[11px] font-medium text-white disabled:opacity-50"
+                                style={{ background: ACCENT }}
                               >
                                 {rulesBusy === `save:${turn.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} {t.saveRule}
                               </button>
@@ -482,7 +565,10 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                         ) : null}
                       </div>
                       {turn.role === "user" && (
-                        <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 text-[10px] font-bold text-white shadow-sm">
+                        <div
+                          className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold leading-none text-white ring-1 ring-black/10"
+                          style={{ background: ACCENT }}
+                        >
                           U
                         </div>
                       )}
@@ -491,110 +577,151 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
 
                   {sending && (
                     <div className="flex items-center gap-2">
-                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full" style={{ background: ACCENT }}>
                         <Bot className="h-3.5 w-3.5 text-white" />
                       </div>
-                      <div className="flex gap-1 rounded-2xl rounded-tl-sm border border-violet-100 bg-white px-3 py-2.5 shadow-sm">
+                      <div className="flex gap-1 rounded-lg rounded-tl-none bg-white px-3 py-2.5 shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">
                         {[0, 1, 2].map((i) => (
-                          <span key={i} className="h-1.5 w-1.5 animate-bounce rounded-full bg-violet-400" style={{ animationDelay: `${i * 0.15}s` }} />
+                          <span key={i} className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: `${i * 0.15}s` }} />
                         ))}
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Input area */}
-                <div className="shrink-0 border-t border-violet-100 bg-white px-4 py-3">
-                  {/* Chips row */}
-                  {(getBill || getVoucherJson || docType) && (
-                    <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px]">
-                      {getBill && (
-                        <label className="flex cursor-pointer items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-violet-700 transition hover:bg-violet-100">
-                          <input type="checkbox" checked={attachBill} onChange={(e) => setAttachBill(e.target.checked)} className="accent-violet-600" /> {t.attachBill}
-                        </label>
-                      )}
-                      {getVoucherJson && (
-                        <label className="flex cursor-pointer items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-violet-700 transition hover:bg-violet-100" title={t.sendJsonTitle}>
-                          <input type="checkbox" checked={attachJson} onChange={(e) => setAttachJson(e.target.checked)} className="accent-violet-600" /> {t.sendJson}
-                        </label>
-                      )}
-                      {docType && (
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-500">
-                          {t.typeLabel}: {t.docTypes[docType]}
-                        </span>
-                      )}
-                    </div>
-                  )}
+                {/* Input area — grows 19% when a file is attached */}
+                <div
+                  className="flex shrink-0 flex-col border-t border-black/10 px-3 py-2"
+                  style={{
+                    background: INPUT_BG,
+                    height: attachedFile ? "max(105px, 21.5%)" : CHAT_INPUT_H,
+                    minHeight: attachedFile ? "max(105px, 21.5%)" : CHAT_INPUT_H,
+                  }}
+                >
+                    {/* Chips row — attach/type chips only */}
+                    {(getBill || getVoucherJson || docType) && (
+                      <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
+                        {getBill && (
+                          <label className="flex cursor-pointer items-center gap-1 rounded-full border border-black/10 bg-white px-2 py-0.5 text-slate-600 transition hover:bg-slate-50">
+                            <input type="checkbox" checked={attachBill} onChange={(e) => setAttachBill(e.target.checked)} className="accent-[#0ea5e9]" /> {t.attachBill}
+                          </label>
+                        )}
+                        {getVoucherJson && (
+                          <label className="flex cursor-pointer items-center gap-1 rounded-full border border-black/10 bg-white px-2 py-0.5 text-slate-600 transition hover:bg-slate-50" title={t.sendJsonTitle}>
+                            <input type="checkbox" checked={attachJson} onChange={(e) => setAttachJson(e.target.checked)} className="accent-[#0ea5e9]" /> {t.sendJson}
+                          </label>
+                        )}
+                        {docType && (
+                          <span className="rounded-full border border-black/10 bg-white px-2 py-0.5 text-slate-500">
+                            {t.typeLabel}: {t.docTypes[docType]}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
-                  {/* File preview */}
-                  {attachedFile && (
-                    <div className="mb-2 flex items-center gap-2 rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs">
-                      {attachedFile.preview
-                        ? <img src={attachedFile.preview} alt="preview" className="h-9 w-9 rounded-lg object-cover shadow" />
-                        : <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-200"><Paperclip className="h-4 w-4 text-violet-600" /></div>
-                      }
-                      <span className="min-w-0 flex-1 truncate font-medium text-violet-700">{attachedFile.file.name}</span>
-                      <button type="button" onClick={clearAttachedFile} className="rounded-full p-0.5 text-violet-400 hover:bg-violet-200 hover:text-red-500">
-                        <X className="h-3.5 w-3.5" />
+                    <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={onFileChange} />
+
+                    {/* Textarea field — thumbnail sits INSIDE it */}
+                    <div data-pl-ai-composer-field className="relative flex min-h-0 flex-1 flex-col gap-1 rounded-2xl border border-black/10 bg-white px-1 py-1 shadow-sm">
+                      {/* Attach button — top-right of the field */}
+                      <button
+                        type="button"
+                        onClick={pickFile}
+                        disabled={sending}
+                        title="Attach image or PDF"
+                        className="absolute right-1.5 top-1.5 z-10 shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40"
+                      >
+                        <Paperclip className="h-4 w-4" />
                       </button>
+                      {/* File preview — thumbnail only (2x), inside the textarea, click to open */}
+                      {attachedFile && (
+                        <div className="group relative w-fit pl-1 pt-1">
+                          <button
+                            type="button"
+                            title="Open preview"
+                            onClick={() => {
+                              if (attachedFile.preview) window.open(attachedFile.preview, "_blank");
+                              else window.open(URL.createObjectURL(attachedFile.file), "_blank");
+                            }}
+                            className="block h-12 w-12 overflow-hidden rounded-lg border border-black/10 bg-white transition group-hover:ring-2 group-hover:ring-[#0ea5e9]/50"
+                          >
+                            {attachedFile.preview
+                              ? <img src={attachedFile.preview} alt="preview" className="h-full w-full object-cover" />
+                              : <span className="flex h-full w-full items-center justify-center bg-slate-100"><Paperclip className="h-5 w-5 text-slate-500" /></span>
+                            }
+                          </button>
+                          <button
+                            type="button"
+                            title="Remove attachment"
+                            aria-label="Remove attachment"
+                            onClick={clearAttachedFile}
+                            className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full border border-white bg-red-600 text-white opacity-0 shadow-md transition-opacity duration-100 hover:bg-red-700 focus:opacity-100 group-hover:opacity-100"
+                          >
+                            <X className="h-3 w-3" strokeWidth={3} />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Textarea + actions */}
+                      <div className="flex min-h-0 flex-1 items-end gap-1">
+                        <textarea
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
+                          rows={1}
+                          placeholder={t.placeholder}
+                          style={{ minHeight: "2rem", resize: "none" }}
+                          className="h-full flex-1 self-stretch bg-transparent py-1.5 pl-2 pr-10 text-[13px] text-slate-700 placeholder-slate-400 focus:outline-none"
+                        />
+                        {/* Model pill — same bottom row as Send, 40px to its left */}
+                        <div className="flex shrink-0 items-end self-stretch pr-[40px]">
+                          <div className="ml-auto flex items-center">
+                            <AiModelPicker
+                              current={activeModel}
+                              models={models}
+                              canChange={canPickModel}
+                              busy={modelBusy}
+                              error={modelErr}
+                              onPick={(id) => void switchModel(id)}
+                            />
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={(!input.trim() && !attachedFile) || sending}
+                          onClick={() => void send()}
+                          className="mb-0 flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-full p-3 text-white transition hover:brightness-110 disabled:opacity-40"
+                          style={{ background: ACCENT, boxSizing: "border-box" }}
+                        >
+                          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                        </button>
+                      </div>
                     </div>
-                  )}
-
-                  <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={onFileChange} />
-
-                  {/* Textarea row */}
-                  <div className="flex items-end gap-2 rounded-2xl border border-violet-200 bg-violet-50/50 px-1 py-1 shadow-sm focus-within:border-violet-400 focus-within:shadow-md focus-within:shadow-violet-100 transition-all">
-                    <button
-                      type="button"
-                      onClick={pickFile}
-                      disabled={sending}
-                      title="Attach image or PDF"
-                      className="shrink-0 rounded-xl p-2 text-violet-400 transition hover:bg-violet-100 hover:text-violet-600 disabled:opacity-40"
-                    >
-                      <Paperclip className="h-4 w-4" />
-                    </button>
-                    <textarea
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
-                      rows={1}
-                      placeholder={t.placeholder}
-                      style={{ minHeight: "2.5rem", maxHeight: "10vh", resize: "none" }}
-                      className="flex-1 bg-transparent py-2 text-sm text-slate-700 placeholder-slate-400 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      disabled={(!input.trim() && !attachedFile) || sending}
-                      onClick={() => void send()}
-                      className="shrink-0 rounded-xl bg-gradient-to-br from-indigo-500 via-violet-600 to-purple-600 p-2.5 text-white shadow-md shadow-violet-300 transition hover:shadow-lg hover:shadow-violet-300 disabled:opacity-40"
-                    >
-                      {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    </button>
-                  </div>
                 </div>
               </>
             ) : (
               /* ── Rules Tab ── */
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4" style={{ background: "linear-gradient(180deg, #f8f7ff 0%, #faf5ff 100%)" }}>
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4" style={{ background: CHAT_CANVAS_BG }}>
                 {rulesBusy === "load" && !rules ? (
-                  <div className="flex items-center gap-2 text-xs text-violet-500"><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t.loadingRules}</div>
+                  <div className="flex items-center gap-2 text-xs text-slate-500"><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t.loadingRules}</div>
                 ) : null}
                 {rulesMsg ? (
-                  <div className={cn("rounded-xl px-3 py-2.5 text-xs font-medium", rulesMsg.ok ? "bg-emerald-50 text-emerald-800 border border-emerald-100" : "bg-red-50 text-red-800 border border-red-100")}>
+                  <div className={cn("rounded-lg px-3 py-2.5 text-xs", rulesMsg.ok ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200")}>
                     {rulesMsg.text}
                   </div>
                 ) : null}
                 {rules ? (
                   <>
-                    {rules.folder ? <p className="break-all text-[11px] text-violet-400">{t.serverFolder}: <span className="font-mono">{rules.folder}</span></p> : null}
+                    {rules.folder ? <p className="break-all text-[11px] text-slate-400">{t.serverFolder}: <span className="font-mono">{rules.folder}</span></p> : null}
                     {rules.canEdit ? (
-                      <div className="rounded-2xl border border-violet-100 bg-white p-3 shadow-sm">
-                        <p className="mb-2 text-xs font-semibold text-violet-700">{t.addRule}</p>
+                      <div className="rounded-lg border border-black/10 bg-white p-3 shadow-sm">
+                        <p className="mb-2 text-xs font-medium text-slate-700">{t.addRule}</p>
                         <DocTypeSelect value={newType} onChange={setNewType} t={t} />
                         <textarea value={newText} onChange={(e) => setNewText(e.target.value)} rows={2} placeholder={t.addRulePlaceholder}
-                          className="mt-2 w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                          className="mt-2 w-full rounded-lg border border-black/10 bg-slate-50 px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#0ea5e9]" />
                         <button type="button" disabled={!newText.trim() || !!rulesBusy} onClick={() => void addManual()}
-                          className="mt-2 flex items-center gap-1 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-1.5 text-xs font-semibold text-white shadow disabled:opacity-50">
+                          className="mt-2 flex items-center gap-1 rounded-lg px-4 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                          style={{ background: ACCENT }}>
                           {rulesBusy === "add" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} {t.saveRule}
                         </button>
                       </div>
@@ -604,20 +731,20 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                       if (!g.rules.length && !g.error) return null;
                       return (
                         <div key={dt} className="space-y-1">
-                          <p className="text-xs font-bold text-violet-700">{t.docTypes[dt]} <span className="font-normal text-violet-400">({g.rules.length}{g.removed ? `, ${g.removed} ${t.removed}` : ""})</span></p>
+                          <p className="text-xs font-medium text-slate-700">{t.docTypes[dt]} <span className="font-normal text-slate-400">({g.rules.length}{g.removed ? `, ${g.removed} ${t.removed}` : ""})</span></p>
                           {g.error ? <p className="text-[11px] text-red-500">{g.error}</p> : null}
-                          <ul className="overflow-hidden rounded-xl border border-violet-100 bg-white shadow-sm">
+                          <ul className="overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm">
                             {g.rules.map((r) => (
-                              <li key={r.id} className="flex items-start gap-2 border-b border-violet-50 px-3 py-2 text-xs last:border-b-0">
+                              <li key={r.id} className="flex items-start gap-2 border-b border-black/5 px-3 py-2 text-xs last:border-b-0">
                                 <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-slate-600">{r.text}</span>
                                 {rules.canEdit ? (
                                   confirmRemove === r.id ? (
                                     <span className="flex shrink-0 gap-1">
-                                      <button type="button" disabled={!!rulesBusy} onClick={() => void remove(dt, r.id)} className="rounded-lg bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white disabled:opacity-50">{t.remove}</button>
-                                      <button type="button" onClick={() => setConfirmRemove(null)} className="rounded-lg border px-2 py-0.5 text-[10px]">{t.cancel}</button>
+                                      <button type="button" disabled={!!rulesBusy} onClick={() => void remove(dt, r.id)} className="rounded-md bg-red-500 px-2 py-0.5 text-[10px] font-medium text-white disabled:opacity-50">{t.remove}</button>
+                                      <button type="button" onClick={() => setConfirmRemove(null)} className="rounded-md border border-slate-300 px-2 py-0.5 text-[10px] text-slate-600">{t.cancel}</button>
                                     </span>
                                   ) : (
-                                    <button type="button" title={t.removeTitle} onClick={() => setConfirmRemove(r.id)} className="shrink-0 text-red-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                                    <button type="button" title={t.removeTitle} onClick={() => setConfirmRemove(r.id)} className="shrink-0 text-slate-400 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
                                   )
                                 ) : null}
                               </li>
@@ -631,7 +758,7 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                 ) : null}
                 {!rules && rulesBusy !== "load" ? (
                   <button type="button" onClick={() => void loadRules()}
-                    className="rounded-xl border border-violet-200 bg-white px-4 py-2 text-xs font-medium text-violet-600 shadow-sm hover:bg-violet-50">
+                    className="rounded-lg border border-black/10 bg-white px-4 py-2 text-xs font-medium text-slate-600 shadow-sm hover:bg-slate-50">
                     {t.loadRules}
                   </button>
                 ) : null}

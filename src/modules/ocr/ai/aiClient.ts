@@ -43,6 +43,25 @@ export type OcrAiStatus = {
   /** Admin only: some admin of this company has a Gemini key (the one the company uses). */
   companyHasKey?: boolean;
   canUse: boolean;
+  /** Budget shown on the chat ribbon (server env; daily quota resets at 00:00 UTC). */
+  limits?: OcrAiLimits;
+  /** Model this company actually uses (visible to every member). */
+  modelActive?: string;
+  /** Models offered in the chat model picker. */
+  models?: OcrAiModelOption[];
+  /** Only an admin may switch the model. */
+  canChangeModel?: boolean;
+};
+
+export type OcrAiModelOption = { id: string; label: string; note?: string };
+
+export type OcrAiLimits = {
+  requestsPerDay: number;
+  tokensPerDay: number;
+  ratePerMinUser: number;
+  ratePerMinCompany: number;
+  /** ISO instant of the next reset (UTC midnight). */
+  resetAtUtc: string;
 };
 
 export const OCR_AI_OFF: OcrAiStatus = { provider: "gemini", aiReady: false, serverOcrEnabled: false, isAdmin: false, companyEnabled: false, hasKey: false, canUse: false };
@@ -99,7 +118,42 @@ export function normalizeAiStatus(raw: unknown): OcrAiStatus {
   if (typeof o.keyLast4 === "string" && o.keyLast4) out.keyLast4 = o.keyLast4;
   if (typeof o.model === "string" && o.model) out.model = o.model;
   if (typeof o.companyHasKey === "boolean") out.companyHasKey = o.companyHasKey;
+  const lim = (o.limits && typeof o.limits === "object" ? o.limits : null) as Record<string, unknown> | null;
+  if (lim) {
+    const num = (v: unknown, d: number) => (Number.isFinite(Number(v)) ? Math.max(0, Math.round(Number(v))) : d);
+    const reset = typeof lim.resetAtUtc === "string" && !Number.isNaN(Date.parse(lim.resetAtUtc))
+      ? lim.resetAtUtc
+      : nextUtcMidnightIso();
+    out.limits = {
+      requestsPerDay: num(lim.requestsPerDay, 200),
+      tokensPerDay: num(lim.tokensPerDay, 1_000_000),
+      ratePerMinUser: num(lim.ratePerMinUser, 10),
+      ratePerMinCompany: num(lim.ratePerMinCompany, 15),
+      resetAtUtc: reset,
+    };
+  }
+  if (typeof o.modelActive === "string" && o.modelActive) out.modelActive = o.modelActive;
+  if (typeof o.canChangeModel === "boolean") out.canChangeModel = o.canChangeModel;
+  if (Array.isArray(o.models)) {
+    const list: OcrAiModelOption[] = [];
+    for (const raw of o.models) {
+      if (!raw || typeof raw !== "object") continue;
+      const m = raw as Record<string, unknown>;
+      if (typeof m.id !== "string" || !m.id.trim()) continue;
+      list.push({
+        id: m.id.trim(),
+        label: typeof m.label === "string" && m.label.trim() ? m.label.trim() : m.id.trim(),
+        note: typeof m.note === "string" ? m.note : undefined,
+      });
+    }
+    if (list.length) out.models = list;
+  }
   return out;
+}
+
+function nextUtcMidnightIso(): string {
+  const d = new Date();
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)).toISOString();
 }
 
 export async function getOcrAiStatus(companyId: string): Promise<OcrAiStatus> {
@@ -157,6 +211,15 @@ export async function saveOcrAiKey(key: string, opts: { model?: string } = {}): 
 export async function deleteOcrAiKey(): Promise<void> {
   await call<unknown>("/api/ocr-cloud/ai-key", { method: "DELETE", body: { provider: "gemini" } });
   invalidateOcrAiStatus();
+}
+
+/** Admin: switch the Gemini model on the saved key (no key re-paste). The server tests it first. */
+export async function setOcrAiModel(model: string): Promise<{ model: string }> {
+  const m = String(model || "").trim();
+  if (!m) throw new OcrAiError("unknown", "Model is empty");
+  const r = await call<{ model?: string }>("/api/ocr-cloud/ai-model", { method: "POST", body: { provider: "gemini", model: m }, timeoutMs: 40_000 });
+  invalidateOcrAiStatus();
+  return { model: r?.model || m };
 }
 
 export type OcrAiReadInput = {
