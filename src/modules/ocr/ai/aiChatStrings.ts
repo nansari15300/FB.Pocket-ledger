@@ -88,7 +88,7 @@ export type AiChatStrings = {
 };
 
 const EN: AiChatStrings = {
-  chatButton: "Tech",
+  chatButton: "Teach me",
   geminiTab: "AI (Gemini)",
   geminiTabSub: "Reads whole document",
   noKey: "No key",
@@ -119,7 +119,7 @@ const EN: AiChatStrings = {
   engAutoSub: "Online when available, else offline",
   addKeyAbove: "Add the key above",
   askAdmin: "Not set up: ask the admin",
-  openChatTeaching: "Tech",
+  openChatTeaching: "Teach me",
   title: "Tech — Gemini",
   intro: "Explain how a document must be read (which column is the quantity, who the party is, which date to use). Gemini suggests a rule; Save rule stores it on the server and every later AI scan of that type uses it. Each message costs tokens: only the last {n} messages are sent, a photo only when you attach it.",
   tabChat: "Chat",
@@ -164,7 +164,7 @@ const EN: AiChatStrings = {
 };
 
 const HI: AiChatStrings = {
-  chatButton: "Tech",
+  chatButton: "Teach me",
   geminiTab: "AI (Gemini)",
   geminiTabSub: "पूरा डॉक्यूमेंट पढ़ता है",
   noKey: "कोई key नहीं",
@@ -195,7 +195,7 @@ const HI: AiChatStrings = {
   engAutoSub: "online मिले तो online, वरना offline",
   addKeyAbove: "ऊपर key जोड़ें",
   askAdmin: "सेट नहीं है: एडमिन से पूछें",
-  openChatTeaching: "Tech",
+  openChatTeaching: "Teach me",
   title: "Tech — Gemini",
   intro: "बताइए डॉक्यूमेंट कैसे पढ़ना है (कौन-सा कॉलम मात्रा है, पार्टी कौन है, कौन-सी तारीख लेनी है)। Gemini एक नियम सुझाएगा; «नियम सहेजें» दबाने पर वह सर्वर पर सहेजा जाएगा और उस प्रकार के हर अगले AI स्कैन में लगेगा। हर संदेश पर टोकन लगते हैं: सिर्फ़ आख़िरी {n} संदेश भेजे जाते हैं, फ़ोटो तभी जब आप जोड़ें।",
   tabChat: "चैट",
@@ -240,7 +240,7 @@ const HI: AiChatStrings = {
 };
 
 const NE: AiChatStrings = {
-  chatButton: "Tech",
+  chatButton: "Teach me",
   geminiTab: "AI (Gemini)",
   geminiTabSub: "पूरा कागजात पढ्छ",
   noKey: "कुनै key छैन",
@@ -271,7 +271,7 @@ const NE: AiChatStrings = {
   engAutoSub: "online भए online, नभए offline",
   addKeyAbove: "माथि key थप्नुहोस्",
   askAdmin: "सेट छैन: एडमिनलाई सोध्नुहोस्",
-  openChatTeaching: "Tech",
+  openChatTeaching: "Teach me",
   title: "Tech — Gemini",
   intro: "कागजात कसरी पढ्ने भन्नुहोस् (कुन कोलम परिमाण हो, पार्टी को हो, कुन मिति लिने)। Gemini ले एउटा नियम सुझाउँछ; «नियम सुरक्षित गर्नुहोस्» थिच्दा सर्भरमा सुरक्षित हुन्छ र त्यस प्रकारको हरेक अर्को AI स्क्यानमा लाग्छ। हरेक सन्देशमा टोकन लाग्छ: अन्तिम {n} सन्देश मात्र पठाइन्छ, फोटो तपाईंले जोड्दा मात्र।",
   tabChat: "च्याट",
