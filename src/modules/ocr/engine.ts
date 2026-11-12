@@ -4,6 +4,9 @@
  * - Online (optional): Google Cloud Vision or Azure Image Analysis Read through the Pocket Ledger Server (`./cloud/ocrCloudClient`), only when the
  *   user's engine pref is "auto" or "online", the device is online, the file is an image/PDF page, and the server status says
  *   `canUse` (server OCR on + company enabled + user allowed + key saved). "online" never falls back to tesseract (throws instead). Any error / timeout in "auto" -> offline path.
+ * - AI (engine pref "ai"): Gemini reads the bill into our voucher JSON through the server (`./ai/aiClient`). Any miss
+ *   (not allowed / no key / error / timeout) falls back to online OCR (Google / Azure), then tesseract; the reason is kept
+ *   in `engineNote` (tooltip on the "Read by" badge + debug dump).
  * - Offline (default fallback): tesseract.js (own Web Worker) + locally bundled assets under `public/ocr/`
  *   (worker, wasm core, eng+nep traineddata). No CDN calls.
  */
@@ -16,6 +19,8 @@ import { resolvePdfJsWorkerHref } from "@/lib/pdfjsWorkerSrc";
 import { getOcrCloudStatusCached, ocrCloud, ocrCloudErrorCode } from "./cloud/ocrCloudClient";
 import { rawFromCloudText } from "./cloud/cloudRaw";
 import type { OcrEnginePref } from "./prefs";
+import { getOcrAiStatusCached, ocrAiErrorCode, ocrAiErrorText, ocrAiRead } from "./ai/aiClient";
+import { aiFallbackText } from "./ai/aiVoucher";
 
 type TWorker = {
   recognize: (img: unknown, opts?: unknown, output?: unknown) => Promise<{ data: any }>;
@@ -77,10 +82,14 @@ export type RunOcrOptions = {
   companyId?: string | null;
   /** "auto" (default) tries the saved online provider first when allowed; "offline" = tesseract only; "online" = cloud only, no tesseract fallback. */
   enginePref?: OcrEnginePref;
+  /** Our company (name + PAN) so the AI knows whether we are buyer or seller. */
+  ownCompany?: { name?: string | null; pan?: string | null };
 };
 
 const CLOUD_MAX_BYTES = 3.8 * 1024 * 1024;
 const CLOUD_TIMEOUT_MS = 30000;
+/** Gemini reads the whole bill and writes JSON (12 items ~ 10-40 s). Server waits up to 80 s. */
+const AI_TIMEOUT_MS = 90000;
 
 function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
   return new Promise((res) => canvas.toBlob((b) => res(b), "image/jpeg", quality));
@@ -140,9 +149,67 @@ async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promi
   }
 }
 
-/** Online OCR when allowed (see `tryCloudOcr`). "auto" falls back to tesseract on any miss; "online" never calls tesseract and throws instead. */
+/** AI OCR attempt (Gemini via server). Returns null (with the reason) when not allowed / failed, so the caller falls back. */
+async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<{ raw: OcrRawResult | null; note: string }> {
+  if (!opts.companyId) return { raw: null, note: "AI: no company" };
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return { raw: null, note: "AI: device offline" };
+  let status;
+  try {
+    status = await getOcrAiStatusCached(opts.companyId);
+  } catch (e) {
+    return { raw: null, note: `AI status unavailable (${ocrAiErrorText(e)})` };
+  }
+  if (!status.aiReady) return { raw: null, note: "AI OCR not installed on the server yet" };
+  if (!status.serverOcrEnabled) return { raw: null, note: "AI OCR off on server" };
+  if (!status.canUse) return { raw: null, note: !status.companyEnabled ? "AI: online OCR off for this company" : status.isAdmin && status.companyHasKey === false ? "AI: no Gemini key saved" : "AI: not allowed for this user or no Gemini key" };
+  const ac = new AbortController();
+  let t: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const img = await cloudJpeg(file, mime);
+    const res = await Promise.race([
+      ocrAiRead({ companyId: opts.companyId, imageBase64: img.b64, mimeType: "image/jpeg", ownCompany: opts.ownCompany, signal: ac.signal }),
+      new Promise<never>((_, rej) => { t = setTimeout(() => { ac.abort(); rej(new Error("AI OCR timed out")); }, AI_TIMEOUT_MS); }),
+    ]);
+    const d = res.data;
+    const text = d.raw_text.replace(/\s+/g, "").length >= 8 ? d.raw_text : aiFallbackText(d);
+    if (!text.trim() && !d.items.length && d.grand_total == null) return { raw: null, note: "AI returned nothing readable" };
+    const u = res.usage;
+    const base = rawFromCloudText(text, { engine: "gemini", note: `JPEG ${img.w}x${img.h} ${img.kb} KB`, pageWidth: img.w, pageHeight: img.h });
+    return {
+      raw: {
+        ...base,
+        engine: "gemini",
+        preprocess: "ai (gemini)",
+        passNote: `model ${res.model || "-"}, tokens in ${u.promptTokens} / out ${u.outputTokens}${u.thoughtsTokens ? ` / thinking ${u.thoughtsTokens}` : ""} / total ${u.totalTokens}`,
+        meanConfidence: d.uncertain_fields.length ? 80 : 95,
+        engineNote: `${res.model || "Gemini"} | tokens ${u.totalTokens} (in ${u.promptTokens}, out ${u.outputTokens}) | JPEG ${img.w}x${img.h} ${img.kb} KB`,
+        ai: res,
+      },
+      note: "",
+    };
+  } catch (e) {
+    const code = e instanceof Error && /timed out/i.test(e.message) ? "timeout" : ocrAiErrorCode(e);
+    if (process.env.NODE_ENV !== "production") console.warn("[OCR] AI OCR failed, falling back", code);
+    return { raw: null, note: `AI failed (${code === "timeout" ? "timed out" : ocrAiErrorText(e)})` };
+  } finally {
+    if (t) clearTimeout(t);
+  }
+}
+
+/**
+ * Online OCR when allowed (see `tryCloudOcr`). "auto" falls back to tesseract on any miss; "online" never calls tesseract and throws instead.
+ * "ai": Gemini first; on a miss online OCR (as "auto"), then tesseract, with the AI reason kept in `engineNote`.
+ */
 export async function runOcrOnFile(file: Blob, mime: string, opts: RunOcrOptions = {}): Promise<OcrRawResult> {
   const pref = opts.enginePref ?? "auto";
+  if (pref === "ai") {
+    const ai = await tryAiOcr(file, mime, opts).catch((e) => ({ raw: null, note: `AI failed (${ocrAiErrorText(e)})` }));
+    if (ai.raw) return ai.raw;
+    const cloud = await tryCloudOcr(file, mime, { ...opts, enginePref: "auto" }).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})` }));
+    if (cloud.raw) return { ...cloud.raw, engineNote: [ai.note, cloud.raw.engineNote].filter(Boolean).join(" -> ") };
+    const raw = await runTesseractOnFile(file, mime);
+    return { ...raw, engine: "tesseract", engineNote: [ai.note, cloud.note].filter(Boolean).join("; ") || undefined };
+  }
   const cloud = await tryCloudOcr(file, mime, opts).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})` }));
   if (cloud.raw) return cloud.raw;
   if (pref === "online") throw new Error(cloud.note || "Online OCR failed");

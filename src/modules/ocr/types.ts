@@ -60,10 +60,12 @@ export type OcrRawResult = {
   preprocess?: string;
   /** Standard vs enhanced retry pass summary (only when the retry ran). */
   passNote?: string;
-  /** Which OCR engine produced the text (debug dump "OCR engine: google|azure|tesseract"). */
-  engine?: "google" | "azure" | "tesseract";
+  /** Which OCR engine produced the text (debug dump "OCR engine: google|azure|tesseract|gemini"). */
+  engine?: "google" | "azure" | "tesseract" | "gemini";
   /** Why the online engine was skipped / failed (tesseract fallback), or other engine detail. */
   engineNote?: string;
+  /** AI (Gemini) structured answer for this document; `parseBill` maps it onto the bill and validates it. */
+  ai?: import("./ai/aiVoucher").OcrAiResult;
 };
 
 export type OcrPartyLike = {

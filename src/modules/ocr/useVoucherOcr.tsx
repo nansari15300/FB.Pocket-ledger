@@ -123,7 +123,7 @@ async function loadFirstFile(f: File | string, companyId?: string | null): Promi
 }
 
 /** Bump when parser/engine logic changes: shown in Show OCR text to prove the browser runs the new bundle. */
-export const OCR_BUILD = "2026-11-12.1";
+export const OCR_BUILD = "2026-11-12.2";
 
 const MONEY_TYPES = ["payment_out", "payment_in", "direct_expense", "direct_income", "contra"] as const;
 const ALL_TYPE_CHOICES = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"] as const;
@@ -212,7 +212,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   useEffect(() => { if (!apPrefOn) cancelAutoPostCountdown(); }, [apPrefOn, cancelAutoPostCountdown]);
   const [preReading, setPreReading] = useState<string | null>(null);
   const lastRawRef = useRef<OcrRawResult | null>(null);
-  const [readBy, setReadBy] = useState<{ engine: "google" | "azure" | "tesseract"; note?: string } | null>(null);
+  const [readBy, setReadBy] = useState<{ engine: "google" | "azure" | "tesseract" | "gemini"; note?: string } | null>(null);
   const inputNoteRef = useRef("handoff (no OCR)");
   const optsRef = useRef(o);
   optsRef.current = o;
@@ -383,10 +383,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           if (process.env.NODE_ENV !== "production") {
             console.info(`[OCR] input: ${orig ? "ORIGINAL upload" : "stored attachment (compressed)"} ${src.mime} ${(src.blob.size / 1024).toFixed(0)} KB`);
           }
-          raw = await runOcrOnFile(src.blob, src.mime, { companyId: opt.companyId, enginePref: getOcrPrefs().engine });
+          raw = await runOcrOnFile(src.blob, src.mime, { companyId: opt.companyId, enginePref: getOcrPrefs().engine, ownCompany: { name: ownRef.current.name, pan: ownRef.current.pan } });
         }
         lastRawRef.current = raw;
-        setReadBy({ engine: raw.engine === "google" || raw.engine === "azure" ? raw.engine : "tesseract", note: raw.engineNote });
+        setReadBy({ engine: raw.engine === "google" || raw.engine === "azure" || raw.engine === "gemini" ? raw.engine : "tesseract", note: raw.engineNote });
         const lowConf = raw.meanConfidence < 55;
         if (lowConf) {
           toast.message("OCR: image is not very clear", { id: tId, description: "Please confirm the highlighted fields. Nothing will be auto-saved.", duration: 5000, position: "top-right" });
@@ -1007,7 +1007,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         const devDump =
           true
             ? [
-                `--- OCR build ${OCR_BUILD} | ${raw.engine === "azure" ? "online Azure Read" : raw.engine === "google" ? "online Google Vision" : "engine PSM 6 + sparse 11"} | input ${inputNoteRef.current} ---`,
+                `--- OCR build ${OCR_BUILD} | ${raw.engine === "gemini" ? "AI (Gemini) voucher JSON" : raw.engine === "azure" ? "online Azure Read" : raw.engine === "google" ? "online Google Vision" : "engine PSM 6 + sparse 11"} | input ${inputNoteRef.current} ---`,
                 `OCR engine: ${raw.engine ?? "tesseract"}${raw.engineNote ? ` (${raw.engineNote})` : ""}`,
                 `--- dev dump: input ${inputNoteRef.current} | page ${raw.pageWidth ?? "?"}x${raw.pageHeight}px | ${raw.lines.length} lines ---`,
                 ...raw.lines.map((l, i) => `L${i} y=${Math.round(l.y ?? 0)}: ${l.words?.length ? l.words.map((w) => `${w.text}@${Math.round(w.x0)}`).join(" ") : `(no boxes) ${l.text}`}`),

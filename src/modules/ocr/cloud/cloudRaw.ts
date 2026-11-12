@@ -5,7 +5,7 @@
 import { joinSpacedOcrText } from "@/lib/ocr/devanagariJoin";
 import type { OcrRawLine, OcrRawResult, OcrWord } from "../types";
 
-export type OcrEngineName = "google" | "azure" | "tesseract";
+export type OcrEngineName = "google" | "azure" | "tesseract" | "gemini";
 
 export type RawFromCloudOpts = {
   engine: OcrEngineName;

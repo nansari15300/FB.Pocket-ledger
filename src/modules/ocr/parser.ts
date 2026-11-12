@@ -16,6 +16,7 @@ import { devanagariToRoman, nameSkeleton } from "./translit";
 import { isOcrSelectableParty } from "./types";
 import { ownNameRule, panConfusionDistance, textHasOwnName, textHasOwnPan, textHasOwnPanLoose } from "./ownCompany";
 import { canonicalOcrQty, descriptionHasLeakedQtyUnit, normalizeItemDescription, parseOcrQtyToken } from "./extras";
+import { applyAiToBill } from "./ai/aiVoucher";
 import type { OcrIdentifiers } from "./identifiers";
 import type {
   OcrItemLike,
@@ -1020,6 +1021,8 @@ export function parseBill(rawIn: OcrRawResult, ctx: ParseContext): OcrParsedBill
   out.docType = detectDocType(lines, ourSide, { ownBy, ownKnown, counterPan: pans.length > 0, items: !!items?.rows.length });
   if (out.docType) dbg(`Document type: ${out.docType.type} ${Math.round(out.docType.confidence * 100)}% (${out.docType.reason})`);
   else dbg(`Document type: not determined (${ownKnown ? "not an invoice/bill, or a bank slip / receipt without our company" : "no company name/PAN in the company profile"})`);
+  // AI (Gemini) answer: its fields override the text parse above (kept where Gemini left a field null), then our checks run on them
+  if (rawIn.ai) applyAiToBill(out, rawIn.ai, { parties: ctx.parties, items: ctx.items, ownPan: ctx.ownPan, ownName: ctx.ownName, normUnit });
   return out;
 }
 

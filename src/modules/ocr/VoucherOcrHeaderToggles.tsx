@@ -10,6 +10,7 @@ import { OCR_SETTINGS_DIALOG_CONTENT_CN, OCR_SETTINGS_DIALOG_OVERLAY_CN } from "
 import { AUTO_POST_SECONDS_MAX, AUTO_POST_SECONDS_MIN, clampAutoPostSeconds, setOcrPrefs, useOcrPrefs, type OcrConnectorStyle, type OcrEnginePref, type OcrNarrationStyle } from "./prefs";
 import { useOcrPlanAllowed } from "./gate";
 import { ocrCloud, ocrCloudErrorText, useOcrCloudStatus } from "./cloud/ocrCloudClient";
+import { deleteOcrAiKey, looksLikeGeminiKeyInput, ocrAiErrorText, saveOcrAiKey, useOcrAiStatus } from "./ai/aiClient";
 
 function Pill({ id, label, checked, onChange, title, extra }: { id: string; label: string; checked: boolean; onChange: (v: boolean) => void; title: string; extra?: React.ReactNode }) {
   return (
@@ -114,10 +115,126 @@ async function testImageBase64(): Promise<string> {
 }
 
 const GOOGLE_KEY_URL = "https://console.cloud.google.com/apis/credentials";
+const GEMINI_KEY_URL = "https://aistudio.google.com/apikey";
+
+/** AI (Gemini) key: admin saves / tests / deletes it on the server. Company on/off + shared users = the Online OCR switches. */
+function AiOcrSection({ companyId, open }: { companyId: string | null; open: boolean }) {
+  const { status, error, reload } = useOcrAiStatus(companyId, open);
+  const [keyDraft, setKeyDraft] = useState("");
+  const [modelDraft, setModelDraft] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const title = "AI (Gemini)";
+  const hint = "Gemini reads the whole bill (items, totals, party, dates) and the app checks every number before filling. Pick \"AI (Gemini)\" as the OCR engine above. Uses the same company switch and shared users as Online OCR.";
+  const act = async (name: string, fn: () => Promise<string | void>) => {
+    setBusy(name);
+    setMsg(null);
+    try {
+      const t = await fn();
+      if (t) setMsg({ ok: true, text: t });
+    } catch (e) {
+      setMsg({ ok: false, text: ocrAiErrorText(e) });
+    } finally {
+      setBusy(null);
+    }
+  };
+  if (!companyId) return null;
+  if (!status) {
+    return (
+      <Section title={title} hint={hint}>
+        <div className="flex items-start gap-2 rounded-md bg-slate-100 px-2 py-2 text-xs dark:bg-slate-800">
+          <span className="min-w-0 flex-1 break-words text-[11px] leading-snug">{error ? `AI status unavailable: ${error}` : "Checking AI status…"}</span>
+          {error ? <button type="button" onClick={reload} className="shrink-0 rounded-md border px-1.5 py-1 text-[10px] font-medium leading-none hover:bg-white dark:hover:bg-slate-700">Retry</button> : null}
+        </div>
+      </Section>
+    );
+  }
+  if (!status.aiReady) {
+    return <Section title={title} hint={hint}><p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">AI OCR is not installed on the server yet. The AI engine falls back to online / offline OCR.</p></Section>;
+  }
+  if (!status.isAdmin) {
+    return (
+      <Section title={title} hint={hint}>
+        <p className={cn("rounded-md px-3 py-2 text-xs", status.canUse ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300")}>
+          {status.canUse ? "AI is enabled for you in this company." : "AI is not enabled for you in this company. Ask the company admin."}
+        </p>
+      </Section>
+    );
+  }
+  const canSave = looksLikeGeminiKeyInput(keyDraft) && !busy;
+  return (
+    <Section
+      title={title}
+      hint={<>{hint} Only you (admin) can see or change the key. <a href={GEMINI_KEY_URL} target="_blank" rel="noreferrer" className="font-medium text-emerald-700 underline dark:text-emerald-400">Get a Gemini API key</a></>}
+    >
+      <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-700 dark:bg-slate-950/40">
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="font-medium">Gemini API key</span>
+          <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", status.hasKey ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300")}>
+            {status.hasKey ? `Gemini ••••${status.keyLast4 ?? ""}` : "No key"}
+          </span>
+        </div>
+        <div className="flex flex-col gap-1.5 sm:flex-row">
+          <input
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={status.hasKey ? "Paste a new key to replace" : "Paste Gemini API key (AIza… or AQ.…)"}
+            value={keyDraft}
+            onChange={(e) => setKeyDraft(e.target.value)}
+            className="h-9 min-w-0 flex-1 rounded-md border border-slate-300 bg-transparent px-2 text-sm dark:border-slate-600"
+          />
+          <button
+            type="button"
+            disabled={!canSave}
+            onClick={() => act("save", async () => {
+              const r = await saveOcrAiKey(keyDraft.trim(), { model: modelDraft.trim() || undefined });
+              setKeyDraft("");
+              return `Gemini key tested and saved on the server${r.model ? ` (model ${r.model})` : ""}.`;
+            })}
+            className="h-9 rounded-md bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {busy === "save" ? "Testing…" : "Save"}
+          </button>
+        </div>
+        <input
+          type="text"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={`Model (optional, now: ${status.model ?? "default"})`}
+          value={modelDraft}
+          onChange={(e) => setModelDraft(e.target.value)}
+          className="h-8 w-full rounded-md border border-slate-300 bg-transparent px-2 text-xs dark:border-slate-600"
+        />
+        <p className="text-[11px] text-muted-foreground">Save tests the key with Google first. Google bills by tokens (bill photo + our rules + the JSON answer); each scan is 1 request. The free tier has per-minute and per-day limits. The &quot;Read by&quot; badge tooltip shows the tokens used for each scan.</p>
+        {status.hasKey ? (
+          confirmDelete ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-900 dark:bg-red-950/40 dark:text-red-200">
+              <span className="flex-1">Delete the saved Gemini key? AI OCR stops for every company using it.</span>
+              <button type="button" disabled={!!busy} onClick={() => act("delete", async () => { await deleteOcrAiKey(); setConfirmDelete(false); return "Gemini key deleted."; })} className="rounded-md bg-red-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+                {busy === "delete" ? "Deleting…" : "Delete"}
+              </button>
+              <button type="button" onClick={() => setConfirmDelete(false)} className="rounded-md border px-2.5 py-1 text-[11px] font-medium">Cancel</button>
+            </div>
+          ) : (
+            <button type="button" disabled={!!busy} onClick={() => setConfirmDelete(true)} className="text-[11px] font-medium text-red-600 hover:underline disabled:opacity-50 dark:text-red-400">Delete Gemini key</button>
+          )
+        ) : null}
+        <p className={cn("text-[11px]", status.canUse ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground")}>
+          {status.canUse ? "Ready: AI OCR can be used in this company." : !status.companyEnabled ? "Turn on \"Enable online OCR for this company\" above to use AI here." : "Not ready yet: save a Gemini key."}
+        </p>
+      </div>
+      {msg ? <p className={cn("rounded-md px-3 py-2 text-xs", msg.ok ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" : "bg-red-50 text-red-900 dark:bg-red-950/40 dark:text-red-200")}>{msg.text}</p> : null}
+    </Section>
+  );
+}
 const GOOGLE_VISION_URL = "https://console.cloud.google.com/apis/library/vision.googleapis.com";
 
 function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string | null; open: boolean; enginePref: OcrEnginePref }) {
   const { status, error, loading, reload } = useOcrCloudStatus(companyId, open);
+  const aiKey = useOcrAiStatus(companyId, open).status;
+  const anyKey = !!(status?.hasKey || aiKey?.hasKey || aiKey?.companyHasKey);
   const [keyDraft, setKeyDraft] = useState("");
   const [provider, setProvider] = useState<"google" | "azure">("google");
   const [endpointDraft, setEndpointDraft] = useState("");
@@ -151,6 +268,7 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
         ["auto", "Auto", "Online OCR when available, else offline"],
         ["offline", "Offline only", "Always this device (tesseract)"],
         ["online", "Online only", "Always online OCR, no offline fallback"],
+        ["ai", "AI (Gemini)", "AI reads the bill; if it fails: online, then offline"],
       ] as const}
     />
   );
@@ -295,9 +413,9 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
       <SwitchRow
         id="pl-ocr-google-company"
         label="Enable online OCR for this company"
-        sub={status.hasKey ? undefined : "Save a key first"}
+        sub={anyKey ? "Also used by AI (Gemini)" : "Save a key first"}
         checked={status.companyEnabled}
-        disabled={!!busy || !status.hasKey}
+        disabled={!!busy || !anyKey}
         onChange={(v) => act("company", async () => { await ocrCloud.setCompany({ company: companyId, enabled: v }); })}
       />
       <div className="space-y-1.5">
@@ -382,6 +500,7 @@ function OcrSettingsGear({
         </DialogHeader>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-slate-50 px-3 py-3 dark:bg-slate-950/40">
           <GoogleOcrSection companyId={companyId} open={open} enginePref={enginePref} />
+          <AiOcrSection companyId={companyId} open={open} />
           <Section title="Field popups" hint="How a popup points at its field.">
             <RadioRow
               name="pl-ocr-connector"
@@ -442,7 +561,7 @@ export function VoucherOcrHeaderToggles({ className }: { className?: string }) {
             seconds={clampAutoPostSeconds(p.autoPostSeconds)}
             switchOn={p.autoSwitchVoucher !== false}
             switchSeconds={clampAutoPostSeconds(p.autoSwitchSeconds)}
-            enginePref={p.engine === "offline" || p.engine === "online" ? p.engine : "auto"}
+            enginePref={p.engine === "offline" || p.engine === "online" || p.engine === "ai" ? p.engine : "auto"}
             companyId={companyId ?? null}
           />
           <Pill

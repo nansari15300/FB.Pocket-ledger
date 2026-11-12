@@ -4,8 +4,11 @@ import { useSyncExternalStore } from "react";
 
 export type OcrConnectorStyle = "tail" | "line";
 export type OcrNarrationStyle = "full" | "short";
-/** auto = online OCR when allowed, else tesseract; offline = tesseract only; online = cloud only (no tesseract fallback). */
-export type OcrEnginePref = "auto" | "offline" | "online";
+/**
+ * auto = online OCR when allowed, else tesseract; offline = tesseract only; online = cloud only (no tesseract fallback);
+ * ai = AI (Gemini) reads the bill into voucher JSON; on failure falls back to online OCR, then tesseract (reason in tooltip).
+ */
+export type OcrEnginePref = "auto" | "offline" | "online" | "ai";
 export type OcrPrefs = {
   enabled: boolean;
   autoPost: boolean;
@@ -46,7 +49,7 @@ function normalize(raw: Partial<OcrPrefs> | null | undefined): OcrPrefs {
     ...(raw ?? {}),
     connectorStyle: raw?.connectorStyle === "line" ? "line" : "tail",
     narrationStyle: raw?.narrationStyle === "short" ? "short" : "full",
-    engine: raw?.engine === "offline" || raw?.engine === "online" ? raw.engine : "auto",
+    engine: raw?.engine === "offline" || raw?.engine === "online" || raw?.engine === "ai" ? raw.engine : "auto",
   };
 }
 

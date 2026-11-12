@@ -16,8 +16,9 @@ export function VoucherOcrRefreshBar({ ocr }: { ocr: VoucherOcrApi }) {
   if (!ocr.visible) return null;
   const d = ocr.debugInfo;
   const rb = ocr.readBy;
-  const readByLabel = rb ? (rb.engine === "google" ? "Google" : rb.engine === "azure" ? "Azure" : "Local") : null;
-  const readByNote = rb && rb.engine === "tesseract" && rb.note ? rb.note : undefined;
+  const readByLabel = rb ? (rb.engine === "gemini" ? "AI (Gemini)" : rb.engine === "google" ? "Google" : rb.engine === "azure" ? "Azure" : "Local") : null;
+  // Tooltip: why the engine fell back (e.g. "AI failed (...) -> Azure"), or AI model + tokens used
+  const readByNote = rb && rb.note ? rb.note : undefined;
   return (
     <div className="mb-1 flex flex-wrap items-center gap-2 px-[2px]" data-pl-ocr-refresh-bar="">
       {ocr.preReading ? (
