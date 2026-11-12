@@ -308,3 +308,45 @@ Fix (OCR build `2026-11-12.1`, सिर्फ़ client, server deploy ज़�
 - `useVoucherOcr.tsx`: dev dump में box न हो तो `(no boxes) <text>` दिखता है।
 - Test: `tests/ocr/pratikAzureText.selftest.mts` (असली raw text, 4 हालात: `[{text}]`, pages नहीं, खाली-text words, कम geometry) → 12 items + 84,343.30 / 10,964.63 / 95,307.93। सारे `tests/ocr/*.selftest.mts` pass, `npm run typecheck` pass, `tools/ocr-cloud-test.mjs` 55/55।
 - 43595 B geometry वाला lib deploy होने पर भी यह fallback नुकसान नहीं करता (geometry सही हो तो वही चलती है)।
+
+## AI (Gemini) OCR engine — server handoff — 2026-11-12
+
+अंसारी जी ने 2026-11-12 को OCR settings में «AI (Gemini)» engine जोड़ने की हाँ दी। Laptop पर code और tests तैयार हैं (OCR build `2026-11-12.2`)। **Commit नहीं हुआ; Server PC पर कुछ deploy नहीं हुआ।** Server Master deploy तभी करें जब अंसारी जी उनकी chat में हाँ कहें।
+
+### Server Master के लिए: कौन-सी फाइलें deploy करनी हैं
+
+Laptop: `C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\`। तीनों फाइलें एक साथ copy करें, फिर PocketBase restart:
+
+1. `pb_hooks/lib/ocr_cloud.js` — final size **65278 bytes** (पहले 43595 B)। Google Vision और Azure वैसे ही हैं; नया Gemini हिस्सा जुड़ा है।
+2. `pb_hooks/ocr_cloud.pb.js` — 4 नए routes: `POST/DELETE /api/ocr-cloud/ai-key`, `GET /api/ocr-cloud/ai-status`, `POST /api/ocr-cloud/ai-read`। पुराने 5 routes नहीं बदले।
+3. **नया migration** `pb_migrations/1763800000_ocr_ai_keys.js` — collection `user_ai_keys` (user, provider, key_enc [hidden], key_last4, model, enc_version; unique index user+provider; सारे API rules null)। Idempotent है। पुराने `1763200000` / `1763700000` नहीं बदले।
+
+Migration के बिना AI वाले endpoints साफ़ संदेश देंगे («AI OCR is not set up on the server (migration missing)»), और app Azure / Google पर चला जाएगा; online OCR पर कोई असर नहीं।
+
+### Gemini API key कहाँ रहती है
+
+- **कोई नई env या setting file नहीं चाहिए।** Key app से ही डाली जाती है और server पर collection `user_ai_keys` में encrypted रहती है, उसी master key से जिससे Vision / Azure key (`C:\PocketLedger-Secrets\vision-master-key.txt` या `PL_VISION_MASTER_KEY`)। Master key file का backup पहले की तरह ज़रूरी है; अब `user_ai_keys` में row हो तब भी master key दोबारा नहीं बनती।
+- User कैसे डालें: app → voucher → OCR settings (gear) → **«AI (Gemini)»** खंड → Gemini API key paste → **Save** (सिर्फ़ company admin/owner)। Save से पहले server key को Google पर जाँचता है (`GET models/{model}`, key सिर्फ़ `x-goog-api-key` header में)। Key format: `AIza…` (39 अक्षर) या नया AI Studio `AQ.…`; दूसरे साफ़ token भी live test से तय होते हैं। Key की value कभी app को वापस नहीं जाती, सिर्फ़ आख़िरी 4 अक्षर।
+- उसी खंड में वैकल्पिक **Model** field। Default `gemini-3.5-flash-lite` (`gemini-2.5-flash` deprecated है और नए users को नहीं मिलता)।
+- Company on/off और shared users वही हैं जो Online OCR के हैं (`company_ocr_access`)। «Enable online OCR for this company» अब सिर्फ़ Gemini key होने पर भी चालू हो सकता है।
+- फिर OCR engine में **«AI (Gemini)»** चुनें। AI fail हो (key नहीं, quota, timeout, server पुराना) तो app Azure / Google, फिर local OCR चलाता है; वजह «Read by» badge के tooltip में दिखती है।
+
+### वैकल्पिक env (ज़रूरी नहीं)
+
+- `PL_OCR_AI_ENABLED=0` — सिर्फ़ AI बंद (online OCR चालू रहे)। `PL_OCR_CLOUD_ENABLED=0` पहले की तरह सब बंद करता है।
+- `PL_OCR_GEMINI_MODEL` — server-wide default model (admin का saved model इससे ऊपर)।
+- `PL_OCR_GEMINI_RATE` (default 10/min/user), `PL_OCR_GEMINI_COMPANY_RATE` (default 15/min/company) — online OCR से अलग buckets।
+- `PL_OCR_GEMINI_TIMEOUT` (seconds, default 80)।
+- `PL_OCR_GEMINI_URL` — **सिर्फ़ tests के लिए**, production में सेट न करें।
+
+### कैसे test करें
+
+1. Laptop या Server PC पर: `node tools/ocr-cloud-test.mjs` (temp PocketBase 8099 + mock; असली keys नहीं) → **82/82 pass** (पहले के 55 + 27 Gemini cases: दोनों key formats, header key, Content-Length, schema, quota, गलत key, MAX_TOKENS, non-JSON, company off, kill switch, no leak)।
+2. Deploy के बाद app में: OCR settings → «AI (Gemini)» → key Save → «Ready» दिखे → engine «AI (Gemini)» → Pratik SI-00780 बिल पर Refresh OCR। Badge «Read by: AI (Gemini)», debug में `OCR build 2026-11-12.2` और `OCR pass: ai (gemini) | model …, tokens in … / out … / total …`; 12 items, 84,343.30 / 10,964.63 / 95,307.93।
+
+### Client (laptop, OCR Master)
+
+- `prefs.ts`: engine `"ai"`; settings radio «AI (Gemini)»।
+- नई `src/modules/ocr/ai/aiClient.ts` (server calls `pbRequest` से; `src/lib/ocrCloudApi.ts` नहीं छुआ) और `ai/aiVoucher.ts` (Gemini JSON → bill + जाँच: qty×rate=amount, sum=Sub Total, Sub Total−Discount=Taxable, VAT 13%, Taxable+VAT=Grand, PAN 9 अंक, AD↔BS मिति; null fields पर raw_text parser का cross-check; party/item मिलान मौजूदा helpers से)।
+- `engine.ts`: AI → online → local fallback; `parser.ts` अंत में AI answer लगाता है; badge «AI (Gemini)» + tokens tooltip; `OCR_BUILD = 2026-11-12.2`।
+- Tests: नया `tests/ocr/aiGeminiPratik.selftest.mts` (mock Pratik JSON सही; row 2 की गलत amount flag होती है; गलत VAT; 8-अंक PAN; null fields; unsure field; own company)। सारे `tests/ocr/*.selftest.mts` pass, `npm run typecheck` pass।

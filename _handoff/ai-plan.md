@@ -1,8 +1,8 @@
 # AI से वाउचर भरना और Chat — चर्चा का प्लान
 
-**स्थिति:** Draft v1, 2026-11-12, discussion के लिए; अभी कोई code नहीं
+**स्थिति:** Draft v2, 2026-11-12. Phase 2 का पहला हिस्सा (OCR settings में «AI (Gemini)» engine) अंसारी जी की हाँ के बाद laptop पर बन रहा है; बाकी चरण अभी चर्चा में हैं
 
-अंसारी जी, यह फाइल चर्चा के लिए है। जब तक आप हाँ न कहें, कोई code नहीं बदलेगा। आप जो नए नियम बताएँगे, वे नीचे खंड 3 «अंसारी जी के नियम» में अगले नंबर के साथ जुड़ते रहेंगे।
+अंसारी जी, यह फाइल चर्चा के लिए है। 2026-11-12 को आपने OCR settings में AI (Gemini) को engine के रूप में जोड़ने की हाँ दी; बाकी हर चरण के लिए अलग से आपकी हाँ चाहिए। आप जो नए नियम बताएँगे, वे नीचे खंड 3 «अंसारी जी के नियम» में अगले नंबर के साथ जुड़ते रहेंगे।
 
 ## 1. आज की समस्या
 
@@ -32,6 +32,8 @@ Pocket Ledger में बिल की फोटो से वाउचर भ
 2. API सिर्फ़ एक Gemini के लिए नहीं होगी। ज़रूरत हो तो और AI भी जुड़ सकें: ChatGPT (OpenAI), Grok (xAI), Claude (Anthropic), DeepSeek आदि।
 3. अगर हर AI के लिए अलग window बनानी पड़े, तो सब एक साथ नहीं बनेंगी। अगर एक ही window से हो सके, तो उसी में सबका option रहेगा (provider चुनने का dropdown)।
 4. Training वाला data server पर एक अलग folder में रहेगा, ताकि गलती से delete न हो, और folder खोलकर देखा जा सके।
+5. AI को OCR settings में ही एक engine के रूप में जोड़ना है (2026-11-12)। Server Master को भी बताना है।
+6. DeepSeek को plan में अगले AI के रूप में जोड़ो, पर अंसारी जी की इजाज़त के बिना app में नहीं लगेगा। आम नियम: कोई भी नया AI provider अंसारी जी की इजाज़त के बिना app या server में नहीं जुड़ेगा।
 
 ### इस काम पर लागू साझा नियम
 
@@ -139,17 +141,99 @@ GB तक जाने का अनुमान नहीं है। 100–20
 
 - बिल की image चुने हुए AI वाली कंपनी के सर्वर पर जाएगी (Google, OpenAI, xAI, Anthropic, DeepSeek — जो उस समय चुना हो)। यह बात settings में साफ़ दिखनी चाहिए।
 - Training के नियम और उदाहरण हमारे server पर रहेंगे; किसी AI कंपनी के पास «हमेशा के लिए सीखने» के लिए नहीं जाएँगे। फिर भी, जो image या text हम API पर भेजेंगे, वह उस कंपनी की नीति के अधीन होगा।
-- हर scan और हर chat message पर खर्च लगेगा। Chat में ज़्यादा text हो तो खर्च एक scan जितना, या उससे कुछ ज़्यादा, हो सकता है। **कीमतें इस प्लान में नहीं लिखी गईं;** provider चुनते समय जाँच करके बताई जाएँगी।
+- हर scan और हर chat message पर खर्च लगेगा। Chat में ज़्यादा text हो तो खर्च एक scan जितना, या उससे कुछ ज़्यादा, हो सकता है। Gemini और DeepSeek की कीमतें 2026-11-12 को official pages से जाँचकर खंड 10 में लिखी हैं; बाकी providers की कीमतें चुनते समय जाँची जाएँगी।
 
 ## 9. खुले सवाल
 
 1. Training folder का exact path क्या रहे? सुझाव: Server PC पर `C:\PocketLedger-AI-Training\`
 2. यह folder Git में जाए, या Git के बाहर रहे और laptop पर copy रखी जाए?
 3. Chat window का मालिक कौन होगा — OCR Master, कोई और bot, या बाद में तय?
-4. Phase 1 के बाद scan के लिए सबसे पहले कौन-सा AI जाँचें? (सुझाव: Gemini, पर क्षमता और कीमत जाँच के बाद ही तय।)
+4. ~~Phase 1 के बाद scan के लिए सबसे पहले कौन-सा AI जाँचें?~~ तय: Gemini, OCR settings में engine के रूप में (2026-11-12)। अगला उम्मीदवार DeepSeek, अंसारी जी की इजाज़त के बाद।
 5. Chat पहले सिर्फ़ कागज़ सिखाने के लिए रहे, या बाद में हिसाब के सवाल (जैसे «इस महीने Pratik से कितनी purchase हुई») भी पूछे जा सकें? दूसरे मामले में company का data AI को भेजने के नियम अलग से तय करने होंगे।
 6. हर कागज़-प्रकार की एक नमूना photo शुरू से रखें, या पहले सिर्फ़ text और उदाहरण?
 
+## 10. आज की चर्चा से तय बातें (2026-11-12)
+
+### 10.1 खर्च कैसे गिना जाता है
+
+- AI कंपनी न chat गिनती है न file, वह **tokens** गिनती है (text के छोटे टुकड़े, लगभग 3–4 अंग्रेज़ी अक्षर का एक token)।
+- एक voucher भरवाने में तीन चीज़ें गिनी जाती हैं: **input text** (हमारा निर्देश, JSON schema, उस कागज़ के सिखाए नियम), **बिल की photo** (photo भी tokens में बदलकर गिनी जाती है), और **output** (AI का लौटाया JSON)। Output की कीमत input से ज़्यादा होती है।
+- हर scan और chat का हर message **1 request** गिना जाता है। 10 सवाल = 10 requests।
+- Free plan में प्रति मिनट और प्रति दिन requests की सीमा होती है, और यह सीमा **chat और scan दोनों में साझा** होती है। Paid plan में सीमा काफ़ी ऊँची होती है।
+- हमारा app हर AI scan पर tokens दिखाता है: «Read by: AI (Gemini)» badge के tooltip और debug rule log में (`OCR pass: ai (gemini) | … tokens in / out / total`)।
+
+### 10.2 Chat का इतिहास (history)
+
+- Chat हमारे server पर save होगी, इसलिए app या phone को पुरानी बातें दोबारा नहीं भेजनी पड़ेंगी; app सिर्फ़ नया message भेजेगा।
+- पर AI (Gemini आदि) पिछली बात याद नहीं रखता (stateless)। हर नए message के साथ हमारे server को पूरी बातचीत (context) AI को दोबारा भेजनी पड़ती है: पहला message «hello»; दूसरे में «hello» + जवाब + नया सवाल; और आगे इसी तरह। इसलिए लंबी chat में हर message महँगा होता जाता है।
+- बचाव के तरीके: पुरानी बातों का छोटा सार (summary) भेजना; सिर्फ़ आख़िरी N (जैसे 10–20) messages भेजना; नए विषय के लिए «New chat» button; और provider की **context caching** सुविधा (बार-बार जाने वाला हिस्सा सस्ते दाम पर गिना जाता है, पर गिना ज़रूर जाता है)।
+
+### 10.3 Photo दोबारा न जाए
+
+- अगर photo chat के इतिहास में रहे, तो हर नए message के साथ वह भी दोबारा जाती है और उसके tokens फिर गिने जाते हैं।
+- नियम: photo सिर्फ़ उसी message में जाए जिसमें उसे पढ़वाना है। पढ़ने के बाद इतिहास में photo की जगह उससे निकला JSON रहे, जो बहुत हल्का है। «party बदल दो», «VAT हटाओ» जैसे आगे के messages में सिर्फ़ text जाएगा।
+- OCR scan में हर scan अलग request है; उसमें पुरानी chat नहीं जाती।
+
+### 10.4 Chat से voucher
+
+- आप chat में photo डालकर कहेंगे «यह voucher entry कर दो»। AI photo पढ़कर JSON लौटाएगा, और हमारा app उसी से New Trxn का form भरेगा।
+- AI ख़ुद app में कुछ save नहीं करेगा; form हमारा code भरेगा। Form भरने से पहले हमारी जाँच चलेगी (नीचे 10.6), और जो मेल न खाए वह highlight होगा।
+- आप form देखकर ख़ुद **Save** दबाएँगे। बिना देखे कभी auto-save नहीं होगा।
+- बाद में (वैकल्पिक, आपकी हाँ के बाद): जो voucher सारी जाँच में पूरी तरह पास हों, वे अपने आप **Draft** में जा सकें।
+
+### 10.5 Gallery से कई voucher एक साथ
+
+- Chat में: «Gallery की unassigned files पढ़कर voucher बना दो»। App हर file को **अलग request** के रूप में AI को भेजेगा (पुरानी chat साथ नहीं जाएगी)।
+- Free plan की प्रति मिनट सीमा के कारण files **कतार (queue)** में धीरे-धीरे जाएँगी।
+- नतीजे एक सूची में आएँगे; हर voucher के आगे लिखा होगा कि वह जाँच में **पास** हुआ या किस field में **शक** है। सही वालों को एक साथ **Save** या **Draft** किया जा सकेगा; शक वालों को खोलकर ठीक किया जाएगा।
+- Gallery वाला हिस्सा Gallery Master का है। Unassigned files की सूची लेने और voucher से जोड़ने के लिए उनसे तालमेल ज़रूरी है।
+
+### 10.6 JSON schema: ढाँचा पक्का, value नहीं
+
+- Request के साथ JSON schema भेजने पर जवाब हमेशा उसी ढाँचे में आता है (वही field नाम, number की जगह number)। यह हिस्सा भरोसेमंद है।
+- पर value के 100% सही होने की गारंटी नहीं (धुंधले बिल में 98.00 की जगह 96.00 पढ़ा जा सकता है)। इसलिए हमारी जाँच हमेशा रहेगी: `qty × rate = amount`; items का जोड़ = Sub Total; Sub Total − Discount = Taxable; Taxable × 13% = VAT; Taxable + VAT = Grand Total; PAN 9 अंक का (और हमारी company का PAN कभी party नहीं); AD date और BS मिति का मेल; party, account, item हमारी सूची में। जो मेल न खाए वह flag होगा और form में नहीं लिखा जाएगा।
+
+### 10.7 नियम अपने आप साथ जाएँगे
+
+AI को हर बार नियम चाहिए (उसे पिछली बात याद नहीं)। पर आपको हर message में नियम नहीं लिखने होंगे। हमारा server हर request के साथ अपने आप जोड़ेगा:
+
+- **हमेशा वाले नियम:** JSON schema, «QTY column लो, ALT QTY नहीं», «PAN 9 अंक», «VAT 13%», «date AD और BS दोनों», «पढ़ न सको तो null छोड़ो, अंदाज़ा मत लगाओ»।
+- **उस कागज़-प्रकार के सिखाए नियम** (Phase 3): सिर्फ़ तब, जब वही कागज़ पहचाना जाए।
+- **हमारी company की जानकारी:** नाम और PAN, ताकि AI समझे कि buyer हम हैं या seller।
+
+### 10.8 Gemini के तथ्य (ai.google.dev, 2026-11-12 को जाँचे)
+
+- `gemini-2.5-flash` अब deprecated है: AI Studio में नए users के लिए उपलब्ध नहीं, और 1 दिसंबर 2026 से उसकी requests `gemini-3.5-flash-lite` पर जाएँगी। इसलिए हमारा default model **`gemini-3.5-flash-lite`** है; admin OCR settings में model का नाम बदल सकता है।
+- `gemini-3.5-flash-lite` कीमत (paid tier, प्रति 1M tokens): input (text / image) $0.30, output $2.50। Free tier: मुफ़्त, पर कम rate limits।
+- अनुमान (नापा नहीं): एक बिल में input लगभग 1.5–3k tokens, output लगभग 1–2.5k tokens (items + पूरा raw text)। यानी लगभग $0.003–0.007 प्रति बिल (paid tier)। पहले सुझाव में लिखा $0.0002–0.0005 वाला आँकड़ा पुराने model का था; असली खर्च tooltip के tokens से देखा जा सकेगा।
+- Request: `POST /v1beta/models/{model}:generateContent`, key सिर्फ़ `x-goog-api-key` header में (URL में कभी नहीं), photo `inlineData` (base64 + mime type), `generationConfig.responseMimeType = application/json` + `responseJsonSchema`।
+
+### 10.9 DeepSeek (अगला उम्मीदवार; app में अभी नहीं)
+
+नियम 6 के अनुसार: plan में है, पर अंसारी जी की इजाज़त के बिना app या server में कोई code नहीं लगेगा। Official pricing page (api-docs.deepseek.com/quick_start/pricing, 2026-11-12 को जाँचा) के अनुसार:
+
+- Model `deepseek-flash` (DeepSeek-V4.1-Flash)। API OpenAI-format में है, base URL `https://api.deepseek.com`।
+- Vision (photo) और JSON output support करता है; 1M tokens का context।
+- कीमत प्रति 1M tokens: input (cache-miss) $0.15 off-peak / $0.30 peak; output $0.60 off-peak / $1.20 peak।
+- Peak समय: सोम–शुक्र 01:00–04:00 और 06:00–10:00 UTC, यानी नेपाल समय 06:45–09:45 और 11:45–15:45। बाकी समय (off-peak) आधी कीमत।
+- Free tier नहीं है: पहले पैसे top-up (prepaid) करने होते हैं; कभी-कभी «granted balance» मिलता है।
+- मोटा अनुमान (नापा नहीं): लगभग $0.001–0.002 प्रति बिल।
+
+### 10.10 कई keys के बारे में
+
+- एक ही Google project की कई keys उसी project का quota साझा करती हैं; इससे ज़्यादा usage नहीं मिलता।
+- सिर्फ़ free quota के लिए कई accounts बनाना provider की शर्तों (terms) के ख़िलाफ़ हो सकता है। **सुझाव नहीं।**
+- सुझाया तरीका: **अलग-अलग AI providers** की keys रखें, और एक की सीमा भर जाए तो app अपने आप दूसरे पर चला जाए (automatic failover)। आज भी AI fail हो तो app Azure / Google, फिर local OCR पर जाता है। ज़्यादा usage के लिए provider पर billing चालू करें।
+
+## 11. चरणों की स्थिति
+
+| चरण | स्थिति |
+|---|---|
+| Phase 1 — Chat window | शुरू नहीं हुआ (मालिक तय होना है) |
+| Phase 2 — AI से बिल scan (Gemini OCR engine) | **काम चल रहा है, 2026-11-12।** Laptop पर code और tests तैयार: OCR settings में «AI (Gemini)» engine, server `ocr_cloud.js` में Gemini, नया migration `1763800000_ocr_ai_keys.js`, हमारी जाँच, fallback (Azure / Google, फिर local)। Server PC पर deploy बाकी: Server Master करेंगी, उनकी chat में अंसारी जी की हाँ के बाद। Commit Git Master करेंगी। |
+| Phase 3 — हर कागज़-प्रकार को सिखाना | शुरू नहीं हुआ। Server में `hint` (सिखाए नियम) भेजने की जगह पहले से तैयार है। |
+| Phase 4 — और providers | DeepSeek अगला उम्मीदवार (खंड 10.9); अंसारी जी की इजाज़त के बिना कोई code नहीं। |
+
 ---
 
-अंसारी जी, यह Draft v1 है। नियम या चरण बदलने हों तो बताइए, इसी फाइल में जुड़ते या सुधरते रहेंगे। आपकी हाँ के बिना कोई code नहीं बदलेगा।
+अंसारी जी, यह Draft v2 है। नियम या चरण बदलने हों तो बताइए, इसी फाइल में जुड़ते या सुधरते रहेंगे। हर नए चरण से पहले आपकी हाँ ज़रूरी है।
