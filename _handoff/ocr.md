@@ -311,6 +311,8 @@ Fix (OCR build `2026-11-12.1`, सिर्फ़ client, server deploy ज़�
 
 ## AI (Gemini) OCR engine — server handoff — 2026-11-12
 
+> **Deployed:** Server Master ने 2026-11-12 को 10:19 NPT पर तीनों files deploy कीं (lib `ocr_cloud.js` 65278 B, router `ocr_cloud.pb.js` 1580 B, migration `1763800000_ocr_ai_keys.js` लागू, `user_ai_keys` collection मौजूद, health 200)। **बाकी:** अंसारी जी OCR settings → «AI (Gemini)» में key डालें और Pratik बिल पर test करें। नीचे का «deploy नहीं हुआ» वाला वाक्य deploy से पहले का है।
+
 अंसारी जी ने 2026-11-12 को OCR settings में «AI (Gemini)» engine जोड़ने की हाँ दी। Laptop पर code और tests तैयार हैं (OCR build `2026-11-12.2`)। **Commit नहीं हुआ; Server PC पर कुछ deploy नहीं हुआ।** Server Master deploy तभी करें जब अंसारी जी उनकी chat में हाँ कहें।
 
 ### Server Master के लिए: कौन-सी फाइलें deploy करनी हैं

@@ -1,6 +1,6 @@
 # AI से वाउचर भरना और Chat — चर्चा का प्लान
 
-**स्थिति:** Draft v2, 2026-11-12. Phase 2 का पहला हिस्सा (OCR settings में «AI (Gemini)» engine) अंसारी जी की हाँ के बाद laptop पर बन रहा है; बाकी चरण अभी चर्चा में हैं
+**स्थिति:** Draft v3, 2026-11-12. Phase 2 का पहला हिस्सा (OCR settings में «AI (Gemini)» engine) बन गया है और Server PC पर deploy हो गया (2026-11-12, 10:19 NPT)। अब अंसारी जी का key डालना और Pratik बिल पर test बाकी है; बाकी चरण अभी चर्चा में हैं
 
 अंसारी जी, यह फाइल चर्चा के लिए है। 2026-11-12 को आपने OCR settings में AI (Gemini) को engine के रूप में जोड़ने की हाँ दी; बाकी हर चरण के लिए अलग से आपकी हाँ चाहिए। आप जो नए नियम बताएँगे, वे नीचे खंड 3 «अंसारी जी के नियम» में अगले नंबर के साथ जुड़ते रहेंगे।
 
@@ -34,6 +34,7 @@ Pocket Ledger में बिल की फोटो से वाउचर भ
 4. Training वाला data server पर एक अलग folder में रहेगा, ताकि गलती से delete न हो, और folder खोलकर देखा जा सके।
 5. AI को OCR settings में ही एक engine के रूप में जोड़ना है (2026-11-12)। Server Master को भी बताना है।
 6. DeepSeek को plan में अगले AI के रूप में जोड़ो, पर अंसारी जी की इजाज़त के बिना app में नहीं लगेगा। आम नियम: कोई भी नया AI provider अंसारी जी की इजाज़त के बिना app या server में नहीं जुड़ेगा।
+7. OCR-AI का बाकी काम अब अंसारी जी से हर बार पूछे बिना आगे बढ़ सकता है (अंसारी जी, 2026-11-12)। नियम 6 वैसा ही रहेगा: नया AI provider जोड़ने से पहले इजाज़त ज़रूरी है।
 
 ### इस काम पर लागू साझा नियम
 
@@ -203,9 +204,12 @@ AI को हर बार नियम चाहिए (उसे पिछल�
 
 ### 10.8 Gemini के तथ्य (ai.google.dev, 2026-11-12 को जाँचे)
 
-- `gemini-2.5-flash` अब deprecated है: AI Studio में नए users के लिए उपलब्ध नहीं, और 1 दिसंबर 2026 से उसकी requests `gemini-3.5-flash-lite` पर जाएँगी। इसलिए हमारा default model **`gemini-3.5-flash-lite`** है; admin OCR settings में model का नाम बदल सकता है।
-- `gemini-3.5-flash-lite` कीमत (paid tier, प्रति 1M tokens): input (text / image) $0.30, output $2.50। Free tier: मुफ़्त, पर कम rate limits।
-- अनुमान (नापा नहीं): एक बिल में input लगभग 1.5–3k tokens, output लगभग 1–2.5k tokens (items + पूरा raw text)। यानी लगभग $0.003–0.007 प्रति बिल (paid tier)। पहले सुझाव में लिखा $0.0002–0.0005 वाला आँकड़ा पुराने model का था; असली खर्च tooltip के tokens से देखा जा सकेगा।
+- `gemini-2.5-flash` अब deprecated है: AI Studio में नए users के लिए उपलब्ध नहीं, और 1 दिसंबर 2026 से उसकी requests `gemini-3.5-flash-lite` पर, उसी की कीमतों पर, जाएँगी। अलग से सादा `gemini-3.5-flash` नाम का model नहीं है। इसलिए हमारा default model **`gemini-3.5-flash-lite`** है; admin OCR settings में model का नाम बदल सकता है।
+- `gemini-3.5-flash-lite` कीमत (official pricing page ai.google.dev/gemini-api/docs/pricing, 2026-11-12 को जाँचा):
+  - **Free tier:** input और output मुफ़्त, पर हर Google project पर rate limit। Data «used to improve our products: Yes», यानी Google भेजा गया data अपने products सुधारने में इस्तेमाल कर सकता है।
+  - **Paid tier (प्रति 1M tokens):** input (text / image) $0.30, output $2.50 (thinking tokens मिलाकर)। Data products सुधारने में इस्तेमाल नहीं होता।
+- अनुमान (नापा नहीं): लगभग **$0.002–0.003 प्रति बिल** (paid tier)। असली खर्च «Read by» tooltip और debug के tokens से देखा जा सकेगा।
+- **सुझाव:** test free tier पर करें। असली ग्राहकों के बिलों (PAN, रकम) के लिए billing चालू करें, ताकि data Google के product सुधार में न जाए।
 - Request: `POST /v1beta/models/{model}:generateContent`, key सिर्फ़ `x-goog-api-key` header में (URL में कभी नहीं), photo `inlineData` (base64 + mime type), `generationConfig.responseMimeType = application/json` + `responseJsonSchema`।
 
 ### 10.9 DeepSeek (अगला उम्मीदवार; app में अभी नहीं)
@@ -230,10 +234,10 @@ AI को हर बार नियम चाहिए (उसे पिछल�
 | चरण | स्थिति |
 |---|---|
 | Phase 1 — Chat window | शुरू नहीं हुआ (मालिक तय होना है) |
-| Phase 2 — AI से बिल scan (Gemini OCR engine) | **काम चल रहा है, 2026-11-12।** Laptop पर code और tests तैयार: OCR settings में «AI (Gemini)» engine, server `ocr_cloud.js` में Gemini, नया migration `1763800000_ocr_ai_keys.js`, हमारी जाँच, fallback (Azure / Google, फिर local)। Server PC पर deploy बाकी: Server Master करेंगी, उनकी chat में अंसारी जी की हाँ के बाद। Commit Git Master करेंगी। |
+| Phase 2 — AI से बिल scan (Gemini OCR engine) | **Code पूरा और Server PC पर deploy, 2026-11-12, 10:19 NPT।** OCR settings में «AI (Gemini)» engine, server `ocr_cloud.js` में Gemini, migration `1763800000_ocr_ai_keys.js` (collection `user_ai_keys` बनी), हमारी जाँच, fallback (Azure / Google, फिर local)। **बाकी:** अंसारी जी OCR settings में Gemini key डालें और Pratik बिल पर test करें। |
 | Phase 3 — हर कागज़-प्रकार को सिखाना | शुरू नहीं हुआ। Server में `hint` (सिखाए नियम) भेजने की जगह पहले से तैयार है। |
 | Phase 4 — और providers | DeepSeek अगला उम्मीदवार (खंड 10.9); अंसारी जी की इजाज़त के बिना कोई code नहीं। |
 
 ---
 
-अंसारी जी, यह Draft v2 है। नियम या चरण बदलने हों तो बताइए, इसी फाइल में जुड़ते या सुधरते रहेंगे। हर नए चरण से पहले आपकी हाँ ज़रूरी है।
+अंसारी जी, यह Draft v3 है। नियम या चरण बदलने हों तो बताइए, इसी फाइल में जुड़ते या सुधरते रहेंगे। OCR-AI का बाकी काम नियम 7 के अनुसार आगे बढ़ेगा; नया AI provider (नियम 6) आपकी इजाज़त से ही जुड़ेगा।
