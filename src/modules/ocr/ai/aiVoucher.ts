@@ -5,7 +5,9 @@
  *   qty x rate = amount (per item), sum(items) = Sub Total, Sub Total - Discount = Taxable, Taxable x VAT% = VAT,
  *   Taxable + VAT = Grand Total, PAN = 9 digits (never our own PAN), AD date agrees with the BS Miti.
  * A field is "fill" only when its checks pass; otherwise "flag" (shown in the bubbles / "OCR could not find" flow, not written).
- * Fields Gemini left null keep the text parser's value (cross-check on raw_text). Party / item matching uses the existing helpers.
+ * Gemini returns ONLY the voucher JSON (no transcription: saves output tokens). The text the classic parser and
+ * "Show OCR text" see is a compact summary built from that JSON (aiFallbackText); nothing is invented.
+ * Party fields are the counter-party only (aiCounterParty: buyer on our sale, seller on our purchase, never us).
  * Pure (no React / network) so the selftests can run it.
  */
 import { defaultVoucherDateWindow, resolveBillDate } from "@/lib/ocr/dates";
@@ -42,7 +44,6 @@ export type OcrAiVoucher = {
   vat_percent: number | null;
   vat_amount: number | null;
   grand_total: number | null;
-  raw_text: string;
   uncertain_fields: string[];
   notes: string | null;
 };
@@ -102,28 +103,87 @@ export function normalizeAiVoucher(raw: unknown): OcrAiVoucher {
     vat_percent: aiNum(o.vat_percent),
     vat_amount: aiNum(o.vat_amount),
     grand_total: aiNum(o.grand_total),
-    raw_text: typeof o.raw_text === "string" ? o.raw_text : "",
-    uncertain_fields: Array.isArray(o.uncertain_fields) ? o.uncertain_fields.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 50) : [],
+    uncertain_fields: Array.isArray(o.uncertain_fields) ? o.uncertain_fields.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 12) : [],
     notes: str(o.notes),
   };
 }
 
-/** Plain text for the raw-text box / text parser when Gemini's raw_text is empty. */
+/**
+ * Compact text built from the AI JSON: "Show OCR text" and the lines the classic parser reads (labels it knows:
+ * INVOICE NO. / INVOICE DATE / INVOICE MITI / PAN NO. / SUB TOTAL ...). Every value comes from the JSON.
+ */
 export function aiFallbackText(d: OcrAiVoucher): string {
   const L: string[] = [];
-  if (d.party_name) L.push(d.party_name);
-  if (d.party_address) L.push(d.party_address);
+  const side = d.our_company_role === "seller" ? "BUYER" : d.our_company_role === "buyer" ? "SELLER" : "PARTY";
+  if (d.party_name) L.push(`${side} NAME : ${d.party_name}`);
+  if (d.party_address) L.push(`ADDRESS : ${d.party_address}`);
+  if (d.party_phone) L.push(`PHONE : ${d.party_phone}`);
   if (d.party_pan) L.push(`PAN NO. : ${d.party_pan}`);
   if (d.invoice_no) L.push(`INVOICE NO. : ${d.invoice_no}`);
-  if (d.date_ad) L.push(`INVOICE DATE : ${d.date_ad}`);
-  if (d.date_bs) L.push(`INVOICE MITI : ${d.date_bs}`);
-  for (const it of d.items) L.push([it.sn, it.description, it.qty, it.unit, it.rate, it.amount].filter((x) => x != null && x !== "").join(" "));
+  const ad = toDmy(d.date_ad);
+  const bs = toDmy(d.date_bs);
+  if (ad) L.push(`INVOICE DATE : ${ad}`);
+  if (bs) L.push(`INVOICE MITI : ${bs}`);
+  if (d.payment_mode) L.push(`MODE OF PAYMENT : ${d.payment_mode}`);
+  if (d.items.length) L.push("S.N | PARTICULARS | QTY | RATE | AMOUNT");
+  d.items.forEach((it, i) => {
+    const name = [it.description, it.hs_code ? `(HS ${it.hs_code})` : ""].filter(Boolean).join(" ");
+    const qty = [it.qty, it.unit].filter((x) => x != null && x !== "").join(" ");
+    L.push([`${it.sn ?? i + 1}.`, name, qty || "-", it.rate ?? "-", it.amount ?? "-"].join(" | "));
+  });
   if (d.subtotal != null) L.push(`SUB TOTAL ${d.subtotal.toFixed(2)}`);
   if (d.discount != null) L.push(`DISCOUNT ${d.discount.toFixed(2)}`);
   if (d.taxable != null) L.push(`TAXABLE AMOUNT ${d.taxable.toFixed(2)}`);
   if (d.vat_amount != null) L.push(`VAT ${d.vat_percent ?? 13}% ${d.vat_amount.toFixed(2)}`);
   if (d.grand_total != null) L.push(`GRAND TOTAL ${d.grand_total.toFixed(2)}`);
   return L.join("\n");
+}
+
+export type AiCounterParty = {
+  /** Counter-party name (null when missing or when Gemini returned our own company). */
+  name: string | null;
+  /** 9-digit counter-party PAN (never ours). */
+  pan: string | null;
+  /** PAN Gemini read that is not 9 digits (flag only). */
+  badPan: string | null;
+  ownPan: boolean;
+  ownName: boolean;
+  address: string | null;
+  phones: string[];
+};
+
+/** "00977-25-581953" -> "025-581953", "+977 9812345678" -> "9812345678" (shapes the text parser keeps). */
+function aiPhone(raw: string): string | null {
+  let t = String(raw ?? "").replace(/\D/g, "");
+  if (/^(00)?977/.test(t) && t.length > 10) t = t.replace(/^(00)?977/, "");
+  if (/^9[678]\d{8}$/.test(t)) return t;
+  if (t.length < 7 || t.length > 11) return null;
+  if (!t.startsWith("0")) t = "0" + t;
+  const m = t.match(/^(0\d{1,2})(\d{6,7})$/);
+  return m ? `${m[1]}-${m[2]}` : t;
+}
+
+/**
+ * The other party as Gemini read it: the buyer on our sale, the seller on our purchase. Our own company (by PAN or
+ * name) is never returned as the party. Used by the parser's party match and the "Create new party" prefill.
+ */
+export function aiCounterParty(d: OcrAiVoucher, ownPan?: string | null, ownName?: string | null): AiCounterParty {
+  const own = String(ownPan ?? "").replace(/\D/g, "");
+  const ownKey = (ownName ? normalizeName(ownName) : "").split(" ").filter(Boolean).slice(0, 3).join(" ");
+  const panDigits = (d.party_pan ?? "").replace(/\D/g, "");
+  const isOwnPan = !!own && panDigits === own;
+  const ownByName = !!d.party_name && ownKey.length >= 4 && normalizeName(d.party_name).includes(ownKey);
+  const phones: string[] = [];
+  if (!ownByName) for (const p of (d.party_phone ?? "").split(/[\/,;]| {2,}/)) { const t = aiPhone(p); if (t && !phones.includes(t)) phones.push(t); }
+  return {
+    name: d.party_name && !ownByName ? d.party_name : null,
+    pan: !isOwnPan && panDigits.length === 9 ? panDigits : null,
+    badPan: d.party_pan && !isOwnPan && panDigits.length !== 9 ? panDigits || d.party_pan : null,
+    ownPan: isOwnPan,
+    ownName: ownByName,
+    address: ownByName ? null : d.party_address,
+    phones,
+  };
 }
 
 export type AiApplyContext = {
@@ -156,8 +216,6 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
   const unsure = new Set(d.uncertain_fields.map((x) => x.toLowerCase().replace(/\s+/g, "")));
   const isUnsure = (...keys: string[]) => keys.some((k) => unsure.has(k));
   const unsureNote = "AI was not sure - please confirm";
-  const own = String(ctx.ownPan ?? "").replace(/\D/g, "");
-  const ownN = ctx.ownName ? normalizeName(ctx.ownName) : "";
   const u = ai.usage;
   dbg(`AI (gemini): model ${ai.model || "-"}; tokens in ${u.promptTokens} / out ${u.outputTokens}${u.thoughtsTokens ? ` / thinking ${u.thoughtsTokens}` : ""} / total ${u.totalTokens}`);
 
@@ -171,39 +229,40 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
     dbg(`AI Bill No: ${d.invoice_no} (${bill.billNo.status})`);
   }
 
-  /* ---- Date: AD must agree with the BS Miti (same resolver as printed bills) ---- */
+  /* ---- Date: AD must agree with the BS Miti (same resolver as printed bills).
+   * A missing or unsure AD date never blocks a clear BS Miti (many Nepali bills print only the Miti). ---- */
   if (d.date_ad || d.date_bs) {
-    const ad = toDmy(d.date_ad);
     const bs = toDmy(d.date_bs);
+    const bsUnsure = isUnsure("date_bs", "date", "miti");
+    const adUnsure = isUnsure("date_ad");
+    const adDropped = !!d.date_ad && adUnsure && !!bs && !bsUnsure;
+    const ad = adDropped ? null : toDmy(d.date_ad);
     const text = [ad ? `INVOICE DATE : ${ad}` : "", bs ? `INVOICE MITI : ${bs}` : ""].filter(Boolean).join("\n");
     const res = text ? resolveBillDate(text, defaultVoucherDateWindow()) : null;
     if (res) {
-      const st = isUnsure("date_ad", "date_bs", "date") && res.status === "fill" ? "flag" : res.status;
+      const unsureHit = (bsUnsure && !!bs) || (adUnsure && !!ad);
+      const st = unsureHit && res.status === "fill" ? "flag" : res.status;
       bill.date = f(res.date, st, res.confidence, st !== res.status ? unsureNote : res.note);
-      dbg(`AI Date: ${bill.date.status} ${ymd(res.date)} (AD ${d.date_ad ?? "-"} / BS ${d.date_bs ?? "-"}${res.note ? `; ${res.note}` : ""})`);
+      dbg(`AI Date: ${bill.date.status} ${ymd(res.date)} (AD ${d.date_ad ?? "-"}${adDropped ? " (unsure - BS Miti used)" : ""} / BS ${d.date_bs ?? "-"}${res.note ? `; ${res.note}` : ""})`);
     } else {
       dbg(`AI Date: AD ${d.date_ad ?? "-"} / BS ${d.date_bs ?? "-"} not usable - kept text parser date`);
     }
   }
 
-  /* ---- PAN (9 digits, never ours) + identifiers ---- */
+  /* ---- PAN (9 digits, never ours) + identifiers: counter-party only ---- */
+  const cp = aiCounterParty(d, ctx.ownPan, ctx.ownName);
   const panDigits = (d.party_pan ?? "").replace(/\D/g, "");
-  let pan: string | null = null;
-  if (d.party_pan) {
-    if (panDigits === own && own) dbg(`AI PAN ${panDigits} is our own company PAN - ignored`);
-    else if (panDigits.length !== 9) { bill.pan = f(panDigits || d.party_pan, "flag", 0.5, "PAN must be 9 digits"); dbg(`AI PAN "${d.party_pan}" is not 9 digits - flagged`); }
-    else { pan = panDigits; bill.pan = f(pan, isUnsure("party_pan") ? "flag" : "fill", isUnsure("party_pan") ? 0.6 : 0.97, isUnsure("party_pan") ? unsureNote : undefined); }
-  }
-  const ownByName = !!d.party_name && ownN.length >= 4 && normalizeName(d.party_name).includes(ownN.split(" ").slice(0, 3).join(" "));
-  if (d.party_name && !ownByName) bill.partyName = f(d.party_name, "flag", 0.9);
+  const pan = cp.pan;
+  if (cp.ownPan) dbg(`AI PAN ${panDigits} is our own company PAN - ignored`);
+  else if (cp.badPan) { bill.pan = f(cp.badPan, "flag", 0.5, "PAN must be 9 digits"); dbg(`AI PAN "${d.party_pan}" is not 9 digits - flagged`); }
+  else if (pan) bill.pan = f(pan, isUnsure("party_pan") ? "flag" : "fill", isUnsure("party_pan") ? 0.6 : 0.97, isUnsure("party_pan") ? unsureNote : undefined);
+  const ownByName = cp.ownName;
+  if (cp.name) bill.partyName = f(cp.name, "flag", 0.9);
   else if (ownByName) dbg(`AI party name "${d.party_name}" is our own company - ignored`);
   const ids = bill.identifiers ?? { phones: [], emails: [], bankAccountNos: [] };
   if (pan) ids.pan = pan;
-  if (d.party_address) ids.address = d.party_address;
-  for (const p of (d.party_phone ?? "").split(/[\/,;]| {2,}/)) {
-    const t = p.replace(/[^\d+-]/g, "");
-    if (t.replace(/\D/g, "").length >= 7 && !ids.phones.includes(t)) ids.phones.push(t);
-  }
+  if (cp.address) ids.address = cp.address;
+  for (const t of cp.phones) if (!ids.phones.includes(t)) ids.phones.push(t);
   if (d.payment_mode) bill.paymentMode = ids.paymentMode = d.payment_mode;
   bill.identifiers = ids;
 
@@ -218,8 +277,8 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
       dbg(`AI Party: "${hits[0].name}" by PAN ${pan}`);
     } else if (hits.length > 1) bill.partyId = f("", "flag", 0.5, "Several parties share this PAN");
   }
-  if (bill.partyId?.status !== "fill" && d.party_name && !ownByName) {
-    const best = bestUniqueMatch(normalizeName(d.party_name), pool, (p) => namesOf(p).map(normalizeName), 0.95, 0.1);
+  if (bill.partyId?.status !== "fill" && cp.name) {
+    const best = bestUniqueMatch(normalizeName(cp.name), pool, (p) => namesOf(p).map(normalizeName), 0.95, 0.1);
     if (best) { bill.partyId = f(best.item.id, "fill", best.score); dbg(`AI Party: "${best.item.name}" by name (${Math.round(best.score * 100)}%)`); }
   }
 
@@ -303,10 +362,11 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
     : d.doc_type === "receipt" ? "payment_in" : d.doc_type === "payment" ? "payment_out"
     : d.doc_type === "purchase" || d.doc_type === "expense" ? "purchase" : d.doc_type === "sale" ? "sale" : null;
   if (aiType) {
+    // The text rules only saw the summary built from this same answer, so the AI's role decides.
     const cur = bill.docType;
-    if (!cur || cur.confidence < 0.9) bill.docType = { type: aiType, confidence: cur?.type === aiType ? 0.97 : 0.9, reason: `AI: ${d.doc_type ?? "-"}, our company = ${d.our_company_role ?? "-"}` };
-    else if (cur.type === aiType) cur.confidence = Math.max(cur.confidence, 0.97);
-    else dbg(`AI document type ${aiType} disagrees with text rules (${cur.type}) - kept ${cur.type}`);
+    const conf = d.our_company_role === "buyer" || d.our_company_role === "seller" ? 0.95 : 0.9;
+    if (cur && cur.type !== aiType) dbg(`AI document type ${aiType} replaces text rule guess (${cur.type})`);
+    bill.docType = { type: aiType, confidence: cur?.type === aiType ? Math.max(cur.confidence, conf) : conf, reason: `AI: ${d.doc_type ?? "-"}, our company = ${d.our_company_role ?? "-"}` };
   }
   if (d.notes) dbg(`AI note: ${d.notes.slice(0, 200)}`);
   if (d.uncertain_fields.length) dbg(`AI unsure about: ${d.uncertain_fields.slice(0, 12).join(", ")}`);

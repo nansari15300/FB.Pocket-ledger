@@ -171,7 +171,8 @@ async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<
       new Promise<never>((_, rej) => { t = setTimeout(() => { ac.abort(); rej(new Error("AI OCR timed out")); }, AI_TIMEOUT_MS); }),
     ]);
     const d = res.data;
-    const text = d.raw_text.replace(/\s+/g, "").length >= 8 ? d.raw_text : aiFallbackText(d);
+    // Gemini returns only the voucher JSON (no transcription); parser + "Show OCR text" get a compact summary of it
+    const text = aiFallbackText(d);
     if (!text.trim() && !d.items.length && d.grand_total == null) return { raw: null, note: "AI returned nothing readable" };
     const u = res.usage;
     const base = rawFromCloudText(text, { engine: "gemini", note: `JPEG ${img.w}x${img.h} ${img.kb} KB`, pageWidth: img.w, pageHeight: img.h });

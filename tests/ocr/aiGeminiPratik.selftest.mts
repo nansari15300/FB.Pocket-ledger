@@ -2,11 +2,13 @@
  * AI (Gemini) engine: the server returns our voucher JSON (structured output). The client maps it onto the bill
  * and re-checks every value (qty x rate = amount, sum = Sub Total, Sub Total - Discount = Taxable, VAT 13%,
  * Taxable + VAT = Grand, PAN 9 digits, AD date vs BS Miti). Mocked answer for Pratik SI-00780 (no network).
+ * Build 2026-11-12.3: Gemini returns JSON only (no raw_text); the parser reads a summary built from the JSON; the AI
+ * counter-party drives the party match; a clear BS Miti fills even when the AD date is missing / unsure.
  * Run: npx tsx tests/ocr/aiGeminiPratik.selftest.mts
  */
 import { parseBill } from "../../src/modules/ocr/parser";
 import { rawFromCloudText } from "../../src/modules/ocr/cloud/cloudRaw";
-import { normalizeAiVoucher, type OcrAiResult } from "../../src/modules/ocr/ai/aiVoucher";
+import { aiCounterParty, aiFallbackText, normalizeAiVoucher, type OcrAiResult } from "../../src/modules/ocr/ai/aiVoucher";
 import type { OcrRawResult } from "../../src/modules/ocr/types";
 
 let fail = 0;
@@ -33,28 +35,6 @@ const ITEMS: [string, string | null, number, string, number, number][] = [
   ["WELDING ROD 3.2MM", "8311", 4, "PKT", 686, 2744],
 ];
 
-const RAW_TEXT = [
-  "PRATIK TRADE CENTER PVT.LTD.",
-  "ITAHARI-5, SUNSARI, NEPAL",
-  "PHONE NO. : 00977-25-581953 / 00977-25-586624",
-  "PAN NO. : 619727215",
-  "INVOICE",
-  "CUSTOMER NAME : NEW PARSA ENGINEERING WORKSHOP",
-  "INVOICE NO. : SI-00780",
-  "ADDRESS : INARUWA-6,HALESI CHOWK SUNSARI",
-  "INVOICE DATE : 12/08/2026",
-  "PAN NUMBER : 303687786",
-  "INVOICE MITI : 27/04/2083",
-  "MODE OF PAYMENT : Credit",
-  "S.N HS CODE PARTICULARS ALT QTY QTY UOM RATE AMOUNT",
-  ...ITEMS.map(([d, hs, q, u, r, a], i) => `${i + 1} ${hs ?? ""} ${d} 1.000 PCS ${q.toFixed(3)} ${u} ${r.toFixed(2)} ${a.toLocaleString("en-US", { minimumFractionDigits: 2 })}`.replace(/\s+/g, " ")),
-  "SUB TOTAL 84,343.30",
-  "DISCOUNT 0.00",
-  "TAXABLE AMOUNT 84,343.30",
-  "VAT 13% 10,964.63",
-  "GRAND TOTAL 95,307.93",
-].join("\n");
-
 function gemini(): Record<string, unknown> {
   return {
     doc_type: "purchase",
@@ -74,7 +54,6 @@ function gemini(): Record<string, unknown> {
     vat_percent: 13,
     vat_amount: 10964.63,
     grand_total: 95307.93,
-    raw_text: RAW_TEXT,
     uncertain_fields: [],
     notes: null,
   };
@@ -94,11 +73,11 @@ function rawFor(data: Record<string, unknown>): OcrRawResult {
     data: normalizeAiVoucher(data),
     usage: { promptTokens: 1810, outputTokens: 1240, thoughtsTokens: 0, totalTokens: 3050 },
   };
-  const base = rawFromCloudText(ai.data.raw_text, { engine: "gemini", pageWidth: 1364, pageHeight: 1766 });
+  const base = rawFromCloudText(aiFallbackText(ai.data), { engine: "gemini", pageWidth: 1364, pageHeight: 1766 });
   return { ...base, engine: "gemini", preprocess: "ai (gemini)", passNote: "model gemini-3.5-flash-lite, tokens in 1810 / out 1240 / total 3050", ai };
 }
-const parse = (data: Record<string, unknown>) =>
-  parseBill(rawFor(data), { kind: "purchase", parties: PARTIES, items: [], ownPan: PROFILE.pan, ownName: PROFILE.name });
+const parse = (data: Record<string, unknown>, kind: "purchase" | "sale" = "purchase") =>
+  parseBill(rawFor(data), { kind, parties: PARTIES, items: [], ownPan: PROFILE.pan, ownName: PROFILE.name });
 const ymd = (d?: Date) => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : "-");
 
 /* ---- 1. clean answer: everything fills ---- */
@@ -161,8 +140,8 @@ console.log("\n== PAN with 8 digits");
   ok(bill.debug?.some((d) => /PAN 9 digits=false/.test(d)) === true, "rule log: PAN 9 digits=false", bill.debug);
 }
 
-/* ---- 5. Gemini left fields null -> the text parser on raw_text fills them (cross-check) ---- */
-console.log("\n== Gemini null invoice_no / dates (text parser cross-check)");
+/* ---- 5. Gemini left fields null -> nothing invented (no transcription to fall back on) ---- */
+console.log("\n== Gemini null invoice_no / dates");
 {
   const g = gemini();
   g.invoice_no = null;
@@ -170,11 +149,10 @@ console.log("\n== Gemini null invoice_no / dates (text parser cross-check)");
   g.date_bs = null;
   g.uncertain_fields = ["invoice_no", "date_ad"];
   const bill = parse(g);
-  ok(bill.billNo?.value === "SI-00780", `bill no from raw_text parser (${bill.billNo?.value} ${bill.billNo?.status})`, bill.debug);
-  ok(ymd(bill.date?.value) === "2026-08-12", `date from raw_text parser (${ymd(bill.date?.value)})`, bill.debug);
-}
-
-/* ---- 6. uncertain field -> flagged even when the value looks fine ---- */
+  ok(bill.billNo?.status !== "fill", `bill no not invented (${bill.billNo?.value ?? "-"} ${bill.billNo?.status ?? "-"})`, bill.debug);
+  ok(bill.date?.status !== "fill", `date not invented (${ymd(bill.date?.value)} ${bill.date?.status ?? "-"})`, bill.debug);
+  ok(bill.lineItems?.status === "fill" && bill.total?.status === "fill", "items + totals still fill", bill.debug);
+}/* ---- 6. uncertain field -> flagged even when the value looks fine ---- */
 console.log("\n== Gemini unsure about grand_total");
 {
   const g = gemini();
@@ -183,23 +161,88 @@ console.log("\n== Gemini unsure about grand_total");
   ok(bill.total?.status === "flag", `grand total flagged when AI is unsure (${bill.total?.status})`, bill.debug);
 }
 
-/* ---- 7. own company returned as the party -> ignored ---- */
+/* ---- 7. own company returned as the party -> ignored (never the party, PAN or create-party name) ---- */
 console.log("\n== own company as party");
 {
   const g = gemini();
   g.party_pan = "303687786";
   g.party_name = "NEW PARSA ENGINEERING WORKSHOP";
   const bill = parse(g);
-  ok(bill.pan?.value !== "303687786" && bill.partyId?.value !== undefined && bill.debug?.some((d) => /our own company PAN - ignored/.test(d)) === true,
-    `own PAN never used (pan=${bill.pan?.value}, party=${bill.partyId?.value})`, bill.debug);
-}
-
-/* ---- 8. normalizer: numbers as strings, junk values ---- */
+  const dbg = bill.debug ?? [];
+  ok(bill.pan?.value !== "303687786" && bill.identifiers?.pan !== "303687786" && dbg.some((d) => /our own company PAN - ignored/.test(d)), `own PAN never used (pan=${bill.pan?.value}, ids=${bill.identifiers?.pan})`, dbg);
+  ok(!bill.partyName && dbg.some((d) => /is our own company - ignored/.test(d)), `own name never the party (${bill.partyName?.value ?? "-"})`, dbg);
+  ok(bill.partyId?.status !== "fill", `no party filled from our own company (${bill.partyId?.value ?? "-"})`, dbg);
+}/* ---- 8. normalizer: numbers as strings, junk values ---- */
 console.log("\n== normalizer");
 {
   const n = normalizeAiVoucher({ items: [{ description: "X", qty: "1,000.5", rate: "Rs. 2", amount: "2,001.00", unit: "" }], grand_total: "N/A", doc_type: "PURCHASE", our_company_role: "Buyer" });
   ok(n.items[0].qty === 1000.5 && n.items[0].rate === 2 && n.items[0].amount === 2001 && n.items[0].unit === null, "string numbers parsed, empty unit -> null");
   ok(n.grand_total === null && n.doc_type === "purchase" && n.our_company_role === "buyer" && Array.isArray(n.uncertain_fields), "junk -> null, enums lower-cased");
+}
+
+/* ---- 9. Asian Thai sale bill (2026-11-12 live read): BS-only date, AD unsure; buyer = counter-party ---- */
+console.log("\n== Asian Thai sale bill (our company = seller)");
+{
+  const ROWS: [string, number, number, number][] = [["6mm Sheet Cutting", 35, 150, 5250], ["6mm Sheet Bend", 70, 150, 10500], ["Arc P&P", 48, 175, 8400], ["Circle", 36, 100, 3600], ["Ring", 48, 130, 6240], ["Strips", 48, 80, 3840]];
+  const g: Record<string, unknown> = {
+    doc_type: "sale", our_company_role: "seller", party_name: "Asian Thai food pvt. Ltd", party_pan: "300097599", party_address: "Sonapur", party_phone: null,
+    invoice_no: "09", date_ad: null, date_bs: "2083-05-05", payment_mode: null,
+    items: ROWS.map(([d, q, r, a]) => ({ description: d, hs_code: null, qty: q, unit: "P", rate: r, amount: a })),
+    subtotal: 37830, discount: 0, taxable: 37830, vat_percent: 13, vat_amount: 4917.9, grand_total: 42747.9,
+    uncertain_fields: ["date_ad", "payment_mode"], notes: "Invoice date BS is 2083-05-05.",
+  };
+  const bill = parse(g, "sale");
+  const dbg = bill.debug ?? [];
+  const text = aiFallbackText(normalizeAiVoucher(g));
+  ok(bill.date?.status === "fill" && ymd(bill.date.value) === "2026-08-21", `BS 2083-05-05 fills 2026-08-21 although AD is unsure (${ymd(bill.date?.value)} ${bill.date?.status} ${bill.date?.note ?? ""})`, dbg);
+  ok(bill.partyName?.value === "Asian Thai food pvt. Ltd", `party name = AI buyer (${bill.partyName?.value})`, dbg);
+  ok(dbg.some((d) => /^Identifiers \(AI counter-party\): name="Asian Thai food pvt\. Ltd" PAN=300097599/.test(d)), "parser party match used the AI name + PAN", dbg);
+  ok(bill.identifiers?.pan === "300097599" && bill.identifiers?.address === "Sonapur", `create-party prefill: PAN + address (${bill.identifiers?.pan} / ${bill.identifiers?.address})`, dbg);
+  ok(!bill.partyId?.value, `no wrong party picked (${bill.partyId?.value ?? "none"})`, dbg);
+  ok(bill.docType?.type === "sale", `doc type sale (${bill.docType?.type})`, dbg);
+  ok(bill.lineItems?.status === "fill" && bill.lineItems.value.length === 6 && bill.total?.status === "fill" && bill.total.value === 42747.9 && bill.vat?.value === 4917.9, `6 items + totals fill (${bill.lineItems?.value.length} ${bill.total?.value} vat ${bill.vat?.value})`, dbg);
+  ok(bill.billNo?.value === "09", `bill no 09 (${bill.billNo?.value})`, dbg);
+  const lines = text.split("\n");
+  ok(lines.length <= 18 && lines[0] === "BUYER NAME : Asian Thai food pvt. Ltd" && lines.includes("INVOICE MITI : 05/05/2083") && !/NEW PARSA/i.test(text), `compact OCR text from JSON (${lines.length} lines)`, lines);
+}
+
+/* ---- 10. AI name only (no PAN) -> the parser's alias / name rules match the party ---- */
+console.log("\n== AI party name without PAN");
+{
+  const g = gemini();
+  g.party_pan = null;
+  g.party_name = "PRATIK TRADE CENTER PVT.LTD";
+  const bill = parse(g);
+  ok(bill.partyId?.value === "party_pratik", `party matched by AI name (${bill.partyId?.value} ${bill.partyId?.status})`, bill.debug);
+}
+
+/* ---- 11. AD + BS present, only AD unsure -> BS decides, still fills ---- */
+console.log("\n== AD unsure, BS clear");
+{
+  const g = gemini();
+  g.uncertain_fields = ["date_ad"];
+  const bill = parse(g);
+  ok(bill.date?.status === "fill" && ymd(bill.date.value) === "2026-08-12", `date fills from BS (${ymd(bill.date?.value)} ${bill.date?.status})`, bill.debug);
+}
+
+/* ---- 12. AD only and unsure -> flagged (no BS to confirm) ---- */
+console.log("\n== AD only, unsure");
+{
+  const g = gemini();
+  g.date_bs = null;
+  g.uncertain_fields = ["date_ad"];
+  const bill = parse(g);
+  ok(bill.date?.status === "flag", `date flagged (${ymd(bill.date?.value)} ${bill.date?.status})`, bill.debug);
+}
+
+/* ---- 13. counter-party helper: phones normalized, own company dropped ---- */
+console.log("\n== aiCounterParty");
+{
+  const cp = aiCounterParty(normalizeAiVoucher(gemini()), PROFILE.pan, PROFILE.name);
+  ok(cp.name === "PRATIK TRADE CENTER PVT.LTD." && cp.pan === "619727215" && cp.phones.join(",") === "025-581953,025-586624", `phones ${cp.phones.join(",")}`);
+  const own = aiCounterParty(normalizeAiVoucher({ party_name: "New Parsa Engineering Workshop", party_pan: "303687786", party_phone: "9812345678" }), PROFILE.pan, PROFILE.name);
+  ok(own.name === null && own.pan === null && own.ownPan && own.ownName && own.phones.length === 0, "own company never returned as party");
+  ok(!("raw_text" in normalizeAiVoucher({ raw_text: "x" })), "normalizer drops raw_text");
 }
 
 console.log(fail ? `\n${fail} FAILED` : "\nALL PASS");

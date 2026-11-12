@@ -16,7 +16,7 @@ import { devanagariToRoman, nameSkeleton } from "./translit";
 import { isOcrSelectableParty } from "./types";
 import { ownNameRule, panConfusionDistance, textHasOwnName, textHasOwnPan, textHasOwnPanLoose } from "./ownCompany";
 import { canonicalOcrQty, descriptionHasLeakedQtyUnit, normalizeItemDescription, parseOcrQtyToken } from "./extras";
-import { applyAiToBill } from "./ai/aiVoucher";
+import { aiCounterParty, applyAiToBill } from "./ai/aiVoucher";
 import type { OcrIdentifiers } from "./identifiers";
 import type {
   OcrItemLike,
@@ -674,7 +674,10 @@ export function parseBill(rawIn: OcrRawResult, ctx: ParseContext): OcrParsedBill
       if (p && p !== own && panConfusionDistance(p, own) > 1 && !RX.phoneLabel.test(s.text) && !pans.includes(p)) pans.push(p);
     });
   }
-  const pan = pans.length === 1 ? pans[0] : null;
+  // AI engine: Gemini's counter-party (buyer on our sale, seller on our purchase; never our company) replaces the
+  // layout guess - the text here is only a summary built from Gemini's JSON.
+  const aiCp = rawIn.ai ? aiCounterParty(rawIn.ai.data, ctx.ownPan, ctx.ownName) : null;
+  const pan = aiCp ? aiCp.pan : pans.length === 1 ? pans[0] : null;
   if (pan) out.pan = f(pan, "fill", 0.95);
   dbg(pans.length ? `PAN (counter-party): ${pans.join(", ")}${pan ? "" : " - ambiguous"}` : "PAN: no counter-party PAN found");
 
@@ -714,6 +717,11 @@ export function parseBill(rawIn: OcrRawResult, ctx: ParseContext): OcrParsedBill
     }
   }
   if (partyName) out.partyName = f(partyName.text, "flag", partyName.conf);
+  if (aiCp) {
+    partyName = aiCp.name ? { text: aiCp.name, conf: 0.9 } : null;
+    if (partyName) out.partyName = f(partyName.text, "flag", 0.9);
+    else delete out.partyName;
+  }
 
   /* ---- Identifiers (counter-party block only) ---- */
   const ids: OcrIdentifiers = { pan: pan ?? undefined, phones: [], emails: [], bankAccountNos: [] };
@@ -752,8 +760,13 @@ export function parseBill(rawIn: OcrRawResult, ctx: ParseContext): OcrParsedBill
     const v = valueAfter(segs, pm, RX.payMode).split(/\s{2,}/)[0].trim();
     if (v) out.paymentMode = ids.paymentMode = v;
   }
+  if (aiCp) {
+    ids.pan = pan ?? undefined;
+    if (aiCp.address) ids.address = aiCp.address;
+    ids.phones = [...aiCp.phones, ...ids.phones.filter((p) => !aiCp.phones.includes(p))];
+  }
   out.identifiers = ids;
-  dbg(`Identifiers: name="${partyName?.text ?? "-"}" PAN=${ids.pan ?? "-"} phones=${ids.phones.join("/") || "-"} address="${ids.address ?? "-"}" payment=${ids.paymentMode ?? "-"}`);
+  dbg(`Identifiers${aiCp ? " (AI counter-party)" : ""}: name="${partyName?.text ?? "-"}" PAN=${ids.pan ?? "-"} phones=${ids.phones.join("/") || "-"} address="${ids.address ?? "-"}" payment=${ids.paymentMode ?? "-"}`);
 
   /* ---- Party match: PAN exact, then strict fuzzy name ---- */
   // system ledgers that ride along in the party list (Sales/Purchase Account, Owner's Capital, Opening Balance) are never a bill party
