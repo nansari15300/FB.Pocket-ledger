@@ -136,3 +136,46 @@ export function saveChatSession(companyId: string, turns: readonly OcrAiChatTurn
     /* storage full / blocked: chat still works for this page */
   }
 }
+
+// ── Persistent multi-session chat history (localStorage) ─────────────────────
+
+export type OcrAiChatSession = {
+  id: string;
+  title: string;
+  createdAt: number;
+  turns: OcrAiChatTurn[];
+};
+
+const historyKey = (companyId: string) => `pocket-ledger:ocr-ai-chat-history:${companyId}`;
+export const AI_CHAT_MAX_SESSIONS = 50;
+
+export function loadChatHistory(companyId: string): OcrAiChatSession[] {
+  try {
+    if (typeof localStorage === "undefined" || !companyId) return [];
+    const raw: unknown = JSON.parse(localStorage.getItem(historyKey(companyId)) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return (raw as OcrAiChatSession[])
+      .filter((s) => s && s.id && Array.isArray(s.turns))
+      .sort((a, b) => b.createdAt - a.createdAt);
+  } catch {
+    return [];
+  }
+}
+
+export function saveChatHistory(companyId: string, sessions: OcrAiChatSession[]): void {
+  try {
+    if (typeof localStorage === "undefined" || !companyId) return;
+    localStorage.setItem(historyKey(companyId), JSON.stringify(sessions.slice(0, AI_CHAT_MAX_SESSIONS)));
+  } catch { /* storage full */ }
+}
+
+export function newChatSessionId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Derive a short title from the first user message. */
+export function deriveChatTitle(turns: readonly OcrAiChatTurn[]): string {
+  const first = turns.find((t) => t.role === "user");
+  if (!first) return "New chat";
+  return first.text.trim().slice(0, 40) + (first.text.length > 40 ? "…" : "");
+}
