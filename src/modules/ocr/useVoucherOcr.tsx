@@ -24,6 +24,9 @@ import type { OcrSuggestion } from "./OcrSuggestionsDialog";
 import { OcrFieldBubbles, ocrFieldForMissing, ocrFieldForSuggestion, useOcrTabBadge, type OcrBubble } from "./OcrFieldBubbles";
 import { cancelOcrHandoff, parkOcrSession, requestOcrVoucherSwitch, resumeOcrSession, sameVoucherBucket, takeOcrHandoff } from "./handoff";
 import { CreatePartyDialog } from "@/components/party/CreatePartyDialog";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { NESTED_VOUCHER_MASTER_CREATE_OVERLAY_CN } from "@/lib/dialogShellChrome";
 import { CreateBankAccountDialog } from "@/components/bank-cash/CreateBankAccountDialog";
 import { classifyAiReceipt } from "@/lib/ocr/receiptDetect/aiClassify";
 import { CreateItemDialog } from "@/components/items/CreateItemDialog";
@@ -182,6 +185,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const [createPrefill, setCreatePrefill] = useState<Record<string, string> | null>(null);
   /** OCR "Create account" — prefilled bank/cash ledger from the slip (side = which voucher field it fills). */
   const [createAccountFor, setCreateAccountFor] = useState<{ side: "from" | "to"; prefill: { accountName?: string; accountType?: "Bank" | "Cash" } } | null>(null);
+  /** Single-engine OCR failed: reason dialog (engine name + server/Gemini message + hint). */
+  const [ocrFail, setOcrFail] = useState<{ engine: string; message: string } | null>(null);
   const [createItemFor, setCreateItemFor] = useState<{ index: number; name: string; unit?: string; rate: number; groupId?: string; ocrGroups?: MasterGroupLike[] } | null>(null);
   const [createTaxOpen, setCreateTaxOpen] = useState(false);
   const [vatPct, setVatPct] = useState(13);
@@ -380,6 +385,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       const first = reuse?.direct ?? opt.files[0];
       if (!first || running) return;
       setRunning(true);
+      setOcrFail(null);
       const lead = reason === "refresh" ? "Re-reading bill" : reason === "handoff" ? "Filling from the bill already read" : "Reading bill";
       const ac = new AbortController();
       ocrAbortRef.current = ac;
@@ -1124,7 +1130,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           // Stopped by the user or the voucher was closed: no error toast, no fallback engine.
           toast.dismiss(tId);
         } else {
-          toast.error("OCR failed", { id: tId, description: e instanceof Error ? e.message : String(e), duration: 5000, position: "top-right" });
+          // Single-engine mode: show WHY it failed in a dialog (not a 5 s toast the user can miss).
+          setOcrFail({ engine: seen.length ? seen[seen.length - 1] : "OCR", message: e instanceof Error ? e.message : String(e) });
+          toast.dismiss(tId);
         }
       } finally {
         if (ocrAbortRef.current === ac) ocrAbortRef.current = null;
@@ -1502,8 +1510,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               onPartyCreated={pickParty}
             />
           ) : null}
-          {createAccountFor ? (
-            <CreateBankAccountDialog
+          {createAccountFor ? (            <CreateBankAccountDialog
               isOpen
               onOpenChange={(v) => { if (!v) setCreateAccountFor(null); }}
               initialPrefill={createAccountFor.prefill}
@@ -1519,6 +1526,32 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 }
               }}
             />
+          ) : null}
+          {ocrFail ? (
+            <Dialog open onOpenChange={(v) => { if (!v) setOcrFail(null); }}>
+              <DialogContent
+                overlayClassName={NESTED_VOUCHER_MASTER_CREATE_OVERLAY_CN}
+                className="!z-[121] max-w-md"
+                onFocusOutside={(e) => e.preventDefault()}
+              >
+                <DialogHeader>
+                  <DialogTitle>{ocrFail.engine} could not read this bill</DialogTitle>
+                  <DialogDescription>
+                    Only {ocrFail.engine} was used because it is the engine you selected. Nothing was filled, so nothing will be saved.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2 text-xs">
+                  <p className="rounded-md bg-amber-50 px-2 py-1.5 font-mono break-words text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">{ocrFail.message}</p>
+                  <p className="text-muted-foreground">
+                    Fix the reason above and press Refresh OCR. If you want an automatic second engine, pick <b>Auto</b> in OCR settings → Switch Engine.
+                  </p>
+                </div>
+                <div className="flex justify-end gap-1.5">
+                  <Button type="button" size="sm" variant="outline" onClick={() => setOcrFail(null)}>Close</Button>
+                  <Button type="button" size="sm" onClick={() => { setOcrFail(null); void run("refresh"); }}>Refresh OCR</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           ) : null}
           {createItemFor ? (
             <CreateItemDialog

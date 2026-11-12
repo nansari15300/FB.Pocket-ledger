@@ -1,12 +1,12 @@
 "use client";
 /**
  * OCR engine.
- * - Online (optional): Google Cloud Vision or Azure Image Analysis Read through the Pocket Ledger Server (`./cloud/ocrCloudClient`), only when the
+ * Online (optional): Google Cloud Vision or Azure Image Analysis Read through the Pocket Ledger Server (`./cloud/ocrCloudClient`), only when the
  *   user's engine pref is "auto" or "online", the device is online, the file is an image/PDF page, and the server status says
- *   `canUse` (server OCR on + company enabled + user allowed + key saved). "online" never falls back to tesseract (throws instead). Any error / timeout in "auto" -> offline path.
- * - AI (engine pref "ai"): Gemini reads the bill into our voucher JSON through the server (`./ai/aiClient`). Any miss
- *   (not allowed / no key / error / timeout) falls back to online OCR (Google / Azure), then tesseract; the reason is kept
- *   in `engineNote` (tooltip on the "Read by" badge + debug dump).
+ *   `canUse` (server OCR on + company enabled + user allowed + key saved). "online" runs ONLY the picked Google/Azure and reports its
+ *   failure. Only "auto" falls back (online -> tesseract).
+ * - AI (engine pref "ai"): Gemini reads the bill into our voucher JSON through the server (`./ai/aiClient`). It runs ALONE: on a miss
+ *   (not allowed / no key / error / timeout) the reason is thrown to the UI so the user sees why (no silent engine switch).
  * - Offline (default fallback): tesseract.js (own Web Worker) + locally bundled assets under `public/ocr/`
  *   (worker, wasm core, eng+nep traineddata). No CDN calls.
  */
@@ -233,31 +233,42 @@ export async function runOcrOnFile(file: Blob, mime: string, opts: RunOcrOptions
   const aborted = () => !!opts.signal?.aborted;
   const engineName = (e: string) => (e === "gemini" ? "Gemini" : e === "azure" ? "Azure" : e === "google" ? "Google" : "Offline");
   const stage = (e: string) => { try { opts.onEngine?.(engineName(e)); } catch { /* UI only */ } };
+  /** Single engine picked by the user: it runs alone, and its failure is reported (no silent fallback). */
+  const onlyOne = (reason: string) => new Error(reason);
+
+  // ---- AI (Gemini): the only engine the user picked — no cloud / tesseract fallback ----
   if (pref === "ai") {
     stage("gemini");
     const ai = await tryAiOcr(file, mime, opts).catch((e) => ({ raw: null, note: `AI failed (${ocrAiErrorText(e)})` }));
     if (ai.raw) return ai.raw;
     if (aborted()) throw new DOMException("OCR cancelled", "AbortError");
-    stage("cloud");
-    const cloud = await tryCloudOcr(file, mime, { ...opts, enginePref: "auto" }).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})` }));
-    if (cloud.raw) return { ...cloud.raw, engineNote: [ai.note, cloud.raw.engineNote].filter(Boolean).join(" -> ") };
-    if (aborted()) throw new DOMException("OCR cancelled", "AbortError");
-    stage("tesseract");
-    const raw = await runTesseractOnFile(file, mime);
-    return { ...raw, engine: "tesseract", engineNote: [ai.note, cloud.note].filter(Boolean).join("; ") || undefined };
+    throw onlyOne(ai.note || "Gemini could not read this document");
   }
-  if (pref !== "offline") {
-    stage("cloud");
+
+  // ---- Google / Azure picked: only that cloud engine, no tesseract ----
+  if (pref === "online") {
+    const provider = getOcrPrefs().onlineProvider || "";
+    stage(provider || "cloud");
     const cloud = await tryCloudOcr(file, mime, opts).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})` }));
     if (cloud.raw) return cloud.raw;
-    if (pref === "online") throw new Error(cloud.note || "Online OCR failed");
-    stage("tesseract");
-    const raw = await runTesseractOnFile(file, mime);
-    return { ...raw, engine: "tesseract", engineNote: cloud.note || undefined };
+    if (aborted()) throw new DOMException("OCR cancelled", "AbortError");
+    throw onlyOne(cloud.note || `${provider === "google" ? "Google" : provider === "azure" ? "Azure" : "Online"} OCR could not read this document`);
   }
+
+  // ---- Offline (tesseract) only ----
+  if (pref === "offline") {
+    stage("tesseract");
+    return runTesseractOnFile(file, mime);
+  }
+
+  // ---- auto: try online first, fall back to tesseract ----
+  stage("cloud");
+  const cloud = await tryCloudOcr(file, mime, opts).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})` }));
+  if (cloud.raw) return cloud.raw;
+  if (aborted()) throw new DOMException("OCR cancelled", "AbortError");
   stage("tesseract");
   const raw = await runTesseractOnFile(file, mime);
-  return { ...raw, engine: "tesseract", engineNote: "offline only (OCR settings)" };
+  return { ...raw, engine: "tesseract", engineNote: cloud.note || undefined };
 }
 
 /** Offline tesseract multi-pass (unchanged behaviour). */

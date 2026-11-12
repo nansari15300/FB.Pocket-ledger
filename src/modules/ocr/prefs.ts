@@ -5,8 +5,9 @@ import { useSyncExternalStore } from "react";
 export type OcrConnectorStyle = "tail" | "line";
 export type OcrNarrationStyle = "full" | "short";
 /**
- * auto = online OCR when allowed, else tesseract; offline = tesseract only; online = cloud only (no tesseract fallback);
- * ai = AI (Gemini) reads the bill into voucher JSON; on failure falls back to online OCR, then tesseract (reason in tooltip).
+ * auto = online OCR when allowed, else tesseract (the ONLY setting that falls back);
+ * offline = tesseract only; online = the picked cloud engine only; ai = Gemini only.
+ * A single picked engine never silently switches to another one — its failure is shown as a reason dialog.
  */
 export type OcrEnginePref = "auto" | "offline" | "online" | "ai";
 export type OcrPrefs = {

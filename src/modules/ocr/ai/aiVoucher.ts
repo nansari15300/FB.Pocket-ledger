@@ -43,6 +43,8 @@ export type OcrAiVoucher = {
   debit_bank: string | null;
   credit_account: string | null;
   credit_bank: string | null;
+  /** "Account Name" printed under Beneficiary Details — usually OUR company on a bank-to-bank slip. */
+  beneficiary_name: string | null;
   transfer_reference: string | null;
   transfer_mode: string | null;
   transfer_charges: number | null;
@@ -106,6 +108,7 @@ export function normalizeAiVoucher(raw: unknown): OcrAiVoucher {
     debit_bank: str(o.debit_bank),
     credit_account: str(o.credit_account),
     credit_bank: str(o.credit_bank),
+    beneficiary_name: str(o.beneficiary_name),
     transfer_reference: str(o.transfer_reference),
     transfer_mode: str(o.transfer_mode),
     transfer_charges: aiNum(o.transfer_charges),

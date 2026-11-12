@@ -36,9 +36,17 @@ export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptD
   if (flow !== "own_to_own" && flow !== "in" && flow !== "out") return null;
 
   const debit = { accountMasked: d.debit_account ?? undefined, bankName: d.debit_bank ?? undefined, accountName: d.account_holder_name ?? undefined };
-  const credit = { accountMasked: d.credit_account ?? undefined, bankName: d.credit_bank ?? undefined, accountName: d.doc_kind && flow === "in" ? d.party_name ?? undefined : d.credit_bank && d.bank_flow === "own_to_own" ? d.account_holder_name ?? undefined : d.party_name ?? undefined };
+  const credit = { accountMasked: d.credit_account ?? undefined, bankName: d.credit_bank ?? undefined, accountName: d.beneficiary_name ?? d.party_name ?? undefined };
   const senderPick = pickUniqueOwnAccount(debit, o.ownAccounts);
   const creditPick = pickUniqueOwnAccount(credit, o.ownAccounts);
+  /* Beneficiary "Account Name" is our company on a bank-to-bank slip (nobody sells to themselves):
+   * that alone makes the receiving ledger ours -> contra, even before the account number matches. */
+  const creditIsCompany = !!d.beneficiary_name && !!o.companyName && companyNameMatches(d.beneficiary_name, o.companyName);
+  /* Gemini can contradict its own bank_flow: it wrote "Both customer and beneficiary accounts belong to our
+   * company" yet answered out. That printed reason is evidence too — honour it before falling back. */
+  const reasonSaysBoth = /both\s+(?:customer|sender|debit).{0,40}(?:beneficiary|credit).{0,40}(?:our|same)/i.test(String(d.bank_flow_reason ?? ""));
+  const destOurs = creditPick.ok || creditIsCompany;
+  const effectiveFlow = flow === "out" && senderPick.ok && (destOurs || reasonSaysBoth) ? "own_to_own" : flow;
   const charge = d.transfer_charges != null && d.transfer_charges > 0 ? { amount: d.transfer_charges } : undefined;
   const narration = [
     d.account_holder_name && `connectIPS Account: ${d.account_holder_name}`,
@@ -53,10 +61,10 @@ export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptD
     counterParty: d.party_name ?? null,
     otherCharge: charge,
     narration,
-    reason: `AI: ${d.doc_kind ?? "money document"}, flow ${flow}${d.bank_flow_reason ? ` (${d.bank_flow_reason.slice(0, 120)})` : ""}`,
+    reason: `AI: ${d.doc_kind ?? "money document"}, flow ${effectiveFlow === flow ? flow : `${flow} → own_to_own (beneficiary name is our company)`}${d.bank_flow_reason ? ` (${d.bank_flow_reason.slice(0, 120)})` : ""}`,
   };
 
-  if (flow === "own_to_own") {
+  if (effectiveFlow === "own_to_own") {
     return {
       ...base,
       voucherType: "contra",
@@ -69,7 +77,7 @@ export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptD
     };
   }
 
-  if (flow === "out") {
+  if (effectiveFlow === "out") {
     const name = d.party_name ?? null;
     const party = name && !isMaskedName(name) ? bestMaster(name, o.parties) : null;
     const staff = name && !isMaskedName(name) ? bestMaster(name, o.staff) : null;
