@@ -1,6 +1,6 @@
 "use client";
 /** Add Voucher header: OCR / Auto Post / Overwrite pills + one OCR-settings gear (dialog, when OCR is on). */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Pencil, Plus, Settings, Trash2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -12,7 +12,7 @@ import { OCR_SETTINGS_DIALOG_CONTENT_CN, OCR_SETTINGS_DIALOG_OVERLAY_CN } from "
 import { AUTO_POST_SECONDS_MAX, AUTO_POST_SECONDS_MIN, clampAutoPostSeconds, getOcrPrefs, setOcrPrefs, useOcrPrefs, type OcrConnectorStyle, type OcrEnginePref, type OcrNarrationStyle } from "./prefs";
 import { useOcrPlanAllowed } from "./gate";
 import { ocrCloud, ocrCloudErrorText, useOcrCloudStatus } from "./cloud/ocrCloudClient";
-import { deleteOcrAiKey, invalidateOcrAiStatus, looksLikeGeminiKeyInput, ocrAiErrorText, saveOcrAiKey, useOcrAiStatus } from "./ai/aiClient";
+import { deleteOcrAiKey, invalidateOcrAiStatus, listOcrAiAliases, looksLikeGeminiKeyInput, ocrAiErrorText, removeOcrAiAlias, saveOcrAiAliases, saveOcrAiKey, useOcrAiStatus, type OcrAiAliasKind, type OcrAiAliasesList } from "./ai/aiClient";
 import { AiChatButton } from "./ai/AiChatDialog";
 import { useAiChatStrings } from "./ai/aiChatStrings";
 
@@ -306,7 +306,109 @@ function AiOcrCard({ companyId, open, embedded }: { companyId: string | null; op
         </p>
       </div>
       {msg ? <p className={cn("rounded-md px-3 py-2 text-xs", msg.ok ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" : "bg-red-50 text-red-900 dark:bg-red-950/40 dark:text-red-200")}>{msg.text}</p> : null}
+      <BankAliasesSection companyId={companyId} open={open} />
     </AiCard>
+  );
+}
+
+/**
+ * "Names that are OUR company on a bank slip" — connectIPS user names, account-holder names, last digits.
+ * Per company only: never shared with, or used for, another company's scans.
+ */
+function BankAliasesSection({ companyId, open }: { companyId: string; open: boolean }) {
+  const [list, setList] = useState<OcrAiAliasesList | null>(null);
+  const [draft, setDraft] = useState("");
+  const [kind, setKind] = useState<OcrAiAliasKind>("account_holder");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!open || !companyId) return;
+    let alive = true;
+    listOcrAiAliases(companyId)
+      .then((r) => { if (alive) setList(r); })
+      .catch(() => { if (alive) setList(null); });
+    return () => { alive = false; };
+  }, [open, companyId]);
+
+  const add = async () => {
+    const texts = draft.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+    if (!texts.length || busy) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await saveOcrAiAliases(companyId, { kind, texts });
+      setList(r);
+      setDraft("");
+      setMsg({ ok: true, text: `${texts.length} name(s) added.` });
+    } catch (e) {
+      setMsg({ ok: false, text: ocrAiErrorText(e) });
+    } finally { setBusy(false); }
+  };
+
+  const remove = async (id: string) => {
+    setBusy(true); setMsg(null);
+    try { setList(await removeOcrAiAlias(companyId, id)); }
+    catch (e) { setMsg({ ok: false, text: ocrAiErrorText(e) }); }
+    finally { setBusy(false); }
+  };
+
+  const mine = (list?.aliases ?? []).filter((a) => a.kind === "account_holder" || a.kind === "beneficiary");
+  const digits = (list?.aliases ?? []).filter((a) => a.kind === "account_last4");
+
+  return (
+    <div className="space-y-1.5 border-t border-slate-200 pt-2 dark:border-slate-700" data-pl-ocr-bank-aliases="">
+      <p className="text-xs font-medium">Our own names on bank slips</p>
+      <p className="text-[11px] text-muted-foreground">
+        Bank slips often print our name only as the sender (e.g. <span className="font-mono">ACCOUNTFT:Nabiullah Ansari</span>). Add it here so a
+        bank-to-bank transfer is read as <span className="font-medium">Contra</span> instead of &quot;other&quot;. These names are used only for this
+        company.
+      </p>
+      <div className="flex flex-col gap-1.5 sm:flex-row">
+        <select
+          value={kind}
+          onChange={(e) => setKind(e.target.value as OcrAiAliasKind)}
+          className="h-8 shrink-0 rounded-md border border-slate-300 bg-transparent px-1.5 text-xs dark:border-slate-600"
+        >
+          <option value="account_holder">Account holder name</option>
+          <option value="beneficiary">Beneficiary name</option>
+          <option value="account_last4">Account last digits</option>
+        </select>
+        <input
+          type="text"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={kind === "account_last4" ? "e.g. 013" : "e.g. Nabiullah Ansari (comma separated)"}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void add(); } }}
+          className="h-8 min-w-0 flex-1 rounded-md border border-slate-300 bg-transparent px-2 text-xs dark:border-slate-600"
+        />
+        <button
+          type="button"
+          disabled={!draft.trim() || busy || list?.canEdit === false}
+          onClick={() => void add()}
+          className="h-8 rounded-md border border-slate-300 px-2.5 text-[11px] font-medium hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-800"
+        >
+          {busy ? "Saving…" : "Add"}
+        </button>
+      </div>
+      {mine.length || digits.length ? (
+        <ul className="flex flex-wrap gap-1">
+          {[...mine, ...digits].map((a) => (
+            <li key={a.id} className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] dark:bg-slate-800">
+              <span className="text-slate-400">{a.kind === "account_last4" ? "#" : a.kind === "beneficiary" ? "recv" : "holder"}</span>
+              <span className="max-w-[180px] truncate">{a.text}</span>
+              {list?.canEdit !== false ? (
+                <button type="button" onClick={() => void remove(a.id)} disabled={busy} title="Remove" className="text-slate-400 hover:text-red-500 disabled:opacity-40">×</button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">{list ? "No names added yet." : "Loading…"}</p>
+      )}
+      {msg ? <p className={cn("text-[11px]", msg.ok ? "text-emerald-700 dark:text-emerald-400" : "text-red-600")}>{msg.text}</p> : null}
+    </div>
   );
 }
 const GOOGLE_VISION_URL = "https://console.cloud.google.com/apis/library/vision.googleapis.com";

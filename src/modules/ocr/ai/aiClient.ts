@@ -351,3 +351,41 @@ export async function saveOcrAiRule(companyId: string, rule: OcrAiProposedRule, 
 export async function removeOcrAiRule(companyId: string, docType: OcrAiDocTypeKey, id: string): Promise<void> {
   await call<unknown>("/api/ocr-cloud/ai-rules", { method: "DELETE", body: { company: companyId, docType, id } });
 }
+
+/* ---- Bank aliases: OUR company's account names (per company, never shared) ---- */
+export type OcrAiAliasKind = "account_holder" | "beneficiary" | "account_last4";
+export type OcrAiAlias = { id: string; kind: OcrAiAliasKind; text: string; note?: string };
+export type OcrAiAliasesList = { ready: boolean; canEdit: boolean; aliases: OcrAiAlias[] };
+
+function normalizeAliasesList(raw: unknown): OcrAiAliasesList {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const rows = Array.isArray(o.aliases) ? o.aliases : [];
+  const kinds: readonly string[] = ["account_holder", "beneficiary", "account_last4"];
+  const aliases: OcrAiAlias[] = [];
+  for (const r of rows) {
+    if (!r || typeof r !== "object") continue;
+    const a = r as Record<string, unknown>;
+    const kind = String(a.kind || "");
+    const text = String(a.text || "").trim();
+    if (!kinds.includes(kind) || !text) continue;
+    aliases.push({ id: String(a.id || ""), kind: kind as OcrAiAliasKind, text, note: typeof a.note === "string" ? a.note : undefined });
+  }
+  return { ready: o.ready === true, canEdit: o.canEdit === true, aliases };
+}
+
+export async function listOcrAiAliases(companyId: string): Promise<OcrAiAliasesList> {
+  return normalizeAliasesList(await call<unknown>(`/api/ocr-cloud/ai-aliases?company=${encodeURIComponent(companyId)}`, { method: "GET" }));
+}
+
+export async function saveOcrAiAliases(
+  companyId: string,
+  input: { kind: OcrAiAliasKind; texts: string[]; note?: string }
+): Promise<OcrAiAliasesList> {
+  const texts = input.texts.map((t) => String(t || "").trim()).filter(Boolean);
+  if (!texts.length) throw new OcrAiError("unknown", "Alias is empty");
+  return normalizeAliasesList(await call<unknown>("/api/ocr-cloud/ai-aliases", { method: "POST", body: { company: companyId, kind: input.kind, text: texts[0], texts, note: input.note } }));
+}
+
+export async function removeOcrAiAlias(companyId: string, id: string): Promise<OcrAiAliasesList> {
+  return normalizeAliasesList(await call<unknown>("/api/ocr-cloud/ai-aliases", { method: "DELETE", body: { company: companyId, id } }));
+}

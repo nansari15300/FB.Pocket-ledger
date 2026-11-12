@@ -16,7 +16,10 @@ import { normalizeName } from "../normalize";
 import { isOcrSelectableParty } from "../types";
 import type { OcrDocType, OcrField, OcrItemLike, OcrLineItem, OcrParsedBill, OcrPartyLike } from "../types";
 
-export type OcrAiDocType = "purchase" | "sale" | "receipt" | "payment" | "expense" | "other";
+export type OcrAiDocType = "purchase" | "sale" | "receipt" | "payment" | "contra" | "expense" | "other";
+export type OcrAiDocKind = "tax_invoice" | "vat_bill" | "bank_transfer" | "cheque" | "deposit_slip" | "purchase_order" | "receipt" | "other";
+/** Which way money moves; own_to_own = our bank -> our bank (contra). */
+export type OcrAiBankFlow = "own_to_own" | "out" | "in" | "none" | "unclear";
 export type OcrAiItem = {
   sn: number | null;
   description: string;
@@ -28,7 +31,21 @@ export type OcrAiItem = {
 };
 export type OcrAiVoucher = {
   doc_type: OcrAiDocType | null;
+  /** Document family Gemini picked before the accounting type. */
+  doc_kind: OcrAiDocKind | null;
   our_company_role: "buyer" | "seller" | "none" | null;
+  /** Money documents only: direction of the transfer + the printed evidence. */
+  bank_flow: OcrAiBankFlow | null;
+  bank_flow_reason: string | null;
+  /** Printed holder name of the SOURCE account (e.g. "Nabiullah Ansari" from "ACCOUNTFT:Nabiullah Ansari"). */
+  account_holder_name: string | null;
+  debit_account: string | null;
+  debit_bank: string | null;
+  credit_account: string | null;
+  credit_bank: string | null;
+  transfer_reference: string | null;
+  transfer_mode: string | null;
+  transfer_charges: number | null;
   party_name: string | null;
   party_pan: string | null;
   party_address: string | null;
@@ -50,7 +67,9 @@ export type OcrAiVoucher = {
 export type OcrAiUsage = { promptTokens: number; outputTokens: number; thoughtsTokens: number; totalTokens: number };
 export type OcrAiResult = { provider: "gemini"; model: string; data: OcrAiVoucher; usage: OcrAiUsage; /** Taught rules the server added to the prompt. */ rulesUsed?: number };
 
-const DOC_TYPES: readonly OcrAiDocType[] = ["purchase", "sale", "receipt", "payment", "expense", "other"];
+const DOC_TYPES: readonly OcrAiDocType[] = ["purchase", "sale", "receipt", "payment", "contra", "expense", "other"];
+const DOC_KINDS: readonly OcrAiDocKind[] = ["tax_invoice", "vat_bill", "bank_transfer", "cheque", "deposit_slip", "purchase_order", "receipt", "other"];
+const BANK_FLOWS: readonly OcrAiBankFlow[] = ["own_to_own", "out", "in", "none", "unclear"];
 
 function str(v: unknown): string | null {
   if (v == null) return null;
@@ -73,10 +92,23 @@ export function normalizeAiVoucher(raw: unknown): OcrAiVoucher {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const dt = str(o.doc_type)?.toLowerCase() as OcrAiDocType | undefined;
   const role = str(o.our_company_role)?.toLowerCase();
+  const kind = str(o.doc_kind)?.toLowerCase() as OcrAiDocKind | undefined;
+  const flow = str(o.bank_flow)?.toLowerCase() as OcrAiBankFlow | undefined;
   const items = Array.isArray(o.items) ? o.items : [];
   return {
     doc_type: dt && DOC_TYPES.includes(dt) ? dt : null,
+    doc_kind: kind && DOC_KINDS.includes(kind) ? kind : null,
     our_company_role: role === "buyer" || role === "seller" || role === "none" ? role : null,
+    bank_flow: flow && BANK_FLOWS.includes(flow) ? flow : null,
+    bank_flow_reason: str(o.bank_flow_reason),
+    account_holder_name: str(o.account_holder_name),
+    debit_account: str(o.debit_account),
+    debit_bank: str(o.debit_bank),
+    credit_account: str(o.credit_account),
+    credit_bank: str(o.credit_bank),
+    transfer_reference: str(o.transfer_reference),
+    transfer_mode: str(o.transfer_mode),
+    transfer_charges: aiNum(o.transfer_charges),
     party_name: str(o.party_name),
     party_pan: str(o.party_pan),
     party_address: str(o.party_address),
@@ -356,18 +388,25 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
     dbg(`AI Grand Total ${grand} disagrees with text parser ${parserTotal} - flagged`);
   }
 
-  /* ---- Document type (relative to our company) ---- */
+  /* ---- Document type (relative to our company) ----
+   * Bank slips print no company name, so `our_company_role` is often "none" there: fall back to the
+   * document family + money flow instead of leaving the text parser's guess in place. */
   const aiType: OcrDocType | null =
     d.our_company_role === "buyer" ? "purchase" : d.our_company_role === "seller" ? "sale"
+    : d.bank_flow === "own_to_own" || d.doc_type === "contra" ? "contra"
+    : d.bank_flow === "in" ? "payment_in" : d.bank_flow === "out" ? "payment_out"
     : d.doc_type === "receipt" ? "payment_in" : d.doc_type === "payment" ? "payment_out"
     : d.doc_type === "purchase" || d.doc_type === "expense" ? "purchase" : d.doc_type === "sale" ? "sale" : null;
   if (aiType) {
     // The text rules only saw the summary built from this same answer, so the AI's role decides.
     const cur = bill.docType;
-    const conf = d.our_company_role === "buyer" || d.our_company_role === "seller" ? 0.95 : 0.9;
+    const strong = d.our_company_role === "buyer" || d.our_company_role === "seller" || d.bank_flow === "own_to_own" || d.bank_flow === "out" || d.bank_flow === "in";
+    const conf = strong ? 0.95 : 0.9;
     if (cur && cur.type !== aiType) dbg(`AI document type ${aiType} replaces text rule guess (${cur.type})`);
-    bill.docType = { type: aiType, confidence: cur?.type === aiType ? Math.max(cur.confidence, conf) : conf, reason: `AI: ${d.doc_type ?? "-"}, our company = ${d.our_company_role ?? "-"}` };
+    bill.docType = { type: aiType, confidence: cur?.type === aiType ? Math.max(cur.confidence, conf) : conf, reason: `AI: ${d.doc_kind ?? "-"}/${d.doc_type ?? "-"}, role ${d.our_company_role ?? "-"}, flow ${d.bank_flow ?? "-"}${d.bank_flow_reason ? ` (${d.bank_flow_reason.slice(0, 80)})` : ""}` };
   }
+  if (d.account_holder_name) dbg(`AI account holder: ${d.account_holder_name}`);
+  if (d.transfer_reference) dbg(`AI transfer ref: ${d.transfer_reference}${d.transfer_mode ? ` (${d.transfer_mode})` : ""}${d.transfer_charges ? `, charges ${d.transfer_charges}` : ""}`);
   if (d.notes) dbg(`AI note: ${d.notes.slice(0, 200)}`);
   if (d.uncertain_fields.length) dbg(`AI unsure about: ${d.uncertain_fields.slice(0, 12).join(", ")}`);
 }

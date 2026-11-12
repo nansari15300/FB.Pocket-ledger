@@ -85,7 +85,7 @@ export type OcrPartyLike = {
 
 export type OcrItemLike = { id: string; name: string; aliasName?: string; isDeleted?: boolean };
 
-export type OcrDocType = "sale" | "purchase" | "payment_in" | "payment_out" | "credit_note" | "debit_note";
+export type OcrDocType = "sale" | "purchase" | "payment_in" | "payment_out" | "contra" | "credit_note" | "debit_note";
 
 /** System ledgers that ride along in the party list but are never selectable as a bill party (not in the Supplier/Customer combobox). */
 export const OCR_NON_PARTY_IDS: readonly string[] = ["sales_account", "purchase_account", "owners_capital", "opening_balance_ledger"];
