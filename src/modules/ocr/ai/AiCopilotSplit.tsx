@@ -23,6 +23,11 @@ export type AiCopilotLayout = {
 export function useAiCopilotLayout(ocr: VoucherOcrApi): AiCopilotLayout {
   const [open, setOpen] = React.useState(false);
   const enabled = ocr.copilotEnabled === true;
+  React.useEffect(() => {
+    /* fillSeq is the primary scan signal; statusLine also covers successful OCR paths that update
+     * diagnostics without incrementing the counter (for example a reused/handoff result). */
+    if (enabled && (ocr.copilot.fillSeq > 0 || !!ocr.copilot.statusLine)) setOpen(true);
+  }, [enabled, ocr.copilot.fillSeq, ocr.copilot.statusLine]);
   return React.useMemo(
     () => ({ enabled, open: enabled && open, toggle: () => setOpen((v) => !v), setOpen }),
     [enabled, open]
@@ -63,6 +68,7 @@ export function VoucherOcrAiCopilot({ ocr, layout, thumbUrl }: { ocr: VoucherOcr
       getBill={ocr.getBillForChat}
       getVoucherJson={ocr.getAiVoucherJson}
       getOwnCompany={ocr.getOwnCompany}
+      autoStartKey={ocr.copilot.fillSeq > 0 ? `scan:${ocr.copilot.fillSeq}` : undefined}
       copilot={bridge}
     />
   );

@@ -1795,7 +1795,34 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     const f = optsRef.current.files[0];
     return f ? loadFirstFile(f, optsRef.current.companyId) : Promise.resolve(null);
   }, []);
-  const getAiVoucherJson = useCallback(() => lastRawRef.current?.ai?.data ?? null, []);
+  const getAiVoucherJson = useCallback(() => {
+    const { form, adapter: A } = optsRef.current;
+    const values = form.getValues() as Record<string, unknown>;
+    const fields: { key: string; label: string; path: string }[] = [
+      ...(A.date ? [{ key: "date", label: "Date", path: A.date }] : []),
+      ...(A.dueDate ? [{ key: "due_date", label: "Due date", path: A.dueDate }] : []),
+      ...(A.narration ? [{ key: "narration", label: "Narration", path: A.narration }] : []),
+      ...(A.amount ? [{ key: "amount", label: "Amount", path: A.amount }] : []),
+      ...(A.party ? [{ key: "party_name", label: "Party", path: A.party.path }] : []),
+      ...(A.accountPath ? [{ key: "account_name", label: "Bank / cash account", path: A.accountPath }] : []),
+      ...(A.fromAccountPath ? [{ key: "account_name", label: "From account", path: A.fromAccountPath }] : []),
+      ...(A.toAccountPath ? [{ key: "to_account_name", label: "To account", path: A.toAccountPath }] : []),
+    ];
+    const masterNames = (list: readonly { id?: string; name?: string; accountName?: string; isDeleted?: boolean }[] | undefined) =>
+      (list ?? []).filter((x) => !x.isDeleted).map((x) => ({ id: String(x.id ?? ""), name: String(x.name ?? x.accountName ?? "") })).filter((x) => x.id && x.name);
+    const M = mastersRef.current as typeof mastersRef.current & { accounts?: readonly { id?: string; accountName?: string; isDeleted?: boolean }[]; parties?: readonly { id?: string; name?: string; isDeleted?: boolean }[] };
+    return {
+      voucher_type: optsRef.current.currentVoucherType ?? A.voucherType,
+      form_schema: fields.map(({ key, label }) => ({ key, label })),
+      current_values: Object.fromEntries(fields.map(({ key, path }) => {
+        const id = String(values[path] ?? "");
+        if (key === "party_name") return [key, masterNames(M.parties).find((x) => x.id === id)?.name ?? (id ? "(selected master)" : "")];
+        if (["account_name", "to_account_name"].includes(key)) return [key, masterNames(M.accounts).find((x) => x.id === id)?.name ?? (id ? "(selected master)" : "")];
+        return [key, values[path] ?? ""];
+      })),
+      ocr_result: lastRawRef.current?.ai?.data ?? null,
+    };
+  }, []);
   const getOwnCompany = useCallback(() => ({ name: ownRef.current.name, pan: ownRef.current.pan }), []);
 
   useEffect(() => { if (!visible) cancelAutoPostCountdown(); }, [visible, cancelAutoPostCountdown]);
@@ -1837,10 +1864,30 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       done.push(label);
     };
     if (patch.date) set(A.date ?? "date", patch.date, "Date");
+    if (patch.due_date && A.dueDate) set(A.dueDate, patch.due_date, "Due date");
     if (patch.narration) set(A.narration ?? "narration", patch.narration, "Narration");
     if (patch.amount != null) set(A.payeeAmount && (A.voucherType === "payment_out" || A.voucherType === "contra") ? A.payeeAmount : A.amount ?? "amount", patch.amount, "Amount");
     if (patch.voucher_number) set("voucherNumber", patch.voucher_number, "Voucher No.");
     if (patch.reference) set("referenceId", patch.reference, "Ref");
+    if (patch.party_name && A.party) {
+      const parties = (mastersRef.current.parties ?? []) as { id: string; name?: string; isDeleted?: boolean }[];
+      const target = patch.party_name.trim().toLocaleLowerCase();
+      const match = parties.find((p) => !p.isDeleted && String(p.name ?? "").trim().toLocaleLowerCase() === target);
+      if (match) set(A.party.path, match.id, "Party");
+    }
+    if (patch.account_name) {
+      const accounts = (mastersRef.current.accounts ?? []) as { id: string; accountName?: string; isDeleted?: boolean }[];
+      const target = patch.account_name.trim().toLocaleLowerCase();
+      const match = accounts.find((a) => !a.isDeleted && String(a.accountName ?? "").trim().toLocaleLowerCase() === target);
+      const path = A.voucherType === "contra" ? A.fromAccountPath : A.accountPath;
+      if (match && path) set(path, match.id, "Bank / cash account");
+    }
+    if (patch.to_account_name && A.toAccountPath) {
+      const accounts = (mastersRef.current.accounts ?? []) as { id: string; accountName?: string; isDeleted?: boolean }[];
+      const target = patch.to_account_name.trim().toLocaleLowerCase();
+      const match = accounts.find((a) => !a.isDeleted && String(a.accountName ?? "").trim().toLocaleLowerCase() === target);
+      if (match) set(A.toAccountPath, match.id, "To account");
+    }
     return done;
   }, []);
 

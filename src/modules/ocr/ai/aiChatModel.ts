@@ -32,6 +32,10 @@ export type OcrAiChatTurn = {
   /** UI only: this turn carried the bill photo / the AI voucher JSON (never stored or re-sent). */
   hadImage?: boolean;
   hadJson?: boolean;
+  /** Compact OCR/voucher JSON preview, retained on the first data-bearing message in the session. */
+  voucherJsonPreview?: string;
+  /** Optional OCR-derived chat title, typically the counter-party name. */
+  chatTitle?: string;
   proposedRule?: OcrAiProposedRule | null;
   ruleSaved?: boolean;
   tokens?: number;
@@ -40,6 +44,9 @@ export type OcrAiChatTurn = {
   /* ---- Copilot mode only (OCR Settings → AI Copilot) ---- */
   /** Labels of the form fields this turn changed ("Narration", "Date"…). */
   applied?: string[];
+  /** Suggested live-voucher changes; kept pending until the user chooses Fill on voucher. */
+  voucherPatch?: import("./aiClient").OcrAiVoucherPatch;
+  voucherPatchDone?: boolean;
   /** Master this turn proposed to create (the app opens the prefilled Create form on click). */
   proposal?: import("./aiClient").OcrAiMasterProposal;
   proposalDone?: "created" | "dismissed";
@@ -153,16 +160,19 @@ export type OcrAiChatSession = {
 };
 
 const historyKey = (companyId: string) => `pocket-ledger:ocr-ai-chat-history:${companyId}`;
-export const AI_CHAT_MAX_SESSIONS = 50;
+export const AI_CHAT_MAX_SESSIONS = 25;
 
 export function loadChatHistory(companyId: string): OcrAiChatSession[] {
   try {
     if (typeof localStorage === "undefined" || !companyId) return [];
     const raw: unknown = JSON.parse(localStorage.getItem(historyKey(companyId)) || "[]");
     if (!Array.isArray(raw)) return [];
-    return (raw as OcrAiChatSession[])
+    const sessions = (raw as OcrAiChatSession[])
       .filter((s) => s && s.id && Array.isArray(s.turns))
       .sort((a, b) => b.createdAt - a.createdAt);
+    const latest = sessions.slice(0, AI_CHAT_MAX_SESSIONS);
+    if (sessions.length > latest.length) saveChatHistory(companyId, latest);
+    return latest;
   } catch {
     return [];
   }
@@ -183,5 +193,6 @@ export function newChatSessionId(): string {
 export function deriveChatTitle(turns: readonly OcrAiChatTurn[]): string {
   const first = turns.find((t) => t.role === "user");
   if (!first) return "New chat";
+  if (first.chatTitle?.trim()) return first.chatTitle.trim().slice(0, 60);
   return first.text.trim().slice(0, 40) + (first.text.length > 40 ? "…" : "");
 }

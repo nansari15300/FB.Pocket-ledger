@@ -348,12 +348,14 @@ const AI_CHAT_TIMEOUT_MS = 95_000;
 /** Copilot: fields a chat turn may change on the live voucher form (server whitelists these too). */
 export type OcrAiVoucherPatch = {
   date?: string;
+  due_date?: string;
   narration?: string;
   amount?: number;
   voucher_number?: string;
   reference?: string;
   party_name?: string;
   account_name?: string;
+  to_account_name?: string;
   notes?: string;
 };
 
@@ -416,7 +418,7 @@ export type OcrAiChatResult = {
   rulesUsed: number;
 };
 
-const MASTER_PATCH_KEYS = ["date", "narration", "voucher_number", "reference", "party_name", "account_name", "notes"] as const;
+const MASTER_PATCH_KEYS = ["date", "due_date", "narration", "voucher_number", "reference", "party_name", "account_name", "to_account_name", "notes"] as const;
 const MASTER_KINDS: readonly OcrAiMasterKind[] = ["party", "bank", "staff", "expense", "income"];
 
 function normVoucherPatch(raw: unknown): OcrAiVoucherPatch | null {
@@ -427,7 +429,7 @@ function normVoucherPatch(raw: unknown): OcrAiVoucherPatch | null {
   for (const k of MASTER_PATCH_KEYS) {
     const v = typeof o[k] === "string" ? o[k].trim() : "";
     if (!v) continue;
-    if (k === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(v)) continue;
+    if ((k === "date" || k === "due_date") && !/^\d{4}-\d{2}-\d{2}$/.test(v)) continue;
     out[k] = v;
     n++;
   }

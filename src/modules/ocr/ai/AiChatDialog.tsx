@@ -17,6 +17,7 @@ import { useAiChatStrings, type AiChatStrings } from "./aiChatStrings";
 import {
   OCR_AI_DOC_TYPES,
   AI_CHAT_SEND_LAST,
+  AI_CHAT_MAX_SESSIONS,
   chatPayload,
   loadChatSession,
   newTurnId,
@@ -34,12 +35,11 @@ import {
 } from "./aiChatModel";
 
 const CHAT_Z = 2147483002;
-/* The voucher dialog keeps its own stacking (z-[81]); we never touch it. The chat hops around it:
- * click the chat   → z-82 (above the voucher shell AND its portals)
- * click the voucher → z-79 (under the voucher and under its master dialogs) */
-const COPILOT_Z = 79;
+/* The voucher backdrop is z-80 and its frame is z-81. Keep the chat at z-82 so both stay crisp
+ * above the same blurred page backdrop. Nested master dialogs have their own higher layers. */
+const COPILOT_Z = 82;
 const COPILOT_Z_FOCUSED = 82;
-const COPILOT_STORAGE_KEY = "pl.ocr.copilot.window.v4";
+const COPILOT_STORAGE_KEY = "pl.ocr.copilot.window.v5";
 const COPILOT_MIN_W = 320;
 const COPILOT_MIN_H = 280;
 type CopilotBounds = { x: number; y: number; w: number; h: number };
@@ -86,6 +86,8 @@ export type AiChatDialogProps = {
   getBill?: () => Promise<{ blob: Blob; mime: string } | null>;
   getVoucherJson?: () => unknown;
   getOwnCompany?: () => { name?: string | null; pan?: string | null };
+  /** New OCR run id; Copilot sends one initial review request once the window opens. */
+  autoStartKey?: string;
   /**
    * Copilot mode (OCR Settings → AI Copilot): the SAME window renders as a floating, draggable,
    * resizable panel beside the voucher instead of a centred modal, and each turn may return a voucher
@@ -113,6 +115,18 @@ export type CopilotBridge = {
 function chatErrorText(e: unknown, t: AiChatStrings): string {
   if (e instanceof OcrAiError && e.status === 404) return t.chatNotInstalled;
   return ocrAiErrorText(e);
+}
+
+function partyNameFromVoucherJson(value: unknown): string | undefined {
+  try {
+    const root = (typeof value === "string" ? JSON.parse(value) : value) as Record<string, unknown> | null;
+    if (!root || typeof root !== "object" || Array.isArray(root)) return undefined;
+    const ocr = (root.ocr_result && typeof root.ocr_result === "object" ? root.ocr_result : root) as Record<string, unknown>;
+    const name = String(ocr.party_name ?? ocr.beneficiary_name ?? "").trim();
+    return name || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function DocTypeSelect({ value, onChange, disabled, t }: { value: OcrAiDocTypeKey; onChange: (v: OcrAiDocTypeKey) => void; disabled?: boolean; t: AiChatStrings }) {
@@ -266,16 +280,25 @@ function ChatHistorySidebar({ sessions, activeId, onSelect, onDelete, onNew }: {
   );
 }
 
-export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, getVoucherJson, getOwnCompany, copilot }: AiChatDialogProps) {
+export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, getVoucherJson, getOwnCompany, autoStartKey, copilot }: AiChatDialogProps) {
   const t = useAiChatStrings();
   const copilotMode = Boolean(copilot);
   const [copilotZIndex, setCopilotZIndex] = useState(COPILOT_Z_FOCUSED);
   const [chatListVisible, setChatListVisible] = useState(true);
   const [tab, setTab] = useState<"chat" | "rules">("chat");
-  const [turns, setTurns] = useState<OcrAiChatTurn[]>(() => loadChatSession(companyId));
+  const [turns, setTurns] = useState<OcrAiChatTurn[]>(() => autoStartKey ? [] : loadChatSession(companyId));
   const [input, setInput] = useState("");
-  const [attachBill, setAttachBill] = useState(false);
-  const [attachJson, setAttachJson] = useState(false);
+  /* Grow the composer with its content (2 rows → 8rem cap) so long messages stay readable instead of
+   * being clipped to a single line with a scrollbar. */
+  const composerRef = React.useRef<HTMLTextAreaElement | null>(null);
+  React.useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 192)}px`;
+  }, [input]);
+  const [attachBill, setAttachBill] = useState(Boolean(copilot));
+  const [attachJson, setAttachJson] = useState(Boolean(copilot));
   const [sending, setSending] = useState(false);
   const [rules, setRules] = useState<OcrAiRulesList | null>(null);
   const [rulesBusy, setRulesBusy] = useState<string | null>(null);
@@ -293,6 +316,7 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const autoStartSentRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [attachedFile, setAttachedFile] = useState<{ file: File; preview: string | null } | null>(null);
@@ -318,7 +342,7 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
     setSessions((prev) => {
       const existing = prev.findIndex((s) => s.id === id);
       const updated: OcrAiChatSession = { id, title, createdAt: existing >= 0 ? prev[existing].createdAt : Date.now(), turns: currentTurns };
-      const next = existing >= 0 ? prev.map((s) => (s.id === id ? updated : s)) : [updated, ...prev];
+      const next = (existing >= 0 ? prev.map((s) => (s.id === id ? updated : s)) : [updated, ...prev]).slice(0, AI_CHAT_MAX_SESSIONS);
       saveChatHistory(companyId, next);
       return next;
     });
@@ -327,14 +351,16 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
 
   const startNewChat = () => {
     if (turns.length) { flushToHistory(turns, activeSessionId); setActiveSessionId(null); }
-    setTurns([]); setAttachBill(false); setAttachJson(false);
+    setTurns([]); setAttachBill(false); setAttachJson(Boolean(copilot));
     saveChatSession(companyId, []);
   };
 
   const loadSession = (s: OcrAiChatSession) => {
     if (turns.length && activeSessionId !== s.id) flushToHistory(turns, activeSessionId);
-    setTurns(s.turns); setActiveSessionId(s.id);
-    saveChatSession(companyId, s.turns);
+    /* Historical suggestions must never be applied to a different voucher. */
+    const historicalTurns = s.turns.map(({ voucherPatch: _voucherPatch, ...turn }) => turn);
+    setTurns(historicalTurns); setActiveSessionId(s.id);
+    saveChatSession(companyId, historicalTurns);
   };
 
   const deleteSession = (id: string) => {
@@ -393,27 +419,37 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
     finally { setRulesBusy(null); }
   };
 
-  const send = async () => {
-    const text = input.trim();
+  const send = async (messageText?: string) => {
+    const text = (messageText ?? input).trim();
     if ((!text && !attachedFile) || sending) return;
-    const userTurn: OcrAiChatTurn = { id: newTurnId(), role: "user", text: text || "📎", at: Date.now(), hadImage: (attachBill && !!getBill) || !!attachedFile, hadJson: attachJson && !!getVoucherJson };
+    const wantBill = attachBill, wantJson = attachJson, fileToSend = attachedFile;
+    const voucherJson = wantJson && getVoucherJson ? getVoucherJson() ?? undefined : undefined;
+    let voucherJsonText = "";
+    if (voucherJson !== undefined) {
+      try { voucherJsonText = typeof voucherJson === "string" ? voucherJson : JSON.stringify(voucherJson); } catch { voucherJsonText = ""; }
+    }
+    const keepJsonPreview = !!voucherJsonText && !turns.some((turn) => turn.voucherJsonPreview);
+    const partyTitle = keepJsonPreview ? partyNameFromVoucherJson(voucherJson) : undefined;
+    const userTurn: OcrAiChatTurn = {
+      id: newTurnId(), role: "user", text: text || "📎", at: Date.now(),
+      hadImage: (wantBill && !!getBill) || !!fileToSend,
+      hadJson: voucherJson !== undefined,
+      ...(keepJsonPreview ? { voucherJsonPreview: voucherJsonText.slice(0, 8000) } : {}),
+      ...(partyTitle ? { chatTitle: partyTitle } : {}),
+    };
     const next = [...turns, userTurn];
     setTurns(next); setInput(""); setSending(true);
-    const wantBill = attachBill, wantJson = attachJson, fileToSend = attachedFile;
-    setAttachBill(false); setAttachJson(false); clearAttachedFile();
+    setAttachBill(false); setAttachJson(Boolean(copilot)); clearAttachedFile();
     const ac = new AbortController(); abortRef.current = ac;
     const hadImage = !!(fileToSend || (wantBill && getBill));
     try {
       let imageBase64: string | undefined, mimeType: string | undefined;
       if (fileToSend) { const r = await aiChatJpeg(fileToSend.file, fileToSend.file.type); imageBase64 = r.b64; mimeType = "image/jpeg"; }
       else if (wantBill && getBill) { const b = await getBill(); if (!b) throw new Error(t.noBill); imageBase64 = (await aiChatJpeg(b.blob, b.mime)).b64; mimeType = "image/jpeg"; }
-      const voucherJson = wantJson && getVoucherJson ? getVoucherJson() ?? undefined : undefined;
       const r = await ocrAiChat({ companyId, messages: chatPayload(next), docType, imageBase64, mimeType, voucherJson, ownCompany: getOwnCompany?.(), copilot: !!copilot, masters: copilot ? copilot.getMasters() : undefined, signal: ac.signal });
       setUsage(recordUsage(companyId, { ok: true, promptTokens: r.usage.promptTokens, outputTokens: r.usage.outputTokens, totalTokens: r.usage.totalTokens, hadImage }));
-      /* Copilot: the patch goes into the LIVE form first, so the chips describe what really changed. */
-      const applied = copilot && r.voucherPatch ? copilot.onPatch(r.voucherPatch) : [];
       if (copilot && r.missingMasters.length) copilot.onMissingMasters?.(r.missingMasters);
-      const finalTurns = [...next, { id: newTurnId(), role: "model" as const, text: r.reply === "(no answer)" ? t.noAnswer : r.reply, at: Date.now(), proposedRule: r.proposedRule, tokens: r.usage.totalTokens, applied: applied.length ? applied : undefined, proposal: copilot ? r.masterCreate ?? undefined : undefined }];
+      const finalTurns = [...next, { id: newTurnId(), role: "model" as const, text: r.reply === "(no answer)" ? t.noAnswer : r.reply, at: Date.now(), proposedRule: r.proposedRule, tokens: r.usage.totalTokens, voucherPatch: copilot ? r.voucherPatch ?? undefined : undefined, proposal: copilot ? r.masterCreate ?? undefined : undefined }];
       setTurns(finalTurns);
       const sid = flushToHistory(finalTurns, activeSessionId);
       if (!activeSessionId) setActiveSessionId(sid);
@@ -422,6 +458,12 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
       setTurns((cur) => [...cur, { id: newTurnId(), role: "model", text: chatErrorText(e, t), at: Date.now(), error: true }]);
     } finally { abortRef.current = null; setSending(false); }
   };
+
+  useEffect(() => {
+    if (!copilotMode || !open || !autoStartKey || autoStartSentRef.current === autoStartKey) return;
+    autoStartSentRef.current = autoStartKey;
+    void send("Maine voucher ka document aur OCR JSON bheja hai. Is data se voucher ke khaali sahi fields bhariye. Agar koi dikkat, mismatch ya zaroori jaankari missing ho to mujhe batayein aur ek sawal poochhein.");
+  }, [open, autoStartKey, copilotMode, send]);
 
   const editRule = (id: string, rule: OcrAiProposedRule) => setTurns((cur) => cur.map((x) => (x.id === id ? { ...x, proposedRule: rule } : x)));
 
@@ -482,7 +524,7 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const defaultW = Math.max(COPILOT_MIN_W, Math.min(Math.round(Math.min(460, vw * 0.32)), vw));
-      const defaultH = Math.max(COPILOT_MIN_H, Math.min(Math.round(vh * 0.7), vh));
+      const defaultH = Math.max(COPILOT_MIN_H, Math.min(Math.round(vh * 0.95), vh));
       let bounds: CopilotBounds = {
         x: Math.max(0, vw - defaultW - 12),
         y: Math.max(0, Math.round((vh - defaultH) / 2)),
@@ -637,10 +679,7 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
 
       const voucherFrameAtPoint = Array.from(document.querySelectorAll<HTMLElement>("[data-voucher-frame]"))
         .some((frame) => containsPoint(frame, event.clientX, event.clientY));
-      if (voucherFrameAtPoint) {
-        setCopilotZIndex(COPILOT_Z);
-        return;
-      }
+      if (voucherFrameAtPoint) return; // Keep both voucher and chat clear above the backdrop.
 
       /* The z-81 voucher DialogContent spans the viewport; its visible frame is only a child. If a
        * click lands on that transparent shell where the chat is visible, treat it as a chat click. */
@@ -673,8 +712,7 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
       for (const rec of records) {
         for (const node of Array.from(rec.addedNodes)) {
           if (isForeignDialog(node)) {
-            /* Master dialogs (Create Party, Bank, Items…) must sit above the chat. They are portaled to
-             * body with their own z-80/81, so keep the chat under them just while one is open. */
+            /* Master dialogs (Create Party, Bank, Items…) must sit above the chat. */
             setCopilotZIndex(COPILOT_Z);
             return;
           }
@@ -879,6 +917,12 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                             {[turn.hadImage && "📎 " + t.billSent, turn.hadJson && "📊 " + t.jsonSent].filter(Boolean).join(" · ")}
                           </p>
                         ) : null}
+                        {turn.voucherJsonPreview ? (
+                          <details className="mt-1 max-w-full rounded-md border border-sky-200 bg-white/80 p-1.5">
+                            <summary className="cursor-pointer select-none text-[10px] font-medium text-sky-700">{t.viewJson}</summary>
+                            <pre className="mt-1 max-h-44 max-w-full overflow-auto whitespace-pre-wrap break-all rounded bg-slate-50 p-1.5 text-[9px] leading-relaxed text-slate-600">{turn.voucherJsonPreview}</pre>
+                          </details>
+                        ) : null}
                         {turn.tokens ? (
                           <p className="text-[10px] text-slate-400">
                             {t.tokens} {turn.tokens}
@@ -892,6 +936,25 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                                 ✓ {a}
                               </span>
                             ))}
+                          </p>
+                        ) : null}
+                        {turn.voucherPatch && !turn.voucherPatchDone ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!copilot) return;
+                              const applied = copilot.onPatch(turn.voucherPatch!);
+                              setTurns((current) => current.map((x) => x.id === turn.id ? { ...x, voucherPatchDone: true, applied } : x));
+                            }}
+                            className="mt-1 rounded-md px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:brightness-95"
+                            style={{ background: ACCENT }}
+                          >
+                            {t.fillOnVoucher}
+                          </button>
+                        ) : null}
+                        {turn.voucherPatchDone ? (
+                          <p className="text-[10px] font-medium text-emerald-700">
+                            {turn.applied?.length ? `✓ ${t.voucherFilled}: ${turn.applied.join(", ")}` : t.voucherNothingToFill}
                           </p>
                         ) : null}
                         {/* Copilot: master creation proposal — the user confirms, the app opens its own form. */}
@@ -1020,8 +1083,8 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
 
                     <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={onFileChange} />
 
-                    {/* Textarea field — thumbnail sits INSIDE it */}
-                    <div data-pl-ai-composer-field className="relative flex min-h-0 flex-1 flex-col gap-1 rounded-2xl border border-black/10 bg-white px-1 py-1 shadow-sm">
+                    {/* Composer: textarea on top (full width), model + send on one row below. */}
+                    <div data-pl-ai-composer-field className="relative flex shrink-0 flex-col gap-1 rounded-2xl border border-black/10 bg-white px-1 py-1 shadow-sm">
                       {/* Attach button — top-right of the field */}
                       <button
                         type="button"
@@ -1061,38 +1124,50 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                         </div>
                       )}
 
-                      {/* Textarea + actions */}
-                      <div className="flex min-h-0 flex-1 items-end gap-1">
-                        <textarea
-                          value={input}
-                          onChange={(e) => setInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
-                          rows={1}
-                          placeholder={t.placeholder}
-                          style={{ minHeight: "2rem", resize: "none" }}
-                          className="h-full flex-1 self-stretch bg-transparent py-1.5 pl-2 pr-10 text-[13px] text-slate-700 placeholder-slate-400 focus:outline-none"
+                      {/* Textarea — full width of the field, no model pill beside it stealing space */}
+                      <textarea
+                        ref={composerRef}
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onPaste={(e) => {
+                          /* Some embedded/desktop shells swallow the native paste into a controlled
+                           * textarea; insert the clipboard text ourselves at the caret. */
+                          const text = e.clipboardData?.getData("text");
+                          if (!text) return;
+                          e.preventDefault();
+                          const el = e.currentTarget;
+                          const start = el.selectionStart ?? input.length;
+                          const end = el.selectionEnd ?? input.length;
+                          const next = input.slice(0, start) + text + input.slice(end);
+                          setInput(next);
+                          requestAnimationFrame(() => {
+                            el.selectionStart = el.selectionEnd = start + text.length;
+                          });
+                        }}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
+                        rows={2}
+                        placeholder={t.placeholder}
+                        style={{ resize: "none", minHeight: "4rem", maxHeight: "12rem" }}
+                        className="w-full resize-none bg-transparent px-2 py-1.5 pr-9 text-[13px] leading-5 text-black placeholder-slate-400 focus:outline-none"
+                      />
+                      {/* Bottom row: model picker left, send button right */}
+                      <div className="flex shrink-0 items-center justify-between gap-1 px-1 pb-0.5">
+                        <AiModelPicker
+                          current={activeModel}
+                          models={models}
+                          canChange={canPickModel}
+                          busy={modelBusy}
+                          error={modelErr}
+                          onPick={(id) => void switchModel(id)}
                         />
-                        {/* Model pill — same bottom row as Send, 40px to its left */}
-                        <div className="flex shrink-0 items-end self-stretch pr-[40px]">
-                          <div className="ml-auto flex items-center">
-                            <AiModelPicker
-                              current={activeModel}
-                              models={models}
-                              canChange={canPickModel}
-                              busy={modelBusy}
-                              error={modelErr}
-                              onPick={(id) => void switchModel(id)}
-                            />
-                          </div>
-                        </div>
                         <button
                           type="button"
                           disabled={(!input.trim() && !attachedFile) || sending}
                           onClick={() => void send()}
-                          className="mb-0 flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-full p-3 text-white transition hover:brightness-110 disabled:opacity-40"
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full p-2 text-white transition hover:brightness-110 disabled:opacity-40"
                           style={{ background: ACCENT, boxSizing: "border-box" }}
                         >
-                          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                          {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                         </button>
                       </div>
                     </div>
