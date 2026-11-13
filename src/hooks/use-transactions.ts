@@ -172,10 +172,12 @@ export const getTransactionAmounts = (
         transaction.type === 'direct_expense' ? getOutflowBillWiseLinkAmount(transaction) : amount;
     const directExpenseOtherChargeAmount =
         transaction.type === 'direct_expense' ? Number(transaction.otherChargeAmount || 0) || 0 : 0;
-    const contraTransferAmount =
-        transaction.type === 'contra' ? getOutflowBillWiseLinkAmount(transaction) : amount;
+    /* Contra: `amount` = transfer + otherCharge. `getOutflowBillWiseLinkAmount` pehle `payeeAmount`
+     * dekhta hai, warna total - charge — dono case me sirf transfer leg milta hai. */
     const contraOtherChargeAmount =
         transaction.type === 'contra' ? Number(transaction.otherChargeAmount || 0) || 0 : 0;
+    const contraTransferAmount =
+        transaction.type === 'contra' ? getOutflowBillWiseLinkAmount(transaction) : amount;
 
     if (['sale', 'purchase'].includes(transaction.type)) {
       taxableAmount = salePurchaseTaxableAmount(transaction);
@@ -236,7 +238,7 @@ export const getTransactionAmounts = (
                 (transaction.fromAccountId === entity.id || transaction.toAccountId === entity.id)
             ) {
                 if (transaction.toAccountId === entity.id) debit += contraTransferAmount;
-                if (transaction.fromAccountId === entity.id) credit += amount;
+                if (transaction.fromAccountId === entity.id) credit += contraTransferAmount + contraOtherChargeAmount;
             }
             if (entity && transaction.type === 'contra' && transaction.otherChargeAccountId === entity.id) {
                 debit += contraOtherChargeAmount;
@@ -260,8 +262,10 @@ export const getTransactionAmounts = (
                 }
                 // Handle "All Vouchers" view for contra - show all contra transactions
                 else if (transaction.type === 'contra') {
-                    debit += amount;
-                    credit += amount;
+                    /* Without a specific ledger "All" view only shows the transfer leg on both sides;
+                     * charge legs belong to their own ledgers (see specific-account branch below). */
+                    debit += contraTransferAmount;
+                    credit += contraTransferAmount;
                 } else if (transaction.accountId) {
                     if (["payment_in", "direct_income", "sale"].includes(transaction.type)) debit += amount;
                     if (["payment_out", "direct_expense", "purchase"].includes(transaction.type)) credit += amount;
@@ -281,8 +285,21 @@ export const getTransactionAmounts = (
                         !ledgerIdEq(transaction.fromAccountId, accountId) &&
                         !ledgerIdEq(transaction.toAccountId, accountId));
                 const matchesFromAccount = hasFromAccount && ledgerIdEq(transaction.fromAccountId, accountId);
-                if (matchesToAccount) debit = amount;
-                if (matchesFromAccount) credit = amount;
+                /**
+                 * Contra me charge alag leg hai: voucher `amount` = transfer + otherCharge.
+                 *  - To (receiver)  → Dr sirf transfer (receiver ko charge nahi jata)
+                 *  - From (sender)  → Cr transfer + charge (account se dono nikalte hain)
+                 *  - Charge account → Dr charge (expense)
+                 * Pehle dono ko poora `amount` diya jata tha — bank A/C 850008 Cr aur receiver 850008 Dr ho raha tha.
+                 */
+                if (matchesToAccount) debit = contraTransferAmount;
+                if (matchesFromAccount) credit = contraTransferAmount + contraOtherChargeAmount;
+                if (
+                    contraOtherChargeAmount > 0 &&
+                    String(transaction.otherChargeAccountId ?? "").trim() === accountId
+                ) {
+                    debit += contraOtherChargeAmount;
+                }
             } else if (isJournalLikeVoucher(transaction)) {
                 const journalAmt = sumJournalAmountsForAccount(transaction.entries, entity.id);
                 debit += journalAmt.debit;

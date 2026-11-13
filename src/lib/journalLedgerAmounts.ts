@@ -96,10 +96,14 @@ export function getVoucherLedgerDebitCreditForAccount(
     if (debit > 0 || credit > 0) return { debit, credit };
   }
 
-  // Contra — party ledger jaisa (to = Dr, from = Cr)
+  // Contra — to = Dr (transfer only), from = Cr (transfer + charge); charge ledger = Dr
   if (t === "contra" && (ledgerAccountIdEq(v.fromAccountId, id) || ledgerAccountIdEq(v.toAccountId, id))) {
-    if (ledgerAccountIdEq(v.toAccountId, id)) return { debit: amount, credit: 0 };
-    if (ledgerAccountIdEq(v.fromAccountId, id)) return { debit: 0, credit: amount };
+    const transfer = Math.max(0, amount - toLedgerAmount(v.otherChargeAmount));
+    if (ledgerAccountIdEq(v.toAccountId, id)) return { debit: transfer, credit: 0 };
+    if (ledgerAccountIdEq(v.fromAccountId, id)) return { debit: 0, credit: transfer + toLedgerAmount(v.otherChargeAmount) };
+  }
+  if (t === "contra" && ledgerAccountIdEq(v.otherChargeAccountId, id)) {
+    return { debit: toLedgerAmount(v.otherChargeAmount), credit: 0 };
   }
 
   if (ledgerAccountIdEq(v.partyId, id)) {

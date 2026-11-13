@@ -102,6 +102,7 @@ import {
   getPaymentStatus as getPaymentStatusResult,
   getSalePurchaseBillWiseLinkNos,
   getTdsLegAllocatedByTargetId,
+  getOutflowBillWiseLinkAmount,
   isSaleOrPurchaseBillVoucherType,
 } from "@/lib/payment-allocation-utils";
 import { getSalePurchasePartyLinkTarget } from "@/lib/tdsVoucher";
@@ -3409,8 +3410,21 @@ export const VoucherProvider = ({
         
         // Contra Logic for Accounts
         if (v.type === 'contra') {
-            if (v.toAccountId) addVal(accountMap, v.toAccountId, 'debit', amount);
-            if (v.fromAccountId) addVal(accountMap, v.fromAccountId, 'credit', amount);
+            /* Charge alag leg hai: receiver ko sirf transfer jata hai, sender se transfer + charge nikalta hai,
+             * aur charge apne (expense/party/staff) ledger me Dr hota hai. Pehle dono bank legs ko poora
+             * `amount` milta tha — isi se A/C list me dono par 850008 dikh raha tha. */
+            const ocAmt = Number(v.otherChargeAmount || 0) || 0;
+            const transfer = Math.max(0, getOutflowBillWiseLinkAmount(v));
+            if (v.toAccountId) addVal(accountMap, v.toAccountId, 'debit', transfer);
+            if (v.fromAccountId) addVal(accountMap, v.fromAccountId, 'credit', transfer + ocAmt);
+            const ocId = String(v.otherChargeAccountId || "").trim();
+            if (ocId && ocAmt > 0) {
+              /* Charge ledger kisi bhi type ka ho sakta hai (Bank / Party / Staff / Expense) —
+               * same routing jo payment_out otherCharge me hai. */
+              if (partyIdSet.has(ocId)) addVal(partyMap, ocId, 'debit', ocAmt);
+              else if (staffIdSet.has(ocId)) addVal(staffMap, ocId, 'debit', ocAmt);
+              else addVal(expenseMap, ocId, 'debit', ocAmt);
+            }
         }
 
         // --- Tax Logic ---

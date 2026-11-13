@@ -61,8 +61,14 @@ export function getPartyLedgerTransactionAmounts(transaction: any, partyId: stri
     transaction?.type === "contra" &&
     (transaction.fromAccountId === partyId || transaction.toAccountId === partyId)
   ) {
-    if (transaction.toAccountId === partyId) debit += amount;
-    if (transaction.fromAccountId === partyId) credit += amount;
+    /* Charge alag leg hai: receiver sirf transfer, sender transfer + charge. */
+    const oc = toNum(transaction.otherChargeAmount);
+    const transfer = Math.max(0, amount - oc);
+    if (transaction.toAccountId === partyId) debit += transfer;
+    if (transaction.fromAccountId === partyId) credit += transfer + oc;
+  }
+  if (transaction?.type === "contra" && String(transaction?.otherChargeAccountId ?? "") === partyId) {
+    debit += toNum(transaction?.otherChargeAmount);
   }
 
   if (

@@ -25,6 +25,7 @@ export function voucherTouchesExpenseAccountLedger(v: any, entityId: string): bo
   if (Array.isArray(v.entries) && v.entries.some((e: any) => idEq(e?.accountId, id))) return true;
   if (v.type === "note" && idEq(v.entityId, id)) return true;
   if (v.type === "contra" && (idEq(v.fromAccountId, id) || idEq(v.toAccountId, id))) return true;
+  if (v.type === "contra" && idEq(v.otherChargeAccountId, id)) return true;
   if (v.type === "inter_company" && interCompanyVoucherTouchesEntity(v, id, "expense")) return true;
   if (id === "sales_account" && v.type === "sale") return true;
   if (id === "purchase_account" && v.type === "purchase") return true;

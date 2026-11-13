@@ -11,7 +11,7 @@ import { formatBsFromAD } from "@/lib/bs-date";
 // @ts-ignore - pdfmake types may not be available
 import type { TDocumentDefinitions, Content, TableCell } from "pdfmake/interfaces";
 import type { Item } from "@/components/items/types";
-import { getAllocationTotal, OPENING_BALANCE_VOUCHER_ID } from "@/lib/payment-allocation-utils";
+import { getAllocationTotal, getOutflowBillWiseLinkAmount, OPENING_BALANCE_VOUCHER_ID } from "@/lib/payment-allocation-utils";
 import { getPartyLedgerTransactionAmounts } from "@/lib/partyListLedgerBalance";
 import { shouldUseInAppPdfPreviewOverlay } from "@/lib/shouldUseInAppPdfPreview";
 import { showInAppPdfPreview } from "@/lib/inAppPdfPreview";
@@ -1526,9 +1526,10 @@ function getTransactionAmounts(t: any, context: Context, entityOrId?: any, stock
             credit = t.entries.reduce((sum: number, e: any) => sum + parseFloat(String(e.credit || 0)), 0);
           }
         } else if (t.type === 'contra') {
-          // Contra: Debit To Account, Credit From Account
-          debit = amount; // To Account gets debit
-          credit = amount; // From Account gets credit
+          // Contra "All" view: sirf transfer leg (charge apne ledger me dikhega)
+          const transferAll = getOutflowBillWiseLinkAmount(t);
+          debit = transferAll;
+          credit = transferAll;
         } else if (t.accountId) {
           if (["payment_in","direct_income", "sale"].includes(t.type)) debit = amount;
           if (["payment_out","direct_expense", "purchase"].includes(t.type)) credit = amount;
@@ -1537,8 +1538,13 @@ function getTransactionAmounts(t: any, context: Context, entityOrId?: any, stock
         if (["payment_in","direct_income", "sale"].includes(t.type) && isIdMatch(t.accountId, entityId)) debit = amount;
         if (["payment_out","direct_expense", "purchase"].includes(t.type) && isIdMatch(t.accountId, entityId)) credit = amount;
         if (t.type === "contra") {
-          if (isIdMatch(t.toAccountId, entityId)) debit = amount; 
-          if (isIdMatch(t.fromAccountId, entityId)) credit = amount; 
+          /* Charge alag leg hai: receiver ko sirf transfer milta hai, sender se transfer + charge nikalta hai. */
+          const transfer = getOutflowBillWiseLinkAmount(t);
+          const oc = Number((t as any).otherChargeAmount || 0) || 0;
+          const ocId = String((t as any).otherChargeAccountId ?? "").trim();
+          if (isIdMatch(t.toAccountId, entityId)) debit = transfer;
+          if (isIdMatch(t.fromAccountId, entityId)) credit = transfer + oc;
+          if (oc > 0 && ocId && isIdMatch(ocId, entityId)) debit += oc;
         }
         if (t.type === 'journal' && t.entries) {
           t.entries.forEach((entry: any) => {
