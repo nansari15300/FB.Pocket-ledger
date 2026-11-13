@@ -891,10 +891,10 @@ function OcrSettingsGear({
               </button>
             </div>
           </Section>
-          {/* AI Copilot: turns the OCR panel into a split view — live form on the left, Gemini chat on
+          {/* Pocket AI: turns the OCR panel into a split view — live form on the left, Gemini chat on
               the right. OFF = the classic flow (fill + bubbles + popup AI chat), untouched. */}
           <Section
-            title="AI Copilot"
+            title="Pocket AI"
             hint={aiCopilot ? "On: after OCR the form opens with a chat beside it. Ask for changes in chat — the form updates live. No popup covers the form." : "Off: the classic OCR flow (auto-fill + field bubbles + AI button opens the chat popup)."}
           >
             <SwitchRow

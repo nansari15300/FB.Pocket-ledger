@@ -24,19 +24,23 @@ function ok(name: string, cond: boolean, detail?: unknown) {
 }
 
 /* ---- 1. doc types ---- */
-ok("7 doc types, general first", OCR_AI_DOC_TYPES.length === 7 && OCR_AI_DOC_TYPES[0] === "general");
-ok("every type has a single-language English label", OCR_AI_DOC_TYPES.every((t) => /^[A-Za-z ()]+$/.test(OCR_AI_DOC_TYPE_LABELS[t])));
+ok("11 voucher-type buckets, general first", OCR_AI_DOC_TYPES.length === 11 && OCR_AI_DOC_TYPES[0] === "general");
+ok("every type has a single-language English label", OCR_AI_DOC_TYPES.every((t) => /^[A-Za-z ()_]+$/.test(OCR_AI_DOC_TYPE_LABELS[t])));
 ok("normDocType trims + lowercases", normDocType(" Sale ") === "sale" && normDocType("PURCHASE") === "purchase");
+ok("normDocType maps retired buckets", normDocType("payment") === "payment_out" && normDocType("expense") === "direct_expense" && normDocType("other") === "general");
 ok("normDocType rejects unknown", normDocType("../x") === null && normDocType("") === null && normDocType(null) === null);
 
-/* ---- 2. voucher -> doc type ---- */
+/* ---- 2. voucher -> doc type (one bucket per voucher type) ---- */
 ok("sale -> sale", aiDocTypeForVoucher("sale") === "sale");
 ok("purchase -> purchase", aiDocTypeForVoucher("purchase") === "purchase");
-ok("payment_in -> receipt", aiDocTypeForVoucher("payment_in") === "receipt");
-ok("direct_income -> receipt", aiDocTypeForVoucher("direct_income") === "receipt");
-ok("payment_out -> payment", aiDocTypeForVoucher("payment_out") === "payment");
-ok("direct_expense -> expense", aiDocTypeForVoucher("direct_expense") === "expense");
-ok("contra -> other", aiDocTypeForVoucher("contra") === "other");
+ok("quotation -> quotation", aiDocTypeForVoucher("quotation") === "quotation");
+ok("payment_in -> payment_in", aiDocTypeForVoucher("payment_in") === "payment_in");
+ok("payment_out -> payment_out", aiDocTypeForVoucher("payment_out") === "payment_out");
+ok("direct_income -> direct_income", aiDocTypeForVoucher("direct_income") === "direct_income");
+ok("direct_expense -> direct_expense", aiDocTypeForVoucher("direct_expense") === "direct_expense");
+ok("contra -> contra", aiDocTypeForVoucher("contra") === "contra");
+ok("journal -> journal", aiDocTypeForVoucher("journal") === "journal");
+ok("all voucher types hit their own bucket", ["sale", "purchase", "quotation", "payment_in", "payment_out", "contra", "journal", "direct_income", "direct_expense"].every((v) => aiDocTypeForVoucher(v) === v));
 ok("unknown type falls back to party side", aiDocTypeForVoucher(undefined, "seller") === "purchase" && aiDocTypeForVoucher(null, "buyer") === "sale");
 
 /* ---- 3. chat payload (cost control) ---- */
@@ -95,7 +99,7 @@ ok("Nepali differs from Hindi", sNe.send !== sHi.send && DEVA.test(sNe.attachBil
 ok("unknown language falls back to English", sFr.attachBill === sEn.attachBill && sFr.intro === sEn.intro);
 ok("no mixed \"English / हिन्दी\" labels", vals(sHi).every((v) => !/ \/ [\u0900-\u097F]/.test(v)));
 ok("UI and intro language are separate", aiChatStrings({ ui: "en", intro: "hi" }).send === "Send" && DEVA.test(aiChatStrings({ ui: "en", intro: "hi" }).intro));
-ok("Tech button + title per language", [sEn, sHi, sNe, sFr].every((v) => v.chatButton === "Tech" && v.openChatTeaching === "Tech" && v.title === "Tech — Gemini"));
+ok("Teach button + title per language", [sEn, sHi, sNe, sFr].every((v) => v.chatButton === "Teach me" && v.openChatTeaching === "Teach me" && v.title === "Teach me — Gemini"));
 ok("document, not bill, in Teach strings", sEn.attachBill === "Attach this document" && sEn.buttonTitle === "Chat with Gemini and teach it how to read your documents"
   && sNe.attachBill === "यो कागजात पठाउनुहोस्" && ![sEn.attachBill, sEn.buttonTitle, sEn.cardHint, sEn.noBill, sHi.attachBill, sHi.buttonTitle, sHi.noBill, sNe.buttonTitle, sNe.noBill].some((v) => /\bbills?\b|बिल/i.test(v)));
 ok("intro has the {n} placeholder", [sEn, sHi, sNe].every((x) => x.intro.includes("{n}")));

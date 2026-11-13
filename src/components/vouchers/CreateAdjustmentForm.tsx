@@ -13,6 +13,9 @@ import { toast } from "sonner";
 import { ArrowDown, ArrowUp, CheckCircle, FileText, History, Link2, Loader2, PlusCircle, Printer, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useLiveVoucherDuplicate } from "@/hooks/useLiveVoucherDuplicate";
+import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
+import type { CandidateVoucher } from "@/lib/voucherDuplicateGuard";
 import { VoucherDeleteConfirmAlertDialog } from "@/components/vouchers/VoucherDeleteConfirmAlertDialog";
 import {
   assertCanPermanentDeleteFromForm,
@@ -459,6 +462,20 @@ export function CreateAdjustmentForm({
 
   const direction = form.watch("direction");
   const watchedAmount = form.watch("amount");
+  const duplicateDate = form.watch("date");
+  const duplicateNarration = String(form.watch("narration") || "");
+  const { match: liveDuplicate, dismiss: dismissLiveDuplicate } = useLiveVoucherDuplicate(
+    vouchers as CandidateVoucher[],
+    {
+      excludeVoucherId: voucher?.id,
+      type: "adjustment",
+      date: duplicateDate,
+      amount: Number(watchedAmount) || 0,
+      fromAccountId: selectedTarget?.id,
+      narration: duplicateNarration,
+    },
+    !voucher?.id && !!duplicateDate && Number(watchedAmount) > 0
+  );
   const targetSide = direction === "increase" ? "Dr" : "Cr";
   const adjustmentSide = direction === "increase" ? "Cr" : "Dr";
   const adjustmentBillWiseSide: "debit" | "credit" = direction === "increase" ? "debit" : "credit";
@@ -1433,6 +1450,7 @@ export function CreateAdjustmentForm({
               </Button>
               <Button
                 type="submit"
+                {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }}
                 disabled={isLoading || isAttachmentProcessing || !canSaveAdjustment || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty)}
                 className={cn("w-full", BTN_SAVE_CLASS)}
               >
@@ -1519,6 +1537,7 @@ export function CreateAdjustmentForm({
                 </Button>
                 <Button
                   type="submit"
+                  {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }}
                   disabled={isLoading || isAttachmentProcessing || !canSaveAdjustment || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty)}
                   className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}
                 >
@@ -1561,6 +1580,7 @@ export function CreateAdjustmentForm({
           )}
         </div>
       </form>
+      {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} /> : null}
       <LinkPaymentToTxnsDialog
         isOpen={!!isLinkDialogOpen && adjustmentLinkContext?.kind === "party"}
         onOpenChange={(open) => {

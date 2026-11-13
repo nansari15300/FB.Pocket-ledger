@@ -22,6 +22,9 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useLiveVoucherDuplicate } from "@/hooks/useLiveVoucherDuplicate";
+import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
+import type { CandidateVoucher } from "@/lib/voucherDuplicateGuard";
 import {
   Form,
   FormControl,
@@ -574,7 +577,7 @@ export function CreateJournalForm({
     isEditing: !!(voucher as { id?: string } | null | undefined)?.id,
     disabled: !!editingDisabled,
   });
-  /* AI Copilot (split view). OFF = nothing renders, the classic OCR flow is untouched. */
+  /* Pocket AI (split view). OFF = nothing renders, the classic OCR flow is untouched. */
   const copilot = useAiCopilotLayout(ocr);
   const thumbUrl = useCopilotThumb(files);
 
@@ -828,8 +831,22 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
 
   // Watch current lines once so bill-wise summary card can react instantly to journal edits.
   const watchedLines = useWatch({ control: form.control, name: "lines" });
+  const duplicateDate = form.watch("date");
+  const duplicateNarration = String(form.watch("narration") || "");
   const otherChargeAccountId = form.watch("otherChargeAccountId");
   const otherChargeAmountValue = Number(form.watch("otherChargeAmount")) || 0;
+  const duplicateDebit = (watchedLines || []).filter((line) => line.type === "debit").reduce((sum, line) => sum + (Number(line.amount) || 0), 0) + otherChargeAmountValue;
+  const { match: liveDuplicate, dismiss: dismissLiveDuplicate } = useLiveVoucherDuplicate(
+    vouchers as CandidateVoucher[],
+    {
+      excludeVoucherId: voucher?.id,
+      type: "journal",
+      date: duplicateDate,
+      amount: duplicateDebit,
+      narration: duplicateNarration,
+    },
+    !voucher?.id && !!duplicateDate && duplicateDebit > 0
+  );
   const showJournalOtherCharge =
     otherChargeEnabled || Boolean(otherChargeAccountId) || otherChargeAmountValue > 0;
   const otherChargeAccountOptions = useMemo(() => {
@@ -3628,7 +3645,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                   Cancel
                 </Button>
                 {/* Pehle save ke baad `savedVoucherId` — tab bhi bina change Save band */}
-                <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || ((!!voucher?.id || !!savedVoucherId) && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
+                <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || ((!!voucher?.id || !!savedVoucherId) && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
                   {isLoading ? "..." : isEditingAndConverting ? "Convert" : "Save"}
                 </Button>
                 {voucher?.id ? (
@@ -3665,7 +3682,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     <Printer className="mr-2 h-4 w-4" />
                     Save & Print
                   </Button>
-                  <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || ((!!voucher?.id || !!savedVoucherId) && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
+                  <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || ((!!voucher?.id || !!savedVoucherId) && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
                     {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     {isEditingAndConverting ? "Convert" : "Save"}
                   </Button>
@@ -3686,6 +3703,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           </div>}
         </form>
       <VoucherOcrAiCopilot ocr={ocr} layout={copilot} thumbUrl={thumbUrl} />
+        {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} /> : null}
       </Form>
       {convertPresentation ? (
         <VoucherEditConvertConfirmDialog

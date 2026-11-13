@@ -19,6 +19,9 @@ import usePermissions from "@/hooks/usePermissions";
 import { assertCan, assertCanPerformBackdated, assertCanEdit, PermissionDeniedError, determineVoucherOwnership } from "@/lib/permissions/enforcePermission";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { useLiveVoucherDuplicate } from "@/hooks/useLiveVoucherDuplicate";
+import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
+import type { CandidateVoucher } from "@/lib/voucherDuplicateGuard";
 import { Input } from "@/components/ui/input";
 import { VoucherNumberInputWithRefresh } from "@/components/vouchers/VoucherNumberInputWithRefresh";
 import { Textarea } from "@/components/ui/textarea";
@@ -266,6 +269,18 @@ export function CreateNoteForm({
   })();
   const isFormDirty = _isFormFieldsDirty || _isFileDirty || recurringVoucherAuxiliaryDirty;
   const selectedContext = form.watch("context");
+  const duplicateTitle = String(form.watch("title") || "");
+  const { match: liveDuplicate, dismiss: dismissLiveDuplicate } = useLiveVoucherDuplicate(
+    vouchers as CandidateVoucher[],
+    {
+      excludeVoucherId: voucher?.id,
+      type: "note",
+      date: form.watch("date"),
+      amount: 0,
+      narration: `${duplicateTitle} ${String(form.watch("content") || "")}`.trim(),
+    },
+    !voucher?.id && !!selectedContext && !!form.getValues("entityId") && duplicateTitle.trim().length >= 2
+  );
   // Page-level Add Note dialogs always use compact footer for consistent button set.
   const isEntityAddNoteDialog = !voucher?.id && Boolean(initialContext) && Boolean(initialEntityId);
   // Compact footer removes Delete/History/Save&New/Save&Print and keeps only Cancel/Save/Save&Approve.
@@ -1226,7 +1241,7 @@ export function CreateNoteForm({
                 )}
                 {/* Mobile row: Cancel | Save | Approve — approve daayen (baaki forms jaisa) */}
                 <Button type="button" onClick={() => onVoucherAction?.('cancelled')} className={cn("w-full", BTN_CANCEL_CLASS)}>Cancel</Button>
-                <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || !isFormValid || (!!voucher?.id && !isFormDirty)} className={cn("w-full", BTN_SAVE_CLASS)}>{isLoading ? "..." : "Save"}</Button>
+                <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || !isFormValid || (!!voucher?.id && !isFormDirty)} className={cn("w-full", BTN_SAVE_CLASS)}>{isLoading ? "..." : "Save"}</Button>
                 {voucher?.id ? (
                   <Button type="button" onClick={async (e) => { e.preventDefault(); if (isFormDirty) await handleFormSubmit(e, { approveAfterSave: true }); else onApprove?.(); }} disabled={editingDisabled || isAttachmentProcessing || !showApproveButton || !onApprove || isApproving || (!!voucher?.isApproved && !isFormDirty)} className={cn("w-full", BTN_APPROVE_CLASS)}>{isApproving ? "..." : isFormDirty ? "Save & Approve" : "Approve"}</Button>
                 ) : canShowCreateApproveButton ? (
@@ -1257,7 +1272,7 @@ export function CreateNoteForm({
                   <Button type="button" onClick={() => onVoucherAction?.('cancelled')} className={cn("shrink-0 rounded-full", BTN_CANCEL_CLASS)}>Cancel</Button>
                   {!useCompactFooter && <Button type="button" onClick={(e) => handleFormSubmit(e, { saveAndNew: true })} disabled={isLoading || isAttachmentProcessing || editingDisabled || !isFormValid} className={cn("shrink-0 rounded-full", BTN_SAVE_NEW_CLASS)}>Save & New</Button>}
                   {!useCompactFooter && <Button type="button" onClick={(e) => handleFormSubmit(e, { saveAndPrint: true })} disabled={isLoading || isAttachmentProcessing || editingDisabled || !isFormValid} className={cn("shrink-0 rounded-full", BTN_PRINT_CLASS)}><Printer className="mr-2 h-4 w-4" /> Save & Print</Button>}
-                  <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || !isFormValid || (!!voucher?.id && !isFormDirty)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save</Button>
+                  <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || !isFormValid || (!!voucher?.id && !isFormDirty)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save</Button>
                   {voucher?.id ? (
                     <Button type="button" onClick={async (e) => { e.preventDefault(); if (isFormDirty) await handleFormSubmit(e, { approveAfterSave: true }); else onApprove?.(); }} disabled={editingDisabled || isAttachmentProcessing || !showApproveButton || !onApprove || isApproving || (!!voucher?.isApproved && !isFormDirty)} className={cn("shrink-0 rounded-full", BTN_APPROVE_CLASS)}>
                       {isApproving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
@@ -1274,6 +1289,7 @@ export function CreateNoteForm({
             )}
         </div>
       </form>
+      {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} /> : null}
     </Form>
 
     <CreatePartyDialog

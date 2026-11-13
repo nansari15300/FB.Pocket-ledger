@@ -1,0 +1,57 @@
+---
+description: The AI assistant feature is branded "Pocket AI" everywhere. Never rename or rebrand it without explicit permission.
+alwaysApply: true
+---
+
+# "Pocket AI" Is a Fixed Brand Name
+
+The AI assistant feature in this app is called **Pocket AI**. This name is final.
+
+## Rule
+
+**Never change, rename, shorten, translate, or rebrand "Pocket AI" without explicit permission from the project owner.**
+
+Do not do any of the following on your own initiative:
+
+- Rename it to "AI Copilot", "Copilot", "AI", "Pocket Assistant", "Gemini", "Assistant", or anything else.
+- Translate the label ("पॉकेट AI", "Pocket एआई", etc.) or create per-language brand variants.
+- Abbreviate it to "PAI", "P.AI", "PocketAI" (no space), or similar.
+- Change its casing ("Pocket Ai", "pocket ai", "POCKET AI").
+- Change the brand in only one place and leave others inconsistent.
+- Use a different name in user-facing copy, tooltips, button labels, settings titles, hints, toasts, error messages, or docs.
+- Rename related identifiers, files, or components as if the rename were requested. Internal code names (`copilot`, `AiCopilotLayout`, `data-pl-ocr-ai-copilot-toggle`, etc.) are implementation detail — leave them alone unless asked.
+
+## User-facing label
+
+Wherever the user sees the feature name, it must read exactly:
+
+```
+Pocket AI
+```
+
+Examples:
+
+```tsx
+// ❌ BAD
+<Section title="AI Copilot" />
+<Button>AI Copilot</Button>
+title={on ? "Hide AI Copilot" : "Open AI Copilot beside the form"}
+
+// ✅ GOOD
+<Section title="Pocket AI" />
+<Button>Pocket AI</Button>
+title={on ? "Hide Pocket AI" : "Open Pocket AI beside the form"}
+```
+
+## Companion rule
+
+"AI Copilot" is the retired name. If you encounter it in new code or new copy, that is a bug — use "Pocket AI".
+
+## Allowed exceptions
+
+- User-visible names of *other* products or services (e.g. "Gemini" as the underlying model, "Google Drive") stay as they are.
+- Internal identifiers, CSS hooks, storage keys, and type names may keep their existing names; renaming them is a refactor, not this rule.
+
+## If a rename is genuinely needed
+
+Stop and ask the project owner first. Do not proceed on an inferred or partial instruction.

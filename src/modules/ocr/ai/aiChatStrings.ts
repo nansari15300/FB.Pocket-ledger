@@ -87,6 +87,9 @@ export type AiChatStrings = {
   noRules: string;
   ruleSavedMsg: string;
   ruleRemovedMsg: string;
+  /** Saved-rules sidebar: voucher-type filter labels. */
+  rulesAll: string;
+  rulesFilter: string;
   buttonTitle: string;
   aiOff: string;
   cardHint: string;
@@ -169,10 +172,24 @@ const EN: AiChatStrings = {
   noRules: "No rules yet. Teach Gemini in the Chat tab and click Save rule.",
   ruleSavedMsg: "Rule saved.",
   ruleRemovedMsg: "Rule removed (kept in the file under _removed).",
+  rulesAll: "All",
+  rulesFilter: "Voucher type",
   buttonTitle: "Chat with Gemini and teach it how to read your documents",
   aiOff: "AI is off too: turn on \"Enable online OCR for this company\" below.",
   cardHint: "Gemini reads the whole document (items, totals, party, dates) and the app checks every number before filling. Pick \"AI (Gemini)\" as the OCR engine below. Uses the same company switch and shared users as Online OCR. In AI chat you can teach it how your documents must be read.",
-  docTypes: { general: "General (all types)", purchase: "Purchase", sale: "Sale", receipt: "Receipt", payment: "Payment", expense: "Expense", other: "Other" },
+  docTypes: {
+    general: "General (all voucher types)",
+    sale: "Sale",
+    purchase: "Purchase",
+    quotation: "Quotation",
+    payment_in: "Payment In",
+    payment_out: "Payment Out",
+    receipt: "Receipt",
+    contra: "Contra",
+    journal: "Journal",
+    direct_income: "Direct Income",
+    direct_expense: "Direct Expense",
+  },
 };
 
 const HI: AiChatStrings = {
@@ -251,10 +268,24 @@ const HI: AiChatStrings = {
   noRules: "अभी कोई नियम नहीं। चैट टैब में Gemini को सिखाएँ और «नियम सहेजें» दबाएँ।",
   ruleSavedMsg: "नियम सहेजा गया।",
   ruleRemovedMsg: "नियम हटाया गया (फ़ाइल में _removed के अंदर रखा है)।",
+  rulesAll: "सभी",
+  rulesFilter: "वाउचर प्रकार",
   buttonTitle: "Gemini से चैट करें और उसे अपने डॉक्यूमेंट पढ़ना सिखाएँ",
   aiOff: "AI भी बंद है: नीचे का «Enable online OCR for this company» स्विच चालू करें।",
   cardHint: "Gemini पूरा डॉक्यूमेंट पढ़ता है (आइटम, टोटल, पार्टी, तारीख) और ऐप भरने से पहले हर संख्या जाँचता है। नीचे OCR इंजन में «AI (Gemini)» चुनें। Online OCR वाला ही कंपनी स्विच और शेयर्ड यूज़र लगते हैं। AI चैट में आप इसे सिखा सकते हैं कि आपके डॉक्यूमेंट कैसे पढ़ने हैं।",
-  docTypes: { general: "सामान्य (सभी प्रकार)", purchase: "खरीद", sale: "बिक्री", receipt: "प्राप्ति", payment: "भुगतान", expense: "खर्च", other: "अन्य" },
+  docTypes: {
+    general: "सामान्य (सभी वाउचर प्रकार)",
+    sale: "बिक्री",
+    purchase: "खरीद",
+    quotation: "कोटेशन",
+    payment_in: "प्राप्ति भुगतान",
+    payment_out: "भुगतान",
+    receipt: "रसीद",
+    contra: "कॉन्ट्रा",
+    journal: "जर्नल",
+    direct_income: "प्रत्यक्ष आय",
+    direct_expense: "प्रत्यक्ष खर्च",
+  },
 };
 
 const NE: AiChatStrings = {
@@ -333,10 +364,24 @@ const NE: AiChatStrings = {
   noRules: "अहिले कुनै नियम छैन। च्याट ट्याबमा Gemini लाई सिकाउनुहोस् र «नियम सुरक्षित गर्नुहोस्» थिच्नुहोस्।",
   ruleSavedMsg: "नियम सुरक्षित भयो।",
   ruleRemovedMsg: "नियम हटाइयो (फाइलमा _removed भित्र राखिएको छ)।",
+  rulesAll: "सबै",
+  rulesFilter: "भाउचर प्रकार",
   buttonTitle: "Gemini सँग च्याट गर्नुहोस् र आफ्नो कागजात पढ्न सिकाउनुहोस्",
   aiOff: "AI पनि बन्द छ: तलको «Enable online OCR for this company» स्विच खोल्नुहोस्।",
   cardHint: "Gemini ले पूरा कागजात पढ्छ (आइटम, टोटल, पार्टी, मिति) र एपले भर्नुअघि हरेक अङ्क जाँच्छ। तल OCR इन्जिनमा «AI (Gemini)» छान्नुहोस्। Online OCR कै कम्पनी स्विच र सेयर्ड प्रयोगकर्ता लाग्छन्। AI च्याटमा तपाईं आफ्नो कागजात कसरी पढ्ने भनेर सिकाउन सक्नुहुन्छ।",
-  docTypes: { general: "सामान्य (सबै प्रकार)", purchase: "खरिद", sale: "बिक्री", receipt: "प्राप्ति", payment: "भुक्तानी", expense: "खर्च", other: "अन्य" },
+  docTypes: {
+    general: "सामान्य (सबै भाउचर प्रकार)",
+    sale: "बिक्री",
+    purchase: "खरिद",
+    quotation: "कोटेसन",
+    payment_in: "प्राप्ति भुक्तानी",
+    payment_out: "भुक्तानी",
+    receipt: "रसिद",
+    contra: "कन्ट्रा",
+    journal: "जर्नल",
+    direct_income: "प्रत्यक्ष आय",
+    direct_expense: "प्रत्यक्ष खर्च",
+  },
 };
 
 const TABLES: Record<string, AiChatStrings> = { en: EN, hi: HI, ne: NE };

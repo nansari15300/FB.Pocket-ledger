@@ -18,6 +18,9 @@ import {
 } from "@/lib/specialAccountUsage";
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from "react";
 import { Button } from "@/components/ui/button";
+import { useLiveVoucherDuplicate } from "@/hooks/useLiveVoucherDuplicate";
+import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
+import type { CandidateVoucher } from "@/lib/voucherDuplicateGuard";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { VoucherNumberInputWithRefresh } from "@/components/vouchers/VoucherNumberInputWithRefresh";
@@ -476,7 +479,7 @@ export function CreatePaymentInForm({
     isEditing: !!(voucher as { id?: string } | null | undefined)?.id,
     disabled: !!editingDisabled,
   });
-  /* AI Copilot (split view). OFF = nothing renders, the classic OCR flow is untouched. */
+  /* Pocket AI (split view). OFF = nothing renders, the classic OCR flow is untouched. */
   const copilot = useAiCopilotLayout(ocr);
   const thumbUrl = useCopilotThumb(files);
   
@@ -496,6 +499,25 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
   const accountOpeningBalance = Number(processedAccounts.find((a: any) => a.id === accountId)?.openingBalance ?? 0) || 0;
   const { displayBalance: accountBalance } = useAccountBalance(accountId);
   const incomeAccountId = form.watch("incomeAccountId");
+  const duplicateType = defaultTab === "direct_income" ? "direct_income" : "payment_in";
+  const duplicateNarration = String(form.watch("narration") || "");
+  const duplicateDate = form.watch("date");
+  const duplicateAmount = Number(form.watch("amount")) || 0;
+  const duplicateRef = /(?:Ref|Txn\s*ID)\s*:\s*([A-Za-z0-9._-]+)/i.exec(duplicateNarration)?.[1] ?? "";
+  const { match: liveDuplicate, dismiss: dismissLiveDuplicate } = useLiveVoucherDuplicate(
+    allVouchers as CandidateVoucher[],
+    {
+      excludeVoucherId: voucher?.id,
+      type: duplicateType,
+      date: duplicateDate,
+      amount: duplicateAmount,
+      fromAccountId: partyId || staffId || taxAccountId,
+      toAccountId: accountId || incomeAccountId,
+      narration: duplicateNarration,
+      ref: duplicateRef,
+    },
+    !voucher?.id && !!accountId && !!duplicateDate && duplicateAmount > 0
+  );
 
   const partyComboboxOptions = useMemo(
     () =>
@@ -3284,7 +3306,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                   Cancel
                 </Button>
                 {/* Edit + unchanged → Save off; chhota sa dirty → on (Approve jaisa) */}
-                <Button type="submit" disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
+                <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
                   {isLoading ? "..." : isEditingAndConverting ? "Convert" : "Save"}
                 </Button>
                 {voucher?.id ? (
@@ -3321,7 +3343,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     <Printer className="mr-2 h-4 w-4" />
                     Save & Print
                   </Button>
-                  <Button type="submit" disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
+                  <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
                     {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     {isEditingAndConverting ? "Convert" : "Save"}
                   </Button>
@@ -3342,6 +3364,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           </div>
         </form>
       <VoucherOcrAiCopilot ocr={ocr} layout={copilot} thumbUrl={thumbUrl} />
+        {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} /> : null}
       </Form>
       {convertPresentation ? (
         <VoucherEditConvertConfirmDialog

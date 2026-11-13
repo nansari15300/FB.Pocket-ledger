@@ -398,7 +398,7 @@ export function CreateContraForm({
     isEditing: !!(voucher as { id?: string } | null | undefined)?.id,
     disabled: !!editingDisabled,
   });
-  /* AI Copilot (split view). OFF = nothing renders, the classic OCR flow is untouched. */
+  /* Pocket AI (split view). OFF = nothing renders, the classic OCR flow is untouched. */
   const copilot = useAiCopilotLayout(ocr);
   const thumbUrl = useCopilotThumb(files);
   

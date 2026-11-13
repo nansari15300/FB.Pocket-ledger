@@ -17,6 +17,9 @@ import {
 } from "@/lib/specialAccountUsage";
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from "react";
 import { Button } from "@/components/ui/button";
+import { useLiveVoucherDuplicate } from "@/hooks/useLiveVoucherDuplicate";
+import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
+import type { CandidateVoucher } from "@/lib/voucherDuplicateGuard";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { VoucherNumberInputWithRefresh } from "@/components/vouchers/VoucherNumberInputWithRefresh";
@@ -679,6 +682,26 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
   const payeeAmountValue = Number(form.watch("payeeAmount")) || 0;
   const otherChargeAccountId = form.watch("otherChargeAccountId");
   const otherChargeAmountValue = Number(form.watch("otherChargeAmount")) || 0;
+  const duplicateType = defaultTab === "direct_expense" ? "direct_expense" : "payment_out";
+  const duplicateNarration = String(form.watch("narration") || "");
+  const duplicateDate = form.watch("date");
+  const duplicateRef = /(?:Ref|Txn\s*ID)\s*:\s*([A-Za-z0-9._-]+)/i.exec(duplicateNarration)?.[1] ?? "";
+  const { match: liveDuplicate, dismiss: dismissLiveDuplicate } = useLiveVoucherDuplicate(
+    allVouchers as CandidateVoucher[],
+    {
+      excludeVoucherId: savedVoucherId ?? voucher?.id,
+      type: duplicateType,
+      date: duplicateDate,
+      amount: payeeAmountValue + otherChargeAmountValue,
+      fromAccountId: accountId,
+      toAccountId: partyId || staffId || taxAccountId || expenseAccountId || toAccountId,
+      otherChargeAmount: otherChargeAmountValue,
+      otherChargeAccountId: otherChargeAccountId || "",
+      narration: duplicateNarration,
+      ref: duplicateRef,
+    },
+    !voucher?.id && !savedVoucherId && !!accountId && !!duplicateDate && payeeAmountValue + otherChargeAmountValue > 0
+  );
 
   const partyComboboxOptions = useMemo(
     () =>
@@ -3978,7 +4001,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     <Button type="button" onClick={() => { setAllocations(initialAllocationsRef.current.map((a) => ({ voucherId: a.voucherId, amount: a.amount }))); setLinkedPaymentInIds(initialLinkedPaymentInIdsRef.current); onVoucherAction?.('cancelled'); }} className={cn("w-full", BTN_CANCEL_CLASS)}>
                       Cancel
                     </Button>
-                    <Button type="submit" disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || payFromGate.blocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
+                    <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || payFromGate.blocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
                       {isLoading ? "..." : isEditingAndConverting ? "Convert" : "Save"}
                     </Button>
                     <Button type="button" onClick={async (e) => { e.preventDefault(); if (isFormDirty || isEditingAndConverting) await handleFormSubmit(e, { approveAfterSave: true }); else onApprove?.(); }} disabled={linkPayOthersDisabled || isAttachmentProcessing || editingDisabled || !showApproveButton || !onApprove || isApproving || (!!voucher?.isApproved && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_APPROVE_CLASS)}>
@@ -3999,7 +4022,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     <Button type="button" onClick={() => { setAllocations(initialAllocationsRef.current.map((a) => ({ voucherId: a.voucherId, amount: a.amount }))); setLinkedPaymentInIds(initialLinkedPaymentInIdsRef.current); onVoucherAction?.('cancelled'); }} className={cn("w-full", BTN_CANCEL_CLASS)}>
                       Cancel
                     </Button>
-                    <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || payFromGate.blocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
+                    <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || payFromGate.blocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
                       {isLoading ? "..." : isEditingAndConverting ? "Convert" : "Save"}
                     </Button>
                     <Button type="button" onClick={async (e) => { e.preventDefault(); if (isFormDirty || isEditingAndConverting) await handleFormSubmit(e, { approveAfterSave: true }); else onApprove?.(); }} disabled={isAttachmentProcessing || editingDisabled || !showApproveButton || !onApprove || isApproving || (!!voucher?.isApproved && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_APPROVE_CLASS)}>
@@ -4032,7 +4055,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                         <Printer className="mr-2 h-4 w-4" />
                         Save & Print
                       </Button>
-                      <Button type="submit" disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || payFromGate.blocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
+                      <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || payFromGate.blocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
                         {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         {isEditingAndConverting ? "Convert" : "Save"}
                       </Button>
@@ -4071,7 +4094,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                         <Printer className="mr-2 h-4 w-4" />
                         Save & Print
                       </Button>
-                      <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || payFromGate.blocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
+                      <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || payFromGate.blocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
                         {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         {isEditingAndConverting ? "Convert" : "Save"}
                       </Button>
@@ -4094,6 +4117,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           </div>
         </form>
       <VoucherOcrAiCopilot ocr={ocr} layout={copilot} thumbUrl={thumbUrl} />
+        {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} /> : null}
       </Form>
       {convertPresentation ? (
         <VoucherEditConvertConfirmDialog

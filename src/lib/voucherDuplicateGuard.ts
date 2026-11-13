@@ -60,12 +60,15 @@ function str(v: unknown): string {
 
 /** Total ya payee leg — dono shapes cross-check. */
 function voucherAmount(v: CandidateVoucher): number {
-  return num(v.amount ?? v.total ?? 0);
+  return num(v.amount ?? v.total ?? v.totalCost ?? v.totalOutput ?? 0);
 }
 
 /** Slip reference — OCR / bank txn id. */
 function voucherRef(v: CandidateVoucher): string {
-  return str(v.txnId || v.referenceId || v.transactionId || v.reference);
+  const explicit = str(v.txnId || v.referenceId || v.transactionId || v.reference);
+  if (explicit) return explicit;
+  // OCR often stores the bank's Ref/Txn ID only in the voucher narration.
+  return /(?:Ref|Txn\s*ID)\s*:\s*([A-Za-z0-9._-]+)/i.exec(str(v.narration))?.[1] || "";
 }
 
 /** Ek hi din — local calendar pe compare (UTC shift se off-by-one na ho). */
@@ -135,6 +138,8 @@ export type FindDuplicateInput = {
   /** Current voucher (edit mode) — khud ko duplicate mat gino. */
   excludeVoucherId?: string | null;
   type: string;
+  subType?: string;
+  lineItemType?: "item" | "service";
   date: unknown;
   amount: number;
   fromAccountId?: string;
@@ -172,8 +177,21 @@ export function findDuplicateVoucher(
   for (const v of candidates) {
     if (!v || typeof v !== "object") continue;
     if (excludeId && str(v.id) === excludeId) continue;
-    if (v.isDeleted === true || v.type === "opening_balance") continue;
+    if (
+      v.isDeleted === true ||
+      v.deleted === true ||
+      v.movedToAdminRecycleAt != null ||
+      v.plPermanentlyPurged === true ||
+      v.type === "opening_balance"
+    ) continue;
     if (str(v.type) !== myType) continue;
+    if (input.subType && str(v.subType) !== input.subType) continue;
+    if (!input.subType && myType === "journal" && ["add_salary", "pay_emi"].includes(str(v.subType))) continue;
+    if (!input.subType && myType === "payment_out" && str(v.subType) === "pay_salary") continue;
+    if ((myType === "sale" || myType === "purchase") && input.lineItemType) {
+      const existingLineType = ((v.lineItems as Array<{ type?: string }> | undefined)?.[0]?.type || "item");
+      if (existingLineType !== input.lineItemType) continue;
+    }
 
     const reasons: DuplicateReason[] = [];
 
@@ -218,7 +236,7 @@ export function findDuplicateVoucher(
 
     // 4. Same OCR narration text.
     if (myNarration.length >= 12) {
-      const theirs = str(v.narration).toLowerCase();
+      const theirs = str(v.narration || (myType === "note" ? `${str(v.title)} ${str(v.content)}` : v.title || v.content)).toLowerCase();
       if (theirs && theirs === myNarration) reasons.push("narration");
     }
 

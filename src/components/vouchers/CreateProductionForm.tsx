@@ -8,6 +8,9 @@ import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from "react";
 import { Button } from "@/components/ui/button";
+import { useLiveVoucherDuplicate } from "@/hooks/useLiveVoucherDuplicate";
+import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
+import type { CandidateVoucher } from "@/lib/voucherDuplicateGuard";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { VoucherNumberInputWithRefresh } from "@/components/vouchers/VoucherNumberInputWithRefresh";
@@ -194,7 +197,7 @@ export function CreateProductionForm({
   const { company, companyId } = useCompany();
   const { dateSystem, formatDate } = useDate();
   const { can, role, canPerformBackdatedAction, canEditRecord, canDeleteVoucher, fileAttachmentLimits, allowAttachments } = usePermissions();
-  const { processedItems } = useVouchers();
+  const { processedItems, vouchers } = useVouchers();
   const [items, setItems] = useState<Item[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const isAttachmentProcessing = useVoucherAttachmentProcessing();
@@ -235,6 +238,20 @@ export function CreateProductionForm({
     resolver: zodResolver(formSchema),
     defaultValues: getInitialFormValues(voucher),
   });
+  const duplicateDate = form.watch("date");
+  const duplicateAmount = Number(form.watch("totalOutput") || form.watch("totalCost")) || 0;
+  const duplicateNarration = String(form.watch("narration") || "");
+  const { match: liveDuplicate, dismiss: dismissLiveDuplicate } = useLiveVoucherDuplicate(
+    vouchers as CandidateVoucher[],
+    {
+      excludeVoucherId: voucher?.id,
+      type: "production",
+      date: duplicateDate,
+      amount: duplicateAmount,
+      narration: duplicateNarration,
+    },
+    !voucher?.id && !!duplicateDate && duplicateAmount > 0
+  );
 
   /* OCR (local, generic adapter): first attachment -> validated autofill; Auto Post saves UNAPPROVED. */
   const ocr = useVoucherOcr({
@@ -1354,7 +1371,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
               <Button type="button" onClick={() => onVoucherAction?.('cancelled')} className={cn("w-full", BTN_CANCEL_CLASS)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty)} className={cn("w-full", BTN_SAVE_CLASS)}>
+              <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty)} className={cn("w-full", BTN_SAVE_CLASS)}>
                 {isLoading ? "..." : "Save"}
               </Button>
               {voucher?.id ? (
@@ -1383,7 +1400,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                 </Button>
                 <Button type="button" disabled className={cn("shrink-0 rounded-full", BTN_SAVE_NEW_CLASS)}>Save & New</Button>
                 <Button type="button" disabled className={cn("shrink-0 rounded-full", BTN_PRINT_CLASS)}><Printer className="mr-2 h-4 w-4" /> Save & Print</Button>
-                <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
+                <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
                   {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Save
                 </Button>
@@ -1445,6 +1462,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           />
         )}
       </form>
+      {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} /> : null}
     </Form>
     <VoucherDeleteConfirmAlertDialog
       open={isDeleteDialogOpen}

@@ -18,6 +18,9 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useLiveVoucherDuplicate } from "@/hooks/useLiveVoucherDuplicate";
+import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
+import type { CandidateVoucher } from "@/lib/voucherDuplicateGuard";
 import {
   Form,
   FormControl,
@@ -1523,7 +1526,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     isEditing,
     disabled: !!editingDisabled,
   });
-  /* AI Copilot (split view). OFF = nothing renders, the classic OCR flow is untouched. */
+  /* Pocket AI (split view). OFF = nothing renders, the classic OCR flow is untouched. */
   const copilot = useAiCopilotLayout(ocr);
   const thumbUrl = useCopilotThumb(files);
 
@@ -2138,6 +2141,21 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
   // Source voucher me actual item mismatch mila tabhi blank item row par Copy chip dikhao.
   const hasSourceItemMismatch = Boolean(copyMismatchCategories?.includes("item"));
   const salesAccountId = form.watch("salesAccountId");
+  const duplicateNarration = String(form.watch("narration") || "");
+  const { match: liveDuplicate, dismiss: dismissLiveDuplicate } = useLiveVoucherDuplicate(
+    vouchers as CandidateVoucher[],
+    {
+      excludeVoucherId: voucher?.id,
+      type: "sale",
+      lineItemType: primaryLineItemType,
+      date: form.watch("date"),
+      amount: saleFormTotal,
+      fromAccountId: partyId,
+      toAccountId: salesAccountId,
+      narration: duplicateNarration,
+    },
+    !voucher?.id && !!partyId && !!form.watch("date") && saleFormTotal > 0
+  );
   const showCopyPartyFromSource = useMemo(() => {
     if (!copyDraftMasterHelpersEnabled) return false;
     const pid = String(partyId || "").trim();
@@ -4728,7 +4746,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                 <Button type="button" onClick={() => { setPendingLinkAllocations(null); onVoucherAction?.('cancelled'); }} className={cn("w-full", BTN_CANCEL_CLASS)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
+                <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
                   {isLoading ? "..." : isEditingAndConverting ? "Convert" : "Save"}
                 </Button>
                 <Button type="button" onClick={showSaveAndApproveOnCreate && !voucher?.id ? (e: React.MouseEvent) => handleFormSubmit(e as unknown as React.FormEvent, { approveAfterSave: true }) : ((isFormDirty || isEditingAndConverting) ? (e: React.MouseEvent) => handleFormSubmit(e as unknown as React.FormEvent, { approveAfterSave: true }) : (onApprove ?? (() => {})))} disabled={showSaveAndApproveOnCreate && !voucher?.id ? (isLoading || isAttachmentProcessing || isApproving || editingDisabled) : (isAttachmentProcessing || editingDisabled || !showApproveButton || !onApprove || isApproving || (!!voucher?.isApproved && !isFormDirty && !isEditingAndConverting))} className={cn("w-full", BTN_APPROVE_CLASS)}>
@@ -4757,7 +4775,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     <Printer className="mr-2 h-4 w-4" />
                     Save & Print
                   </Button>
-                  <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
+                  <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
                     {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     {isEditingAndConverting ? "Convert" : "Save"}
                   </Button>
@@ -4771,6 +4789,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           </div>
         </form>
       <VoucherOcrAiCopilot ocr={ocr} layout={copilot} thumbUrl={thumbUrl} />
+        {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} /> : null}
       </Form>
 
       {convertPresentation ? (

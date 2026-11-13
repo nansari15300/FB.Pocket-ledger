@@ -39,7 +39,7 @@ export type OcrPrefs = {
    */
   translateToEnglish: boolean;
   /**
-   * Live AI Copilot (split-view chat beside the voucher form).
+   * Live Pocket AI (split-view chat beside the voucher form).
    * OFF (default) = the existing OCR pipeline: read → detect → detect type → fill → bubbles.
    * ON = the OCR panel opens a docked chat next to the form. Gemini answers in chat with a JSON patch,
    * which is applied to the live form immediately, and can propose master creation for unmatched names.

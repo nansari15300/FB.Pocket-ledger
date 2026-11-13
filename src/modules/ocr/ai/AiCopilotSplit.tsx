@@ -1,12 +1,12 @@
 "use client";
 /**
- * AI Copilot glue — NO chat UI of its own. The chat is the existing, reusable `AiChatDialog`, which now
+ * Pocket AI glue — NO chat UI of its own. The chat is the existing, reusable `AiChatDialog`, which now
  * has a `copilot` mode (floating + resizable + drag). This file only:
  *   1. holds the per-form open flag (`useAiCopilotLayout`),
  *   2. builds the receipt thumbnail (`useCopilotThumb`),
  *   3. feeds the voucher form's callbacks into that same dialog.
  *
- * OFF (OCR Settings → AI Copilot) → `useAiCopilotLayout().enabled` is false and nothing renders.
+ * OFF (OCR Settings → Pocket AI) → `useAiCopilotLayout().enabled` is false and nothing renders.
  */
 import React from "react";
 import { AiChatDialog, type CopilotBridge } from "./AiChatDialog";

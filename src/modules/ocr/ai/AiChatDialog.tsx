@@ -89,7 +89,7 @@ export type AiChatDialogProps = {
   /** New OCR run id; Copilot sends one initial review request once the window opens. */
   autoStartKey?: string;
   /**
-   * Copilot mode (OCR Settings → AI Copilot): the SAME window renders as a floating, draggable,
+   * Copilot mode (OCR Settings → Pocket AI): the SAME window renders as a floating, draggable,
    * resizable panel beside the voucher instead of a centred modal, and each turn may return a voucher
    * patch / master proposal that these callbacks receive. Nothing is duplicated — one chat, two modes.
    */
@@ -202,13 +202,31 @@ function InfoPopup({ intro }: { intro: string }) {
   );
 }
 
+function SidebarToggleButton({ visible, onToggle, t }: { visible: boolean; onToggle: () => void; t: AiChatStrings }) {
+  return (
+    <button
+      type="button"
+      data-pl-no-drag="chat-list-toggle"
+      aria-label={visible ? t.hideChatList : t.showChatList}
+      aria-expanded={visible}
+      title={visible ? t.hideChatList : t.showChatList}
+      onClick={onToggle}
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-sky-300 bg-sky-100 text-sky-700 transition hover:bg-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-400"
+    >
+      {visible ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+    </button>
+  );
+}
+
 /** Left sidebar */
-function ChatHistorySidebar({ sessions, activeId, onSelect, onDelete, onNew }: {
+function ChatHistorySidebar({ sessions, activeId, onSelect, onDelete, onNew, onToggle, t }: {
   sessions: OcrAiChatSession[];
   activeId: string | null;
   onSelect: (s: OcrAiChatSession) => void;
   onDelete: (id: string) => void;
   onNew: () => void;
+  onToggle: () => void;
+  t: AiChatStrings;
 }) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   return (
@@ -217,8 +235,11 @@ function ChatHistorySidebar({ sessions, activeId, onSelect, onDelete, onNew }: {
       style={{ background: SIDEBAR_BG }}
     >
       {/* Header */}
-      <div className="shrink-0 px-3 pb-2 pt-4">
-        <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-slate-500">Chats</p>
+      <div className="shrink-0 px-3 pb-2 pt-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Chats</p>
+          <SidebarToggleButton visible onToggle={onToggle} t={t} />
+        </div>
         <button
           type="button"
           onClick={onNew}
@@ -280,6 +301,69 @@ function ChatHistorySidebar({ sessions, activeId, onSelect, onDelete, onNew }: {
   );
 }
 
+/**
+ * Saved-rules sidebar. Replaces the chat list while the Rules tab is open: one row per voucher type
+ * (plus "All"), each showing how many rules it holds, and clicking a row filters the rules pane to it.
+ */
+function RulesTypeSidebar({ rules, selected, onSelect, onToggle, t }: {
+  rules: OcrAiRulesList | null;
+  selected: OcrAiDocTypeKey | "all";
+  onSelect: (v: OcrAiDocTypeKey | "all") => void;
+  onToggle: () => void;
+  t: AiChatStrings;
+}) {
+  const total = rulesCount(rules);
+  const rows: { key: OcrAiDocTypeKey | "all"; label: string; count: number; removed: number }[] = [
+    { key: "all", label: t.rulesAll, count: total, removed: 0 },
+    ...OCR_AI_DOC_TYPES.map((k) => ({
+      key: k,
+      label: t.docTypes[k],
+      count: rules?.types[k]?.rules.length ?? 0,
+      removed: rules?.types[k]?.removed ?? 0,
+    })),
+  ];
+  return (
+    <aside className="flex w-56 shrink-0 flex-col border-r border-black/5" style={{ background: SIDEBAR_BG }}>
+      <div className="shrink-0 px-3 pb-2 pt-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-[12px] font-medium uppercase tracking-wide text-slate-500">{t.rulesFilter}</p>
+          <SidebarToggleButton visible onToggle={onToggle} t={t} />
+        </div>
+      </div>
+      <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300">
+        {rows.map((r) => {
+          const active = selected === r.key;
+          const dim = r.count === 0 && r.key !== "all";
+          return (
+            <li key={r.key}>
+              <button
+                type="button"
+                onClick={() => onSelect(r.key)}
+                className={cn(
+                  "flex w-full items-center gap-1.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition",
+                  active
+                    ? "bg-[#e0f2fe]/80 font-medium text-black"
+                    : "text-slate-700 hover:bg-black/5 hover:text-black"
+                )}
+              >
+                <span className="min-w-0 flex-1 truncate leading-snug">{r.label}</span>
+                {r.count > 0 ? (
+                  <span className={cn(
+                    "shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold text-black",
+                    active ? "bg-[#bae6fd]/70" : "bg-black/5"
+                  )}>{r.count}</span>
+                ) : dim ? (
+                  <span className="shrink-0 text-[12px] text-slate-400">—</span>
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </aside>
+  );
+}
+
 export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, getVoucherJson, getOwnCompany, autoStartKey, copilot }: AiChatDialogProps) {
   const t = useAiChatStrings();
   const copilotMode = Boolean(copilot);
@@ -312,6 +396,8 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
   const [modelBusy, setModelBusy] = useState(false);
   const [modelErr, setModelErr] = useState<string | null>(null);
   const [newType, setNewType] = useState<OcrAiDocTypeKey>(docType ?? "general");
+  /** Rules tab: which voucher type's rules are shown. `all` = every type in one list. */
+  const [rulesType, setRulesType] = useState<OcrAiDocTypeKey | "all">("all");
   const [newText, setNewText] = useState("");
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -810,17 +896,6 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
         >
           <div className="z-30 flex items-center justify-between gap-2">
             <DialogTitle className="flex items-center gap-2 text-sm font-semibold text-white">
-              <button
-                type="button"
-                data-pl-no-drag="chat-list-toggle"
-                aria-label={chatListVisible ? t.hideChatList : t.showChatList}
-                aria-expanded={chatListVisible}
-                title={chatListVisible ? t.hideChatList : t.showChatList}
-                onClick={() => setChatListVisible((visible) => !visible)}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/35 bg-white/10 text-white transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/70"
-              >
-                {chatListVisible ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
-              </button>
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20">
                 <Bot className="h-4 w-4 text-white" />
               </div>
@@ -858,16 +933,26 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
 
         {/* ── Body ── */}
         <div className="flex min-h-0 flex-1 overflow-hidden" style={{ background: CHAT_CANVAS_BG }}>
-          {/* Left sidebar */}
+          {/* Sidebar toggle stays in the same top-left rail position when the list is collapsed. */}
           {chatListVisible ? (
-            <ChatHistorySidebar
-              sessions={sessions}
-              activeId={activeSessionId}
-              onSelect={loadSession}
-              onDelete={deleteSession}
-              onNew={startNewChat}
-            />
-          ) : null}
+            tab === "rules" ? (
+              <RulesTypeSidebar rules={rules} selected={rulesType} onSelect={setRulesType} onToggle={() => setChatListVisible(false)} t={t} />
+            ) : (
+              <ChatHistorySidebar
+                sessions={sessions}
+                activeId={activeSessionId}
+                onSelect={loadSession}
+                onDelete={deleteSession}
+                onNew={startNewChat}
+                onToggle={() => setChatListVisible(false)}
+                t={t}
+              />
+            )
+          ) : (
+            <aside className="flex w-12 shrink-0 flex-col items-center border-r border-black/5 pt-3" style={{ background: SIDEBAR_BG }}>
+              <SidebarToggleButton visible={false} onToggle={() => setChatListVisible(true)} t={t} />
+            </aside>
+          )}
 
           {/* Main area */}
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1201,8 +1286,13 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                       </div>
                     ) : <p className="text-[11px] text-slate-400">{t.onlyAdmin}</p>}
                     {OCR_AI_DOC_TYPES.map((dt) => {
+                      if (rulesType !== "all" && dt !== rulesType) return null;
                       const g = rules.types[dt];
-                      if (!g.rules.length && !g.error) return null;
+                      if (!g.rules.length && !g.error) {
+                        return rulesType === "all" ? null : (
+                          <p key={dt} className="text-xs text-slate-400">{t.noRules}</p>
+                        );
+                      }
                       return (
                         <div key={dt} className="space-y-1">
                           <p className="text-xs font-medium text-slate-700">{t.docTypes[dt]} <span className="font-normal text-slate-400">({g.rules.length}{g.removed ? `, ${g.removed} ${t.removed}` : ""})</span></p>
@@ -1227,7 +1317,7 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                         </div>
                       );
                     })}
-                    {!rulesCount(rules) ? <p className="text-xs text-slate-400">{t.noRules}</p> : null}
+                    {!rulesCount(rules) && rulesType === "all" ? <p className="text-xs text-slate-400">{t.noRules}</p> : null}
                   </>
                 ) : null}
                 {!rules && rulesBusy !== "load" ? (
@@ -1279,10 +1369,10 @@ export function AiPanelToggle({ on, onClick, className, label }: { on: boolean; 
       variant={on ? "default" : "outline"}
       className={className}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      title={on ? "Hide AI Copilot" : "Open AI Copilot beside the form"}
+      title={on ? "Hide Pocket AI" : "Open Pocket AI beside the form"}
       data-pl-ocr-ai-copilot-toggle=""
     >
-      <Bot className="h-3.5 w-3.5" /> {label ?? (on ? "Hide AI" : "AI Copilot")}
+      <Bot className="h-3.5 w-3.5" /> {label ?? (on ? "Hide AI" : "Pocket AI")}
       <span className="sr-only">{t.buttonTitle}</span>
     </Button>
   );

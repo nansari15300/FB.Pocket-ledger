@@ -2,6 +2,28 @@
 
 This file applies to **any** coding agent working in this repo (Cursor, Claude Code, Codex, Copilot Chat, Gemini CLI, Windsurf, etc.). Read it before changing project code.
 
+## Freeze: "Pocket AI" brand name (hard)
+
+The AI assistant feature is branded **Pocket AI**. That name is final.
+
+### Permission (every AI)
+
+**Do not change, rename, translate, shorten, or rebrand "Pocket AI" without the human explicitly asking for a rename.**
+
+- No "AI Copilot" (retired name), "Copilot", "Pocket Assistant", "Assistant", "PocketAI", "POCKET AI", "पॉकेट AI", or any other variant in user-facing text.
+- Exactly `Pocket AI` — same casing, same spacing — in every label, tooltip, settings title, hint, toast, and message.
+- Internal identifiers (`copilot`, `AiCopilotLayout`, `data-pl-ocr-ai-copilot-toggle`, storage keys, file names) are NOT the brand. Leave them alone; renaming them is a separate refactor the human must request.
+
+### Do not
+
+- Fix the brand in one file and leave another file saying "AI Copilot".
+- Add a per-language or per-screen brand variant.
+- Treat a partial or inferred instruction as permission to rename.
+
+### If the human explicitly asks to change the brand
+
+Change **every** user-facing occurrence in one pass, then grep the repo for the old name to prove none is left.
+
 ## Freeze: Backup & Restore
 
 Backup/restore was stabilized for online → local portable `.plbp` with attachments. **Do not edit these areas unless the human explicitly asks to change backup/restore.**

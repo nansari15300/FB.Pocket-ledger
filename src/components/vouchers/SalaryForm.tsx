@@ -24,6 +24,9 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useLiveVoucherDuplicate } from "@/hooks/useLiveVoucherDuplicate";
+import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
+import type { CandidateVoucher } from "@/lib/voucherDuplicateGuard";
 import {
   Form,
   FormControl,
@@ -524,6 +527,20 @@ export function SalaryForm({
     resolver: zodResolver(formSchema) as Resolver<SalaryFormValues>,
     defaultValues: getInitialFormValues(voucher || defaultVoucherData, processedStaff, processedTaxes),
   });
+  const duplicateDate = form.watch("date");
+  const duplicateNarration = String(form.watch("narration") || "");
+  const { match: liveDuplicate, dismiss: dismissLiveDuplicate } = useLiveVoucherDuplicate(
+    allVouchers as CandidateVoucher[],
+    {
+      excludeVoucherId: voucher?.id,
+      type: isPaymentMode ? "payment_out" : "journal",
+      subType: isPaymentMode ? "pay_salary" : "add_salary",
+      date: duplicateDate,
+      amount: Number(form.watch("total")) || 0,
+      narration: duplicateNarration,
+    },
+    !voucher?.id && !!duplicateDate && Number(form.watch("total")) > 0
+  );
 
   /* OCR (local, generic adapter): first attachment -> validated autofill; Auto Post saves UNAPPROVED. */
   const ocr = useVoucherOcr({
@@ -3319,7 +3336,7 @@ try {
                 <Button type="button" onClick={() => onVoucherAction?.('cancelled')} className={cn("w-full", BTN_CANCEL_CLASS)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || ((!!voucher?.id || !!savedVoucherIdRef) && !isAnyDirty)} className={cn("w-full", BTN_SAVE_CLASS)}>
+                <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || ((!!voucher?.id || !!savedVoucherIdRef) && !isAnyDirty)} className={cn("w-full", BTN_SAVE_CLASS)}>
                   {isLoading ? "..." : "Save"}
                 </Button>
                 <Button type="button" onClick={async (e) => { e.preventDefault(); if (showSaveAndApproveOnCreate && !voucher?.id) { await handleFormSubmit(e, { approveAfterSave: true }); } else if (isAnyDirty) { await handleFormSubmit(e, { approveAfterSave: true }); } else { onApprove?.(); } }} disabled={showSaveAndApproveOnCreate && !voucher?.id ? (isLoading || isAttachmentProcessing || isApproving || editingDisabled || recurringVoucherSaveBlocked) : (isAttachmentProcessing || editingDisabled || !showApproveButton || !onApprove || isApproving || recurringVoucherSaveBlocked || (!!voucher?.isApproved && !isAnyDirty))} className={cn("w-full", BTN_APPROVE_CLASS)}>
@@ -3348,7 +3365,7 @@ try {
                     <Printer className="mr-2 h-4 w-4" />
                     Save & Print
                   </Button>
-                  <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || ((!!voucher?.id || !!savedVoucherIdRef) && !isAnyDirty)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
+                  <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || ((!!voucher?.id || !!savedVoucherIdRef) && !isAnyDirty)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
                     {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Save
                   </Button>
@@ -3362,6 +3379,7 @@ try {
           </div>
           )}
         </form>
+        {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} /> : null}
       </Form>
       <Dialog open={isLinkPaymentDialogOpen} onOpenChange={setIsLinkPaymentDialogOpen}>
         <DialogContent

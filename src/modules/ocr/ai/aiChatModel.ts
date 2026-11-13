@@ -5,18 +5,46 @@
  * - History lives in this browser session only (sessionStorage), never on the server.
  * - How the server's rules list and Gemini's proposed rule are read.
  */
-export const OCR_AI_DOC_TYPES = ["general", "purchase", "sale", "receipt", "payment", "expense", "other"] as const;
+/**
+ * Rule buckets = the app's own voucher types (same keys as `OcrAiVoucherType`, in tab order), so a rule
+ * can be taught for exactly the voucher it belongs to. `general` = every voucher type.
+ * Keys are the raw voucher_tab keys; keep them in sync with aiVoucher.ts / VOUCHER_TYPES.
+ */
+export const OCR_AI_DOC_TYPES = [
+  "general",
+  "sale",
+  "purchase",
+  "quotation",
+  "payment_in",
+  "payment_out",
+  "receipt",
+  "contra",
+  "journal",
+  "direct_income",
+  "direct_expense",
+] as const;
 export type OcrAiDocTypeKey = (typeof OCR_AI_DOC_TYPES)[number];
+
+/** Old bucket keys (before rules were split per voucher type) -> the voucher type they became. */
+const LEGACY_DOC_TYPE_MAP: Record<string, OcrAiDocTypeKey> = {
+  payment: "payment_out",
+  expense: "direct_expense",
+  other: "general",
+};
 
 /** English names (fallback); the dialog shows names in the app language from aiChatStrings. */
 export const OCR_AI_DOC_TYPE_LABELS: Record<OcrAiDocTypeKey, string> = {
-  general: "General (all types)",
-  purchase: "Purchase",
+  general: "General (all voucher types)",
   sale: "Sale",
+  purchase: "Purchase",
+  quotation: "Quotation",
+  payment_in: "Payment In",
+  payment_out: "Payment Out",
   receipt: "Receipt",
-  payment: "Payment",
-  expense: "Expense",
-  other: "Other",
+  contra: "Contra",
+  journal: "Journal",
+  direct_income: "Direct Income",
+  direct_expense: "Direct Expense",
 };
 
 export const AI_CHAT_SEND_LAST = 12;
@@ -41,7 +69,7 @@ export type OcrAiChatTurn = {
   tokens?: number;
   /** Error notes are shown but never sent to the AI. */
   error?: boolean;
-  /* ---- Copilot mode only (OCR Settings → AI Copilot) ---- */
+  /* ---- Copilot mode only (OCR Settings → Pocket AI) ---- */
   /** Labels of the form fields this turn changed ("Narration", "Date"…). */
   applied?: string[];
   /** Suggested live-voucher changes; kept pending until the user chooses Fill on voucher. */
@@ -57,18 +85,26 @@ export type OcrAiRulesList = { canEdit: boolean; folder?: string; types: Record<
 
 export function normDocType(v: unknown): OcrAiDocTypeKey | null {
   const s = String(v ?? "").trim().toLowerCase();
-  return (OCR_AI_DOC_TYPES as readonly string[]).includes(s) ? (s as OcrAiDocTypeKey) : null;
+  if ((OCR_AI_DOC_TYPES as readonly string[]).includes(s)) return s as OcrAiDocTypeKey;
+  /* Rules saved before the split used `payment` / `expense` / `other`; older server files still use them. */
+  return LEGACY_DOC_TYPE_MAP[s] ?? null;
 }
 
-/** Voucher form -> document type whose taught rules go with the AI scan / chat. */
+/** Voucher form -> the rule bucket its taught rules live in. One bucket per voucher type. */
 export function aiDocTypeForVoucher(voucherType?: string | null, partySide?: string | null): OcrAiDocTypeKey {
-  const v = String(voucherType ?? "").toLowerCase().replace(/[\s_-]+/g, "");
-  if (v.includes("purchase")) return "purchase";
-  if (v.includes("sale")) return "sale";
-  if (v.includes("receipt") || v.includes("paymentin") || v.includes("income")) return "receipt";
-  if (v.includes("payment")) return "payment";
-  if (v.includes("expense")) return "expense";
-  if (v.includes("contra") || v.includes("journal")) return "other";
+  const v = String(voucherType ?? "").toLowerCase().replace(/[\s-]+/g, "_");
+  const direct = (OCR_AI_DOC_TYPES as readonly string[]).find((t) => t !== "general" && t === v);
+  if (direct) return direct as OcrAiDocTypeKey;
+  const squashed = v.replace(/_/g, "");
+  if (squashed.includes("receipt") || squashed.includes("paymentin")) return "payment_in";
+  if (squashed.includes("quotation") || squashed.includes("quote")) return "quotation";
+  if (squashed.includes("purchase")) return "purchase";
+  if (squashed.includes("sale")) return "sale";
+  if (squashed.includes("payment")) return "payment_out";
+  if (squashed.includes("contra")) return "contra";
+  if (squashed.includes("journal")) return "journal";
+  if (squashed.includes("income")) return "direct_income";
+  if (squashed.includes("expense")) return "direct_expense";
   return partySide === "seller" ? "purchase" : "sale";
 }
 

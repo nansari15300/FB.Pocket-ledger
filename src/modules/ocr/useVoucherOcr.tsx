@@ -1247,7 +1247,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         if (process.env.NODE_ENV !== "production") console.debug("[OCR] dump\n" + [...(bill.debug ?? []), ...devDump].join("\n"));
         setDebugInfo({ text: raw.text, meanConfidence: raw.meanConfidence, reasons: [...(bill.debug ?? []), ...devDump], filled: [...filled], missing: [...new Set(missing)] });
         toast.success(filled.length ? `OCR filled by ${seen.length ? seen[seen.length - 1] : "Offline"}: ${filled.join(", ")}` : "OCR: nothing could be filled safely", { id: tId, duration: 3000, position: "top-right" });
-        /* Fresh scan: bump the counter so the AI Copilot panel (if open) starts a new chat for THIS bill. */
+        /* Fresh scan: bump the counter so the Pocket AI panel (if open) starts a new chat for THIS bill. */
         setFillSeq((n) => n + 1);
 
         // Missing fields: arrow bubbles on those fields (stay until OK / X)
@@ -1827,7 +1827,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
 
   useEffect(() => { if (!visible) cancelAutoPostCountdown(); }, [visible, cancelAutoPostCountdown]);
 
-  /* ===== AI Copilot helpers (split view) =====================================================
+  /* ===== Pocket AI helpers (split view) =====================================================
    * The copilot never touches the form directly: it hands a patch back, and these functions are the
    * only place a chat answer is written into the live form. Same canWrite() gate as the OCR fill, so a
    * copilot cannot overwrite a field the user is not allowed to edit. */
@@ -1991,7 +1991,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     getBillForChat,
     getAiVoucherJson,
     getOwnCompany,
-    /* ---- AI Copilot (split view). Only used when prefs.aiCopilot is ON; the classic flow above is
+    /* ---- Pocket AI (split view). Only used when prefs.aiCopilot is ON; the classic flow above is
      * untouched when it is OFF, so nothing here changes existing behaviour. ---- */
     copilotEnabled: prefs.aiCopilot === true,
     copilot: {
