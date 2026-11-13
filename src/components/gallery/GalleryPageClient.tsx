@@ -52,6 +52,7 @@ import {
   UserCircle,
   MoreVertical,
   Loader2,
+  Settings2,
   Trash2,
   AlignJustify,
   Search,
@@ -112,6 +113,7 @@ import { usePrewarmVisibleAttachments } from "@/hooks/usePrewarmVisibleAttachmen
 import { companyUsesLocalAttachmentSourcesOnly } from "@/lib/staticAttachmentDisplayUrl";
 import { FIREBASE_LEDGER_COMPANY_SYNC_PREFS_CHANGED_EVENT } from "@/lib/firebaseLedgerCompanySyncPrefs";
 import { setVisiblePageAttachmentUrls } from "@/lib/attachmentNetworkGate";
+import { GalleryAutoOcrSettingsDialog } from "@/components/gallery/GalleryAutoOcrSettingsDialog";
 
 
 const ATTACHABLE_VOUCHER_TYPES = [
@@ -287,8 +289,8 @@ function GalleryTabSwitch({
   className,
   inline = false,
 }: {
-  activeTab: "company-files" | "unassigned" | "duplicate";
-  onTabChange: (tab: "company-files" | "unassigned" | "duplicate") => void;
+  activeTab: "company-files" | "unassigned" | "duplicate" | "auto-failed";
+  onTabChange: (tab: "company-files" | "unassigned" | "duplicate" | "auto-failed") => void;
   className?: string;
   /** true: wrapper ke bina — parent grid ke direct children (full-width cells) */
   inline?: boolean;
@@ -298,13 +300,12 @@ function GalleryTabSwitch({
       <Button
         onClick={() => onTabChange("unassigned")}
         size="sm"
-        style={activeTab === "unassigned" ? { borderColor: "#16a34a", borderWidth: 1, borderStyle: "solid" } : undefined}
         className={cn(
-          "h-8 w-auto shrink-0 rounded-full px-3 text-xs",
+          "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
           inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
           activeTab === "unassigned"
-            ? "border border-green-600 bg-blue-100/80 font-semibold text-blue-900 hover:bg-blue-200/80"
-            : "border border-blue-300 bg-blue-100/80 text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
+            ? "-translate-y-0.5 border-2 border-green-600 bg-blue-100/80 font-semibold text-blue-900 shadow-md ring-1 ring-green-200 hover:bg-blue-200/80"
+            : "border-blue-300 bg-blue-100/80 text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
         )}
       >
         Unassigned Documents
@@ -313,30 +314,55 @@ function GalleryTabSwitch({
       <Button
         onClick={() => onTabChange("duplicate")}
         size="sm"
-        style={activeTab === "duplicate" ? { borderColor: "#16a34a", borderWidth: 1, borderStyle: "solid" } : undefined}
         className={cn(
-          "h-8 w-auto shrink-0 rounded-full px-3 text-xs",
+          "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
           inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
           activeTab === "duplicate"
-            ? "border border-green-600 bg-amber-100/80 font-semibold text-amber-900 hover:bg-amber-200/80"
-            : "border border-amber-300 bg-amber-100/70 text-amber-900 hover:border-amber-400 hover:bg-amber-200/80"
+            ? "-translate-y-0.5 border-2 border-green-600 bg-amber-100/80 font-semibold text-amber-900 shadow-md ring-1 ring-green-200 hover:bg-amber-200/80"
+            : "border-amber-300 bg-amber-100/70 text-amber-900 hover:border-amber-400 hover:bg-amber-200/80"
         )}
       >
         Duplicate Documents
       </Button>
       <Button
+        onClick={() => onTabChange("auto-failed")}
+        size="sm"
+        className={cn(
+          "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
+          inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
+          activeTab === "auto-failed"
+            ? "-translate-y-0.5 border-2 border-green-600 bg-rose-100/80 font-semibold text-rose-900 shadow-md ring-1 ring-green-200 hover:bg-rose-200/80"
+            : "border-rose-300 bg-rose-100/70 text-rose-900 hover:border-rose-400 hover:bg-rose-200/80"
+        )}
+      >
+        Auto failed
+      </Button>
+      <Button
         onClick={() => onTabChange("company-files")}
         size="sm"
-        style={activeTab === "company-files" ? { borderColor: "#16a34a", borderWidth: 1, borderStyle: "solid" } : undefined}
         className={cn(
-          "h-8 w-auto shrink-0 rounded-full px-3 text-xs",
+          "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
           inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
           activeTab === "company-files"
-            ? "border border-green-600 bg-blue-100/80 font-semibold text-blue-900 hover:bg-blue-200/80"
-            : "border border-blue-300 bg-blue-100/80 text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
+            ? "-translate-y-0.5 border-2 border-green-600 bg-blue-100/80 font-semibold text-blue-900 shadow-md ring-1 ring-green-200 hover:bg-blue-200/80"
+            : "border-blue-300 bg-blue-100/80 text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
         )}
       >
         Company Files
+      </Button>
+      <Button
+        type="button"
+        size="icon"
+        variant="outline"
+        title="Auto OCR settings"
+        aria-label="Auto OCR settings"
+        onClick={() => typeof window !== "undefined" && window.dispatchEvent(new Event("pl:gallery:auto-ocr-settings"))}
+        className={cn(
+          "h-8 w-8 shrink-0 rounded-full border-blue-300 bg-blue-100/80 text-blue-900 hover:border-blue-400 hover:bg-blue-200/80",
+          inline && "hidden max-sm:inline-flex"
+        )}
+      >
+        <Settings2 className="h-4 w-4" aria-hidden />
       </Button>
     </>
   );
@@ -596,7 +622,7 @@ function GalleryCollapsedFooterBar({
 }
 
 // --- Sub-Component: Company Files Tab ---
-function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTabChange }: { previewColumns: string | number, onColumnsChange: (columns: string | number) => void, onEditVoucher: (voucher: any) => void, onTabChange: (tab: "company-files" | "unassigned" | "duplicate") => void }) {
+function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTabChange }: { previewColumns: string | number, onColumnsChange: (columns: string | number) => void, onEditVoucher: (voucher: any) => void, onTabChange: (tab: "company-files" | "unassigned" | "duplicate" | "auto-failed") => void }) {
   const isMobile = useIsMobile();
   const { vouchers, loading, journalAccountNames, processedParties, processedPartiesForSelection, processedStaff, processedAccounts, processedItems, expenseAccounts, processedTaxes, userNames: vouchersUserNames } = useVouchers();
   const { dateSystem, formatDate, formatDateBS } = useDate();
@@ -1773,6 +1799,10 @@ type UnassignedFile = {
     duplicateMatchedDateText?: string;
     duplicateIncomingRef?: string;
     movedAtMs?: number;
+    autoOcrStatus?: "queued" | "processing" | "failed" | "complete";
+    autoOcrError?: string;
+    autoOcrProvider?: string;
+    autoOcrVoucherId?: string;
 }
 
 type UploadingFile = {
@@ -1918,7 +1948,7 @@ export function firestoreCompanyIdForGallery(
 }
 
 // --- Sub-Component: Unassigned Documents Tab ---
-function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, previewColumns, onColumnsChange, onTabChange }: { mode?: "unassigned" | "duplicate"; handleAttachToVoucher: any; previewColumns: string | number; onColumnsChange: (columns: string | number) => void; onTabChange: (tab: "company-files" | "unassigned" | "duplicate") => void; }) {
+function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, previewColumns, onColumnsChange, onTabChange }: { mode?: "unassigned" | "duplicate" | "auto-failed"; handleAttachToVoucher: any; previewColumns: string | number; onColumnsChange: (columns: string | number) => void; onTabChange: (tab: "company-files" | "unassigned" | "duplicate" | "auto-failed") => void; }) {
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const { company, companyId } = useCompany();
@@ -2068,11 +2098,12 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
     const unsubscribe = onSnapshot(q, (snapshot) => {
         const filesData = snapshot.docs
           .map(d => ({id: d.id, ...d.data()}) as UnassignedFile)
-          .filter(f => !f.isDeleted && !f.deleted && (f.status as any) !== 'ASSIGNED');
+          .filter(f => !f.isDeleted && !f.deleted && (f.status as any) !== 'ASSIGNED')
+          .filter(f => mode === "auto-failed" ? f.autoOcrStatus === "failed" : mode === "unassigned" ? f.autoOcrStatus !== "failed" : true);
         setUnassignedFiles(filesData);
     });
     return () => unsubscribe();
-  }, [companyId, company, unassignedUseDeviceLocalOnly]);
+  }, [companyId, company, unassignedUseDeviceLocalOnly, mode]);
 
   // Fetch users separately to avoid re-fetching files when a user is added
   useEffect(() => {
@@ -3041,7 +3072,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
           {/* Ek hi row: title/subtitle (left) + Showing pill + Per page + chevron (right, never wrap) */}
           <div className="flex w-full min-w-0 flex-nowrap items-start gap-2">
             <div className="min-w-0 flex-1">
-              <CardTitle className="truncate text-sm font-bold leading-tight sm:text-base">{mode === "duplicate" ? "Duplicate Documents" : "Unassigned Documents"}</CardTitle>
+              <CardTitle className="truncate text-sm font-bold leading-tight sm:text-base">{mode === "duplicate" ? "Duplicate Documents" : mode === "auto-failed" ? "Auto failed" : "Unassigned Documents"}</CardTitle>
               <CardDescription className="truncate text-[11px] leading-snug">
                 Attach them to vouchers later.
               </CardDescription>
@@ -3290,7 +3321,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
 
             {/* Tab switch — mobile par grid ki last row: dono buttons aadhi-aadhi full width */}
             <GalleryTabSwitch
-              activeTab="unassigned"
+              activeTab={mode === "auto-failed" ? "auto-failed" : "unassigned"}
               onTabChange={onTabChange}
               inline
               className="col-span-2 hidden max-sm:grid max-sm:w-full max-sm:grid-cols-2 max-sm:gap-[5px]"
@@ -3530,7 +3561,7 @@ function getCleanName(name: string) {
   return name;
 }
 
-const GALLERY_TABS = ['company-files', 'unassigned', 'duplicate'] as const;
+const GALLERY_TABS = ['company-files', 'unassigned', 'duplicate', 'auto-failed'] as const;
 type GalleryTab = (typeof GALLERY_TABS)[number];
 
 // Default unassigned when no tab in URL (app open, sidebar nav); refresh keeps current tab from URL
@@ -3538,6 +3569,7 @@ function getTabFromSearchParams(searchParams: URLSearchParams): GalleryTab {
   const tab = searchParams.get('tab');
   if (tab === 'company-files') return 'company-files';
   if (tab === 'duplicate') return 'duplicate';
+  if (tab === 'auto-failed') return 'auto-failed';
   return 'unassigned';
 }
 
@@ -3566,6 +3598,13 @@ export function GalleryPageContent() {
 
   const [voucherToEdit, setVoucherToEdit] = useState<any | null>(null);
   const [isEditVoucherOpen, setIsEditVoucherOpen] = useState(false);
+  const [autoOcrSettingsOpen, setAutoOcrSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    const openSettings = () => setAutoOcrSettingsOpen(true);
+    window.addEventListener("pl:gallery:auto-ocr-settings", openSettings);
+    return () => window.removeEventListener("pl:gallery:auto-ocr-settings", openSettings);
+  }, []);
 
   // Keep URL in sync with tab so refresh keeps same tab
   const setGalleryTab = useCallback(
@@ -3694,6 +3733,9 @@ export function GalleryPageContent() {
         {activeTab === 'duplicate' && (
            <UnassignedDocumentsTab mode="duplicate" handleAttachToVoucher={handleAttachToVoucher} previewColumns={previewColumns} onColumnsChange={setPreviewColumns} onTabChange={setGalleryTab} />
         )}
+        {activeTab === 'auto-failed' && (
+           <UnassignedDocumentsTab mode="auto-failed" handleAttachToVoucher={handleAttachToVoucher} previewColumns={previewColumns} onColumnsChange={setPreviewColumns} onTabChange={setGalleryTab} />
+        )}
         </div>
 
         {/* Dialog for creating new voucher from unassigned */}
@@ -3705,6 +3747,7 @@ export function GalleryPageContent() {
           suppressDashboardRedirectGuard
           onVoucherAction={() => {}} 
         />
+        <GalleryAutoOcrSettingsDialog open={autoOcrSettingsOpen} onOpenChange={setAutoOcrSettingsOpen} />
         {/* Dialog for editing existing voucher */}
         <AddVoucherDialog 
           isOpen={isEditVoucherOpen}
