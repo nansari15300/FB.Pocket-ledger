@@ -136,6 +136,14 @@ function filterVoucherRowsForSerial(
   voucherLike: { type?: string; subType?: string; lineItems?: Array<{ type?: string }> }
 ): Array<Record<string, unknown>> {
   return rows.filter((r) => {
+    // Recycled/hidden rows must not reserve a serial. A hard-purge PocketBase tombstone can
+    // remain in sync storage with isDeleted=true, so exclude the explicit purge marker too.
+    if (
+      r.isDeleted === true ||
+      r.deleted === true ||
+      r.movedToAdminRecycleAt != null ||
+      r.plPermanentlyPurged === true
+    ) return false;
     if (voucherLike.type === "sale" || voucherLike.type === "purchase") {
       const srcLineType = voucherLike?.lineItems?.[0]?.type || "item";
       const rowLineType = (r as { lineItems?: Array<{ type?: string }> })?.lineItems?.[0]?.type || "item";

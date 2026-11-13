@@ -66,6 +66,7 @@ import {
     restoreCompanySubdocFromRecycleBin,
     deleteFirebaseStorageFilesForDoc,
     subscribeOnlineRecycleBinFirestoreToSqliteMirror,
+    isPermanentPurgePayload,
 } from "@/lib/recycleBinEntityLifecycle";
 import { LOCAL_AUTH_CHANGED_EVENT } from "@/lib/localApiClient";
 import { ownerFinalizeRecycleBinCompanyOnServer } from "@/lib/ownerRecycleBinApiClient";
@@ -600,7 +601,10 @@ function RecycleBinContent() {
                             }
 
                             const newItems = snapshot.docs
-                                .filter((docSnap) => !docSnap.data().movedToAdminRecycleAt)
+                                .filter((docSnap) => {
+                                    const data = docSnap.data();
+                                    return !data.movedToAdminRecycleAt && !isPermanentPurgePayload(data);
+                                })
                                 .map((docSnap) => {
                                     const data = docSnap.data();
                                     const item: DeletedItem = {
@@ -1371,7 +1375,17 @@ function RecycleBinContent() {
                     }
                     for (const item of nonCompanyItems) {
                         if (!companyId) continue;
-                        await permanentDeleteCompanySubdocFromRecycleBin(companyId, item.collectionPath, item.id);
+                        try {
+                            await permanentDeleteCompanySubdocFromRecycleBin(companyId, item.collectionPath, item.id);
+                        } catch (error) {
+                            const message = error instanceof Error ? error.message : String(error || "");
+                            // Stale recycle-bin rows can point at a document already removed on
+                            // another device. Treat that one missing-row update as already purged
+                            // so it cannot abort Empty Bin for every remaining item.
+                            if (!message.includes("No document to update")) throw error;
+                            console.warn("[recycle-bin] treating already-missing row as purged", item.collectionPath, item.id);
+                            await deleteCompanyDocFromBrowserDb(companyId, item.collectionPath, item.id, { force: true, notify: true });
+                        }
                         await removeRecycleBinAlerts(companyId, item.id);
                     }
                 } else if (!isLocalOnlyMode()) {
@@ -1401,7 +1415,14 @@ function RecycleBinContent() {
                     // Local-only gate: non-company rows SQLite purge (same as quick path for sqlite-backed bins).
                     for (const item of nonCompanyItems) {
                         if (!companyId) continue;
-                        await permanentDeleteCompanySubdocFromRecycleBin(companyId, item.collectionPath, item.id);
+                        try {
+                            await permanentDeleteCompanySubdocFromRecycleBin(companyId, item.collectionPath, item.id);
+                        } catch (error) {
+                            const message = error instanceof Error ? error.message : String(error || "");
+                            if (!message.includes("No document to update")) throw error;
+                            console.warn("[recycle-bin] treating already-missing row as purged", item.collectionPath, item.id);
+                            await deleteCompanyDocFromBrowserDb(companyId, item.collectionPath, item.id, { force: true, notify: true });
+                        }
                         await removeRecycleBinAlerts(companyId, item.id);
                     }
                 }

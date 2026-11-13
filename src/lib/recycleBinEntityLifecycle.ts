@@ -217,6 +217,7 @@ export async function listDeletedSubdocsFromSqlite(
     const rows = await listCompanyDocsFromBrowserDb(cid, coll.path, { includeSoftDeleted: true });
     for (const data of rows) {
       if (data?.isDeleted !== true) continue;
+      if (isPermanentPurgePayload(data)) continue;
       if (data.movedToAdminRecycleAt) continue;
       const item: DeletedItem = {
         id: String(data.id || ""),
