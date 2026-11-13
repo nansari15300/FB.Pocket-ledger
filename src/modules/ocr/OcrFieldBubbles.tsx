@@ -776,6 +776,15 @@ function BubbleView({
   const [el, setEl] = useState<HTMLDivElement | null>(null);
   const [showEnglish, setShowEnglish] = useState(false);
   const apply = (s: OcrSuggestion, mode?: "auto" | "manual") => onApply(s, mode, showEnglish ? "english" : "original");
+  const hasEnglishTranslation = Boolean(b.englishTitle || b.items.some((s) => s.englishValue || s.englishMasterName));
+  const displaySuggestionValue = (s: OcrSuggestion) => {
+    if (!showEnglish) return s.value;
+    if (s.englishValue) return s.englishValue;
+    if (!s.englishMasterName) return s.value;
+    const separator = s.id === "create-party" ? " · " : s.id.startsWith("create-item-") ? " | " : "";
+    const sourceName = separator ? s.value.split(separator)[0] : s.value;
+    return sourceName ? s.value.replace(sourceName, s.englishMasterName) : s.value;
+  };
 
   const update = useCallback(() => {
     scheduleOcrBubbleLayout();
@@ -883,6 +892,7 @@ function BubbleView({
             {showEnglish && b.englishTitle ? b.englishTitle : b.title}
             {pos?.fallback ? <span className="block text-[11px] font-normal text-slate-500">(field not on screen)</span> : null}
           </p>
+          {hasEnglishTranslation ? <button type="button" className="shrink-0 text-[10px] font-medium text-sky-700 underline" onClick={() => setShowEnglish((v) => !v)}>{showEnglish ? "Show original" : "Translate to English"}</button> : null}
           <button type="button" aria-label="Dismiss" className="-mr-1 -mt-1 rounded-full p-1 text-slate-500 hover:bg-slate-100" onClick={onDismiss}>
             <X className="h-3.5 w-3.5" />
           </button>
@@ -918,7 +928,7 @@ function BubbleView({
           <div className="mt-1.5">
             {b.items[0] ? (
               <>
-                <p className="break-words text-xs text-slate-500">{showEnglish && b.items[0].englishValue ? b.items[0].englishValue : b.items[0].value}</p>
+                <p className="break-words text-xs text-slate-500">{displaySuggestionValue(b.items[0])}</p>
                 {b.items[0].englishValue ? <button type="button" className="mt-1 text-[10px] font-medium text-sky-700 underline" onClick={() => setShowEnglish((v) => !v)}>{showEnglish ? "Show original" : "Translate to English"}</button> : null}
                 {b.items[0].reason ? <p className="text-[11px] text-slate-500">{b.items[0].reason}</p> : null}
               </>
@@ -929,7 +939,7 @@ function BubbleView({
           </div>
         ) : party ? (
           <div className="mt-1.5">
-            <p className="break-words text-xs text-slate-500">{showEnglish && party.englishValue ? party.englishValue : party.value}</p>
+            <p className="break-words text-xs text-slate-500">{displaySuggestionValue(party)}</p>
             {party.englishValue ? <button type="button" className="mt-1 text-[10px] font-medium text-sky-700 underline" onClick={() => setShowEnglish((v) => !v)}>{showEnglish ? "Show original" : "Translate to English"}</button> : null}
             <div className="mt-2 flex flex-wrap gap-1.5">
               <Button type="button" size="sm" className={pill} onClick={() => apply(party)}>Create</Button>
@@ -939,7 +949,7 @@ function BubbleView({
           </div>
         ) : restItems.length === 1 ? (
           <div className="mt-1.5">
-            <p className="break-words text-xs text-slate-500">{showEnglish && restItems[0].englishValue ? restItems[0].englishValue : restItems[0].value}</p>
+            <p className="break-words text-xs text-slate-500">{displaySuggestionValue(restItems[0])}</p>
             {restItems[0].englishValue ? <button type="button" className="mt-1 text-[10px] font-medium text-sky-700 underline" onClick={() => setShowEnglish((v) => !v)}>{showEnglish ? "Show original" : "Translate to English"}</button> : null}
             {restItems[0].reason ? <p className="text-[11px] text-slate-500">{restItems[0].reason}</p> : null}
             {restItems[0].blocked ? <p className="text-[11px] text-amber-700">{restItems[0].blocked}</p> : null}
@@ -960,7 +970,7 @@ function BubbleView({
               <div key={s.id} className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium">{s.label}</p>
-                  <p className="break-words text-[11px] text-slate-500">{showEnglish && s.englishValue ? s.englishValue : s.value}</p>
+                  <p className="break-words text-[11px] text-slate-500">{displaySuggestionValue(s)}</p>
                   {s.englishValue ? <button type="button" className="mt-0.5 text-[10px] font-medium text-sky-700 underline" onClick={() => setShowEnglish((v) => !v)}>{showEnglish ? "Show original" : "Translate to English"}</button> : null}
                   {s.blocked ? <p className="text-[11px] text-amber-700">{s.blocked}</p> : null}
                 </div>
