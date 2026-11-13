@@ -132,7 +132,7 @@ async function loadFirstFile(f: File | string, companyId?: string | null): Promi
 }
 
 /** Bump when parser/engine logic changes: shown in Show OCR text to prove the browser runs the new bundle. */
-export const OCR_BUILD = "2026-11-13.3";
+export const OCR_BUILD = "2026-11-14.1";
 
 const MONEY_TYPES = ["payment_out", "payment_in", "direct_expense", "direct_income", "contra"] as const;
 const ALL_TYPE_CHOICES = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"] as const;
@@ -178,6 +178,32 @@ function looksNonEnglishOcrText(text: string | undefined): boolean {
   const t = String(text ?? "");
   if (!t) return false;
   return /[\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0E00-\u0E7F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF]/.test(t);
+}
+
+function translatedOcrText(value: string | undefined, translations: readonly { source: string; english: string }[] | undefined): string | undefined {
+  const original = String(value ?? "");
+  if (!original || !looksNonEnglishOcrText(original) || !translations?.length) return undefined;
+  let translated = original;
+  for (const t of [...translations].sort((a, b) => b.source.length - a.source.length)) {
+    if (!t.source || !t.english || !looksNonEnglishOcrText(t.source) || !translated.includes(t.source)) continue;
+    translated = translated.split(t.source).join(t.english);
+  }
+  return translated !== original && !looksNonEnglishOcrText(translated) ? translated : undefined;
+}
+
+function addPrecomputedEnglish(suggestions: OcrSuggestion[], raw: OcrRawResult): OcrSuggestion[] {
+  const translations = raw.ai?.data.english_translations;
+  if (!translations?.length) return suggestions;
+  return suggestions.map((s) => {
+    const englishValue = translatedOcrText(s.value, translations);
+    const primaryName = s.id === "create-party" ? s.value.split(" · ")[0]
+      : s.id.startsWith("create-item-") ? s.value.split(" | ")[0]
+      : s.id.startsWith("create-account-") ? s.value
+      : "";
+    const englishMasterName = s.englishMasterName ?? translatedOcrText(primaryName, translations);
+    const displayEnglish = s.englishValue ?? englishValue;
+    return displayEnglish || englishMasterName ? { ...s, englishValue: displayEnglish, englishMasterName } : s;
+  });
 }
 
 export function useVoucherOcr(o: UseVoucherOcrOptions) {
@@ -320,7 +346,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const itemCreateApiRef = useRef<{
     auto: (index: number, row: { description: string; unit?: string; rate: number }, known?: { id: string; name?: string; isDeleted?: boolean }[]) => Promise<{ ok: true; id: string; reused: boolean; name: string } | { ok: false; message: string }>;
     manual: (index: number, row: { description: string; unit?: string; rate: number }) => Promise<void>;
-    all: (items: { id: string }[]) => Promise<void>;
+    all: (items: { id: string }[], language?: "original" | "english") => Promise<void>;
   }>(null as never);
 
   const applyCreatedItemToLine = useCallback((index: number, id: string, billUnit?: string) => {
@@ -395,7 +421,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       }
       setCreateItemFor({ index, name, unit: row.unit, rate: row.rate, groupId, ocrGroups: itemGroupsRef.current });
     },
-    all: async (items) => {
+    all: async (items, language) => {
       const billRows = lastBillRef.current?.lineItems?.value ?? [];
       const known: { id: string; name?: string; isDeleted?: boolean }[] = [];
       let created = 0, reused = 0, failed = 0;
@@ -404,7 +430,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         toast.loading(`Creating items ${i + 1}/${items.length}`, { id: toastId });
         const id = items[i].id;
         const index = Number(id.slice("create-item-".length));
-        const row = billRows[index];
+        const sourceRow = billRows[index];
+        const row = language === "english" && sourceRow
+          ? { ...sourceRow, description: translatedOcrText(sourceRow.description, lastRawRef.current?.ai?.data.english_translations) ?? sourceRow.description }
+          : sourceRow;
         if (!row || Number.isNaN(index)) { failed++; continue; }
         const res = await itemCreateApiRef.current.auto(index, row, known);
         if (res.ok) {
@@ -578,7 +607,12 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                       /* Phone is deliberately NOT prefilled from initiatorPhone: that is the SENDER's number
                        * (our own account holder on a Prabhu/connectIPS slip), so it belongs to us, never to the
                        * party being created. Bank details below come from the beneficiary side only. */
-                      apply: () => setCreatePrefill({ ...partyNamePrefill(nm), pan: "", phone: "", email: "", address: "", accountTypeId: PARTY_SYSTEM_CREDITORS_ID, extra: [bn.accountMasked && `Bank A/c: ${bn.accountMasked}`, bn.bankName, bn.branch].filter(Boolean).join(" | ") }),
+                      apply: (ctx) => {
+                        const englishName = translatedOcrText(nm, raw.ai?.data.english_translations);
+                        const chosenName = ctx?.language === "english" ? englishName ?? nm : nm;
+                        const prefill = partyNamePrefill(chosenName);
+                        setCreatePrefill({ ...prefill, aliasName: chosenName !== nm ? nm : prefill.aliasName, pan: "", phone: "", email: "", address: "", accountTypeId: PARTY_SYSTEM_CREDITORS_ID, extra: [bn.accountMasked && `Bank A/c: ${bn.accountMasked}`, bn.bankName, bn.branch].filter(Boolean).join(" | ") });
+                      },
                     });
                     rExtra.push({ id: "find-party", label: "Pick an existing account instead", value: "search by name", deferred: true, apply: () => setFindOpen(true) });
                   }
@@ -602,7 +636,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                   rExtra.push({
                     id: "create-account-from", label: "Create bank account (From)", value: accName || "from this slip",
                     confidence: 0.7, reason: "Opens Create Bank/Cash prefilled — you confirm Save, then it fills From", deferred: true,
-                    apply: () => setCreateAccountFor({ side: "from", prefill: { accountName: accName || undefined, accountType: "Bank" } }),
+                    apply: (ctx) => {
+                      const accountName = ctx?.language === "english" ? translatedOcrText(accName, raw.ai?.data.english_translations) ?? accName : accName;
+                      setCreateAccountFor({ side: "from", prefill: { accountName: accountName || undefined, accountType: "Bank" } });
+                    },
                   });
                 }
                 if (direction === "contra" && pf.to) {
@@ -622,7 +659,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                     rExtra.push({
                       id: "create-account-to", label: "Create bank account (To)", value: toName || "from this slip",
                       confidence: 0.7, reason: "Opens Create Bank/Cash prefilled — you confirm Save, then it fills To", deferred: true,
-                      apply: () => setCreateAccountFor({ side: "to", prefill: { accountName: toName || undefined, accountType: "Bank" } }),
+                      apply: (ctx) => {
+                        const accountName = ctx?.language === "english" ? translatedOcrText(toName, raw.ai?.data.english_translations) ?? toName : toName;
+                        setCreateAccountFor({ side: "to", prefill: { accountName: accountName || undefined, accountType: "Bank" } });
+                      },
                     });
                   }
                 }
@@ -825,7 +865,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             }
             setLastBill(null);
             setReceiptTarget(sg.some((x) => x.id === "switch" && !x.blocked) ? rc.voucherType ?? null : null);
-            setSuggestions(sg);
+            setSuggestions(addPrecomputedEnglish(sg, raw));
             if (reason === "refresh") { setDoneIds(new Set()); setDismissedKeys(new Set()); setDismissedMissingKeys(new Set()); }
             if (sg.some((x) => !x.blocked) || rMissing.length) setSugOpen(true);
             setMissingNow(rMissing);
@@ -1104,12 +1144,18 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             id: "create-party", label: "Create new party", value: [bill.partyName?.value, identifiers.pan && `PAN ${identifiers.pan}`, identifiers.phones[0]].filter(Boolean).join(" · "),
             confidence: pct(bill.partyName?.confidence), reason: "No existing account matched by PAN / name / phone / email - opens Create Party prefilled; you confirm Save",
             deferred: true,
-            apply: () => setCreatePrefill({
-              ...partyNamePrefill(bill.partyName?.value), pan: identifiers.pan ?? "", phone: identifiers.phones[0] ?? "", email: identifiers.emails[0] ?? "",
-              address: identifiers.address ?? "",
-              accountTypeId: A.partySide === "seller" ? PARTY_SYSTEM_CREDITORS_ID : PARTY_FORM_DEFAULT_ACCOUNT_TYPE_ID,
-              extra: [identifiers.contactPerson && `Contact: ${identifiers.contactPerson}`, identifiers.bankAccountNos[0] && `Bank A/c: ${identifiers.bankAccountNos[0]}`, identifiers.regNo && `Reg No: ${identifiers.regNo}`].filter(Boolean).join(" | "),
-            }),
+            apply: (ctx) => {
+              const sourceName = bill.partyName?.value ?? "";
+              const englishName = translatedOcrText(sourceName, raw.ai?.data.english_translations);
+              const chosenName = ctx?.language === "english" ? englishName ?? sourceName : sourceName;
+              const prefill = partyNamePrefill(chosenName);
+              setCreatePrefill({
+                ...prefill, aliasName: chosenName !== sourceName ? sourceName : prefill.aliasName, pan: identifiers.pan ?? "", phone: identifiers.phones[0] ?? "", email: identifiers.emails[0] ?? "",
+                address: identifiers.address ?? "",
+                accountTypeId: A.partySide === "seller" ? PARTY_SYSTEM_CREDITORS_ID : PARTY_FORM_DEFAULT_ACCOUNT_TYPE_ID,
+                extra: [identifiers.contactPerson && `Contact: ${identifiers.contactPerson}`, identifiers.bankAccountNos[0] && `Bank A/c: ${identifiers.bankAccountNos[0]}`, identifiers.regNo && `Reg No: ${identifiers.regNo}`].filter(Boolean).join(" | "),
+              });
+            },
           });
           sg.push({ id: "find-party", label: "Pick an existing account instead", value: "search by PAN / phone / email / address / name", deferred: true, apply: () => setFindOpen(true) });
         }
@@ -1130,14 +1176,21 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         if (A.lineItems) {
           (bill.lineItems?.value ?? []).forEach((r, index) => {
             if (r.itemId) return;
+            const englishDescription = translatedOcrText(r.description, raw.ai?.data.english_translations);
+            const englishItemName = englishDescription ? cleanItemName(englishDescription) : undefined;
             sg.push({
               id: `create-item-${index}`, label: `Create item: ${cleanItemName(r.description)}`,
               value: [cleanItemName(r.description), r.unit, `rate ${r.rate}`].filter(Boolean).join(" | "),
+              englishValue: englishItemName ? [englishItemName, r.unit, `rate ${r.rate}`].filter(Boolean).join(" | ") : undefined,
+              englishMasterName: englishItemName,
               confidence: 0.8, reason: "No existing item matched. Create opens Auto Create (no form) or Manual Create (prefilled form), then the item is set on line " + (index + 1),
               deferred: true,
               apply: async (ctx) => {
-                if (ctx?.mode === "auto") { await itemCreateApiRef.current.auto(index, r); return; }
-                await itemCreateApiRef.current.manual(index, r);
+                const row = ctx?.language === "english"
+                  ? { ...r, description: translatedOcrText(r.description, raw.ai?.data.english_translations) ?? r.description }
+                  : r;
+                if (ctx?.mode === "auto") { await itemCreateApiRef.current.auto(index, row); return; }
+                await itemCreateApiRef.current.manual(index, row);
               },
             });
           });
@@ -1218,7 +1271,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           }
         }
         if (A.voucherType === "journal") sg.push({ id: "drcr", label: "Dr / Cr side", value: "journal lines", blocked: "Journal Dr/Cr lines are never auto-filled (spec) - enter manually", apply: () => undefined });
-        setSuggestions(sg);
+        setSuggestions(addPrecomputedEnglish(sg, raw));
         if (reason === "refresh") {
           setDoneIds(new Set());
           setDismissedKeys(new Set());
@@ -1527,16 +1580,16 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     };
   }, [missingNow, suggestions, dismissedMissingKeys, dismissedKeys, doneIds, formVals, o.adapter, o.taxes, lastBill]);
 
-  const runApply = useCallback(async (list: OcrSuggestion[]) => {
+  const runApply = useCallback(async (list: OcrSuggestion[], language?: "original" | "english") => {
     const sw = list.find((s) => s.id === "switch");
     if (sw) {
       setSugOpen(false);
-      await sw.apply({ selectedIds: list.filter((s) => s.id !== "switch").map((s) => s.id) });
+      await sw.apply({ selectedIds: list.filter((s) => s.id !== "switch").map((s) => s.id), language });
       return;
     }
-    for (const s of list.filter((x) => !x.deferred)) await s.apply();
+    for (const s of list.filter((x) => !x.deferred)) await s.apply({ selectedIds: [], language });
     setDoneIds((p) => new Set([...p, ...list.map((x) => x.id)]));
-    for (const s of list.filter((x) => x.deferred)) await s.apply();
+    for (const s of list.filter((x) => x.deferred)) await s.apply({ selectedIds: [], language });
   }, []);
   // "Apply all" in the OCR bar: every shown, non-blocked suggestion that applies directly (no dialog / voucher switch)
   const tickedList = sugOpen ? liveBubbles.suggestions.filter((s) => !s.blocked && !s.deferred && s.id !== "switch") : [];
@@ -1649,6 +1702,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           if (switchTarget) b.anchor = `voucher-type-${switchTarget}`;
           if (swCount != null) b.countdown = swCount;
         }
+        b.englishTitle = translatedOcrText(b.title, lastRawRef.current?.ai?.data.english_translations);
+        if (!b.englishTitle && cp?.englishMasterName) b.englishTitle = b.title.replace(cp.value.split(" · ")[0], cp.englishMasterName);
+        if (!b.englishTitle && ci?.englishMasterName) b.englishTitle = b.title.replace(ci.label.replace(/^Create item:\s*/, ""), ci.englishMasterName);
         out.set(k, b);
       }
       // a suggestion bubble replaces the missing bubble on the same field
@@ -1663,12 +1719,12 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         <>
           <OcrFieldBubbles
             bubbles={bubbles}
-            onApply={(sg, mode) => {
+            onApply={(sg, mode, language) => {
               if (sg.id !== "switch") cancelSwitchCountdown();
-              if (sg.id.startsWith("create-item-") && mode) { void sg.apply({ selectedIds: [], mode }); return; }
-              void runApply([sg]);
+              if (sg.id.startsWith("create-item-") && mode) { void sg.apply({ selectedIds: [], mode, language }); return; }
+              void runApply([sg], language);
             }}
-            onCreateAllItems={(items) => { cancelSwitchCountdown(); void itemCreateApiRef.current.all(items); }}
+            onCreateAllItems={(items, language) => { cancelSwitchCountdown(); void itemCreateApiRef.current.all(items, language); }}
             onDismiss={(b) => {
               cancelSwitchCountdown();
               if (b.kind === "missing") setDismissedMissingKeys((p) => new Set([...p, b.key]));

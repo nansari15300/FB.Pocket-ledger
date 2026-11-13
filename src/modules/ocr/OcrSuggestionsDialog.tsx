@@ -11,13 +11,17 @@ export type OcrSuggestion = {
   id: string;
   label: string;
   value: string;
+  /** English translation precomputed by the OCR call; never fetched when the user clicks. */
+  englishValue?: string;
+  /** English translation of the master name only (used for create party/item/bank prefills). */
+  englishMasterName?: string;
   confidence?: number;
   reason?: string;
   /** Set = cannot be applied automatically (shown for information). */
   blocked?: string;
   /** Runs last (opens a dialog / switches voucher). */
   deferred?: boolean;
-  apply: (ctx?: { selectedIds: string[]; mode?: "auto" | "manual" }) => void | Promise<void>;
+  apply: (ctx?: { selectedIds: string[]; mode?: "auto" | "manual"; language?: "original" | "english" }) => void | Promise<void>;
 };
 
 export function OcrSuggestionsDialog({
@@ -30,6 +34,7 @@ export function OcrSuggestionsDialog({
   suggestions: OcrSuggestion[];
 }) {
   const [sel, setSel] = useState<Record<string, boolean>>({});
+  const [showEnglish, setShowEnglish] = useState(false);
   useEffect(() => {
     if (open) setSel({});
   }, [open, suggestions]);
@@ -40,14 +45,14 @@ export function OcrSuggestionsDialog({
     const sw = chosen.find((s) => s.id === "switch");
     if (sw) {
       onOpenChange(false);
-      await sw.apply({ selectedIds: chosen.filter((s) => s.id !== "switch").map((s) => s.id) });
+      await sw.apply({ selectedIds: chosen.filter((s) => s.id !== "switch").map((s) => s.id), language: showEnglish ? "english" : "original" });
       return;
     }
     const now = chosen.filter((s) => !s.deferred);
     const later = chosen.filter((s) => s.deferred);
-    for (const s of now) await s.apply();
+    for (const s of now) await s.apply({ selectedIds: [], language: showEnglish ? "english" : "original" });
     onOpenChange(false);
-    for (const s of later) await s.apply();
+    for (const s of later) await s.apply({ selectedIds: [], language: showEnglish ? "english" : "original" });
   };
 
   return (
@@ -61,6 +66,11 @@ export function OcrSuggestionsDialog({
           <DialogTitle>OCR suggestions</DialogTitle>
           <DialogDescription>Not applied automatically. Tick what you want, then Apply selected.</DialogDescription>
         </DialogHeader>
+        {suggestions.some((s) => s.englishValue) ? (
+          <button type="button" className="w-fit text-xs font-medium text-sky-700 underline" onClick={() => setShowEnglish((v) => !v)}>
+            {showEnglish ? "Show original" : "Translate to English"}
+          </button>
+        ) : null}
         <ul className="space-y-1.5">
           {suggestions.map((s) => (
             <li key={s.id} className="flex items-start gap-2 rounded-md border p-2 text-sm">
@@ -74,7 +84,7 @@ export function OcrSuggestionsDialog({
               <label htmlFor={`ocr-sg-${s.id}`} className="min-w-0 flex-1 cursor-pointer">
                 <div className="flex flex-wrap items-baseline gap-x-2">
                   <span className="font-medium">{s.label}</span>
-                  <span className="break-all text-xs text-muted-foreground">{s.value}</span>
+                  <span className="break-all text-xs text-muted-foreground">{showEnglish && s.englishValue ? s.englishValue : s.value}</span>
                   {s.confidence != null ? (
                     <span className={`text-[11px] ${s.confidence >= 0.9 ? "text-emerald-600" : s.confidence >= 0.6 ? "text-amber-600" : "text-red-600"}`}>
                       {Math.round(s.confidence * 100)}%

@@ -53,6 +53,7 @@ export type OcrAiItem = {
   /** Raw printed cells: header text -> printed value, so columns map by header instead of by position. */
   cells?: Record<string, string> | null;
 };
+export type OcrAiEnglishTranslation = { source: string; english: string };
 export type OcrAiVoucher = {
   /**
    * THE answer the app acts on: which voucher form to open. Everything else is field data for that form.
@@ -100,6 +101,8 @@ export type OcrAiVoucher = {
   grand_total: number | null;
   uncertain_fields: string[];
   notes: string | null;
+  /** Precomputed one-call translations for popup display; source fields remain untouched for matching. */
+  english_translations: OcrAiEnglishTranslation[];
 };
 export type OcrAiUsage = { promptTokens: number; outputTokens: number; thoughtsTokens: number; totalTokens: number };
 export type OcrAiResult = { provider: "gemini"; model: string; data: OcrAiVoucher; usage: OcrAiUsage; /** Taught rules the server added to the prompt. */ rulesUsed?: number };
@@ -225,6 +228,11 @@ export function normalizeAiVoucher(raw: unknown): OcrAiVoucher {
     grand_total: aiNum(o.grand_total),
     uncertain_fields: Array.isArray(o.uncertain_fields) ? o.uncertain_fields.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 12) : [],
     notes: str(o.notes),
+    english_translations: Array.isArray(o.english_translations)
+      ? o.english_translations.filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
+        .map((x) => ({ source: str(x.source) ?? "", english: str(x.english) ?? "" }))
+        .filter((x) => x.source && x.english && x.source !== x.english).slice(0, 80)
+      : [],
   };
 }
 
