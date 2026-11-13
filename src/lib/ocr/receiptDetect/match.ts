@@ -1,4 +1,5 @@
 import type { OwnAccountLike, ReceiptAccountSide } from "./types";
+import { accountProof, matchMasters } from "../../../modules/ocr/masterMatch";
 
 /** Keep digits and mask wildcards; normalize # x X to *. */
 export function maskDigits(s?: string): string {
@@ -108,6 +109,24 @@ export function pickUniqueOwnAccount(side: ReceiptAccountSide, own: readonly Own
   const scored = scoreOwnAccounts(side, own);
   if (!scored.length) {
     const bank = String(side.bankName ?? "").replace(/^\s*\d+\s*-\s*/, "").trim();
+    // No account-number/bank/branch hit: fall back to proof-weighted NAME matching so a 50%+ account
+    // name with supporting evidence still resolves, while a bare 50-90% name is offered, not filled.
+    if (side.accountName) {
+      const m = matchMasters(side.accountName, own, (a) => [String(a.accountName ?? ""), String(a.bankName ?? "")], (a) =>
+        accountProof(
+          { accountNumber: side.accountMasked, bankName: side.bankName, branch: side.branch },
+          { accountNumber: a.accountNumber, bankName: a.bankName, branch: a.branch },
+        ));
+      if (m.decision === "auto" && m.best) {
+        return { ok: true, acc: m.best.item, score: m.best.name, method: "name", reason: `${Math.round(m.best.name * 100)}% name + ${m.best.proof.reasons.join(", ")}` };
+      }
+      if (m.decision === "suggest" && m.best) {
+        return { ok: false, candidates: [{ acc: m.best.item, score: m.best.name, reasons: [m.reason], method: "name" }], reason: `Low match ${Math.round(m.best.name * 100)}% — confirm this account` };
+      }
+      if (m.decision === "pick" && m.candidates.length) {
+        return { ok: false, candidates: m.candidates.map((c) => ({ acc: c.item, score: c.name, reasons: [m.reason], method: "name" as const })), reason: m.reason };
+      }
+    }
     return { ok: false, candidates: [], reason: `no own Bank/Cash account matches${bank ? ` "${bank}"` : " the sender/receiver"}` };
   }
   const top = scored.filter((x) => x.score >= scored[0].score - TIE_GAP);

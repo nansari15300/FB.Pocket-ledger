@@ -12,6 +12,7 @@
  */
 import { defaultVoucherDateWindow, resolveBillDate } from "@/lib/ocr/dates";
 import { bestUniqueMatch, namesOf } from "../fuzzy";
+import { matchMasters, partyProof } from "../masterMatch";
 import { normalizeName } from "../normalize";
 import { isOcrSelectableParty } from "../types";
 import type { OcrDocType, OcrField, OcrItemLike, OcrLineItem, OcrParsedBill, OcrPartyLike } from "../types";
@@ -313,8 +314,25 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
     } else if (hits.length > 1) bill.partyId = f("", "flag", 0.5, "Several parties share this PAN");
   }
   if (bill.partyId?.status !== "fill" && cp.name) {
-    const best = bestUniqueMatch(normalizeName(cp.name), pool, (p) => namesOf(p).map(normalizeName), 0.95, 0.1);
-    if (best) { bill.partyId = f(best.item.id, "fill", best.score); dbg(`AI Party: "${best.item.name}" by name (${Math.round(best.score * 100)}%)`); }
+    /* Name 50%+ with proof (alias / PAN / phone / address) fills; name-only 50-90% stays a suggestion;
+     * two plausible masters -> let the user pick. Nothing below 50% is the same party. */
+    const m = matchMasters(cp.name, pool, (p) => namesOf(p), (p) =>
+      partyProof(
+        { name: cp.name, pan, phone: cp.phones[0] ?? null, address: cp.address ?? null },
+        { name: p.name, aliasName: p.aliasName, pan: p.pan, panNo: p.panNo, vatNo: p.vatNo, phone: p.phone, mobile: p.mobile, address: (p as { address?: string }).address, billingAddress: (p as { billingAddress?: string }).billingAddress },
+      ));
+    if (m.decision === "auto" && m.best) {
+      bill.partyId = f(m.best.item.id, "fill", Math.max(m.best.name, 0.9));
+      dbg(`AI Party: "${m.best.item.name}" — ${m.reason}`);
+    } else if (m.decision === "suggest" && m.best) {
+      bill.partyId = f(m.best.item.id, "flag", m.best.name, `Low match ${Math.round(m.best.name * 100)}% — confirm the party`);
+      dbg(`AI Party suggestion "${m.best.item.name}" — ${m.reason}`);
+    } else if (m.decision === "pick" && m.candidates.length) {
+      bill.partyId = f("", "flag", m.candidates[0].name, `${m.candidates.length} parties match "${cp.name}" — pick one`);
+      dbg(`AI Party: ${m.candidates.map((c) => c.item.name).join(" / ")} — ${m.reason}`);
+    } else if (m.decision === "none") {
+      dbg(`AI Party: no master >= 50% for "${cp.name}" (${m.reason})`);
+    }
   }
 
   /* ---- Items: qty x rate = amount ---- */
