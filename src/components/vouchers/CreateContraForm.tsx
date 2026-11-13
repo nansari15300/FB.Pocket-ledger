@@ -267,7 +267,7 @@ export function CreateContraForm({
   const { toast } = useToast();
   const { user, customUser } = useAuth();
   const { formatCurrency, formatCurrencyForPrint, formatDate, formatDateBySystem, dateSystem } = useDate();
-  const { vouchers: allVouchers, loading: vouchersLoading, processedAccounts: allProcessedAccounts, processedParties, processedStaff, processedTaxes, processedExpenseAccounts } = useVouchers();
+  const { vouchers: allVouchers, vouchersAll: allVouchersUnfiltered, loading: vouchersLoading, processedAccounts: allProcessedAccounts, processedParties, processedStaff, processedTaxes, processedExpenseAccounts } = useVouchers();
   const { company, companyId } = useCompany();
   const { can, role, canPerformBackdatedAction, canEditRecord, canDeleteVoucher, fileAttachmentLimits, allowAttachments } = usePermissions();
   const reconGuard = useReconciledPointGuard();
@@ -1293,7 +1293,11 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       /* Duplicate guard: same slip dobara attach + save ho rahi ho to pehle bubble se poochho.
        * File bytes ka SHA-256 sabse strong proof hai; ref/date+amount/charge/narration fallback. */
       const attachmentHashes = await hashAttachmentFiles(filesForSave);
-      const duplicate = findDuplicateVoucher(allVouchers as CandidateVoucher[], {
+      /* Ref form fields me nahi hota (contra save me `referenceId` persist nahi hota) — narration
+       * ke `Ref:xxxxx` / `Txn ID:xxxxx` se nikaalo, warna ref-based match kabhi chalta hi nahi. */
+      const narrationForDup = String((data as any).narration ?? "");
+      const refFromNarration = /(?:Ref|Txn\s*ID)\s*:\s*([A-Za-z0-9._-]+)/i.exec(narrationForDup)?.[1] ?? "";
+      const duplicate = findDuplicateVoucher((allVouchersUnfiltered ?? allVouchers) as CandidateVoucher[], {
         excludeVoucherId: savedVoucherId ?? voucher?.id,
         type: "contra",
         date,
@@ -1302,10 +1306,44 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
         toAccountId: (data as any).toAccountId,
         otherChargeAmount: Number(data.otherChargeAmount || 0) || 0,
         otherChargeAccountId: data.otherChargeAccountId || "",
-        narration: (data as any).narration ?? "",
-        ref: (data as any).txnId || (data as any).referenceId || "",
+        narration: narrationForDup,
+        ref: (data as any).txnId || (data as any).referenceId || refFromNarration,
         attachmentHashes,
       });
+      if (process.env.NODE_ENV !== "production") {
+        /* TEMP DEBUG: duplicate guard ka poora picture — kyun match nahi hua (console.warn = default level). */
+        const pool = (allVouchersUnfiltered ?? allVouchers) ?? [];
+        const contraPool = pool.filter((v: any) => v?.type === "contra");
+        console.warn("[dup-guard] inputs", {
+          poolTotal: pool.length,
+          contraPool: contraPool.length,
+          incoming: {
+            amount: (Number(data.payeeAmount || 0) || 0) + (Number(data.otherChargeAmount || 0) || 0),
+            date: String(date),
+            from: (data as any).fromAccountId,
+            to: (data as any).toAccountId,
+            charge: Number(data.otherChargeAmount || 0) || 0,
+            chargeAcc: data.otherChargeAccountId,
+            ref: refFromNarration,
+            hashes: attachmentHashes,
+            narrationLen: narrationForDup.length,
+          },
+          existing: contraPool.slice(0, 5).map((v: any) => ({
+            id: v.id,
+            type: v.type,
+            amount: v.amount ?? v.total,
+            date: String(v.date ?? ""),
+            from: v.fromAccountId,
+            to: v.toAccountId,
+            charge: v.otherChargeAmount,
+            chargeAcc: v.otherChargeAccountId,
+            ref: v.referenceId ?? v.txnId ?? "",
+            hashes: v.attachmentHashes ?? v.fileHashes ?? [],
+            narration: String(v.narration ?? "").slice(0, 60),
+          })),
+          match: duplicate,
+        });
+      }
       if (duplicate && !skipDuplicatePromptRef.current) {
         sonnerToast.dismiss(toastId);
         setDuplicatePrompt({

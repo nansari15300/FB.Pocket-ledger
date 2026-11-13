@@ -62,24 +62,30 @@ function voucherRef(v: CandidateVoucher): string {
   return str(v.txnId || v.referenceId || v.transactionId || v.reference);
 }
 
-/** Ek hi din (date-only compare) — same amount doosri date ko genuine ho sakta hai. */
+/** Ek hi din — local calendar pe compare (UTC shift se off-by-one na ho). */
 function sameDay(a: unknown, b: unknown): boolean {
   const toKey = (x: unknown): string => {
     if (x == null || x === "") return "";
-    if (x instanceof Date) return `${x.getFullYear()}-${x.getMonth() + 1}-${x.getDate()}`;
-    if (typeof x === "object" && x !== null && "toDate" in (x as Record<string, unknown>)) {
+    let d: Date | null = null;
+    if (x instanceof Date) d = x;
+    else if (typeof x === "object" && x !== null && "toDate" in (x as Record<string, unknown>)) {
       try {
-        const d = (x as { toDate: () => Date }).toDate();
-        return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+        d = (x as { toDate: () => Date }).toDate();
       } catch {
-        return "";
+        d = null;
       }
+    } else if (typeof x === "object" && x !== null && "seconds" in (x as Record<string, unknown>)) {
+      const s = Number((x as { seconds?: unknown }).seconds);
+      if (Number.isFinite(s)) d = new Date(s * 1000);
+    } else {
+      /* ISO "2026-06-08T..." ka date part seedha lo — `new Date()` UTC shift se din badal sakta hai. */
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(x).trim());
+      if (m) return `${Number(m[1])}-${Number(m[2])}-${Number(m[3])}`;
+      const parsed = new Date(String(x));
+      if (!Number.isNaN(parsed.getTime())) d = parsed;
     }
-    const s = String(x);
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
-    if (m) return `${Number(m[1])}-${Number(m[2])}-${Number(m[3])}`;
-    const d = new Date(s);
-    if (Number.isNaN(d.getTime())) return "";
+    if (!d || Number.isNaN(d.getTime())) return "";
+    /* Local calendar day — user ne jo din dekha wahi compare ho. */
     return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
   };
   const ka = toKey(a);
@@ -154,7 +160,6 @@ export function findDuplicateVoucher(
   const myFrom = str(input.fromAccountId);
   const myTo = str(input.toAccountId || input.accountId);
   const myCharge = num(input.otherChargeAmount);
-  const myChargeAcc = str(input.otherChargeAccountId);
 
   const found: DuplicateMatch[] = [];
 
@@ -183,7 +188,8 @@ export function findDuplicateVoucher(
       if (theirs && theirs === myRef) reasons.push("ref");
     }
 
-    // 3. Same date + amount + same legs.
+    // 3. Same date + amount + same legs. Accounts/charge ka mismatch genuine ho sakta hai — isliye
+    //    date+amount match ho to hi "fields" maano (accounts sirf confirmation).
     const theirAmount = Math.abs(voucherAmount(v));
     if (
       myAmount > 0 &&
@@ -192,16 +198,15 @@ export function findDuplicateVoucher(
       sameDay(v.date, input.date)
     ) {
       const type = myType;
+      const fromOk = !myFrom || !str(v.fromAccountId) || str(v.fromAccountId) === myFrom;
+      const toOk = !myTo || !str(v.toAccountId || v.accountId) || str(v.toAccountId || v.accountId) === myTo;
+      const chargeOk = Math.abs(num(v.otherChargeAmount) - myCharge) < 0.005;
       const legOk =
         type === "contra"
-          ? str(v.fromAccountId) === myFrom && str(v.toAccountId || v.accountId) === myTo
+          ? fromOk && toOk
           : type === "payment_out" || type === "direct_expense"
-            ? str(v.accountId || v.partyId || v.fromAccountId) === myFrom ||
-              str(v.accountId || v.partyId || v.fromAccountId) === myTo
+            ? fromOk || toOk
             : true;
-      const chargeOk =
-        Math.abs(num(v.otherChargeAmount) - myCharge) < 0.005 &&
-        str(v.otherChargeAccountId) === myChargeAcc;
       if (legOk && chargeOk) reasons.push("fields");
     }
 
