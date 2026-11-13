@@ -484,13 +484,46 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
   }, [copilot, open]);
   React.useEffect(() => {
     if (!copilot || !open) return;
-    const drop = () => setFocused(false);
+    const drop = () => {
+      setFocused(false);
+      const el = document.querySelector<HTMLElement>("[data-pl-ocr-ai-chat]");
+      if (el) el.style.zIndex = String(COPILOT_Z);
+    };
     document.addEventListener("pl-voucher-shell-focus", drop);
     return () => document.removeEventListener("pl-voucher-shell-focus", drop);
   }, [copilot, open]);
-  const raiseChat = React.useCallback(() => {
+  /* A master dialog opened from the voucher (Create Party, Bank, Items…) must sit above the chat even
+   * while the chat is focused. Watch only NEW dialogs appearing: a plain "any other role=dialog exists"
+   * check also matched the chat's own (inert/closed) shells and cancelled every focus raise. */
+  React.useEffect(() => {
+    if (!copilot || !open) return;
+    const isForeignDialog = (node: Node) => {
+      if (!(node instanceof HTMLElement)) return false;
+      const dlg = node.matches('[role="dialog"]') ? node : node.querySelector<HTMLElement>('[role="dialog"]');
+      return !!dlg && !dlg.hasAttribute("data-pl-ocr-ai-chat");
+    };
+    const obs = new MutationObserver((records) => {
+      for (const rec of records) {
+        for (const node of Array.from(rec.addedNodes)) {
+          if (isForeignDialog(node)) {
+            setFocused(false);
+            const el = document.querySelector<HTMLElement>("[data-pl-ocr-ai-chat]");
+            if (el) el.style.zIndex = String(COPILOT_Z);
+            return;
+          }
+        }
+      }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    return () => obs.disconnect();
+  }, [copilot, open]);
+  const raiseChat = React.useCallback((e?: React.PointerEvent) => {
     if (!copilot) return;
     setFocused(true);
+    /* Belt and braces: React state can be a frame late (or identical, so no re-render). Set the z on the
+     * live node so the click that raised the window is the click that lands. */
+    const el = (e?.currentTarget as HTMLElement | undefined) ?? null;
+    if (el) el.style.zIndex = String(COPILOT_Z_FOCUSED);
   }, [copilot]);
   const copilotZ = focused ? COPILOT_Z_FOCUSED : COPILOT_Z;
 
