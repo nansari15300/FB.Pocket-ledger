@@ -266,6 +266,7 @@ function ChatHistorySidebar({ sessions, activeId, onSelect, onDelete, onNew }: {
 
 export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, getVoucherJson, getOwnCompany, copilot }: AiChatDialogProps) {
   const t = useAiChatStrings();
+  const [copilotZIndex, setCopilotZIndex] = useState(COPILOT_Z_FOCUSED);
   const [tab, setTab] = useState<"chat" | "rules">("chat");
   const [turns, setTurns] = useState<OcrAiChatTurn[]>(() => loadChatSession(companyId));
   const [input, setInput] = useState("");
@@ -475,20 +476,27 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
 
   /* Clicking the voucher dialog (or anywhere outside) must NOT dismiss the chat. Only the X (or the
    * header pill toggle) closes it. */
-  /* The chat is ALWAYS above the voucher (z-82). Lowering it to z-79 while the voucher covers that
-   * area made the chat completely dead: the click landed on the voucher, so nothing could ever raise
-   * the chat again — a one-way trap. Only the shadow reacts to "inactive" instead. */
+  /* Keep the voucher's stacking untouched. Drive the chat's stacking through React state so later
+   * renders (including resize commits) preserve whichever window the user clicked most recently. */
   React.useEffect(() => {
     if (!copilot || !open) return;
-    const apply = () => {
-      document.querySelectorAll<HTMLElement>("[data-pl-ocr-ai-chat]").forEach((el) => {
-        el.style.zIndex = String(COPILOT_Z_FOCUSED);
-      });
+    setCopilotZIndex(COPILOT_Z_FOCUSED);
+    const onWindowPointerDown = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("[data-pl-ocr-ai-chat]")) {
+        setCopilotZIndex(COPILOT_Z_FOCUSED);
+      } else if (target.closest("[data-voucher-frame]")) {
+        setCopilotZIndex(COPILOT_Z);
+      }
     };
-    apply();
-    /* Radix/React rewrites inline styles on some renders; re-assert on the next frame too. */
-    const raf = requestAnimationFrame(apply);
-    return () => cancelAnimationFrame(raf);
+    const onWindowMouseDown = (event: MouseEvent) => onWindowPointerDown(event);
+    document.addEventListener("pointerdown", onWindowPointerDown, true);
+    document.addEventListener("mousedown", onWindowMouseDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onWindowPointerDown, true);
+      document.removeEventListener("mousedown", onWindowMouseDown, true);
+    };
   }, [copilot, open]);
   /* A master dialog opened from the voucher (Create Party, Bank, Items…) must sit above the chat even
    * while the chat is focused. Watch only NEW dialogs appearing: a plain "any other role=dialog exists"
@@ -506,9 +514,7 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
           if (isForeignDialog(node)) {
             /* Master dialogs (Create Party, Bank, Items…) must sit above the chat. They are portaled to
              * body with their own z-80/81, so keep the chat under them just while one is open. */
-            document.querySelectorAll<HTMLElement>("[data-pl-ocr-ai-chat]").forEach((el) => {
-              el.style.zIndex = String(COPILOT_Z);
-            });
+            setCopilotZIndex(COPILOT_Z);
             return;
           }
         }
@@ -530,11 +536,10 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
         style={
           copilot
             ? {
-                /* NOTE: no `zIndex` here on purpose. The stacking order is written directly on the DOM
-                 * node by a document-level pointerdown listener; putting it in `style` let React
-                 * re-apply a stale value on every re-render and knock the chat back under the voucher. */
+                /* Controlled by copilotZIndex so React keeps the selected window order through renders. */
                 left: copilotResizable.position.x,
                 top: copilotResizable.position.y,
+                zIndex: copilotZIndex,
                 width: copilotResizable.size.w,
                 height: copilotResizable.size.h,
                 transform: "none",
@@ -558,7 +563,12 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
         onPointerDownOutside={copilot ? (e) => e.preventDefault() : undefined}
         onInteractOutside={copilot ? (e) => e.preventDefault() : undefined}
         onEscapeKeyDown={copilot ? (e) => e.preventDefault() : undefined}
-        onClick={(e) => e.stopPropagation()}
+        onPointerDownCapture={copilot ? () => setCopilotZIndex(COPILOT_Z_FOCUSED) : undefined}
+        onMouseDownCapture={copilot ? () => setCopilotZIndex(COPILOT_Z_FOCUSED) : undefined}
+        onClick={(e) => {
+          if (copilot) setCopilotZIndex(COPILOT_Z_FOCUSED);
+          e.stopPropagation();
+        }}
         data-pl-ocr-ai-chat=""
         data-pl-drag-surface={copilot ? "active" : undefined}
       >
@@ -612,10 +622,10 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
               <DialogPrimitive.Close
                 data-pl-no-drag="close"
                 className={cn(
-                  "shrink-0 rounded-full p-1.5 transition",
+                  "shrink-0 p-1.5 transition",
                   copilot
-                    ? "absolute right-1 top-1 z-40 bg-white text-slate-600 ring-1 ring-black/10 hover:bg-slate-100 hover:text-slate-900"
-                    : "text-white/80 hover:bg-white/15 hover:text-white"
+                    ? "absolute right-1 top-1 z-40 rounded-sm bg-white text-slate-600 ring-1 ring-black/10 hover:bg-slate-100 hover:text-slate-900"
+                    : "rounded-full text-white/80 hover:bg-white/15 hover:text-white"
                 )}
                 style={copilot ? { width: 24, height: 24, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" } : undefined}
               >
