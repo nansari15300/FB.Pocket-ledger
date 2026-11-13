@@ -178,8 +178,7 @@ export function usePersistedResizableDialogSize(
   }, [isOpen, enabled, storageKey]);
 
   const saveLiveBounds = useCallback(() => {
-    if (typeof window === "undefined") return;
-    try {
+    if (typeof window === "undefined") return;    try {
       localStorage.setItem(
         storageKey,
         JSON.stringify({
@@ -193,6 +192,33 @@ export function usePersistedResizableDialogSize(
       /* ignore */
     }
   }, [storageKey]);
+
+  /* A window dragged on a wide monitor is saved with a left far beyond a narrower viewport later on.
+   * Without this it opens completely off-screen, so it looks "dead": no click lands, elementFromPoint
+   * returns null. Re-clamp size and position whenever the viewport changes while we are open. */
+  useEffect(() => {
+    if (!enabled || !isOpen || typeof window === "undefined") return;
+    const onResize = () => {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const opts = optionsRef.current;
+      const oMinW = opts?.minW ?? MIN_W;
+      const oMinH = opts?.minH ?? MIN_H;
+      const oMaxWP = opts?.maxWPercent ?? 0.98;
+      const oMaxHP = opts?.maxHPercent ?? 0.95;
+      const cur = latestBoundsRef.current;
+      const nextSize = clampSize(cur.size.w, cur.size.h, vw, vh, oMinW, oMinH, oMaxWP, oMaxHP);
+      const nextPos = clampPosition(cur.position.x, cur.position.y, nextSize.w, nextSize.h, vw, vh);
+      if (nextSize.w !== cur.size.w || nextSize.h !== cur.size.h) setSize(nextSize);
+      if (nextPos.x !== cur.position.x || nextPos.y !== cur.position.y) setPosition(nextPos);
+      latestBoundsRef.current = { size: nextSize, position: nextPos };
+      saveLiveBounds();
+    };
+    window.addEventListener("resize", onResize);
+    /* Run once too: the saved bounds may already be off-screen on this load. */
+    onResize();
+    return () => window.removeEventListener("resize", onResize);
+  }, [enabled, isOpen, saveLiveBounds]);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
