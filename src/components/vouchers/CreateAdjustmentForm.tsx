@@ -1231,7 +1231,6 @@ export function CreateAdjustmentForm({
                   className="mb-2"
                 />
               ) : null}
-              <VoucherOcrRefreshBar ocr={ocr} />
               <RestrictedFileUploader>
                 <div className="flex flex-wrap gap-4">
                   {files.map((file, index) => (
@@ -1289,6 +1288,7 @@ export function CreateAdjustmentForm({
                   ) : null}
                 </div>
               </RestrictedFileUploader>
+              <VoucherOcrRefreshBar ocr={ocr} />
             </FormItem>
             <FormField control={form.control} name="narration" render={({ field }) => (
               <FormItem data-ocr-field="bill-no" className="flex-1">

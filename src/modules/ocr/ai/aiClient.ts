@@ -245,7 +245,7 @@ export type OcrAiReadInput = {
   /** Document type in focus: the server adds the taught rules of this type (+ general). */
   docType?: string;
   /** OUR own bank/cash ledgers (full account numbers): the server checks them instead of asking Gemini to compare names. */
-  ownAccounts?: { accountName?: string | null; accountNumber?: string | null; bankName?: string | null; accountType?: string | null }[];
+  ownAccounts?: { accountName?: string | null; aliasName?: string | null; accountNumber?: string | null; bankName?: string | null; accountType?: string | null }[];
   /** Ask Gemini to output item/party/narration text in English (translate any local-language/Devanagari text). */
   translateToEnglish?: boolean;
   signal?: AbortSignal;
@@ -266,6 +266,7 @@ export async function ocrAiRead(input: OcrAiReadInput): Promise<OcrAiResult> {
   if (input.ownAccounts && input.ownAccounts.length) {
     body.ownAccounts = input.ownAccounts.slice(0, 40).map((a) => ({
       accountName: a.accountName ?? "",
+      aliasName: a.aliasName ?? "",
       accountNumber: String(a.accountNumber ?? "").replace(/[^\d]/g, ""),
       bankName: a.bankName ?? "",
       accountType: a.accountType ?? "",

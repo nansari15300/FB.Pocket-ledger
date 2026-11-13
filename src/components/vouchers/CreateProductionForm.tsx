@@ -1266,7 +1266,6 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                       className="mb-2"
                     />
                   )}
-                  <VoucherOcrRefreshBar ocr={ocr} />
                   <RestrictedFileUploader>
                     <div className="flex flex-wrap gap-4">
                       {files.map((file, index) => (
@@ -1334,6 +1333,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                       )}
                     </div>
                   </RestrictedFileUploader>
+                  <VoucherOcrRefreshBar ocr={ocr} />
                 </FormItem>
                 <FormField
                   control={form.control}

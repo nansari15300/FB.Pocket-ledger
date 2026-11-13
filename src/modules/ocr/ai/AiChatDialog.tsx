@@ -129,6 +129,32 @@ function partyNameFromVoucherJson(value: unknown): string | undefined {
   }
 }
 
+/** Readable OCR JSON grid: Gemini sends JSON; the chat renders each object as a bordered key/value table. */
+function JsonGridValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
+  if (value == null || value === "") return <span className="text-slate-400">—</span>;
+  if (Array.isArray(value)) {
+    if (!value.length) return <span className="text-slate-400">—</span>;
+    return <div className="space-y-1">{value.map((item, i) => <div key={i} className="rounded border border-slate-200 bg-white p-1"><div className="mb-0.5 text-[9px] font-semibold text-slate-500">#{i + 1}</div><JsonGridValue value={item} depth={depth + 1} /></div>)}</div>;
+  }
+  if (typeof value === "object") {
+    if (depth > 5) return <span className="text-slate-400">…</span>;
+    const entries = Object.entries(value as Record<string, unknown>);
+    return <table className="w-full border-collapse text-[9px] leading-snug"><tbody>{entries.map(([key, item]) => (
+      <tr key={key} className="border-b border-slate-200 last:border-0"><th className="w-[36%] border-r border-slate-200 px-1 py-0.5 text-left align-top font-medium text-slate-500">{key.replace(/_/g, " ")}</th><td className="px-1 py-0.5 align-top text-slate-700"><JsonGridValue value={item} depth={depth + 1} /></td></tr>
+    ))}</tbody></table>;
+  }
+  return <span className="break-words">{String(value)}</span>;
+}
+
+function VoucherJsonGrid({ text }: { text: string }) {
+  try {
+    const value = JSON.parse(text) as unknown;
+    return <div className="mt-1 max-h-64 max-w-full overflow-auto rounded border border-sky-200 bg-white p-1"><JsonGridValue value={value} /></div>;
+  } catch {
+    return <pre className="mt-1 max-h-44 max-w-full overflow-auto whitespace-pre-wrap break-all rounded border border-sky-200 bg-white p-1.5 text-[9px] leading-relaxed text-slate-600">{text}</pre>;
+  }
+}
+
 function DocTypeSelect({ value, onChange, disabled, t }: { value: OcrAiDocTypeKey; onChange: (v: OcrAiDocTypeKey) => void; disabled?: boolean; t: AiChatStrings }) {
   return (
     <select
@@ -508,7 +534,7 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
   const send = async (messageText?: string) => {
     const text = (messageText ?? input).trim();
     if ((!text && !attachedFile) || sending) return;
-    const wantBill = attachBill, wantJson = attachJson, fileToSend = attachedFile;
+    const wantBill = attachBill, wantJson = copilot ? true : attachJson, fileToSend = attachedFile;
     const voucherJson = wantJson && getVoucherJson ? getVoucherJson() ?? undefined : undefined;
     let voucherJsonText = "";
     if (voucherJson !== undefined) {
@@ -520,7 +546,7 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
       id: newTurnId(), role: "user", text: text || "📎", at: Date.now(),
       hadImage: (wantBill && !!getBill) || !!fileToSend,
       hadJson: voucherJson !== undefined,
-      ...(keepJsonPreview ? { voucherJsonPreview: voucherJsonText.slice(0, 8000) } : {}),
+      ...(keepJsonPreview ? { voucherJsonPreview: voucherJsonText.slice(0, 30000) } : {}),
       ...(partyTitle ? { chatTitle: partyTitle } : {}),
     };
     const next = [...turns, userTurn];
@@ -1005,7 +1031,7 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                         {turn.voucherJsonPreview ? (
                           <details className="mt-1 max-w-full rounded-md border border-sky-200 bg-white/80 p-1.5">
                             <summary className="cursor-pointer select-none text-[10px] font-medium text-sky-700">{t.viewJson}</summary>
-                            <pre className="mt-1 max-h-44 max-w-full overflow-auto whitespace-pre-wrap break-all rounded bg-slate-50 p-1.5 text-[9px] leading-relaxed text-slate-600">{turn.voucherJsonPreview}</pre>
+                            <VoucherJsonGrid text={turn.voucherJsonPreview} />
                           </details>
                         ) : null}
                         {turn.tokens ? (
@@ -1154,8 +1180,8 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                           </label>
                         )}
                         {getVoucherJson && (
-                          <label className="flex cursor-pointer items-center gap-1 rounded-full border border-black/10 bg-white px-2 py-0.5 text-slate-600 transition hover:bg-slate-50" title={t.sendJsonTitle}>
-                            <input type="checkbox" checked={attachJson} onChange={(e) => setAttachJson(e.target.checked)} className="accent-[#0ea5e9]" /> {t.sendJson}
+                          <label className={cn("flex items-center gap-1 rounded-full border border-black/10 bg-white px-2 py-0.5 text-slate-600", !copilot && "cursor-pointer transition hover:bg-slate-50")} title={copilot ? "Pocket AI keeps the OCR JSON in chat context; the document image is not resent." : t.sendJsonTitle}>
+                            <input type="checkbox" checked={copilot ? true : attachJson} disabled={!!copilot} onChange={(e) => setAttachJson(e.target.checked)} className="accent-[#0ea5e9]" /> {t.sendJson}
                           </label>
                         )}
                         {docType && (

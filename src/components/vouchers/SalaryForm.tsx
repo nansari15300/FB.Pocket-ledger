@@ -3223,7 +3223,6 @@ try {
                           className="mb-2"
                         />
                       )}
-                      <VoucherOcrRefreshBar ocr={ocr} />
                       <RestrictedFileUploader>
                         <div className="flex flex-wrap gap-4">
                           {files.map((file, index) => (
@@ -3295,6 +3294,7 @@ try {
                           )}
                         </div>
                       </RestrictedFileUploader>
+                      <VoucherOcrRefreshBar ocr={ocr} />
                     </FormItem>
                     <FormField
                       control={form.control}

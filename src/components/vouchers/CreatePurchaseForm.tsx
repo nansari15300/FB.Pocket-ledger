@@ -3499,7 +3499,6 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                           className="mb-2"
                         />
                       )}
-                      <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
                       <RestrictedFileUploader>
                         {/* When linked: add/remove disabled; existing files stay clickable to open. Filter by file identity (not index) so remove works reliably. */}
                         <VoucherAttachmentPcDropRow
@@ -3590,6 +3589,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                           )}
                         </VoucherAttachmentPcDropRow>
                       </RestrictedFileUploader>
+                      <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
                     </FormItem>
                   </div>
 
@@ -3835,7 +3835,6 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                           className="mb-2"
                         />
                       )}
-                      <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
                       <RestrictedFileUploader>
                         {/* When linked: add/remove disabled; existing files stay clickable to open. Filter by file identity (not index) so remove works reliably. */}
                         <VoucherAttachmentPcDropRow
@@ -3926,6 +3925,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                           )}
                         </VoucherAttachmentPcDropRow>
                       </RestrictedFileUploader>
+                      <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
                     </FormItem>
                     </div>
                   </div>

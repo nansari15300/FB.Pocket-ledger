@@ -1134,7 +1134,6 @@ export function CreateNoteForm({
                       className="mb-2"
                     />
                   )}
-                  <VoucherOcrRefreshBar ocr={ocr} />
                   <RestrictedFileUploader>
                     <div className="flex flex-wrap gap-4">
                       {files.map((file, idx) => (
@@ -1205,6 +1204,7 @@ export function CreateNoteForm({
                       )}
                     </div>
                   </RestrictedFileUploader>
+                  <VoucherOcrRefreshBar ocr={ocr} />
                 </div>
                 <FormField control={form.control} name="content" render={({ field }: any) => (
                   <FormItem data-ocr-field="bill-no" className="min-w-0">

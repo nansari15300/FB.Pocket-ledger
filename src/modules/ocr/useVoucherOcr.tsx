@@ -132,7 +132,7 @@ async function loadFirstFile(f: File | string, companyId?: string | null): Promi
 }
 
 /** Bump when parser/engine logic changes: shown in Show OCR text to prove the browser runs the new bundle. */
-export const OCR_BUILD = "2026-11-12.6";
+export const OCR_BUILD = "2026-11-13.3";
 
 const MONEY_TYPES = ["payment_out", "payment_in", "direct_expense", "direct_income", "contra"] as const;
 const ALL_TYPE_CHOICES = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"] as const;
@@ -466,7 +466,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             companyId: opt.companyId,
             enginePref: getOcrPrefs().engine,
             ownCompany: { name: ownRef.current.name, pan: ownRef.current.pan },
-            ownAccounts: (mastersRef.current.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ accountName: a.accountName, accountNumber: a.accountNumber, bankName: a.bankName, accountType: a.accountType })),
+            ownAccounts: (mastersRef.current.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ accountName: a.accountName, aliasName: (a as { aliasName?: string }).aliasName, accountNumber: a.accountNumber, bankName: a.bankName, accountType: a.accountType })),
             aiDocType: aiDocTypeForVoucher(opt.currentVoucherType ?? null, opt.adapter.partySide),
             onEngine,
             signal: ac.signal,
@@ -1811,8 +1811,17 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     const masterNames = (list: readonly { id?: string; name?: string; accountName?: string; isDeleted?: boolean }[] | undefined) =>
       (list ?? []).filter((x) => !x.isDeleted).map((x) => ({ id: String(x.id ?? ""), name: String(x.name ?? x.accountName ?? "") })).filter((x) => x.id && x.name);
     const M = mastersRef.current as typeof mastersRef.current & { accounts?: readonly { id?: string; accountName?: string; isDeleted?: boolean }[]; parties?: readonly { id?: string; name?: string; isDeleted?: boolean }[] };
+    const voucherType = optsRef.current.currentVoucherType ?? A.voucherType;
+    const moneyFields = ["voucher_type", "voucher_type_reason", "doc_kind", "bank_flow", "bank_flow_reason", "party_name", "date_ad", "date_bs", "grand_total", "payment_mode", "transfer_mode", "transfer_reference", "transfer_charges", "debit_account", "debit_bank", "credit_account", "credit_bank", "account_holder_name", "beneficiary_name", "lines", "uncertain_fields", "notes"];
+    const billFields = ["voucher_type", "voucher_type_reason", "doc_kind", "our_company_role", "party_name", "party_pan", "party_address", "party_phone", "invoice_no", "date_ad", "date_bs", "items", "item_columns", "subtotal", "discount", "taxable", "vat_percent", "vat_amount", "grand_total", "uncertain_fields", "notes"];
+    const aiData = lastRawRef.current?.ai?.data as unknown as Record<string, unknown> | undefined;
+    const relevantKeys = ["payment_in", "payment_out", "receipt", "payment", "contra", "direct_expense", "direct_income"].includes(String(voucherType)) ? moneyFields : billFields;
+    const ocrResult = aiData ? Object.fromEntries(relevantKeys.filter((key) => {
+      const value = aiData[key];
+      return value != null && value !== "" && (!Array.isArray(value) || value.length > 0);
+    }).map((key) => [key, aiData[key]])) : null;
     return {
-      voucher_type: optsRef.current.currentVoucherType ?? A.voucherType,
+      voucher_type: voucherType,
       form_schema: fields.map(({ key, label }) => ({ key, label })),
       current_values: Object.fromEntries(fields.map(({ key, path }) => {
         const id = String(values[path] ?? "");
@@ -1820,7 +1829,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         if (["account_name", "to_account_name"].includes(key)) return [key, masterNames(M.accounts).find((x) => x.id === id)?.name ?? (id ? "(selected master)" : "")];
         return [key, values[path] ?? ""];
       })),
-      ocr_result: lastRawRef.current?.ai?.data ?? null,
+      ocr_result: ocrResult,
     };
   }, []);
   const getOwnCompany = useCallback(() => ({ name: ownRef.current.name, pan: ownRef.current.pan }), []);
@@ -1859,6 +1868,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     const set = (path: string | undefined, value: unknown, label: string) => {
       if (!path || value == null || value === "") return;
       if (!canWriteRef.current(path)) return;
+      const current = form.getValues(path as never);
+      if (current !== null && current !== undefined && current !== "" && current !== 0) return;
       form.setValue(path as never, value as never, { shouldDirty: true, shouldValidate: true });
       filledRef.current.set(path, value);
       done.push(label);

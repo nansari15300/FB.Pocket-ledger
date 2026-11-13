@@ -10,8 +10,9 @@ import type { VoucherOcrApi } from "./useVoucherOcr";
 import { AiChatButton, AiPanelToggle } from "./ai/AiChatDialog";
 import { CopilotMissingBar, type AiCopilotLayout } from "./ai/AiCopilotSplit";
 
-/** One pill style for every OCR bar button (same as Refresh OCR). */
-const OCR_BAR_PILL_CN = "h-7 gap-1 text-xs";
+/** One pill style for every OCR bar button (same as Refresh OCR).
+ *  The bar is full-width and wraps; pills keep their natural width so two buttons do not stretch. */
+const OCR_BAR_PILL_CN = "h-7 shrink-0 gap-1 text-xs";
 
 export function VoucherOcrRefreshBar({ ocr, copilot }: { ocr: VoucherOcrApi; copilot?: AiCopilotLayout }) {
   const [dbgOpen, setDbgOpen] = useState(false);
@@ -22,7 +23,9 @@ export function VoucherOcrRefreshBar({ ocr, copilot }: { ocr: VoucherOcrApi; cop
   // Tooltip: why the engine fell back (e.g. "AI failed (...) -> Azure"), or AI model + tokens used
   const readByNote = rb && rb.note ? rb.note : undefined;
   return (
-    <div className="mb-1 flex flex-wrap items-center gap-2 px-[2px]" data-pl-ocr-refresh-bar="">
+    /* Full width of the attachments column (it ends where the Narration field starts on desktop).
+       Buttons wrap onto a second row when many of them are shown. */
+    <div className="mt-2 flex w-full flex-wrap items-center gap-2" data-pl-ocr-refresh-bar="">
       {ocr.preReading ? (
         <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-dashed border-teal-400 bg-teal-50 px-2 text-xs text-teal-800" data-ocr-pre-reading="" title="OCR reads the original first; the file is compressed and attached right after">
           <Loader2 className="h-3.5 w-3.5 animate-spin" /> Reading… <span className="max-w-[160px] truncate font-medium">{ocr.preReading}</span> (attaches after OCR)
@@ -72,7 +75,7 @@ export function VoucherOcrRefreshBar({ ocr, copilot }: { ocr: VoucherOcrApi; cop
         <Dialog open={dbgOpen} onOpenChange={setDbgOpen}>
           <DialogContent
             overlayClassName={NESTED_VOUCHER_OCR_DEBUG_OVERLAY_CN}
-            className={`${NESTED_VOUCHER_OCR_DEBUG_CONTENT_CN} max-h-[90vh] max-w-2xl overflow-y-auto`}
+            className={`${NESTED_VOUCHER_OCR_DEBUG_CONTENT_CN} max-h-[90vh] w-[calc(100vw-2rem)] max-w-4xl overflow-y-auto sm:w-[min(56rem,calc(100vw-3rem))]`}
             onFocusOutside={(e) => e.preventDefault()}
           >
             <DialogHeader>
@@ -81,7 +84,7 @@ export function VoucherOcrRefreshBar({ ocr, copilot }: { ocr: VoucherOcrApi; cop
                 Average confidence: <b className={d.meanConfidence < 55 ? "text-red-600" : d.meanConfidence < 75 ? "text-amber-600" : "text-emerald-600"}>{d.meanConfidence.toFixed(1)}%</b>
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-2 text-xs">
+            <div className="space-y-2 text-[15px] leading-relaxed">
               <p><b>Filled:</b> {d.filled.join(", ") || "-"}</p>
               <p><b>Not filled:</b> {d.missing.join(", ") || "-"}</p>
               <div>
@@ -91,12 +94,12 @@ export function VoucherOcrRefreshBar({ ocr, copilot }: { ocr: VoucherOcrApi; cop
               <div>
                 <div className="flex items-center justify-between">
                   <p className="font-semibold">Raw OCR text</p>
-                  <Button type="button" size="sm" variant="ghost" className="h-6 text-[11px]" onClick={() => void navigator.clipboard?.writeText(
+                  <Button type="button" size="sm" variant="ghost" className="h-7 text-[13px]" onClick={() => void navigator.clipboard?.writeText(
                       // Full report (was raw text only -> pasted dumps had no build stamp / rule log)
                       [`Average confidence: ${d.meanConfidence.toFixed(1)}%`, `Filled: ${d.filled.join(", ") || "-"}`, `Not filled: ${d.missing.join(", ") || "-"}`, "", "Rule log:", ...d.reasons, "", "Raw OCR text:", d.text].join("\n")
                     )} title="Copy everything: rule log + build stamp + raw text">Copy all</Button>
                 </div>
-                <pre className="max-h-[45vh] overflow-auto whitespace-pre-wrap rounded border bg-muted/40 p-2 font-mono text-[11px] leading-snug">{d.text || "(empty)"}</pre>
+                <pre className="max-h-[55vh] overflow-auto whitespace-pre-wrap rounded border bg-muted/40 p-3 font-mono text-[14px] leading-relaxed">{d.text || "(empty)"}</pre>
               </div>
             </div>
           </DialogContent>

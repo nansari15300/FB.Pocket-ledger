@@ -110,19 +110,6 @@ const BANK_FLOWS: readonly OcrAiBankFlow[] = ["own_to_own", "out", "in", "none",
 const VOUCHER_TYPES: readonly OcrAiVoucherType[] = ["sale", "purchase", "payment_out", "payment_in", "contra", "direct_expense", "direct_income", "journal"];
 const LINE_KINDS: readonly OcrAiLineKind[] = ["party", "bank", "cash", "staff", "tax", "expense", "income", "item", "discount", "roundoff"];
 
-/** Old servers / cached replies only had doc_type: map it so a mismatch never lands on no tab. */
-function legacyVoucherType(dt: OcrAiDocType | null): OcrAiVoucherType | null {
-  switch (dt) {
-    case "payment": return "payment_out";
-    case "receipt": return "payment_in";
-    case "expense": return "direct_expense";
-    case "purchase": return "purchase";
-    case "sale": return "sale";
-    case "contra": return "contra";
-    default: return null;
-  }
-}
-
 function normalizeCells(raw: unknown): Record<string, string> | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const out: Record<string, string> = {};
@@ -190,8 +177,8 @@ export function normalizeAiVoucher(raw: unknown): OcrAiVoucher {
     ? o.item_columns.map((c) => str(c)).filter((c): c is string => !!c).slice(0, 14)
     : [];
   return {
-    /* Unknown/missing voucher_type falls back to the old doc_type so an older server still lands on a tab. */
-    voucher_type: vt && VOUCHER_TYPES.includes(vt) ? vt : legacyVoucherType(docType),
+    /* Do not infer the type from doc_type: only Gemini's explicit decision is authoritative. */
+    voucher_type: vt && VOUCHER_TYPES.includes(vt) ? vt : null,
     voucher_type_reason: str(o.voucher_type_reason),
     lines: normalizeLines(o.lines),
     item_columns: cols.length ? cols : null,
@@ -517,21 +504,16 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
   }
 
   /* ---- Document type (relative to our company) ----
-   * Bank slips print no company name, so `our_company_role` is often "none" there: fall back to the
-   * document family + money flow instead of leaving the text parser's guess in place. */
-  const aiType: OcrDocType | null =
-    d.our_company_role === "buyer" ? "purchase" : d.our_company_role === "seller" ? "sale"
-    : d.bank_flow === "own_to_own" || d.doc_type === "contra" ? "contra"
-    : d.bank_flow === "in" ? "payment_in" : d.bank_flow === "out" ? "payment_out"
-    : d.doc_type === "receipt" ? "payment_in" : d.doc_type === "payment" ? "payment_out"
-    : d.doc_type === "purchase" || d.doc_type === "expense" ? "purchase" : d.doc_type === "sale" ? "sale" : null;
+   * Only Gemini's explicit voucher_type may replace the parser's classification. */
+  const aiType: OcrDocType | null = d.voucher_type === "sale" || d.voucher_type === "purchase" || d.voucher_type === "payment_in" || d.voucher_type === "payment_out" || d.voucher_type === "contra"
+    ? d.voucher_type
+    : null;
   if (aiType) {
-    // The text rules only saw the summary built from this same answer, so the AI's role decides.
+    // Keep the parsed voucher type aligned with Gemini's final JSON decision.
     const cur = bill.docType;
-    const strong = d.our_company_role === "buyer" || d.our_company_role === "seller" || d.bank_flow === "own_to_own" || d.bank_flow === "out" || d.bank_flow === "in";
-    const conf = strong ? 0.95 : 0.9;
+    const conf = 0.95;
     if (cur && cur.type !== aiType) dbg(`AI document type ${aiType} replaces text rule guess (${cur.type})`);
-    bill.docType = { type: aiType, confidence: cur?.type === aiType ? Math.max(cur.confidence, conf) : conf, reason: `AI: ${d.doc_kind ?? "-"}/${d.doc_type ?? "-"}, role ${d.our_company_role ?? "-"}, flow ${d.bank_flow ?? "-"}${d.bank_flow_reason ? ` (${d.bank_flow_reason.slice(0, 80)})` : ""}` };
+    bill.docType = { type: aiType, confidence: cur?.type === aiType ? Math.max(cur.confidence, conf) : conf, reason: `Gemini final: ${d.voucher_type}${d.voucher_type_reason ? ` (${d.voucher_type_reason.slice(0, 100)})` : ""}` };
   }
   if (d.account_holder_name) dbg(`AI account holder: ${d.account_holder_name}`);
   if (d.transfer_reference) dbg(`AI transfer ref: ${d.transfer_reference}${d.transfer_mode ? ` (${d.transfer_mode})` : ""}${d.transfer_charges ? `, charges ${d.transfer_charges}` : ""}`);

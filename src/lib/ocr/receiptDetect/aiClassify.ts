@@ -4,7 +4,7 @@
  * The text detectors only see the compact summary Gemini returns (no full paper text), so the slip's
  * customer/beneficiary sections are missing there. Gemini's JSON already carries them as
  * `bank_flow` + `debit_account` / `credit_account` / `transfer_charges` / `transfer_reference`,
- * so money documents are classified from that instead of hoping the text rules re-derive it.
+ * Gemini's declared voucher_type is authoritative; account/master matching only links ledgers.
  */
 import type { OcrAiVoucher } from "../../../modules/ocr/ai/aiVoucher";
 import { nameScore } from "../../../modules/ocr/fuzzy";
@@ -31,9 +31,7 @@ const isMoneyKind = (d: OcrAiVoucher) =>
 
 /** Gemini gave us no usable money-flow answer: let the text detectors decide. */
 export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptDetection | null {
-  /* A declared voucher_type is the primary answer (server also cross-checked it against our account
-   * list), so it does not need bank_flow/doc_kind evidence to be usable. Without one, fall back to the
-   * old money-document gate. */
+  /* Gemini's declared voucher_type is final. Bank/account matching below is only for master linking. */
   const declaredType = d.voucher_type ?? null;
   const moneyType = declaredType === "payment_out" || declaredType === "payment_in" || declaredType === "contra" ||
     declaredType === "direct_expense" || declaredType === "direct_income";
@@ -48,16 +46,7 @@ export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptD
   const credit = { accountMasked: d.credit_account ?? undefined, bankName: d.credit_bank ?? undefined, accountName: d.beneficiary_name ?? undefined };
   const senderPick = pickUniqueOwnAccount(debit, o.ownAccounts);
   const creditPick = pickUniqueOwnAccount(credit, o.ownAccounts);
-  /* Beneficiary "Account Name" is our company on a bank-to-bank slip (nobody sells to themselves):
-   * that alone makes the receiving ledger ours -> contra, even before the account number matches. */
-  const creditIsCompany = !!d.beneficiary_name && !!o.companyName && companyNameMatches(d.beneficiary_name, o.companyName);
-  /* Only PROVEN evidence promotes out -> contra: our own account matched by NUMBER or NAME on the
-   * receiving side, or the receiving Account Name is our company. A bank-name-only match is NOT proof
-   * (every Prabhu account would match "Prabhu Bank"). The old regex over `bank_flow_reason` ("both sides
-   * are our company") is gone: the server settles that against our real account list, and a free-text
-   * reason that happens to contain those words used to turn supplier payments into contra. */
-  const destOurs = creditIsCompany || (creditPick.ok && (creditPick.method === "account-no" || creditPick.method === "name"));
-  const effectiveFlow = flow === "out" && senderPick.ok && destOurs ? "own_to_own" : flow;
+  const effectiveFlow = flow;
   const charge = d.transfer_charges != null && d.transfer_charges > 0 ? { amount: d.transfer_charges } : undefined;
   const narration = [
     d.account_holder_name && `connectIPS Account: ${d.account_holder_name}`,
@@ -65,14 +54,10 @@ export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptD
     d.transfer_mode, d.transfer_reference && `Ref: ${d.transfer_reference}`,
   ].filter(Boolean).join(" | ");
 
-  /* Gemini already answered "which voucher is this" in `voucher_type`, and the server cross-checked it
-   * against our real account list. That answer wins here - the client only falls back to flow-derived
-   * classification when the type is missing (older server) so it never invents a different voucher. */
+  /* No local rule may override Gemini's explicit type. Flow is a fallback only when it returned none. */
   const declared = d.voucher_type ?? null;
   const flowType = effectiveFlow === "own_to_own" ? "contra" : effectiveFlow === "out" ? "payment_out" : "payment_in";
-  const chosen = declared ?? flowType;
-  /* A contra claim still needs the evidence the same field always needed; drop it if unsupported. */
-  const finalType = chosen === "contra" && !(senderPick.ok && destOurs) ? "payment_out" : chosen;
+  const finalType = declared ?? flowType;
 
   /* Gemini's JSON is the only place the payer name exists on a connectIPS slip (the compact text summary prints
    * it once as "connectIPS Account: X"). Handing it to the fill step is what lets a ledger named after the
@@ -98,7 +83,7 @@ export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptD
     counterParty: d.party_name ?? null,
     otherCharge: charge,
     narration,
-    reason: `AI: ${d.doc_kind ?? "money document"}; voucher ${finalType}${declared ? " (Gemini)" : " (from flow)"}; flow ${effectiveFlow === flow ? flow : `${flow} → own_to_own (receiving account is ours)`}${d.bank_flow_reason ? ` (${d.bank_flow_reason.slice(0, 120)})` : ""}`,
+    reason: `AI: ${d.doc_kind ?? "money document"}; voucher ${finalType}${declared ? " (Gemini final)" : " (flow fallback)"}; flow ${effectiveFlow ?? "unclear"}${d.bank_flow_reason ? ` (${d.bank_flow_reason.slice(0, 120)})` : ""}`,
   };
 
   if (finalType === "contra") {

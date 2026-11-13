@@ -1,5 +1,6 @@
 import type { OwnAccountLike, ReceiptAccountSide } from "./types";
 import { accountProof, matchMasters } from "../../../modules/ocr/masterMatch";
+import { nameScore } from "../../../modules/ocr/fuzzy";
 
 /** Keep digits and mask wildcards; normalize # x X to *. */
 export function maskDigits(s?: string): string {
@@ -55,6 +56,21 @@ export function branchWord(s?: string): string {
 
 const accText = (a: OwnAccountLike) => words(`${a.accountName ?? ""} ${a.bankName ?? ""} ${a.branch ?? ""}`);
 
+/** Compare the printed account holder with the account's company/alias name, without its bank suffix. */
+function accountHolderNameMatches(printedName: string, account: OwnAccountLike): boolean {
+  const printed = words(printedName);
+  if (!printed) return false;
+  const bankWords = new Set(words(account.bankName).split(" ").filter(Boolean));
+  const core = (raw: string | undefined) =>
+    words(raw).split(" ").filter((word) => word && !bankWords.has(word) && !["bank", "limited", "ltd", "private", "pvt", "company", "co"].includes(word)).join(" ");
+  const candidates = [account.accountName, account.aliasName].filter((x): x is string => !!x?.trim());
+  return candidates.some((candidate) => {
+    const target = core(candidate);
+    if (!target || target.length < 10) return false;
+    return target === printed || nameScore(printed, target) >= 0.7;
+  });
+}
+
 export type OwnAccountScore = {
   acc: OwnAccountLike;
   score: number;
@@ -89,9 +105,9 @@ export function scoreOwnAccounts(side: ReceiptAccountSide, own: readonly OwnAcco
       reasons.push(`branch "${br}"`);
       if (method === "none" || method === "bank") method = "branch";
     }
-    if (side.accountName && words(side.accountName) && words(side.accountName) === words(acc.accountName)) {
+    if (side.accountName && accountHolderNameMatches(side.accountName, acc)) {
       s += 0.1;
-      reasons.push("account name");
+      reasons.push("account name / company alias");
       if (method === "none") method = "name";
     }
     if (s > 0) out.push({ acc, score: s, reasons, method });

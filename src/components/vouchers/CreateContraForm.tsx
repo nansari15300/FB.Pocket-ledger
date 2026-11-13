@@ -2725,7 +2725,6 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                         className="mb-2"
                       />
                     )}
-                    <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
                     <RestrictedFileUploader>
                       {/* File actions stay unchanged; only grouped in shared container with narration. */}
                       <div className="flex flex-wrap gap-4">
@@ -2794,6 +2793,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                         )}
                       </div>
                     </RestrictedFileUploader>
+                    <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
                   </FormItem>
                   <FormField
                     control={form.control}

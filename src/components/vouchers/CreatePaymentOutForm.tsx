@@ -3460,7 +3460,6 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     className="mb-2"
                   />
                 )}
-                <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
                 <RestrictedFileUploader>
                   {/* When linked: no add/remove; existing files view-only (click to open still works). */}
                   <VoucherAttachmentPcDropRow
@@ -3559,6 +3558,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     )}
                   </VoucherAttachmentPcDropRow>
                 </RestrictedFileUploader>
+                <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
               </FormItem>
               {/* Mobile me narration neeche, desktop me right column me show hota hai. */}
               <div className="grid gap-4 min-w-0 max-w-full grid-cols-1">

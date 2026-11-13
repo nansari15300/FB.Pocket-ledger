@@ -2911,7 +2911,6 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     className="mb-2"
                   />
                 )}
-                <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
                 <RestrictedFileUploader>
                   <div className="flex flex-wrap gap-4">
                     {files.map((file, index) => (
@@ -2999,6 +2998,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     )}
                   </div>
                 </RestrictedFileUploader>
+                <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
               </FormItem>
               {/* Mobile me narration neeche, desktop me right column me show hota hai. */}
               <div className="grid grid-cols-1 gap-4 min-w-0">
