@@ -58,6 +58,8 @@ export type OcrRawResult = {
   altText?: string;
   /** Which preprocessing produced `lines` ("standard" | "enhanced (deskew x deg)"), for the debug dump. */
   preprocess?: string;
+  /** Slip ka text Devanagari-heavy nikla (auto-detect). Language-mismatch bubble isi par trigger hota hai. */
+  detectedLocalScript?: boolean;
   /** Standard vs enhanced retry pass summary (only when the retry ran). */
   passNote?: string;
   /** Which OCR engine produced the text (debug dump "OCR engine: google|azure|tesseract|gemini"). */

@@ -291,8 +291,14 @@ export async function runTesseractOnFile(file: Blob, mime: string): Promise<OcrR
       const txt = String(data?.text ?? "");
       const latin = (txt.match(/[A-Za-z]/g) ?? []).length;
       const deva = (txt.match(/[\u0900-\u097F]/g) ?? []).length;
-      const nepali = latin < 40 || deva > latin;
-      if (nepali) {
+      /* User's script preference wins over auto-detect:
+       *   eng   = never switch to the Devanagari pass (English bills read cleaner)
+       *   local = always use the Devanagari/Nepali pass
+       *   auto  = detect per slip (default)                                        */
+      const scriptPref = getOcrPrefs().scriptPref;
+      const detectedLocal = latin < 40 || deva > latin;
+      const useLocal = scriptPref === "local" ? true : scriptPref === "eng" ? false : detectedLocal;
+      if (useLocal) {
         const nep = await getWorker("nep");
         data = (await nep.recognize(canvas, {}, { blocks: true, text: true })).data;
       }
@@ -303,7 +309,9 @@ export async function runTesseractOnFile(file: Blob, mime: string): Promise<OcrR
       const text = String(data?.text ?? "");
       const meanConfidence = Number(data?.confidence ?? 0);
       return {
-        nepali,
+        nepali: useLocal,
+        /** Slip ki script hi Devanagari nikli — bubble is mismatch par language options dikhata hai. */
+        detectedLocalScript: detectedLocal,
         quality: ocrKeyFieldScore(text),
         meanConfidence,
         result: {
@@ -313,13 +321,17 @@ export async function runTesseractOnFile(file: Blob, mime: string): Promise<OcrR
           pageHeight: canvas.height,
           pageWidth: canvas.width,
           altText: String(alt?.text ?? ""),
+          /** Devanagari slip mila — language-mismatch bubble isi par trigger hota hai. */
+          detectedLocalScript: detectedLocal,
           preprocess: variant === "enhanced" ? `enhanced${skewDeg ? ` (deskew ${skewDeg} deg)` : ""}` : "standard",
         } satisfies OcrRawResult,
       };
     };
     const first = await recognizePass("standard");
-    // Over-lit / glare / tilted photo: key fields missing -> retry with flat-field + deskew, keep the better pass
-    if (isPdf || first.nepali || !needsEnhancedPass(first.quality, first.meanConfidence, first.result.text)) return first.result;
+    // Over-lit / glare / tilted photo: key fields missing -> retry with flat-field + deskew, keep the better pass.
+    // Skip on genuinely local slips (detectedLocalScript) — forcing the local pass must not skip the retry.
+    const skipEnhanced = first.detectedLocalScript;
+    if (isPdf || skipEnhanced || !needsEnhancedPass(first.quality, first.meanConfidence, first.result.text)) return first.result;
     let second: Awaited<ReturnType<typeof recognizePass>> | null = null;
     try {
       second = await recognizePass("enhanced");
@@ -335,6 +347,8 @@ export async function runTesseractOnFile(file: Blob, mime: string): Promise<OcrR
       ...pick.result,
       // both sparse passes confirm numbers (grand total seen twice etc.)
       altText: `${pick.result.altText ?? ""}\n${(pick === second ? first : second).result.altText ?? ""}`,
+      /* Script detection: either pass ne Devanagari dekha to slip local hai. */
+      detectedLocalScript: !!(first.detectedLocalScript || second.detectedLocalScript),
       passNote: `standard ${first.quality.score}/5 ${Math.round(first.meanConfidence)}% (missing: ${first.quality.missing.join(", ") || "-"}); enhanced ${second.quality.score}/5 ${Math.round(second.meanConfidence)}% (missing: ${second.quality.missing.join(", ") || "-"}); used ${pick === second ? "enhanced" : "standard"}`,
     };
   })();

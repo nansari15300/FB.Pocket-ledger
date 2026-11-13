@@ -15,7 +15,7 @@ import { aiDocTypeForVoucher } from "./ai/aiChatModel";
 import { parseBill } from "./parser";
 import { extractIdentifiers, type OcrIdentifiers } from "./identifiers";
 import { learnTemplateParty, lookupTemplateParty } from "./templates";
-import { clampAutoPostSeconds, getOcrPrefs, useOcrPrefs } from "./prefs";
+import { clampAutoPostSeconds, getOcrPrefs, resetOcrLanguagePref, setOcrPrefs, useOcrPrefs } from "./prefs";
 import { buildOcrNarration, formatOcrNarrationDate, itemsNarrationTag, readDateDisplayPrefs } from "./narration";
 import { AutoPostCountdownBubble } from "./AutoPostCountdownBubble";
 import { useOcrPlanAllowed } from "./gate";
@@ -143,6 +143,17 @@ function findDuplicateByRef(vouchers: readonly any[] | undefined, txnId?: string
     if (needles.some((n) => hay.includes(n))) return { id: String(v.id ?? ""), voucherNumber: v.voucherNumber ?? v.voucherNo, type: v.type };
   }
   return null;
+}
+
+/** Confirmation toast after a reading-language pref change (bubble ka English / Local / Set as default). */
+function flashLangPref(pref: "eng" | "local" | "auto") {
+  const label = pref === "eng" ? "English" : pref === "local" ? "Local (नेपाली)" : "Auto (detect)";
+  toast.success(`Reading language: ${label}`, {
+    id: "pl-ocr-script-pref",
+    description: pref === "auto" ? "Every slip is read in its own script." : "Reset anytime in OCR settings → Reading language.",
+    duration: 4000,
+    position: "top-right",
+  });
 }
 
 export function useVoucherOcr(o: UseVoucherOcrOptions) {
@@ -650,6 +661,63 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
 
             if (rc.statusWarning) {
               rExtra.push({ id: "status-failed", label: "Status warning", value: rc.statusWarning, blocked: rc.statusWarning, apply: () => undefined });
+            }
+            /**
+             * Language mismatch: slip Devanagari-heavy nikli (local bill) par OCR English pass se chal raha hai
+             * (ya ulta). Bubble me dono options + "Set as default" — default set hone ke baad agli baar
+             * engine seedha wahi script pass use karta hai (scriptPref).
+             */
+            const prefsNow = getOcrPrefs();
+            const detectedLocal = raw.detectedLocalScript === true;
+            const prefNow = prefsNow.scriptPref;
+            const mismatch =
+              (detectedLocal && prefNow === "eng") || (!detectedLocal && prefNow === "local");
+            if (raw.engine === "tesseract" && (detectedLocal || prefNow !== "auto") && (mismatch || prefNow === "auto")) {
+              const preferEng = prefNow !== "local";
+              rExtra.push({
+                id: "ocr-language",
+                label: detectedLocal ? "Local script detected" : "English script detected",
+                value: detectedLocal
+                  ? "Devanagari (नेपाली) text mila — English pass se padha gaya."
+                  : "English text mila — local (Devanagari) pass se padha gaya.",
+                reason: mismatch ? "Reading language is different from the bill." : undefined,
+                apply: () => undefined,
+              });
+              rExtra.push({
+                id: "ocr-lang-eng",
+                label: "English",
+                value: prefNow === "eng" ? "Current default" : "Read English only (no Devanagari pass)",
+                blocked: prefNow === "eng" ? "Already the default" : undefined,
+                apply: () => { setOcrPrefs({ scriptPref: "eng" }); flashLangPref("eng"); },
+              });
+              rExtra.push({
+                id: "ocr-lang-local",
+                label: "Local (नेपाली)",
+                value: prefNow === "local" ? "Current default" : "Read Devanagari/Nepali first",
+                blocked: prefNow === "local" ? "Already the default" : undefined,
+                apply: () => { setOcrPrefs({ scriptPref: "local" }); flashLangPref("local"); },
+              });
+              if (mismatch) {
+                rExtra.push({
+                  id: "ocr-lang-default",
+                  label: `Set as default: ${detectedLocal ? "Local (नेपाली)" : "English"}`,
+                  value: "Every slip will be read in this language until reset",
+                  apply: () => {
+                    const next: "eng" | "local" = detectedLocal ? "local" : "eng";
+                    setOcrPrefs({ scriptPref: next });
+                    flashLangPref(next);
+                  },
+                });
+              }
+              if (prefNow !== "auto") {
+                rExtra.push({
+                  id: "ocr-lang-auto",
+                  label: "Back to auto",
+                  value: "Detect the script on every slip",
+                  apply: () => { resetOcrLanguagePref(); flashLangPref("auto"); },
+                });
+              }
+              void preferEng;
             }
             const dup = findDuplicateByRef(M.vouchers, rc.parsed?.txnId, rc.parsed?.referenceId);
             if (dup) {

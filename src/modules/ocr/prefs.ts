@@ -27,8 +27,15 @@ export type OcrPrefs = {
   engine: OcrEnginePref;
   /** Last online provider picked in Switch Engine (Google / Azure each have their own key). "" = whichever key the server has. */
   onlineProvider: OcrOnlineProvider;
+  /**
+   * Bill ka script: auto (jaisa slip hai waisa padho), eng (sirf English — Devanagari pass band),
+   * local (Devanagari/Nepali pass pehle). Language-mismatch bubble ka "Set as default" isi ko set karta hai.
+   */
+  scriptPref: OcrScriptPref;
 };
 export type OcrOnlineProvider = "google" | "azure" | "";
+/** auto = detect per slip (default) | eng = force English | local = force Devanagari/Nepali. */
+export type OcrScriptPref = "auto" | "eng" | "local";
 export const AUTO_POST_SECONDS_MIN = 1;
 export const AUTO_POST_SECONDS_MAX = 60;
 export function clampAutoPostSeconds(v: unknown): number {
@@ -43,7 +50,7 @@ export function clampAutoPostSeconds(v: unknown): number {
 export const OCR_LAYER_Z = 100;
 
 const KEY = "pl.ocr.prefs.v1";
-const DEFAULTS: OcrPrefs = { enabled: true, autoPost: false, overwriteEdited: false, autoPostSeconds: 10, autoSwitchVoucher: true, autoSwitchSeconds: 10, connectorStyle: "tail", narrationStyle: "full", engine: "auto", onlineProvider: "" };
+const DEFAULTS: OcrPrefs = { enabled: true, autoPost: false, overwriteEdited: false, autoPostSeconds: 10, autoSwitchVoucher: true, autoSwitchSeconds: 10, connectorStyle: "tail", narrationStyle: "full", engine: "auto", onlineProvider: "", scriptPref: "auto" };
 const subs = new Set<() => void>();
 let cache: OcrPrefs | null = null;
 
@@ -55,6 +62,7 @@ function normalize(raw: Partial<OcrPrefs> | null | undefined): OcrPrefs {
     narrationStyle: raw?.narrationStyle === "short" ? "short" : "full",
     engine: raw?.engine === "offline" || raw?.engine === "online" || raw?.engine === "ai" ? raw.engine : "auto",
     onlineProvider: raw?.onlineProvider === "google" || raw?.onlineProvider === "azure" ? raw.onlineProvider : "",
+    scriptPref: raw?.scriptPref === "eng" || raw?.scriptPref === "local" ? raw.scriptPref : "auto",
   };
 }
 
@@ -91,4 +99,19 @@ export function useOcrPrefs(): OcrPrefs {
     getOcrPrefs,
     () => DEFAULTS
   );
+}
+
+/**
+ * "Reset" in OCR settings: script preference (English / local) ko auto par wapas, baaki device prefs
+ * untouched — warna user ka narration style, countdown, auto-post sab ek click me ud jata.
+ * Returns the fresh prefs so callers can sync their local drafts.
+ */
+export function resetOcrLanguagePref(): OcrPrefs {
+  setOcrPrefs({ scriptPref: "auto" });
+  return getOcrPrefs();
+}
+
+/** True when scriptPref explicitly forces a script (reset button is meaningful only then). */
+export function isOcrScriptForced(prefs: OcrPrefs = getOcrPrefs()): boolean {
+  return prefs.scriptPref === "eng" || prefs.scriptPref === "local";
 }

@@ -13,6 +13,13 @@ export type UnassignedDocToDelete = {
 };
 
 /**
+ * Kis subcollection se row delete karni hai. Duplicate Documents tab apni alag
+ * `duplicate_documents` collection use karta hai — pehle hardcoded `unassigned_documents`
+ * hone se duplicate row delete hoti hi nahi thi aur refresh pe file wapas dikhti thi.
+ */
+export type GalleryDocCollections = "unassigned_documents" | "duplicate_documents";
+
+/**
  * Local tombstone written after a hard delete. Without it the next server pull re-inserts the
  * row into the SQLite mirror (the mirror row was removed, so the pull sees a "new" doc and the
  * list shows the file again after a refresh). `_pbHardDeleted` is the same marker the server uses
@@ -21,10 +28,10 @@ export type UnassignedDocToDelete = {
 const HARD_DELETED_FLAG = "_pbHardDeleted";
 
 /** True when the row is really gone from the Pocket Ledger Server (or never answers). */
-async function serverRowStillExists(companyId: string, docId: string): Promise<boolean> {
+async function serverRowStillExists(companyId: string, docId: string, coll: GalleryDocCollections): Promise<boolean> {
   try {
     const { pbReadAppDoc } = await import("@/lib/pocketbaseData/pbSync");
-    const r = await pbReadAppDoc(companyId, "unassigned_documents", docId);
+    const r = await pbReadAppDoc(companyId, coll, docId);
     return r.exists === true;
   } catch {
     // Server unreachable: do not claim a failure the caller cannot fix.
@@ -38,20 +45,24 @@ async function serverRowStillExists(companyId: string, docId: string): Promise<b
  * as a PocketBase company id on this device (the gateway would otherwise fall through to a closed
  * Firestore project and silently do nothing).
  */
-async function deleteUnassignedRowOnServer(companyId: string, docId: string): Promise<boolean> {
+async function deleteUnassignedRowOnServer(
+  companyId: string,
+  docId: string,
+  coll: GalleryDocCollections
+): Promise<boolean> {
   try {
     const { pbBatchWrite } = await import("@/lib/pocketbaseData/pbSync");
     const [result] = await pbBatchWrite(companyId, [
-      { coll: "unassigned_documents", id: docId, mode: "delete", data: {} },
+      { coll, id: docId, mode: "delete", data: {} },
     ]);
-    if (!result) return !(await serverRowStillExists(companyId, docId));
+    if (!result) return !(await serverRowStillExists(companyId, docId, coll));
     if (result.status === "rejected") {
       // Another device saved a newer copy of the row (server keeps `prevAt > at`). Retry with the
       // server's own timestamp so the delete is not older than the stored row.
       const at = Math.max(Number(result.updatedAtMs) || 0, Date.now()) + 1;
-      await pbBatchWrite(companyId, [{ coll: "unassigned_documents", id: docId, mode: "delete", data: {}, at }]);
+      await pbBatchWrite(companyId, [{ coll, id: docId, mode: "delete", data: {}, at }]);
     }
-    return !(await serverRowStillExists(companyId, docId));
+    return !(await serverRowStillExists(companyId, docId, coll));
   } catch (e) {
     console.warn("[hardDeleteUnassignedDoc] server delete error:", e);
     return false;
@@ -71,10 +82,12 @@ async function deleteUnassignedRowOnServer(companyId: string, docId: string): Pr
 export async function hardDeleteUnassignedDoc(
   companyId: string,
   docItem: UnassignedDocToDelete,
-  company?: { authoritativeCompanyId?: string } | null
+  company?: { authoritativeCompanyId?: string } | null,
+  collection: GalleryDocCollections = "unassigned_documents"
 ): Promise<boolean> {
   const docId = String(docItem.id || "").trim();
   if (!companyId || !docId) return false;
+  const coll = collection;
 
   // The Gallery list reads `companies/{fsId}/unassigned_documents`, and the server row id is the
   // same doc id. Delete against the company this device knows as PocketBase; fall back to
@@ -90,13 +103,13 @@ export async function hardDeleteUnassignedDoc(
   // 1. Local first: tombstone the row and persist to IndexedDB before touching the network.
   //    The list reads SQLite, so a refresh right after the click must already see it gone.
   try {
-    await deleteCompanyDocFromBrowserDb(serverCompanyId, "unassigned_documents", docId, {
+    await deleteCompanyDocFromBrowserDb(serverCompanyId, coll, docId, {
       force: true,
       notify: true,
     });
     await upsertCompanyDocInBrowserDb(
       serverCompanyId,
-      "unassigned_documents",
+      coll,
       docId,
       { id: docId, isDeleted: true, [HARD_DELETED_FLAG]: true, deletedAtMs: Date.now() },
       { force: true, notify: false, skipPlanMutationGate: true, skipCloudSyncEnqueue: true }
@@ -115,11 +128,11 @@ export async function hardDeleteUnassignedDoc(
 
   // 2. Delete the server row.
   const serverDeleted = isPb || isPocketBaseCompanyId(serverCompanyId)
-    ? await deleteUnassignedRowOnServer(serverCompanyId, docId)
+    ? await deleteUnassignedRowOnServer(serverCompanyId, docId, coll)
     : await (async () => {
         try {
           // Firebase company: plain document delete.
-          await deleteDoc(doc(firestore, `companies/${serverCompanyId}/unassigned_documents`, docId));
+          await deleteDoc(doc(firestore, `companies/${serverCompanyId}/${coll}`, docId));
           return true;
         } catch (gatewayErr) {
           console.warn("[hardDeleteUnassignedDoc] Gateway delete error:", gatewayErr);
@@ -151,7 +164,8 @@ export async function hardDeleteUnassignedDocsBatch(
   companyId: string,
   docs: UnassignedDocToDelete[],
   company?: { authoritativeCompanyId?: string } | null,
-  onProgress?: (completed: number, total: number) => void
+  onProgress?: (completed: number, total: number) => void,
+  collection: GalleryDocCollections = "unassigned_documents"
 ): Promise<{ successCount: number; failCount: number }> {
   let successCount = 0;
   let failCount = 0;
@@ -159,7 +173,7 @@ export async function hardDeleteUnassignedDocsBatch(
   for (let i = 0; i < docs.length; i++) {
     const item = docs[i];
     try {
-      const ok = await hardDeleteUnassignedDoc(companyId, item, company);
+      const ok = await hardDeleteUnassignedDoc(companyId, item, company, collection);
       if (ok) successCount++;
       else failCount++;
     } catch {

@@ -28,6 +28,12 @@ export type DuplicateMatch = {
   /** Existing voucher date (display string). */
   dateText: string;
   amount: number;
+  /** Match kiye gaye purane voucher ki OCR narration — "Why Duplicate" me side-by-side dikhti hai. */
+  voucherNarration: string;
+  /** Purane voucher ka slip/txn reference (agar tha). */
+  voucherRef: string;
+  /** Is voucher ki incoming OCR narration — comparison ke liye. */
+  incomingNarration: string;
   /** Kyun duplicate laga — UI bubble me sabse pehle sabse strong reason dikhao. */
   reasons: DuplicateReason[];
   /** Human sentence, seedha bubble me dikhane layak. */
@@ -230,6 +236,9 @@ export function findDuplicateVoucher(
       type: str(v.type),
       dateText: displayDate(v.date),
       amount: theirAmount,
+      voucherNarration: str(v.narration),
+      voucherRef: voucherRef(v),
+      incomingNarration: str(input.narration),
       reasons,
       summary: buildSummary(primary, voucherNumber, reasons),
     });

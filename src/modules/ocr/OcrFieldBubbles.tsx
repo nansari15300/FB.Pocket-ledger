@@ -50,6 +50,8 @@ export function ocrFieldForSuggestion(id: string): string {
   if (id === "billno") return "bill-no";
   if (id === "account" || id.startsWith("account-")) return "account";
   if (id === "cannot-detect" || id === "status-failed" || id === "duplicate-ref") return "voucher-type";
+  /** Reading-language options (English / Local / Set as default) attach to the OCR bar, not a form field. */
+  if (id === "ocr-language" || id.startsWith("ocr-lang-")) return "ocr-language";
   return "lines"; // lines, create-item-*, tds, drcr
 }
 
@@ -831,6 +833,10 @@ function BubbleView({
   const missing = b.kind === "missing";
   const party = b.items.find((s) => s.id === "create-party");
   const pick = b.items.find((s) => s.id === "find-party");
+  /** Reading-language options (English / Local / Set as default) — apna block, baaki suggestions se alag. */
+  const langHead = b.items.find((s) => s.id === "ocr-language");
+  const langOpts = b.items.filter((s) => s.id.startsWith("ocr-lang-"));
+  const restItems = b.items.filter((s) => s.id !== "ocr-language" && !s.id.startsWith("ocr-lang-"));
   const border = missing ? "#fcd34d" : "#f9a8d4";
   const pill = "h-7 rounded-full px-3 text-xs";
   const vw = typeof window !== "undefined" ? window.innerWidth : W;
@@ -881,6 +887,30 @@ function BubbleView({
 
         <div data-ocr-bubble-body="" className="min-h-0" style={{ maxHeight: listMaxH, overflowY: "auto", overscrollBehavior: "contain" }}>
         {b.note ? <p className="mt-1 break-words text-[11px] leading-snug text-amber-700">{b.note}</p> : null}
+        {langHead ? (
+          /* Reading language mismatch: English vs Local option + "Set as default". */
+          <div className="mt-1.5 rounded-lg border border-sky-200 bg-sky-50/70 p-2 dark:border-sky-800 dark:bg-sky-950/40">
+            <p className="text-xs font-semibold text-sky-900 dark:text-sky-100">{langHead.label}</p>
+            <p className="mt-0.5 break-words text-[11px] leading-snug text-slate-600 dark:text-slate-300">{langHead.value}</p>
+            {langHead.reason ? <p className="text-[11px] text-amber-700 dark:text-amber-400">{langHead.reason}</p> : null}
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {langOpts.map((s) => (
+                <Button
+                  key={s.id}
+                  type="button"
+                  size="sm"
+                  variant={s.id === "ocr-lang-default" ? "default" : s.blocked ? "secondary" : "outline"}
+                  disabled={!!s.blocked}
+                  className="h-7 rounded-full px-3 text-[11px]"
+                  title={s.value}
+                  onClick={() => onApply(s)}
+                >
+                  {s.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {missing ? (
           <div className="mt-1.5">
             {b.items[0] ? (
@@ -902,20 +932,25 @@ function BubbleView({
               <Button type="button" size="sm" variant="ghost" className={pill} onClick={onDismiss}>Dismiss</Button>
             </div>
           </div>
-        ) : b.items.length === 1 ? (
+        ) : restItems.length === 1 ? (
           <div className="mt-1.5">
-            <p className="break-words text-xs text-slate-500">{b.items[0].value}</p>
-            {b.items[0].reason ? <p className="text-[11px] text-slate-500">{b.items[0].reason}</p> : null}
-            {b.items[0].blocked ? <p className="text-[11px] text-amber-700">{b.items[0].blocked}</p> : null}
+            <p className="break-words text-xs text-slate-500">{restItems[0].value}</p>
+            {restItems[0].reason ? <p className="text-[11px] text-slate-500">{restItems[0].reason}</p> : null}
+            {restItems[0].blocked ? <p className="text-[11px] text-amber-700">{restItems[0].blocked}</p> : null}
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {!b.items[0].blocked ? (isCreateItemSuggestion(b.items[0]) ? <CreateItemChoiceButton s={b.items[0]} onApply={onApply} className={pill} /> : <Button type="button" size="sm" className={pill} onClick={() => onApply(b.items[0])}>{suggestionActionLabel(b.items[0], b.countdown)}</Button>) : null}
-              {b.items.filter((x) => isCreateItemSuggestion(x) && !x.blocked).length >= 2 ? <Button type="button" size="sm" variant="outline" className={pill} onClick={() => onCreateAllItems?.(b.items.filter((x) => isCreateItemSuggestion(x) && !x.blocked))}>Create All</Button> : null}
+              {!restItems[0].blocked ? (isCreateItemSuggestion(restItems[0]) ? <CreateItemChoiceButton s={restItems[0]} onApply={onApply} className={pill} /> : <Button type="button" size="sm" className={pill} onClick={() => onApply(restItems[0])}>{suggestionActionLabel(restItems[0], b.countdown)}</Button>) : null}
+              {restItems.filter((x) => isCreateItemSuggestion(x) && !x.blocked).length >= 2 ? <Button type="button" size="sm" variant="outline" className={pill} onClick={() => onCreateAllItems?.(restItems.filter((x) => isCreateItemSuggestion(x) && !x.blocked))}>Create All</Button> : null}
               <Button type="button" size="sm" variant="ghost" className={pill} onClick={onDismiss}>Dismiss</Button>
             </div>
           </div>
+        ) : restItems.length === 0 ? (
+          /* Sirf language options hain — unka apna block upar hai, Dismiss hi chahiye. */
+          <div className="mt-2 flex justify-end">
+            <Button type="button" size="sm" variant="ghost" className={pill} onClick={onDismiss}>Dismiss</Button>
+          </div>
         ) : (
           <div className="mt-1.5 space-y-2">
-            {b.items.map((s) => (
+            {restItems.map((s) => (
               <div key={s.id} className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium">{s.label}</p>
@@ -926,7 +961,7 @@ function BubbleView({
               </div>
             ))}
             <div className="flex flex-wrap justify-end gap-1.5">
-              {b.items.filter((x) => isCreateItemSuggestion(x) && !x.blocked).length >= 2 ? <Button type="button" size="sm" variant="outline" className={pill} onClick={() => onCreateAllItems?.(b.items.filter((x) => isCreateItemSuggestion(x) && !x.blocked))}>Create All</Button> : null}
+              {restItems.filter((x) => isCreateItemSuggestion(x) && !x.blocked).length >= 2 ? <Button type="button" size="sm" variant="outline" className={pill} onClick={() => onCreateAllItems?.(restItems.filter((x) => isCreateItemSuggestion(x) && !x.blocked))}>Create All</Button> : null}
               <Button type="button" size="sm" variant="ghost" className={pill} onClick={onDismiss}>Dismiss</Button>
             </div>
           </div>

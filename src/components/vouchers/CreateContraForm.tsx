@@ -82,6 +82,8 @@ const appendCompressedVoucherAttachmentsToState = ocrWrapAppend(__frozenAppendAt
 const handleVoucherAttachmentInputChange = ocrWrapInputChange(__frozenAttachmentInputChange);
 import { voucherAttachmentUrlsForFormState } from "@/lib/voucherAttachmentNormalize";
 import { findDuplicateVoucher, hashAttachmentFiles, type CandidateVoucher, type DuplicateMatch } from "@/lib/voucherDuplicateGuard";
+import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
+import { galleryCompanyFsId } from "@/lib/galleryDuplicateMove";
 import { AttachmentHoldPasteSurface } from "@/components/vouchers/AttachmentHoldPasteSurface";
 import { attachmentMaxBytes, attachmentStillTooLargeToastFields } from "@/lib/attachmentCompressionUi";
 import { useVouchers } from "@/hooks/useVouchers";
@@ -320,6 +322,13 @@ export function CreateContraForm({
   /** Duplicate guard: same slip dobara save hone se pehle bubble. */
   const [duplicatePrompt, setDuplicatePrompt] = useState<{ match: DuplicateMatch; proceed: () => Promise<void> } | null>(null);
   const skipDuplicatePromptRef = useRef(false);
+  /** Pre-save live warning: form complete hote hi (bina Save dabaye) bubble Save button ko point karta hai. */
+  const [liveDuplicate, setLiveDuplicate] = useState<DuplicateMatch | null>(null);
+  const liveDuplicateDismissedKeyRef = useRef<string>("");
+  /** Live guard sirf naye voucher par — edit/converting me apna hi voucher match ho jata, to band. */
+  const visibleLiveDupChecks = !voucher?.id;
+  /** "Move to Duplicate" bubble action ka busy flag. */
+  const [dupMoveBusy, setDupMoveBusy] = useState(false);
   const [otherChargeEnabled, setOtherChargeEnabled] = useState(
     Boolean(voucher?.otherChargeAccountId || Number(voucher?.otherChargeAmount || 0) > 0)
   );
@@ -1113,6 +1122,161 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       sonnerToast.message(`Bank account prefilled -> save adds to "${targetLabel}".`);
     }
   }, [copyMasterDraftRequest]);
+
+  /**
+   * Pre-save duplicate watcher — save dabane ka intezaar nahi.
+   * Form ke saare zaroori fields bharte hi (From, To, amount, date) pool me check chalta hai; match mile to
+   * Save button ko point karta bubble khud dikh jata hai. Fields badalne par dobara evaluate hota hai.
+   * Edit mode me current voucher khud ko match nahi karta.
+   */
+  useEffect(() => {
+    if (!visibleLiveDupChecks) {
+      setLiveDuplicate(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const values = form.getValues();
+      const rawDate = values.date;
+      const dateObj = rawDate instanceof Date ? rawDate : rawDate ? new Date(String(rawDate)) : null;
+      const total = (Number(values.payeeAmount) || 0) + (Number(values.otherChargeAmount) || 0);
+      if (!values.fromAccountId || !values.toAccountId || total <= 0 || !dateObj || Number.isNaN(dateObj.getTime())) {
+        setLiveDuplicate(null);
+        return;
+      }
+      const narration = String(values.narration ?? "");
+      const ref = /(?:Ref|Txn\s*ID)\s*:\s*([A-Za-z0-9._-]+)/i.exec(narration)?.[1] ?? "";
+      const hit = findDuplicateVoucher((allVouchersUnfiltered ?? allVouchers) as CandidateVoucher[], {
+        excludeVoucherId: savedVoucherId ?? voucher?.id,
+        type: "contra",
+        date: dateObj,
+        amount: total,
+        fromAccountId: values.fromAccountId,
+        toAccountId: values.toAccountId,
+        otherChargeAmount: Number(values.otherChargeAmount) || 0,
+        otherChargeAccountId: values.otherChargeAccountId || "",
+        narration,
+        ref,
+      });
+      if (!hit) {
+        setLiveDuplicate(null);
+        return;
+      }
+      const key = `${hit.id}|${hit.reasons.join(",")}`;
+      if (liveDuplicateDismissedKeyRef.current === key) return; // user ne dismiss kiya — dobara mat dikhao
+      setLiveDuplicate(hit);    }, 450);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    visibleLiveDupChecks,
+    fromAccountId,
+    toAccountId,
+    payeeAmountValue,
+    otherChargeAmountValue,
+    otherChargeAccountId,
+    savedVoucherId,
+    voucher?.id,
+  ]);
+
+  /**
+   * "Move to Duplicate": attached slip ko unassigned pool se Duplicate tab me bhejo,
+   * aur form se attachment hatao taaki user dobara wo file save na kare.
+   * Note: sirf wo attachment move hoti hai jo unassigned_documents row se aayi ho (`url` field match).
+   */
+  const handleMoveFilesToDuplicate = useCallback(
+    async (match: DuplicateMatch) => {
+      if (!companyId || dupMoveBusy) return;
+      setDupMoveBusy(true);
+      const toastId = sonnerToast.loading("Moving file to Duplicate Documents…");
+      try {
+        const { moveUnassignedFileToDuplicate } = await import("@/lib/galleryDuplicateMove");
+        const fsId = galleryCompanyFsId(companyId, company);
+        const { collection, getDocs, query, where } = await import("@/lib/pbCompat/firestore");
+        const attached = files;
+        const urls = attached.filter((f): f is string => typeof f === "string" && /^https?:|^pbatt:/.test(f));
+        if (!urls.length) {
+          /* Attached file server-side row nahi hai (direct upload / naya File) — move nahi kar sakte,
+           * par user ka intent "is bill ko chhod do" hai: error na dikhao, bas band karo. */
+          sonnerToast.info("Nothing to move", { id: toastId, description: "This attachment is not in Unassigned Documents — closing without saving." });
+          setDuplicatePrompt(null);
+          setLiveDuplicate(null);
+          onVoucherAction?.("cancelled", false, savedVoucherId ?? undefined);
+          return;
+        }
+        let moved = 0;
+        /** File pehle se Duplicate tab me hai (ya unassigned row nahi mila) — move ki zaroorat nahi. */
+        let alreadyDuplicate = false;
+        for (const u of urls) {
+          try {
+            const snap = await getDocs(
+              query(collection(firestore, `companies/${fsId}/unassigned_documents`), where("url", "==", u))
+            );
+            if (snap.empty) {
+              /* Unassigned me nahi mila — dekh lo pehle se Duplicate tab me hai kya. */
+              const dupSnap = await getDocs(
+                query(collection(firestore, `companies/${fsId}/duplicate_documents`), where("url", "==", u))
+              );
+              if (dupSnap.empty) continue;
+              for (const d of dupSnap.docs) {
+                const row = d.data() as Record<string, unknown>;
+                if (row?.isDeleted === true || row?.deleted === true) continue;
+                alreadyDuplicate = true;
+                break;
+              }
+              continue;
+            }
+            for (const d of snap.docs) {
+              const r = await moveUnassignedFileToDuplicate(companyId, company, {
+                fileId: d.id,
+                duplicateOfVoucherId: match.id,
+                duplicateOfVoucherNumber: match.voucherNumber,
+                reasons: match.reasons,
+                /* OCR narration + original voucher snapshot → Gallery "Why Duplicate" panel. */
+                ocrNarration: match.incomingNarration || "",
+                matchedNarration: match.voucherNarration,
+                matchedRef: match.voucherRef,
+                matchedAmount: match.amount,
+                matchedDateText: match.dateText,
+              });
+              if (r.ok) moved += 1;
+            }
+          } catch {
+            /* ek file fail ho to baaki try karo */
+          }
+        }
+        if (moved > 0) {
+          setDuplicatePrompt(null);
+          liveDuplicateDismissedKeyRef.current = `${match.id}|${match.reasons.join(",")}`;
+          setLiveDuplicate(null);
+          sonnerToast.success("Moved to Duplicate Documents", { id: toastId, description: `${moved} file(s) moved — Gallery → Duplicate tab me milengi.` });
+          /* Button ka matlab hai "Cancel & Move": file move hui, to aadha bhara voucher bhi band karo
+           * (user ne is bill ke liye naya voucher nahi banana chaha). */
+          onVoucherAction?.("cancelled", false, savedVoucherId ?? undefined);
+        } else if (alreadyDuplicate) {
+          /* File pehle se Duplicate tab me hai — error dikhane ka matlab nahi, sirf cancel/dismiss. */
+          sonnerToast.success("File is already in Duplicate Documents", {
+            id: toastId,
+            description: "Nothing to move — this slip was already filed as a duplicate.",
+          });
+          setDuplicatePrompt(null);
+          liveDuplicateDismissedKeyRef.current = `${match.id}|${match.reasons.join(",")}`;
+          setLiveDuplicate(null);
+          onVoucherAction?.("cancelled", false, savedVoucherId ?? undefined);
+        } else {
+          /* Unassigned/Duplicate dono me row nahi mili — move possible nahi, par user cancel hi chahta hai. */
+          sonnerToast.info("File not found in Unassigned Documents", {
+            id: toastId,
+            description: "Closing the voucher without saving.",
+          });
+          setDuplicatePrompt(null);
+          setLiveDuplicate(null);
+          onVoucherAction?.("cancelled", false, savedVoucherId ?? undefined);
+        }
+      } finally {
+        setDupMoveBusy(false);
+      }
+    },
+    [companyId, company, dupMoveBusy, files, form, onVoucherAction, savedVoucherId]
+  );
 
   // Amount guard पहले; फिर validated `data` — `getValues()` से date miss न हो
   const handleFormSubmit = useCallback(
@@ -2794,7 +2958,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                 <Button type="button" onClick={() => onVoucherAction?.('cancelled')} className={cn("w-full", BTN_CANCEL_CLASS)}>
                   Cancel
                 </Button>
-                  <Button type="submit" disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || contraSaveAmountBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
+                  <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || contraSaveAmountBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
                   {isLoading ? "..." : isEditingAndConverting ? "Convert" : "Save"}
                 </Button>
                 {voucher?.id ? (
@@ -2831,7 +2995,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     <Printer className="mr-2 h-4 w-4" />
                     Save & Print
                   </Button>
-                  <Button type="submit" disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
+                  <Button type="submit" {...{ [DUP_ANCHOR_ATTR]: DUP_SAVE_ANCHOR }} disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
                     {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     {isEditingAndConverting ? "Convert" : "Save"}
                   </Button>
@@ -2963,45 +3127,32 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           </p>
         </DialogContent>
       </Dialog>
-      <Dialog open={duplicatePrompt != null} onOpenChange={(v) => { if (!v) setDuplicatePrompt(null); }}>
-        <DialogContent {...nestedVoucherAlertShell("max-w-md")}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-amber-700">
-              <span aria-hidden>⚠</span> Possible duplicate voucher
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 text-sm">
-            <p className="text-muted-foreground">{duplicatePrompt?.match.summary}</p>
-            <ul className="space-y-1 rounded-md border bg-muted/40 px-3 py-2 text-xs">
-              <li><span className="text-muted-foreground">Voucher: </span><b>{duplicatePrompt?.match.voucherNumber}</b></li>
-              <li><span className="text-muted-foreground">Date: </span>{duplicatePrompt?.match.dateText}</li>
-              <li><span className="text-muted-foreground">Amount: </span>{duplicatePrompt?.match.amount}</li>
-              <li>
-                <span className="text-muted-foreground">Matched on: </span>
-                {(duplicatePrompt?.match.reasons ?? [])
-                  .map((r) => (r === "file" ? "same file" : r === "ref" ? "same reference" : r === "fields" ? "same date + amount" : "same narration"))
-                  .join(", ")}
-              </li>
-            </ul>
-            <div className="flex justify-end gap-2">
-              <button type="button" className="rounded-md border px-3 py-1.5 text-xs" onClick={() => setDuplicatePrompt(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="rounded-md bg-amber-600 px-3 py-1.5 text-xs text-white"
-                onClick={() => {
-                  const go = duplicatePrompt?.proceed;
-                  setDuplicatePrompt(null);
-                  void go?.();
-                }}
-              >
-                Save anyway
-              </button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Save-button bubble: (a) live pre-save warning, (b) Save dabane par confirm block. */}
+      {duplicatePrompt ? (
+        <DuplicateVoucherBubble
+          match={duplicatePrompt.match}
+          mode="confirm"
+          onSaveAnyway={() => {
+            const go = duplicatePrompt.proceed;
+            setDuplicatePrompt(null);
+            void go();
+          }}
+          onMoveToDuplicate={() => void handleMoveFilesToDuplicate(duplicatePrompt.match)}
+          moveBusy={dupMoveBusy}
+          onDismiss={() => setDuplicatePrompt(null)}
+        />
+      ) : liveDuplicate ? (
+        <DuplicateVoucherBubble
+          match={liveDuplicate}
+          mode="live"
+          onMoveToDuplicate={() => void handleMoveFilesToDuplicate(liveDuplicate)}
+          moveBusy={dupMoveBusy}
+          onDismiss={() => {
+            liveDuplicateDismissedKeyRef.current = `${liveDuplicate.id}|${liveDuplicate.reasons.join(",")}`;
+            setLiveDuplicate(null);
+          }}
+        />
+      ) : null}
       <VoucherDeleteConfirmAlertDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}

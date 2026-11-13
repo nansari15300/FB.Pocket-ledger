@@ -1,7 +1,8 @@
 "use client";
 /** Add Voucher header: OCR / Auto Post / Overwrite pills + one OCR-settings gear (dialog, when OCR is on). */
 import React, { useEffect, useState } from "react";
-import { Pencil, Plus, Settings, Trash2 } from "lucide-react";
+import { Pencil, Plus, RotateCcw, Settings, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -9,7 +10,7 @@ import { AppFreshInfoButton } from "@/components/ui/AppFreshInfoButton";
 import { useCompany } from "@/hooks/useCompany";
 import { cn } from "@/lib/utils";
 import { OCR_SETTINGS_DIALOG_CONTENT_CN, OCR_SETTINGS_DIALOG_OVERLAY_CN } from "@/lib/dialogShellChrome";
-import { AUTO_POST_SECONDS_MAX, AUTO_POST_SECONDS_MIN, clampAutoPostSeconds, getOcrPrefs, setOcrPrefs, useOcrPrefs, type OcrConnectorStyle, type OcrEnginePref, type OcrNarrationStyle } from "./prefs";
+import { AUTO_POST_SECONDS_MAX, AUTO_POST_SECONDS_MIN, clampAutoPostSeconds, getOcrPrefs, resetOcrLanguagePref, setOcrPrefs, useOcrPrefs, type OcrConnectorStyle, type OcrEnginePref, type OcrNarrationStyle, type OcrScriptPref } from "./prefs";
 import { useOcrPlanAllowed } from "./gate";
 import { ocrCloud, ocrCloudErrorText, useOcrCloudStatus } from "./cloud/ocrCloudClient";
 import { deleteOcrAiKey, invalidateOcrAiStatus, listOcrAiAliases, looksLikeGeminiKeyInput, ocrAiErrorText, removeOcrAiAlias, saveOcrAiAliases, saveOcrAiKey, useOcrAiStatus, type OcrAiAliasKind, type OcrAiAliasesList } from "./ai/aiClient";
@@ -752,7 +753,7 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
 }
 
 function OcrSettingsGear({
-  connectorStyle, narrationStyle, autoPost, overwriteEdited, seconds, switchOn, switchSeconds, enginePref, companyId,
+  connectorStyle, narrationStyle, autoPost, overwriteEdited, seconds, switchOn, switchSeconds, enginePref, companyId, scriptPref,
 }: {
   connectorStyle: OcrConnectorStyle;
   narrationStyle: OcrNarrationStyle;
@@ -763,6 +764,8 @@ function OcrSettingsGear({
   switchSeconds: number;
   enginePref: OcrEnginePref;
   companyId: string | null;
+  /** Reading-language lock (auto / eng / local) — Reset button isi ko auto par le jata hai. */
+  scriptPref: OcrScriptPref;
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(String(seconds));
@@ -839,6 +842,42 @@ function OcrSettingsGear({
             <SwitchRow id="pl-ocr-autoswitch" label="Auto voucher change" checked={switchOn} onChange={(v) => setOcrPrefs({ autoSwitchVoucher: v })} />
             <SecondsRow id="pl-ocr-autoswitch-secs" label="Switch countdown (seconds)" draft={swDraft} setDraft={setSwDraft} onCommit={commitSw} onOk={commitSw} disabled={!switchOn} />
           </Section>
+          {/* Reading language: bubble ke "Set as default" se jo language lock hui thi — yahan se auto par wapas. */}
+          <Section
+            title="Reading language"
+            hint={
+              scriptPref === "eng"
+                ? "Locked to English — Devanagari pass is skipped on every slip."
+                : scriptPref === "local"
+                  ? "Locked to Local (नेपाली) — Devanagari pass runs on every slip."
+                  : "Auto: each slip is read in its own script."
+            }
+          >
+            <RadioRow
+              name="pl-ocr-script"
+              value={scriptPref}
+              onChange={(v) => setOcrPrefs({ scriptPref: v })}
+              options={[["auto", "Auto (detect)"], ["eng", "English"], ["local", "Local (नेपाली)"]] as const}
+            />
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <p className="text-[11px] text-muted-foreground">
+                {scriptPref === "auto" ? "Nothing to reset." : "Reset brings reading back to auto-detect."}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  resetOcrLanguagePref();
+                  toast.success("Reading language reset to auto", { id: "pl-ocr-script-reset" });
+                }}
+                disabled={scriptPref === "auto"}
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-slate-300 px-3 text-xs font-semibold hover:bg-slate-50 disabled:opacity-40 dark:border-slate-600 dark:hover:bg-slate-800"
+                title="Reset reading language to auto-detect"
+              >
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                Reset
+              </button>
+            </div>
+          </Section>
           </div>
         </div>
         <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 px-5 py-3 dark:border-slate-700">
@@ -878,6 +917,7 @@ export function VoucherOcrHeaderToggles({ className }: { className?: string }) {
             switchSeconds={clampAutoPostSeconds(p.autoSwitchSeconds)}
             enginePref={p.engine === "offline" || p.engine === "online" || p.engine === "ai" ? p.engine : "auto"}
             companyId={companyId ?? null}
+            scriptPref={p.scriptPref}
           />
           <Pill
             id="pl-ocr-autopost"

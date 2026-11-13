@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -65,6 +65,8 @@ import {
   EyeOff,
   CheckSquare,
   Square,
+  HelpCircle,
+  Copy,
 } from "lucide-react";
 import type { DateRange } from "@/components/ui/ad-calendar";
 import { useVouchers } from "@/hooks/useVouchers";
@@ -285,8 +287,8 @@ function GalleryTabSwitch({
   className,
   inline = false,
 }: {
-  activeTab: "company-files" | "unassigned";
-  onTabChange: (tab: "company-files" | "unassigned") => void;
+  activeTab: "company-files" | "unassigned" | "duplicate";
+  onTabChange: (tab: "company-files" | "unassigned" | "duplicate") => void;
   className?: string;
   /** true: wrapper ke bina — parent grid ke direct children (full-width cells) */
   inline?: boolean;
@@ -306,6 +308,21 @@ function GalleryTabSwitch({
         )}
       >
         Unassigned Documents
+      </Button>
+      {/* Duplicate Documents — Unassigned ka mirror; duplicate guard se "Move to Duplicate" yahan aata hai. */}
+      <Button
+        onClick={() => onTabChange("duplicate")}
+        size="sm"
+        style={activeTab === "duplicate" ? { borderColor: "#16a34a", borderWidth: 1, borderStyle: "solid" } : undefined}
+        className={cn(
+          "h-8 w-auto shrink-0 rounded-full px-3 text-xs",
+          inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
+          activeTab === "duplicate"
+            ? "border border-green-600 bg-amber-100/80 font-semibold text-amber-900 hover:bg-amber-200/80"
+            : "border border-amber-300 bg-amber-100/70 text-amber-900 hover:border-amber-400 hover:bg-amber-200/80"
+        )}
+      >
+        Duplicate Documents
       </Button>
       <Button
         onClick={() => onTabChange("company-files")}
@@ -579,15 +596,26 @@ function GalleryCollapsedFooterBar({
 }
 
 // --- Sub-Component: Company Files Tab ---
-function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTabChange }: { previewColumns: string | number, onColumnsChange: (columns: string | number) => void, onEditVoucher: (voucher: any) => void, onTabChange: (tab: "company-files" | "unassigned") => void }) {
+function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTabChange }: { previewColumns: string | number, onColumnsChange: (columns: string | number) => void, onEditVoucher: (voucher: any) => void, onTabChange: (tab: "company-files" | "unassigned" | "duplicate") => void }) {
   const isMobile = useIsMobile();
   const { vouchers, loading, journalAccountNames, processedParties, processedPartiesForSelection, processedStaff, processedAccounts, processedItems, expenseAccounts, processedTaxes, userNames: vouchersUserNames } = useVouchers();
   const { dateSystem, formatDate, formatDateBS } = useDate();
+  /**
+   * Default: last 30 days. Lekin agar us window me 0 files hain aur company me files maujood hain,
+   * `displayItems` khud ko "all dates" par fallback karta hai (aur footer me batata hai) — warna user ko
+   * "4 files" count par khaali grid dikhta tha jo filter ka bug lagta hai.
+   */
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
     const today = new Date();
     const thirtyDaysAgo = subDays(today, 30);
     return { from: thirtyDaysAgo, to: today };
   });
+  /** User ne date pill khud chhua to auto-fallback band — warna unka filter override ho jata. */
+  const dateRangeUserTouchedRef = useRef(false);
+  const handleCompanyDateRangeChange = useCallback((next: DateRange | undefined) => {
+    dateRangeUserTouchedRef.current = true;
+    setDateRange(next);
+  }, []);
   
   const [selectedEntityId, setSelectedEntityId] = useState<string | "all">("all");
   const [selectedVoucherTypes, setSelectedVoucherTypes] = useState<string[]>(['all']);
@@ -791,7 +819,6 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
 
   const displayItems = useMemo(() => {
       let itemsToFilter = showAvatarsOnly ? avatarFiles.map(a => ({...a, fileUrls: [a.url], voucherNumber: a.name, type: a.type, isAvatar: true })) : vouchers.filter(v => Array.isArray(v.fileUrls) && v.fileUrls.length > 0);
-
       // Apply common filters
       if (selectedUserId !== 'all') {
         itemsToFilter = itemsToFilter.filter(item => {
@@ -809,10 +836,23 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
        if (dateRange?.from && !voucherNumberSearch.trim()) {
         const fromDate = startOfDay(dateRange.from);
         const toDate = dateRange.to ? endOfDay(dateRange.to) : endOfDay(fromDate);
-        itemsToFilter = itemsToFilter.filter(item => {
+        const within = (item: any) => {
             const itemDate = item.date?.toDate ? item.date.toDate() : new Date();
             return itemDate >= fromDate && itemDate <= toDate;
-        });
+        };
+        const filtered = itemsToFilter.filter(within);
+        /**
+         * Default 30-day window me kuch nahi mila par company me files hain → window drop karo.
+         * Warna footer "4 files" bolta hai aur grid khaali dikhta, jo filter ka bug lagta.
+         * User ne date pill khud badla ho to uska intent respect karo (fallback nahi).
+         */
+        const wouldBeEmpty = filtered.length === 0;
+        const companyHasFiles = vouchers.some((v) => Array.isArray(v.fileUrls) && v.fileUrls.length > 0);
+        if (wouldBeEmpty && companyHasFiles && !dateRangeUserTouchedRef.current && !selectedEntityId.includes("-") && selectedVoucherTypes.includes('all') && selectedUserId === 'all') {
+          // no-op: itemsToFilter unchanged (all dates)
+        } else {
+          itemsToFilter = filtered;
+        }
       }
       if (selectedVoucherTypes.length > 0 && !selectedVoucherTypes.includes('all')) {
         itemsToFilter = itemsToFilter.filter(item => {
@@ -856,6 +896,23 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
 
       return itemsToFilter.sort((a,b) => (b.date?.toDate ? b.date.toDate().getTime() : 0) - (a.date?.toDate ? a.date.toDate().getTime() : 0));
     }, [showAvatarsOnly, avatarFiles, vouchers, selectedUserId, voucherNumberSearch, dateRange, selectedVoucherTypes, selectedEntityId, selectedAccountType]);
+
+  /** True = default window khaali thi aur grid all-dates par fallback hua (badge ise dikhata hai). */
+  const companyDatesAutoExpanded = useMemo(() => {
+    if (showAvatarsOnly) return false;
+    if (dateRangeUserTouchedRef.current) return false;
+    if (!dateRange?.from) return false;
+    if (voucherNumberSearch.trim()) return false;
+    const base = vouchers.filter((v) => Array.isArray(v.fileUrls) && v.fileUrls.length > 0);
+    if (base.length === 0) return false;
+    const fromDate = startOfDay(dateRange.from);
+    const toDate = dateRange.to ? endOfDay(dateRange.to) : endOfDay(fromDate);
+    const inWindow = base.filter((item) => {
+      const d = item.date?.toDate ? item.date.toDate() : new Date();
+      return d >= fromDate && d <= toDate;
+    });
+    return inWindow.length === 0 && displayItems.length > 0;
+  }, [showAvatarsOnly, vouchers, dateRange, voucherNumberSearch, displayItems]);
 
 
   const allFilesCount = useMemo(() => {
@@ -1299,7 +1356,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                 Avatars
               </Button>
               {mounted && (
-                <BsDatePicker valueAD={dateRange} onChangeAD={setDateRange as any} className="h-8 min-h-8 shrink-0 px-2 text-xs" />
+                <BsDatePicker valueAD={dateRange} onChangeAD={handleCompanyDateRangeChange as any} className="h-8 min-h-8 shrink-0 px-2 text-xs" />
               )}
               {!mounted && <Skeleton className="h-8 w-[180px] shrink-0 rounded-md" />}
               {mounted ? (
@@ -1449,6 +1506,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                 {companyFlatRows.length === 0
                   ? `0 of ${allFilesCount} files`
                   : `${companySliceStart + 1}–${Math.min(companySliceStart + companyFilesPerPage, companyFlatRows.length)} / ${filteredFilesCount} files`}
+                {companyDatesAutoExpanded ? " · all dates" : ""}
               </Badge>
             </div>
           </div>
@@ -1481,6 +1539,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                     {companyFlatRows.length === 0
                       ? `Showing 0 of ${allFilesCount} files`
                       : `Showing ${companySliceStart + 1}–${Math.min(companySliceStart + companyFilesPerPage, companyFlatRows.length)} of ${filteredFilesCount} files (${allFilesCount} in company)`}
+                    {companyDatesAutoExpanded ? " · all dates" : ""}
                   </Badge>
                   <Button
                     type="button"
@@ -1554,12 +1613,12 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                     <div className="min-w-0 flex-1 overflow-hidden">
                       <BsDatePicker
                         valueAD={dateRange}
-                        onChangeAD={setDateRange as any}
+                        onChangeAD={handleCompanyDateRangeChange as any}
                         className="h-8 min-h-8 w-full min-w-0 px-2 text-xs"
                       />
                     </div>
                   ) : (
-                    <BsDatePicker valueAD={dateRange} onChangeAD={setDateRange as any} className="h-8 min-h-8 px-2 text-xs" />
+                    <BsDatePicker valueAD={dateRange} onChangeAD={handleCompanyDateRangeChange as any} className="h-8 min-h-8 px-2 text-xs" />
                   ))}
                 {!mounted && <Skeleton className="h-8 w-[180px] shrink-0 rounded-md" />}
                 {!showAvatarsOnly && mounted && (
@@ -1701,6 +1760,19 @@ type UnassignedFile = {
     status: 'FREE' | 'LOCKED' | 'ASSIGNED';
     isDeleted?: boolean;
     deleted?: boolean;
+    /* --- Duplicate Documents tab metadata (duplicate guard "Move to Duplicate" se aata hai) --- */
+    duplicateOfVoucherId?: string;
+    duplicateOfVoucherNumber?: string;
+    /** "file" | "ref" | "fields" | "narration" */
+    duplicateReasons?: string[];
+    /** OCR ka banaya narration — "Why Duplicate" panel ka main content. */
+    duplicateOcrNarration?: string;
+    duplicateMatchedNarration?: string;
+    duplicateMatchedRef?: string;
+    duplicateMatchedAmount?: number;
+    duplicateMatchedDateText?: string;
+    duplicateIncomingRef?: string;
+    movedAtMs?: number;
 }
 
 type UploadingFile = {
@@ -1710,6 +1782,8 @@ type UploadingFile = {
 };
 
 const LOCAL_UNASSIGNED_DOCS_KEY = "local_unassigned_documents_v1";
+/** Duplicate Documents tab (device-only company) — alag key, warna delete/reload par mix ho jate. */
+const LOCAL_DUPLICATE_DOCS_KEY = "local_duplicate_documents_v1";
 
 /**
  * Edit time for unassigned-document writes, on the server clock. The other device's mirror merge
@@ -1785,10 +1859,14 @@ function getUploadedAtDate(input: any): Date {
   return new Date();
 }
 
-function readLocalUnassignedDocs(): UnassignedFile[] {
+function localGalleryDocsKey(kind: "unassigned" | "duplicate"): string {
+  return kind === "duplicate" ? LOCAL_DUPLICATE_DOCS_KEY : LOCAL_UNASSIGNED_DOCS_KEY;
+}
+
+function readLocalUnassignedDocs(kind: "unassigned" | "duplicate" = "unassigned"): UnassignedFile[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(LOCAL_UNASSIGNED_DOCS_KEY);
+    const raw = window.localStorage.getItem(localGalleryDocsKey(kind));
     const parsed = raw ? (JSON.parse(raw) as UnassignedFile[]) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -1796,10 +1874,10 @@ function readLocalUnassignedDocs(): UnassignedFile[] {
   }
 }
 
-function writeLocalUnassignedDocs(value: UnassignedFile[]) {
+function writeLocalUnassignedDocs(value: UnassignedFile[], kind: "unassigned" | "duplicate" = "unassigned") {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(LOCAL_UNASSIGNED_DOCS_KEY, JSON.stringify(value));
+    window.localStorage.setItem(localGalleryDocsKey(kind), JSON.stringify(value));
   } catch {
     // Local cache write failure ignore; UI still keeps runtime state.
   }
@@ -1832,7 +1910,7 @@ function getUserLabelFromDoc(data: any): string | null {
 }
 
 /** Firestore + Storage paths: cloud mirror companies use authoritative id when present. */
-function firestoreCompanyIdForGallery(
+export function firestoreCompanyIdForGallery(
   companyId: string,
   company: { authoritativeCompanyId?: string } | null | undefined
 ): string {
@@ -1840,7 +1918,7 @@ function firestoreCompanyIdForGallery(
 }
 
 // --- Sub-Component: Unassigned Documents Tab ---
-function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColumnsChange, onTabChange }: { handleAttachToVoucher: any; previewColumns: string | number; onColumnsChange: (columns: string | number) => void; onTabChange: (tab: "company-files" | "unassigned") => void; }) {
+function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, previewColumns, onColumnsChange, onTabChange }: { mode?: "unassigned" | "duplicate"; handleAttachToVoucher: any; previewColumns: string | number; onColumnsChange: (columns: string | number) => void; onTabChange: (tab: "company-files" | "unassigned" | "duplicate") => void; }) {
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const { company, companyId } = useCompany();
@@ -1872,6 +1950,8 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
   const [isBatchDeleting, setIsBatchDeleting] = useState(false);
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [fileToRename, setFileToRename] = useState<UnassignedFile | null>(null);
+  /** Duplicate tab: "Why Duplicate" panel — kis file ka reason dikha rahe hain. */
+  const [whyDuplicateFile, setWhyDuplicateFile] = useState<UnassignedFile | null>(null);
   /** 3-dot → "Edit file": camera editor me existing image kholne ke liye. */
   const [fileToEdit, setFileToEdit] = useState<UnassignedFile | null>(null);
   // async resolve — local refs blobs me badalne padte hain
@@ -1970,15 +2050,21 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
     };
   }, [companyId]);
   
+  /**
+   * Device-only (offline APK) gallery rows: Unassigned aur Duplicate alag localStorage keys me.
+   * Pehle dono ek hi key use karte the — duplicate tab ka delete unassigned list kha jaata tha.
+   */
+  const localKind: "unassigned" | "duplicate" = mode === "duplicate" ? "duplicate" : "unassigned";
+
   // Fetch unassigned files
   useEffect(() => {
     if (!companyId || unassignedUseDeviceLocalOnly === null) return;
     if (unassignedUseDeviceLocalOnly) {
-      setUnassignedFiles(readLocalUnassignedDocs());
+      setUnassignedFiles(readLocalUnassignedDocs(localKind));
       return;
     }
     const fsId = firestoreCompanyIdForGallery(companyId, company);
-    const q = query(collection(firestore, `companies/${fsId}/unassigned_documents`), orderBy('uploadedAt', 'desc'));
+    const q = query(collection(firestore, `companies/${fsId}/${mode === "duplicate" ? "duplicate_documents" : "unassigned_documents"}`), orderBy('uploadedAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
         const filesData = snapshot.docs
           .map(d => ({id: d.id, ...d.data()}) as UnassignedFile)
@@ -2147,10 +2233,10 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
           }
         })
       );
-      const nextDocs = [...toAppend, ...readLocalUnassignedDocs()].sort(
+      const nextDocs = [...toAppend, ...readLocalUnassignedDocs(localKind)].sort(
         (a, b) => getUploadedAtDate(b.uploadedAt).getTime() - getUploadedAtDate(a.uploadedAt).getTime()
       );
-      writeLocalUnassignedDocs(nextDocs);
+      writeLocalUnassignedDocs(nextDocs, localKind);
       setUnassignedFiles(nextDocs);
       toast.success("Upload complete", { description: `${toAppend.length} file(s) saved locally.` });
       return;
@@ -2282,12 +2368,12 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
 
         if (deviceOnly) {
           const url = await fileToDataUrl(compressed);
-          const next = readLocalUnassignedDocs().map((f) =>
+          const next = readLocalUnassignedDocs(localKind).map((f) =>
             f.id === target.id
               ? { ...f, url, name: compressed.name, path: "", size: compressed.size, type: "image" as const }
               : f
           );
-          writeLocalUnassignedDocs(next);
+          writeLocalUnassignedDocs(next, localKind);
           setUnassignedFiles(next);
           toast.success("File updated");
           return;
@@ -2384,10 +2470,10 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
       const deviceOnly =
         isLocalOnlyMode() && !(await canSyncCompanyToServer(companyId));
       if (deviceOnly) {
-        const next = readLocalUnassignedDocs().map((f) =>
+        const next = readLocalUnassignedDocs(localKind).map((f) =>
           f.id === fileToRename.id ? { ...f, name: newName } : f
         );
-        writeLocalUnassignedDocs(next);
+        writeLocalUnassignedDocs(next, localKind);
         setUnassignedFiles(next);
         toast.success("File renamed successfully");
         setFileToRename(null);
@@ -2428,8 +2514,8 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
         const deviceOnly =
           isLocalOnlyMode() && !(await canSyncCompanyToServer(companyId));
         if (deviceOnly) {
-          const next = readLocalUnassignedDocs().filter((f) => f.id !== target.id);
-          writeLocalUnassignedDocs(next);
+          const next = readLocalUnassignedDocs(localKind).filter((f) => f.id !== target.id);
+          writeLocalUnassignedDocs(next, localKind);
           setUnassignedFiles(next);
           setSelectedFileIds((prev) => {
             const copy = new Set(prev);
@@ -2440,7 +2526,12 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
           return;
         }
 
-        const deleted = await hardDeleteUnassignedDoc(companyId, target, company);
+        const deleted = await hardDeleteUnassignedDoc(
+          companyId,
+          target,
+          company,
+          mode === "duplicate" ? "duplicate_documents" : "unassigned_documents"
+        );
         if (!deleted) {
           toast.error("Failed to delete file", {
             description: "The file could not be removed from the server. Refresh and try again.",
@@ -2553,8 +2644,8 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
       const deviceOnly =
         isLocalOnlyMode() && !(await canSyncCompanyToServer(companyId));
       if (deviceOnly) {
-        const next = readLocalUnassignedDocs().filter((f) => !selectedFileIds.has(f.id));
-        writeLocalUnassignedDocs(next);
+        const next = readLocalUnassignedDocs(localKind).filter((f) => !selectedFileIds.has(f.id));
+        writeLocalUnassignedDocs(next, localKind);
         setUnassignedFiles(next);
         setSelectedFileIds(new Set());
         toast.success(`${toDeleteDocs.length} file(s) deleted successfully`);
@@ -2564,7 +2655,9 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
       const { successCount, failCount } = await hardDeleteUnassignedDocsBatch(
         companyId,
         toDeleteDocs,
-        company
+        company,
+        undefined,
+        mode === "duplicate" ? "duplicate_documents" : "unassigned_documents"
       );
 
       const fsId = firestoreCompanyIdForGallery(companyId, company);
@@ -2783,6 +2876,21 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
                         <Trash2 className="h-4 w-4"/>
                       </Button>
                     </div>
+                    {/* Duplicate tab: hover par "Why Duplicate" — click se OCR-generated reason panel */}
+                    {mode === "duplicate" && hasWhyDuplicate(file) && (
+                      <button
+                        type="button"
+                        className="absolute bottom-1.5 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full border border-amber-400/80 bg-amber-50/95 px-2 py-1 text-[10px] font-medium leading-none text-amber-900 opacity-0 shadow-sm transition-opacity hover:bg-amber-100 group-hover:opacity-100 focus-visible:opacity-100 dark:bg-amber-950/90 dark:text-amber-100"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setWhyDuplicateFile(file);
+                        }}
+                        title="Why was this marked duplicate?"
+                      >
+                        <HelpCircle className="mr-1 inline h-3 w-3 -translate-y-[0.5px]" aria-hidden />
+                        Why Duplicate
+                      </button>
+                    )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="outline" size="icon" className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 z-20" onClick={(e) => e.stopPropagation()}>
@@ -2933,7 +3041,7 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
           {/* Ek hi row: title/subtitle (left) + Showing pill + Per page + chevron (right, never wrap) */}
           <div className="flex w-full min-w-0 flex-nowrap items-start gap-2">
             <div className="min-w-0 flex-1">
-              <CardTitle className="truncate text-sm font-bold leading-tight sm:text-base">Unassigned Documents</CardTitle>
+              <CardTitle className="truncate text-sm font-bold leading-tight sm:text-base">{mode === "duplicate" ? "Duplicate Documents" : "Unassigned Documents"}</CardTitle>
               <CardDescription className="truncate text-[11px] leading-snug">
                 Attach them to vouchers later.
               </CardDescription>
@@ -3287,7 +3395,131 @@ function UnassignedDocumentsTab({ handleAttachToVoucher, previewColumns, onColum
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Duplicate tab: OCR-generated duplicate reason panel — tile hover button se khulta hai. */}
+        <Dialog open={!!whyDuplicateFile} onOpenChange={(open) => !open && setWhyDuplicateFile(null)}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-sm">
+                <HelpCircle className="h-4 w-4 shrink-0 text-amber-600" aria-hidden />
+                Why is this a duplicate?
+              </DialogTitle>
+              <DialogDescription className="break-words text-xs">
+                {whyDuplicateFile ? getCleanName(whyDuplicateFile.name) : ""}
+              </DialogDescription>
+            </DialogHeader>
+            {(() => {
+              const f = whyDuplicateFile;
+              if (!f) return null;
+              const reasons = (f.duplicateReasons || []).filter(Boolean);
+              const ocrText = String(f.duplicateOcrNarration || "").trim();
+              const matchedText = String(f.duplicateMatchedNarration || "").trim();
+              const sameText = Boolean(ocrText && matchedText && ocrText === matchedText);
+              return (
+                <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1 text-xs">
+                  <div className="rounded-md border border-blue-200 bg-blue-50/70 p-2 dark:border-blue-900 dark:bg-blue-950/40">
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-blue-900/70 dark:text-blue-200/70">
+                      Already exists as
+                    </p>
+                    <p className="mt-0.5 text-sm font-semibold text-blue-900 dark:text-blue-100">
+                      {f.duplicateOfVoucherNumber ? `Voucher ${f.duplicateOfVoucherNumber}` : "An existing voucher"}
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                      {f.duplicateMatchedDateText ? <span>Date: {f.duplicateMatchedDateText}</span> : null}
+                      {f.duplicateMatchedAmount ? <span>Amount: {f.duplicateMatchedAmount}</span> : null}
+                      {f.duplicateMatchedRef ? <span>Ref: {f.duplicateMatchedRef}</span> : null}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Matched on
+                    </p>
+                    {reasons.length > 0 ? (
+                      <ul className="space-y-1">
+                        {reasons.map((r) => (
+                          <li key={r} className="flex items-start gap-1.5">
+                            <CheckSquare className="mt-[1px] h-3 w-3 shrink-0 text-emerald-600" aria-hidden />
+                            <span>{WHY_DUPLICATE_REASON_LABEL[r] || r}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-muted-foreground">No reason codes were recorded for this file.</p>
+                    )}
+                  </div>
+
+                  {/* OCR ne jo narration banaya tha — duplicate confirm karne ka main signal */}
+                  <div>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        OCR narration
+                      </p>
+                      {ocrText ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 gap-1 px-1.5 text-[10px]"
+                          onClick={() => {
+                            void navigator.clipboard?.writeText(ocrText);
+                            toast.success("Narration copied");
+                          }}
+                        >
+                          <Copy className="h-3 w-3" aria-hidden /> Copy
+                        </Button>
+                      ) : null}
+                    </div>
+                    {ocrText ? (
+                      <p className="whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-2 font-mono text-[11px] leading-relaxed">
+                        {ocrText}
+                      </p>
+                    ) : (
+                      <p className="text-muted-foreground">
+                        This file was moved here before narration details were saved.
+                      </p>
+                    )}
+                  </div>
+
+                  {matchedText && !sameText ? (
+                    <details className="rounded-md border p-2">
+                      <summary className="cursor-pointer text-[11px] font-medium text-muted-foreground">
+                        Compare with the existing voucher&apos;s narration
+                      </summary>
+                      <p className="mt-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground">
+                        {matchedText}
+                      </p>
+                    </details>
+                  ) : null}
+                </div>
+              );
+            })()}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setWhyDuplicateFile(null)}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
     </div>
+  );
+}
+
+/** Duplicate tab: "Why Duplicate" panel ke liye human labels (duplicate guard ke codes → sentences). */
+const WHY_DUPLICATE_REASON_LABEL: Record<string, string> = {
+  file: "Same attachment file (SHA-256 match)",
+  ref: "Same bank transaction / slip reference number",
+  fields: "Same date, amount, accounts and bank charge",
+  narration: "Same OCR narration text",
+};
+
+/** Kis file pe "Why Duplicate" button dikhe — kuch bhi reason/narration saved ho to dikhao. */
+function hasWhyDuplicate(file: UnassignedFile): boolean {
+  return Boolean(
+    (file.duplicateReasons && file.duplicateReasons.length > 0) ||
+      file.duplicateOcrNarration ||
+      file.duplicateMatchedNarration ||
+      file.duplicateOfVoucherNumber
   );
 }
 
@@ -3298,13 +3530,15 @@ function getCleanName(name: string) {
   return name;
 }
 
-const GALLERY_TABS = ['company-files', 'unassigned'] as const;
+const GALLERY_TABS = ['company-files', 'unassigned', 'duplicate'] as const;
 type GalleryTab = (typeof GALLERY_TABS)[number];
 
 // Default unassigned when no tab in URL (app open, sidebar nav); refresh keeps current tab from URL
 function getTabFromSearchParams(searchParams: URLSearchParams): GalleryTab {
   const tab = searchParams.get('tab');
-  return tab === 'company-files' ? 'company-files' : 'unassigned';
+  if (tab === 'company-files') return 'company-files';
+  if (tab === 'duplicate') return 'duplicate';
+  return 'unassigned';
 }
 
 export function GalleryPageContent() {
@@ -3456,6 +3690,9 @@ export function GalleryPageContent() {
         )}
         {activeTab === 'unassigned' && (
            <UnassignedDocumentsTab handleAttachToVoucher={handleAttachToVoucher} previewColumns={previewColumns} onColumnsChange={setPreviewColumns} onTabChange={setGalleryTab} />
+        )}
+        {activeTab === 'duplicate' && (
+           <UnassignedDocumentsTab mode="duplicate" handleAttachToVoucher={handleAttachToVoucher} previewColumns={previewColumns} onColumnsChange={setPreviewColumns} onTabChange={setGalleryTab} />
         )}
         </div>
 
