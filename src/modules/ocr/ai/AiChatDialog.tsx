@@ -4,11 +4,10 @@
  */
 import React, { useEffect, useRef, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Bot, Info, Loader2, MessageSquare, Paperclip, Plus, Save, Send, Sparkles, Trash2, UserPlus, X } from "lucide-react";
+import { Bot, Info, Loader2, MessageSquare, PanelLeftClose, PanelLeftOpen, Paperclip, Plus, Save, Send, Sparkles, Trash2, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { usePersistedResizableDialogSize } from "@/lib/usePersistedResizableDialogSize";
 import { aiChatJpeg } from "../engine";
 import { OcrAiError, getOcrAiStatus, getOcrAiStatusCached, invalidateOcrAiStatus, listOcrAiRules, ocrAiChat, ocrAiErrorText, removeOcrAiRule, saveOcrAiRule, setOcrAiModel, type OcrAiLimits, type OcrAiMasterLists, type OcrAiMasterProposal, type OcrAiMissingMaster, type OcrAiModelOption, type OcrAiVoucherPatch } from "./aiClient";
 import { AiChatUsageChips } from "./AiChatUsageChips";
@@ -41,6 +40,9 @@ const CHAT_Z = 2147483002;
 const COPILOT_Z = 79;
 const COPILOT_Z_FOCUSED = 82;
 const COPILOT_STORAGE_KEY = "pl.ocr.copilot.window.v4";
+const COPILOT_MIN_W = 320;
+const COPILOT_MIN_H = 280;
+type CopilotBounds = { x: number; y: number; w: number; h: number };
 const CHAT_CONTENT_STYLE: React.CSSProperties = {
   zIndex: CHAT_Z,
   height: "88vh",
@@ -266,7 +268,9 @@ function ChatHistorySidebar({ sessions, activeId, onSelect, onDelete, onNew }: {
 
 export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, getVoucherJson, getOwnCompany, copilot }: AiChatDialogProps) {
   const t = useAiChatStrings();
+  const copilotMode = Boolean(copilot);
   const [copilotZIndex, setCopilotZIndex] = useState(COPILOT_Z_FOCUSED);
+  const [chatListVisible, setChatListVisible] = useState(true);
   const [tab, setTab] = useState<"chat" | "rules">("chat");
   const [turns, setTurns] = useState<OcrAiChatTurn[]>(() => loadChatSession(companyId));
   const [input, setInput] = useState("");
@@ -459,35 +463,192 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
     </button>
   );
 
-  /* Copilot mode: the SAME chat shell, but as a floating resizable window — no overlay, no focus trap,
-   * so the voucher form stays visible AND editable beside it. Modal mode is untouched. */
-  const copilotResizable = usePersistedResizableDialogSize(!!copilot && open, !!copilot && open, COPILOT_STORAGE_KEY, {
-    minW: 320,
-    minH: 280,
-    defaultW: (vw) => Math.round(Math.min(460, vw * 0.32)),
-    defaultH: (vh) => Math.round(vh * 0.7),
-    /* Open against the right edge so the chat never covers the voucher dialog (which stays at
-     * z-[81]); the user can drag it anywhere afterwards. */
-    defaultPosition: (vw, vh, w, h) => ({
-      x: Math.max(0, vw - w - 12),
-      y: Math.max(0, Math.round((vh - h) / 2)),
-    }),
-  });
+  /* Copilot uses the same bounds/state-driven drag and resize flow as AddVoucherDialog, kept local
+   * here so the voucher implementation and its behavior stay untouched. */
+  const [copilotSize, setCopilotSize] = useState({ w: 460, h: 560 });
+  const [copilotPosition, setCopilotPosition] = useState({ x: 0, y: 0 });
+  const copilotBoundsRef = useRef<CopilotBounds>({ x: 0, y: 0, w: 460, h: 560 });
+  const copilotDragRef = useRef<{ startX: number; startY: number; startLeft: number; startTop: number } | null>(null);
+  const copilotResizeRef = useRef<{ handle: string; startX: number; startY: number; startW: number; startH: number; startLeft: number; startTop: number } | null>(null);
+  const prevCopilotOpenRef = useRef(false);
+
+  React.useEffect(() => {
+    if (!copilotMode) {
+      prevCopilotOpenRef.current = false;
+      return;
+    }
+
+    if (open && !prevCopilotOpenRef.current && typeof window !== "undefined") {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const defaultW = Math.max(COPILOT_MIN_W, Math.min(Math.round(Math.min(460, vw * 0.32)), vw));
+      const defaultH = Math.max(COPILOT_MIN_H, Math.min(Math.round(vh * 0.7), vh));
+      let bounds: CopilotBounds = {
+        x: Math.max(0, vw - defaultW - 12),
+        y: Math.max(0, Math.round((vh - defaultH) / 2)),
+        w: defaultW,
+        h: defaultH,
+      };
+      try {
+        const saved = JSON.parse(localStorage.getItem(COPILOT_STORAGE_KEY) || "null") as Partial<CopilotBounds> | null;
+        if (saved && typeof saved.w === "number" && typeof saved.h === "number") {
+          const w = Math.max(COPILOT_MIN_W, Math.min(saved.w, vw));
+          const h = Math.max(COPILOT_MIN_H, Math.min(saved.h, vh));
+          bounds = {
+            x: typeof saved.x === "number" ? Math.max(0, Math.min(saved.x, vw - w)) : bounds.x,
+            y: typeof saved.y === "number" ? Math.max(0, Math.min(saved.y, vh - h)) : bounds.y,
+            w,
+            h,
+          };
+        }
+      } catch {
+        /* Use the default bounds if saved layout is unavailable. */
+      }
+      copilotBoundsRef.current = bounds;
+      setCopilotSize({ w: bounds.w, h: bounds.h });
+      setCopilotPosition({ x: bounds.x, y: bounds.y });
+    } else if (!open && prevCopilotOpenRef.current && typeof window !== "undefined") {
+      try {
+        localStorage.setItem(COPILOT_STORAGE_KEY, JSON.stringify(copilotBoundsRef.current));
+      } catch {
+        /* ignore */
+      }
+    }
+    prevCopilotOpenRef.current = open;
+  }, [copilotMode, open]);
+
+  React.useEffect(() => {
+    copilotBoundsRef.current = {
+      ...copilotBoundsRef.current,
+      x: copilotPosition.x,
+      y: copilotPosition.y,
+      w: copilotSize.w,
+      h: copilotSize.h,
+    };
+  }, [copilotPosition.x, copilotPosition.y, copilotSize.w, copilotSize.h]);
+
+  const persistCopilotBounds = () => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(COPILOT_STORAGE_KEY, JSON.stringify(copilotBoundsRef.current));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const handleCopilotDragStart = (e: React.MouseEvent) => {
+    if (!copilotMode) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("button, a, input, textarea, select, [role='switch'], [role='combobox'], [role='tab'], [data-radix-select-trigger], [data-pl-no-drag]")) return;
+    e.preventDefault();
+    copilotDragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startLeft: copilotPosition.x,
+      startTop: copilotPosition.y,
+    };
+    const onMove = (ev: MouseEvent) => {
+      if (!copilotDragRef.current) return;
+      const x = Math.max(0, copilotDragRef.current.startLeft + ev.clientX - copilotDragRef.current.startX);
+      const y = Math.max(0, copilotDragRef.current.startTop + ev.clientY - copilotDragRef.current.startY);
+      setCopilotPosition({ x, y });
+      copilotBoundsRef.current = { ...copilotBoundsRef.current, x, y };
+    };
+    const onUp = () => {
+      copilotDragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      persistCopilotBounds();
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const handleCopilotResizeStart = (e: React.MouseEvent, handle: string) => {
+    if (!copilotMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    copilotResizeRef.current = {
+      handle,
+      startX: e.clientX,
+      startY: e.clientY,
+      startW: copilotSize.w,
+      startH: copilotSize.h,
+      startLeft: copilotPosition.x,
+      startTop: copilotPosition.y,
+    };
+    const onMove = (ev: MouseEvent) => {
+      if (!copilotResizeRef.current) return;
+      const { handle: activeHandle, startX, startY, startW, startH, startLeft, startTop } = copilotResizeRef.current;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      let w = startW;
+      let h = startH;
+      if (activeHandle === "e" || activeHandle === "se" || activeHandle === "ne") w = Math.max(COPILOT_MIN_W, Math.min(startW + dx, vw));
+      if (activeHandle === "w" || activeHandle === "sw" || activeHandle === "nw") {
+        const dw = Math.min(dx, startW - COPILOT_MIN_W);
+        w = Math.max(COPILOT_MIN_W, Math.min(startW - dw, vw));
+      }
+      if (activeHandle === "s" || activeHandle === "se" || activeHandle === "sw") h = Math.max(COPILOT_MIN_H, Math.min(startH + dy, vh));
+      if (activeHandle === "n" || activeHandle === "nw" || activeHandle === "ne") {
+        const dh = Math.min(dy, startH - COPILOT_MIN_H);
+        h = Math.max(COPILOT_MIN_H, Math.min(startH - dh, vh));
+      }
+      let x = startLeft;
+      let y = startTop;
+      if (activeHandle === "w" || activeHandle === "sw" || activeHandle === "nw") x = startLeft + (startW - w);
+      if (activeHandle === "n" || activeHandle === "nw" || activeHandle === "ne") y = startTop + (startH - h);
+      setCopilotSize({ w, h });
+      if (x !== startLeft || y !== startTop) setCopilotPosition({ x, y });
+      copilotBoundsRef.current = { x, y, w, h };
+    };
+    const onUp = () => {
+      copilotResizeRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      persistCopilotBounds();
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
 
   /* Clicking the voucher dialog (or anywhere outside) must NOT dismiss the chat. Only the X (or the
    * header pill toggle) closes it. */
-  /* Keep the voucher's stacking untouched. Drive the chat's stacking through React state so later
-   * renders (including resize commits) preserve whichever window the user clicked most recently. */
+  /* Keep the voucher's stacking untouched. The voucher's full-screen transparent shell can receive
+   * clicks over the visible chat area, outside the smaller voucher frame. Detect that hit by geometry
+   * and raise the chat. Depend on the mode boolean, not the bridge object (the parent recreates it on
+   * every voucher render, including every resize tick). */
   React.useEffect(() => {
-    if (!copilot || !open) return;
+    if (!copilotMode || !open) return;
     setCopilotZIndex(COPILOT_Z_FOCUSED);
-    const onWindowPointerDown = (event: Event) => {
+    const containsPoint = (el: HTMLElement, x: number, y: number) => {
+      const rect = el.getBoundingClientRect();
+      return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+    };
+    const onWindowPointerDown = (event: PointerEvent | MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (target.closest("[data-pl-ocr-ai-chat]")) {
         setCopilotZIndex(COPILOT_Z_FOCUSED);
-      } else if (target.closest("[data-voucher-frame]")) {
+        return;
+      }
+
+      const voucherFrameAtPoint = Array.from(document.querySelectorAll<HTMLElement>("[data-voucher-frame]"))
+        .some((frame) => containsPoint(frame, event.clientX, event.clientY));
+      if (voucherFrameAtPoint) {
         setCopilotZIndex(COPILOT_Z);
+        return;
+      }
+
+      /* The z-81 voucher DialogContent spans the viewport; its visible frame is only a child. If a
+       * click lands on that transparent shell where the chat is visible, treat it as a chat click. */
+      const dialogShell = target.closest<HTMLElement>("[data-pl-dialog-shell]");
+      const isVoucherShell = !!dialogShell?.querySelector("[data-voucher-frame]");
+      const chat = document.querySelector<HTMLElement>("[data-pl-ocr-ai-chat]");
+      if (isVoucherShell && chat && containsPoint(chat, event.clientX, event.clientY)) {
+        setCopilotZIndex(COPILOT_Z_FOCUSED);
       }
     };
     const onWindowMouseDown = (event: MouseEvent) => onWindowPointerDown(event);
@@ -497,12 +658,12 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
       document.removeEventListener("pointerdown", onWindowPointerDown, true);
       document.removeEventListener("mousedown", onWindowMouseDown, true);
     };
-  }, [copilot, open]);
+  }, [copilotMode, open]);
   /* A master dialog opened from the voucher (Create Party, Bank, Items…) must sit above the chat even
    * while the chat is focused. Watch only NEW dialogs appearing: a plain "any other role=dialog exists"
    * check also matched the chat's own (inert/closed) shells and cancelled every focus raise. */
   React.useEffect(() => {
-    if (!copilot || !open) return;
+    if (!copilotMode || !open) return;
     const isForeignDialog = (node: Node) => {
       if (!(node instanceof HTMLElement)) return false;
       const dlg = node.matches('[role="dialog"]') ? node : node.querySelector<HTMLElement>('[role="dialog"]');
@@ -522,7 +683,7 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
     });
     obs.observe(document.body, { childList: true, subtree: true });
     return () => obs.disconnect();
-  }, [copilot, open]);
+  }, [copilotMode, open]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal={!copilot}>
       {copilot ? null : (
@@ -537,11 +698,12 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
           copilot
             ? {
                 /* Controlled by copilotZIndex so React keeps the selected window order through renders. */
-                left: copilotResizable.position.x,
-                top: copilotResizable.position.y,
+                left: copilotPosition.x,
+                top: copilotPosition.y,
                 zIndex: copilotZIndex,
-                width: copilotResizable.size.w,
-                height: copilotResizable.size.h,
+                width: copilotSize.w,
+                maxWidth: "none",
+                height: copilotSize.h,
                 transform: "none",
                 translate: "none",
                 position: "fixed",
@@ -578,18 +740,23 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
             {(["n", "s", "w", "e", "nw", "ne", "sw", "se"] as const).map((h) => (
               <div
                 key={h}
-                onMouseDown={(e) => copilotResizable.handleResizeStart(e, h)}
+                onMouseDown={(e) => handleCopilotResizeStart(e, h)}
                 className={cn(
-                  "absolute z-30",
-                  h === "n" && "left-2 right-2 top-0 h-1.5 cursor-ns-resize",
-                  h === "s" && "left-2 right-2 bottom-0 h-1.5 cursor-ns-resize",
-                  h === "w" && "top-2 bottom-2 left-0 w-1.5 cursor-ew-resize",
-                  h === "e" && "top-2 bottom-2 right-0 w-1.5 cursor-ew-resize",
-                  h === "nw" && "left-0 top-0 h-3 w-3 cursor-nwse-resize",
-                  h === "ne" && "right-0 top-0 h-3 w-3 cursor-nesw-resize",
-                  h === "sw" && "left-0 bottom-0 h-3 w-3 cursor-nesw-resize",
-                  h === "se" && "right-0 bottom-0 h-3 w-3 cursor-nwse-resize"
+                  "absolute z-[35] pointer-events-auto transition-colors hover:bg-primary/25",
+                  h === "n" && "left-4 right-4 top-0 h-2 cursor-row-resize",
+                  h === "s" && "left-4 right-4 bottom-0 h-2 cursor-row-resize",
+                  h === "w" && "top-4 bottom-4 left-0 w-1.5 cursor-col-resize",
+                  h === "e" && "top-4 bottom-4 right-0 w-1.5 cursor-col-resize",
+                  h === "nw" && "left-0 top-0 h-4 w-4 cursor-nw-resize",
+                  h === "ne" && "right-0 top-0 h-4 w-4 cursor-ne-resize",
+                  h === "sw" && "left-0 bottom-0 h-4 w-4 cursor-sw-resize",
+                  h === "se" && "right-0 bottom-0 h-4 w-4 cursor-se-resize"
                 )}
+                style={{
+                  cursor:
+                    h === "n" || h === "s" ? "row-resize" :
+                    h === "w" || h === "e" ? "col-resize" : `${h}-resize`,
+                }}
                 aria-hidden
               />
             ))}
@@ -599,12 +766,23 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
         ) : null}
         {/* ── Header (WhatsApp green) ── */}
         <DialogHeader
-          className={cn("relative shrink-0 px-4 pb-2.5 pt-3 text-left", copilot && "cursor-move select-none")}
+          className={cn("relative shrink-0 px-4 pb-2.5 pt-3 text-left", copilot && "cursor-grab active:cursor-grabbing select-none")}
           style={{ background: ACCENT }}
-          onMouseDown={copilot ? copilotResizable.handleDragStart : undefined}
+          onMouseDown={copilot ? handleCopilotDragStart : undefined}
         >
-          <div className="relative z-30 flex items-center justify-between gap-2">
+          <div className="z-30 flex items-center justify-between gap-2">
             <DialogTitle className="flex items-center gap-2 text-sm font-semibold text-white">
+              <button
+                type="button"
+                data-pl-no-drag="chat-list-toggle"
+                aria-label={chatListVisible ? t.hideChatList : t.showChatList}
+                aria-expanded={chatListVisible}
+                title={chatListVisible ? t.hideChatList : t.showChatList}
+                onClick={() => setChatListVisible((visible) => !visible)}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/35 bg-white/10 text-white transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/70"
+              >
+                {chatListVisible ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+              </button>
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20">
                 <Bot className="h-4 w-4 text-white" />
               </div>
@@ -643,13 +821,15 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
         {/* ── Body ── */}
         <div className="flex min-h-0 flex-1 overflow-hidden" style={{ background: CHAT_CANVAS_BG }}>
           {/* Left sidebar */}
-          <ChatHistorySidebar
-            sessions={sessions}
-            activeId={activeSessionId}
-            onSelect={loadSession}
-            onDelete={deleteSession}
-            onNew={startNewChat}
-          />
+          {chatListVisible ? (
+            <ChatHistorySidebar
+              sessions={sessions}
+              activeId={activeSessionId}
+              onSelect={loadSession}
+              onDelete={deleteSession}
+              onNew={startNewChat}
+            />
+          ) : null}
 
           {/* Main area */}
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

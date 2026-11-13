@@ -50,6 +50,8 @@ export type AiChatStrings = {
   tabRules: string;
   newChat: string;
   newChatTitle: string;
+  showChatList: string;
+  hideChatList: string;
   emptyExample: string;
   attachBill: string;
   sendJson: string;
@@ -126,6 +128,8 @@ const EN: AiChatStrings = {
   tabRules: "Saved rules",
   newChat: "New chat",
   newChatTitle: "Start a new chat (old messages are no longer sent)",
+  showChatList: "Show chat list",
+  hideChatList: "Hide chat list",
   emptyExample: "Example: \"On Pratik Trade Center bills the real quantity is the QTY column, not ALT QTY\" or \"If the beneficiary on a connectIPS slip is our company, it is a Receipt\". To send the document too, tick Attach this document below.",
   attachBill: "Attach this document",
   sendJson: "Send AI result (JSON)",
@@ -202,6 +206,8 @@ const HI: AiChatStrings = {
   tabRules: "सहेजे नियम",
   newChat: "नई चैट",
   newChatTitle: "नई चैट शुरू करें (पुराने संदेश अब नहीं भेजे जाएँगे)",
+  showChatList: "चैट सूची दिखाएँ",
+  hideChatList: "चैट सूची छिपाएँ",
   emptyExample: "उदाहरण: «Pratik Trade Center के बिल में असली मात्रा QTY कॉलम है, ALT QTY नहीं» या «connectIPS स्लिप में Beneficiary हमारी कंपनी हो तो यह Receipt है»। डॉक्यूमेंट भी भेजना हो तो नीचे «यह डॉक्यूमेंट भेजें» चुनें।",
   attachBill: "यह डॉक्यूमेंट भेजें",
   sendJson: "AI नतीजा (JSON) भेजें",
@@ -278,6 +284,8 @@ const NE: AiChatStrings = {
   tabRules: "सुरक्षित नियमहरू",
   newChat: "नयाँ च्याट",
   newChatTitle: "नयाँ च्याट सुरु गर्नुहोस् (पुराना सन्देश अब पठाइँदैन)",
+  showChatList: "च्याट सूची देखाउनुहोस्",
+  hideChatList: "च्याट सूची लुकाउनुहोस्",
   emptyExample: "उदाहरण: «Pratik Trade Center को बिलमा वास्तविक परिमाण QTY कोलम हो, ALT QTY होइन» वा «connectIPS स्लिपमा Beneficiary हाम्रो कम्पनी भए यो Receipt हो»। कागजात पनि पठाउन तल «यो कागजात पठाउनुहोस्» छान्नुहोस्।",
   attachBill: "यो कागजात पठाउनुहोस्",
   sendJson: "AI नतिजा (JSON) पठाउनुहोस्",
