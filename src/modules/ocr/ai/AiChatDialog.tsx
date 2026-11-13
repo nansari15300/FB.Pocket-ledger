@@ -482,16 +482,21 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
     if (!copilot || !open) return;
     setFocused(true);
   }, [copilot, open]);
-  /* Clicking anything outside the chat (the voucher, its master dialogs, the page behind) drops the
-   * chat back under the voucher, exactly like clicking another OS window. */
+  /* One document-level pointerdown decides which window is on top — no reliance on React handler
+   * ordering, Radix forwarding, or React state timing (all of which made this flaky):
+   *   click inside the chat   → chat z-82
+   *   click anywhere else     → chat z-79
+   * This is the ONLY place that writes the chat's z-index, so nothing can "fight" it back. */
   React.useEffect(() => {
     if (!copilot || !open) return;
     const onDown = (e: Event) => {
       const t = e.target as HTMLElement | null;
-      if (!t || t.closest("[data-pl-ocr-ai-chat]")) return;
-      setFocused(false);
-      const el = document.querySelector<HTMLElement>("[data-pl-ocr-ai-chat]");
-      if (el) el.style.zIndex = String(COPILOT_Z);
+      const chatEl = document.querySelector<HTMLElement>("[data-pl-ocr-ai-chat]");
+      if (!chatEl) return;
+      const inside = !!t && (t.closest("[data-pl-ocr-ai-chat]") !== null);
+      const z = inside ? COPILOT_Z_FOCUSED : COPILOT_Z;
+      setFocused(inside);
+      chatEl.style.zIndex = String(z);
     };
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
@@ -521,14 +526,6 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
     obs.observe(document.body, { childList: true, subtree: true });
     return () => obs.disconnect();
   }, [copilot, open]);
-  const raiseChat = React.useCallback((e?: React.PointerEvent) => {
-    if (!copilot) return;
-    setFocused(true);
-    /* Belt and braces: React state can be a frame late (or identical, so no re-render). Set the z on the
-     * live node so the click that raised the window is the click that lands. */
-    const el = (e?.currentTarget as HTMLElement | undefined) ?? null;
-    if (el) el.style.zIndex = String(COPILOT_Z_FOCUSED);
-  }, [copilot]);
   const copilotZ = focused ? COPILOT_Z_FOCUSED : COPILOT_Z;
 
   return (
@@ -572,7 +569,6 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
         onPointerDownOutside={copilot ? (e) => e.preventDefault() : undefined}
         onInteractOutside={copilot ? (e) => e.preventDefault() : undefined}
         onEscapeKeyDown={copilot ? (e) => e.preventDefault() : undefined}
-        onPointerDownCapture={copilot ? raiseChat : undefined}
         onClick={(e) => e.stopPropagation()}
         data-pl-ocr-ai-chat=""
         data-pl-drag-surface={copilot ? "active" : undefined}
