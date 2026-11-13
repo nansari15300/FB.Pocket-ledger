@@ -21,11 +21,14 @@ export type OcrAiErrorCode = "disabled" | "no_key" | "forbidden" | "quota" | "ne
 export class OcrAiError extends Error {
   code: OcrAiErrorCode;
   status: number;
-  constructor(code: OcrAiErrorCode, message: string, status = 0) {
+  /** Server's retry hint in seconds (quota window / Gemini overloaded). 0 = no hint. */
+  retryAfter: number;
+  constructor(code: OcrAiErrorCode, message: string, status = 0, retryAfter = 0) {
     super(message);
     this.name = "OcrAiError";
     this.code = code;
     this.status = status;
+    this.retryAfter = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.round(retryAfter) : 0;
   }
 }
 
@@ -81,17 +84,27 @@ function toAiError(e: unknown): OcrAiError {
   if (e instanceof PocketBaseNotSignedInError) return new OcrAiError("not_signed_in", "Not signed in to Pocket Ledger Server", 401);
   if (e instanceof PocketBaseRequestError) {
     const c = serverCode(e.data);
-    if (c === "disabled" || c === "no_key" || c === "forbidden" || c === "quota" || c === "network") return new OcrAiError(c, e.message, e.status);
+    /* Server sends retryAfter (seconds) with quota / overloaded failures. */
+    const retry = readRetryAfter(e.data);
+    if (c === "disabled" || c === "no_key" || c === "forbidden" || c === "quota" || c === "network") return new OcrAiError(c, e.message, e.status, retry);
     if (e.status === 401) return new OcrAiError("not_signed_in", e.message, e.status);
     if (e.status === 403) return new OcrAiError("forbidden", e.message, e.status);
-    if (e.status === 429) return new OcrAiError("quota", e.message, e.status);
+    if (e.status === 429) return new OcrAiError("quota", e.message, e.status, retry);
     if (e.status === 404) return new OcrAiError("network", "AI OCR is not installed on the server yet", e.status);
-    if (e.status === 0 || e.status >= 502) return new OcrAiError("network", e.message, e.status);
+    if (e.status === 0 || e.status >= 502) return new OcrAiError("network", e.message, e.status, retry);
     return new OcrAiError("unknown", e.message, e.status);
   }
   const msg = e instanceof Error ? e.message : "Request failed";
   if (/timeout|timed out|abort/i.test(msg)) return new OcrAiError("timeout", "AI OCR timed out");
   return new OcrAiError("network", msg);
+}
+
+/** `retryAfter` from the server body (top-level or under `.data`), clamped to 0..3600 s. */
+function readRetryAfter(data: unknown): number {
+  if (!data || typeof data !== "object") return 0;
+  const o = data as Record<string, unknown>;
+  const direct = Number(o.retryAfter ?? (o.data && typeof o.data === "object" ? (o.data as Record<string, unknown>).retryAfter : NaN));
+  return Number.isFinite(direct) && direct > 0 ? Math.min(3600, Math.round(direct)) : 0;
 }
 
 async function call<T>(path: string, init: { method?: string; body?: unknown; timeoutMs?: number; signal?: AbortSignal } = {}): Promise<T> {
@@ -233,6 +246,8 @@ export type OcrAiReadInput = {
   docType?: string;
   /** OUR own bank/cash ledgers (full account numbers): the server checks them instead of asking Gemini to compare names. */
   ownAccounts?: { accountName?: string | null; accountNumber?: string | null; bankName?: string | null; accountType?: string | null }[];
+  /** Ask Gemini to output item/party/narration text in English (translate any local-language/Devanagari text). */
+  translateToEnglish?: boolean;
   signal?: AbortSignal;
 };
 
@@ -247,6 +262,7 @@ export async function ocrAiRead(input: OcrAiReadInput): Promise<OcrAiResult> {
   if (input.ownCompany) body.ownCompany = { name: input.ownCompany.name ?? "", pan: input.ownCompany.pan ?? "" };
   if (input.hint) body.hint = input.hint;
   if (input.docType) body.docType = input.docType;
+  if (input.translateToEnglish) body.translateToEnglish = true;
   if (input.ownAccounts && input.ownAccounts.length) {
     body.ownAccounts = input.ownAccounts.slice(0, 40).map((a) => ({
       accountName: a.accountName ?? "",
@@ -268,14 +284,35 @@ export async function ocrAiRead(input: OcrAiReadInput): Promise<OcrAiResult> {
   };
 }
 
+/** Seconds → "45s" / "3 min" (user-facing retry hint). */
+function retryInText(sec: number): string {
+  if (!Number.isFinite(sec) || sec <= 0) return "";
+  if (sec < 60) return `${sec}s`;
+  const min = Math.round(sec / 60);
+  return `${min} min`;
+}
+
 export function ocrAiErrorText(e: unknown): string {
   const err = toAiError(e);
+  const wait = retryInText(err.retryAfter);
   switch (err.code) {
     case "disabled": return "Online / AI OCR is turned off on the server or for this company.";
     case "forbidden": return "You do not have permission for this.";
     case "not_signed_in": return "Sign in to Pocket Ledger Server first.";
     case "timeout": return "AI OCR timed out.";
-    default: return err.message || "Something went wrong.";
+    case "quota":
+      return `Gemini quota / rate limit reached${wait ? ` — try again in about ${wait}` : ""}. ` +
+        "Free-tier limits reset every minute (and daily at 00:00 UTC). Check billing on the API key if this keeps happening.";
+    case "no_key":
+      return "The saved Gemini key was rejected or has expired. Save a valid key in OCR settings.";
+    default: {
+      const msg = err.message || "Something went wrong.";
+      /* Gemini 503/UNAVAILABLE — server already says "temporarily overloaded"; add the retry hint. */
+      if (/overloaded|unavailable|503|try again later/i.test(msg)) {
+        return `${msg}${wait ? ` Retry in about ${wait}.` : ""} Google's model is briefly busy — this is not a key or quota problem.`;
+      }
+      return msg;
+    }
   }
 }
 

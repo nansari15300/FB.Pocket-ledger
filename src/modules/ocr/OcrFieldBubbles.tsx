@@ -50,8 +50,8 @@ export function ocrFieldForSuggestion(id: string): string {
   if (id === "billno") return "bill-no";
   if (id === "account" || id.startsWith("account-")) return "account";
   if (id === "cannot-detect" || id === "status-failed" || id === "duplicate-ref") return "voucher-type";
-  /** Reading-language options (English / Local / Set as default) attach to the OCR bar, not a form field. */
-  if (id === "ocr-language" || id.startsWith("ocr-lang-")) return "ocr-language";
+  /** Reading-language / translate options attach to the OCR bar, not a form field. */
+  if (id === "ocr-language" || id.startsWith("ocr-lang-") || id.startsWith("ocr-translate")) return "ocr-language";
   return "lines"; // lines, create-item-*, tds, drcr
 }
 

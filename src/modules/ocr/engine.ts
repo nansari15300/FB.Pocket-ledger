@@ -191,7 +191,7 @@ async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<
     const img = await cloudJpeg(file, mime);
     if (ac.signal.aborted) return { raw: null, note: "AI: cancelled" };
     const res = await Promise.race([
-      ocrAiRead({ companyId: opts.companyId, imageBase64: img.b64, mimeType: "image/jpeg", ownCompany: opts.ownCompany, ownAccounts: opts.ownAccounts, docType: opts.aiDocType, signal: ac.signal }),
+      ocrAiRead({ companyId: opts.companyId, imageBase64: img.b64, mimeType: "image/jpeg", ownCompany: opts.ownCompany, ownAccounts: opts.ownAccounts, docType: opts.aiDocType, translateToEnglish: getOcrPrefs().translateToEnglish || undefined, signal: ac.signal }),
       new Promise<never>((_, rej) => { t = setTimeout(() => { ac.abort(); rej(new Error("AI OCR timed out")); }, AI_TIMEOUT_MS); }),
     ]);
     const d = res.data;

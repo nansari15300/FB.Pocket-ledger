@@ -10,6 +10,7 @@ import { voucherTypeDisplayText } from "@/lib/voucherTypeDisplay";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { toast } from "sonner";
+import { AlertTriangle } from "lucide-react";
 import { runOcrOnFile } from "./engine";
 import { aiDocTypeForVoucher } from "./ai/aiChatModel";
 import { parseBill } from "./parser";
@@ -42,6 +43,7 @@ import { resolveOcrItemUnit } from "./extras";
 import { inferItemGroupFromName } from "./extras";
 import { findOrCreateSheetSizeItemGroups, mergeMasterGroups, type MasterGroupLike } from "@/lib/masterEntityGroupWrite";
 import { billVatPercent, cleanItemName, partyNamePrefill, findVat13, isOwnCompany, otherPans, pickLedgerAccount } from "./extras";
+import { OcrAiError, ocrAiErrorCode, ocrAiErrorText } from "./ai/aiClient";
 import { getBlobFromLocalFileRef, isLocalFileRef } from "@/lib/localPendingFiles";
 import { fetchPbAttachmentBlob } from "@/lib/pocketbaseData/pbAttachments";
 import { useCompany } from "@/hooks/useCompany";
@@ -156,6 +158,28 @@ function flashLangPref(pref: "eng" | "local" | "auto") {
   });
 }
 
+/** Confirmation toast after toggling translate-to-English. */
+function flashTranslatePref(on: boolean) {
+  toast.success(on ? "Translate to English: ON" : "Translate to English: OFF", {
+    id: "pl-ocr-translate-pref",
+    description: on
+      ? "Every OCR slip will be translated to English. Reset in OCR settings → Reading language."
+      : "Slips will be read in their original language.",
+    duration: 4500,
+    position: "top-right",
+  });
+}
+
+/**
+ * OCR text me non-English script hai? Devanagari / Bengali / Tamil / Telugu / Gujarati / Punjabi /
+ * Arabic / Thai / CJK blocks. Latin-only text (English, en-US/UK/IN spelling) translate offer nahi karta.
+ */
+function looksNonEnglishOcrText(text: string | undefined): boolean {
+  const t = String(text ?? "");
+  if (!t) return false;
+  return /[\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0E00-\u0E7F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF]/.test(t);
+}
+
 export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const planAllowed = useOcrPlanAllowed();
   // Own company straight from the company profile (not only form props) - hard guard against offering ourselves as party
@@ -200,7 +224,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   /** OCR "Create account" — prefilled bank/cash ledger from the slip (side = which voucher field it fills). */
   const [createAccountFor, setCreateAccountFor] = useState<{ side: "from" | "to"; prefill: { accountName?: string; accountType?: "Bank" | "Cash" } } | null>(null);
   /** Single-engine OCR failed: reason dialog (engine name + server/Gemini message + hint). */
-  const [ocrFail, setOcrFail] = useState<{ engine: string; message: string } | null>(null);
+  const [ocrFail, setOcrFail] = useState<{ engine: string; message: string; detail?: string; code?: string; retryAfter?: number } | null>(null);
   const [createItemFor, setCreateItemFor] = useState<{ index: number; name: string; unit?: string; rate: number; groupId?: string; ocrGroups?: MasterGroupLike[] } | null>(null);
   const [createTaxOpen, setCreateTaxOpen] = useState(false);
   const [vatPct, setVatPct] = useState(13);
@@ -672,6 +696,36 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             const prefNow = prefsNow.scriptPref;
             const mismatch =
               (detectedLocal && prefNow === "eng") || (!detectedLocal && prefNow === "local");
+            /** Gemini/AI: local-language text (Devanagari ya koi bhi non-English) — translation offer. */
+            const aiLocalText = raw.engine === "gemini" && looksNonEnglishOcrText(raw.text);
+            if (aiLocalText && !prefsNow.translateToEnglish) {
+              rExtra.push({
+                id: "ocr-language",
+                label: "Local language detected",
+                value: "Gemini ne kuch text local language (नेपाली/हिन्दी) me padha hai.",
+                reason: "Item names, party name aur narration English me chahiye?",
+                apply: () => undefined,
+              });
+              rExtra.push({
+                id: "ocr-translate",
+                label: "Translate to English",
+                value: "Item names, party aur narration English me (numbers same rahenge)",
+                apply: () => { setOcrPrefs({ translateToEnglish: true }); flashTranslatePref(true); },
+              });
+              rExtra.push({
+                id: "ocr-translate-default",
+                label: "Translate to English & set as default",
+                value: "Har slip ka text automatically English me translate hoga — OCR settings se reset kar sakte hain",
+                apply: () => { setOcrPrefs({ translateToEnglish: true }); flashTranslatePref(true); },
+              });
+            } else if (prefsNow.translateToEnglish && aiLocalText) {
+              rExtra.push({
+                id: "ocr-translate-off",
+                label: "Translation is ON",
+                value: "Har slip ka text English me translate ho raha hai",
+                apply: () => { setOcrPrefs({ translateToEnglish: false }); flashTranslatePref(false); },
+              });
+            }
             if (raw.engine === "tesseract" && (detectedLocal || prefNow !== "auto") && (mismatch || prefNow === "auto")) {
               const preferEng = prefNow !== "local";
               rExtra.push({
@@ -1229,7 +1283,20 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           toast.dismiss(tId);
         } else {
           // Single-engine mode: show WHY it failed in a dialog (not a 5 s toast the user can miss).
-          setOcrFail({ engine: seen.length ? seen[seen.length - 1] : "OCR", message: e instanceof Error ? e.message : String(e) });
+          // Friendly text (quota / overloaded / key) + retry hint; raw server message kept as detail.
+          const code = ocrAiErrorCode(e);
+          const rawMsg = e instanceof Error ? e.message : String(e);
+          const friendly = code === "unknown" || code === "network" && !/overloaded|unavailable|503|quota/i.test(rawMsg)
+            ? (e instanceof Error ? e.message : String(e))
+            : ocrAiErrorText(e);
+          const retryAfter = e instanceof OcrAiError ? e.retryAfter : 0;
+          setOcrFail({
+            engine: seen.length ? seen[seen.length - 1] : "OCR",
+            message: friendly,
+            detail: friendly !== rawMsg ? rawMsg : undefined,
+            code,
+            retryAfter,
+          });
           toast.dismiss(tId);
         }
       } finally {
@@ -1639,9 +1706,27 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-2 text-xs">
-                  <p className="rounded-md bg-amber-50 px-2 py-1.5 font-mono break-words text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">{ocrFail.message}</p>
+                  {ocrFail.code === "quota" ? (
+                    <p className="flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-100 px-2 py-1.5 font-medium text-amber-950 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-100">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                      <span>Gemini quota / rate limit reached{ocrFail.retryAfter ? ` — try again in about ${ocrFail.retryAfter < 60 ? `${ocrFail.retryAfter}s` : `${Math.round(ocrFail.retryAfter / 60)} min`}` : ""}.</span>
+                    </p>
+                  ) : null}
+                  <p className={ocrFail.code === "quota"
+                    ? "text-muted-foreground break-words"
+                    : "rounded-md bg-amber-50 px-2 py-1.5 font-mono break-words text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"}>
+                    {ocrFail.message}
+                  </p>
+                  {ocrFail.detail ? (
+                    <details className="text-[11px] text-muted-foreground">
+                      <summary className="cursor-pointer select-none">Server detail</summary>
+                      <p className="mt-1 font-mono break-words">{ocrFail.detail}</p>
+                    </details>
+                  ) : null}
                   <p className="text-muted-foreground">
-                    Fix the reason above and press Refresh OCR. If you want an automatic second engine, pick <b>Auto</b> in OCR settings → Switch Engine.
+                    {ocrFail.code === "quota"
+                      ? "Gemini free tier allows a limited number of scans per minute; the limit resets shortly. Try again after a minute, or use Auto / Offline engine until it resets."
+                      : "Fix the reason above and press Refresh OCR. If you want an automatic second engine, pick Auto in OCR settings → Switch Engine."}
                   </p>
                 </div>
                 <div className="flex justify-end gap-1.5">
