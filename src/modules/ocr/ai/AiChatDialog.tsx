@@ -474,32 +474,21 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
   });
 
   /* Clicking the voucher dialog (or anywhere outside) must NOT dismiss the chat. Only the X (or the
-   * header pill toggle) closes it. `focused` is purely cosmetic (deeper shadow on the active window). */
-  const [focused, setFocused] = React.useState(false);
-  /* Opening the chat is itself a user action on the chat: start it on top (z-82) instead of behind the
-   * voucher, otherwise it looks dead — you cannot click a window that is already underneath. */
+   * header pill toggle) closes it. */
+  /* The chat is ALWAYS above the voucher (z-82). Lowering it to z-79 while the voucher covers that
+   * area made the chat completely dead: the click landed on the voucher, so nothing could ever raise
+   * the chat again — a one-way trap. Only the shadow reacts to "inactive" instead. */
   React.useEffect(() => {
     if (!copilot || !open) return;
-    setFocused(true);
-  }, [copilot, open]);
-  /* One document-level pointerdown decides which window is on top — no reliance on React handler
-   * ordering, Radix forwarding, or React state timing (all of which made this flaky):
-   *   click inside the chat   → chat z-82
-   *   click anywhere else     → chat z-79
-   * This is the ONLY place that writes the chat's z-index, so nothing can "fight" it back. */
-  React.useEffect(() => {
-    if (!copilot || !open) return;
-    const onDown = (e: Event) => {
-      const t = e.target as HTMLElement | null;
-      const chatEl = document.querySelector<HTMLElement>("[data-pl-ocr-ai-chat]");
-      if (!chatEl) return;
-      const inside = !!t && (t.closest("[data-pl-ocr-ai-chat]") !== null);
-      const z = inside ? COPILOT_Z_FOCUSED : COPILOT_Z;
-      setFocused(inside);
-      chatEl.style.zIndex = String(z);
+    const apply = () => {
+      document.querySelectorAll<HTMLElement>("[data-pl-ocr-ai-chat]").forEach((el) => {
+        el.style.zIndex = String(COPILOT_Z_FOCUSED);
+      });
     };
-    document.addEventListener("pointerdown", onDown, true);
-    return () => document.removeEventListener("pointerdown", onDown, true);
+    apply();
+    /* Radix/React rewrites inline styles on some renders; re-assert on the next frame too. */
+    const raf = requestAnimationFrame(apply);
+    return () => cancelAnimationFrame(raf);
   }, [copilot, open]);
   /* A master dialog opened from the voucher (Create Party, Bank, Items…) must sit above the chat even
    * while the chat is focused. Watch only NEW dialogs appearing: a plain "any other role=dialog exists"
@@ -515,9 +504,11 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
       for (const rec of records) {
         for (const node of Array.from(rec.addedNodes)) {
           if (isForeignDialog(node)) {
-            setFocused(false);
-            const el = document.querySelector<HTMLElement>("[data-pl-ocr-ai-chat]");
-            if (el) el.style.zIndex = String(COPILOT_Z);
+            /* Master dialogs (Create Party, Bank, Items…) must sit above the chat. They are portaled to
+             * body with their own z-80/81, so keep the chat under them just while one is open. */
+            document.querySelectorAll<HTMLElement>("[data-pl-ocr-ai-chat]").forEach((el) => {
+              el.style.zIndex = String(COPILOT_Z);
+            });
             return;
           }
         }
@@ -526,8 +517,6 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
     obs.observe(document.body, { childList: true, subtree: true });
     return () => obs.disconnect();
   }, [copilot, open]);
-  const copilotZ = focused ? COPILOT_Z_FOCUSED : COPILOT_Z;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal={!copilot}>
       {copilot ? null : (
@@ -541,7 +530,9 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
         style={
           copilot
             ? {
-                zIndex: copilotZ,
+                /* NOTE: no `zIndex` here on purpose. The stacking order is written directly on the DOM
+                 * node by a document-level pointerdown listener; putting it in `style` let React
+                 * re-apply a stale value on every re-render and knock the chat back under the voucher. */
                 left: copilotResizable.position.x,
                 top: copilotResizable.position.y,
                 width: copilotResizable.size.w,
@@ -553,9 +544,7 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                 overflow: "hidden",
                 padding: 0,
                 border: "1px solid rgb(203 213 225)",
-                boxShadow: focused
-                  ? "0 24px 60px -16px rgba(15,23,42,0.45), 0 8px 20px -8px rgba(15,23,42,0.22)"
-                  : "0 18px 44px -16px rgba(15,23,42,0.28), 0 6px 16px -8px rgba(15,23,42,0.14)",
+                boxShadow: "0 24px 60px -16px rgba(15,23,42,0.35), 0 8px 20px -8px rgba(15,23,42,0.18)",
               }
             : CHAT_CONTENT_STYLE
         }
