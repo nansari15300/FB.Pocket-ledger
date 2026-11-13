@@ -81,6 +81,7 @@ import { ocrWrapAppend, ocrWrapInputChange } from "@/modules/ocr";
 const appendCompressedVoucherAttachmentsToState = ocrWrapAppend(__frozenAppendAttachments);
 const handleVoucherAttachmentInputChange = ocrWrapInputChange(__frozenAttachmentInputChange);
 import { voucherAttachmentUrlsForFormState } from "@/lib/voucherAttachmentNormalize";
+import { findDuplicateVoucher, hashAttachmentFiles, type CandidateVoucher, type DuplicateMatch } from "@/lib/voucherDuplicateGuard";
 import { AttachmentHoldPasteSurface } from "@/components/vouchers/AttachmentHoldPasteSurface";
 import { attachmentMaxBytes, attachmentStillTooLargeToastFields } from "@/lib/attachmentCompressionUi";
 import { useVouchers } from "@/hooks/useVouchers";
@@ -316,6 +317,9 @@ export function CreateContraForm({
   const [linkSectionInfoOpen, setLinkSectionInfoOpen] = useState(false);
   // Block overspending from selected from-account for all roles (including owner).
   const [isAmountMoreThanAccountOpen, setIsAmountMoreThanAccountOpen] = useState(false);
+  /** Duplicate guard: same slip dobara save hone se pehle bubble. */
+  const [duplicatePrompt, setDuplicatePrompt] = useState<{ match: DuplicateMatch; proceed: () => Promise<void> } | null>(null);
+  const skipDuplicatePromptRef = useRef(false);
   const [otherChargeEnabled, setOtherChargeEnabled] = useState(
     Boolean(voucher?.otherChargeAccountId || Number(voucher?.otherChargeAmount || 0) > 0)
   );
@@ -1286,6 +1290,41 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           lockedPdfFileUrls: readLockedPdfFileUrlsFromRow(voucher),
         });
 
+      /* Duplicate guard: same slip dobara attach + save ho rahi ho to pehle bubble se poochho.
+       * File bytes ka SHA-256 sabse strong proof hai; ref/date+amount/charge/narration fallback. */
+      const attachmentHashes = await hashAttachmentFiles(filesForSave);
+      const duplicate = findDuplicateVoucher(allVouchers as CandidateVoucher[], {
+        excludeVoucherId: savedVoucherId ?? voucher?.id,
+        type: "contra",
+        date,
+        amount: (Number(data.payeeAmount || 0) || 0) + (Number(data.otherChargeAmount || 0) || 0),
+        fromAccountId: (data as any).fromAccountId,
+        toAccountId: (data as any).toAccountId,
+        otherChargeAmount: Number(data.otherChargeAmount || 0) || 0,
+        otherChargeAccountId: data.otherChargeAccountId || "",
+        narration: (data as any).narration ?? "",
+        ref: (data as any).txnId || (data as any).referenceId || "",
+        attachmentHashes,
+      });
+      if (duplicate && !skipDuplicatePromptRef.current) {
+        sonnerToast.dismiss(toastId);
+        setDuplicatePrompt({
+          match: duplicate,
+          /* User ne "Save anyway" choose kiya — wahi validated `data` se seedha save karo (re-validate
+           * mat karo warna gate/convert dobara chal jayega). */
+          proceed: async () => {
+            skipDuplicatePromptRef.current = true;
+            const freshToast = await beginVoucherSaveLoadingOrBlock(companyId, "Saving contra entry...");
+            if (freshToast == null) return;
+            setIsLoading(true);
+            await processAndSaveRef.current?.(data as never, false, undefined, false);
+            skipDuplicatePromptRef.current = false;
+          },
+        });
+        setIsLoading(false);
+        return;
+      }
+
       // Build payload with only serializable fields (avoid form state carrying Timestamps/id that can break Firestore update)
       const submissionData: any = {
         fromAccountId: (data as any).fromAccountId,
@@ -1301,6 +1340,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
         otherChargeAccountId: data.otherChargeAccountId || "",
         otherChargeAmount: Number(data.otherChargeAmount || 0) || 0,
         fileUrls: filesForSave.filter((f): f is string => typeof f === 'string'),
+        attachmentHashes,
         type: 'contra',
       };
       if (!submissionData.otherChargeAmount) {
@@ -2883,6 +2923,45 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           <p className="text-sm text-muted-foreground">
             Amount is more than selected account balance.
           </p>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={duplicatePrompt != null} onOpenChange={(v) => { if (!v) setDuplicatePrompt(null); }}>
+        <DialogContent {...nestedVoucherAlertShell("max-w-md")}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700">
+              <span aria-hidden>⚠</span> Possible duplicate voucher
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">{duplicatePrompt?.match.summary}</p>
+            <ul className="space-y-1 rounded-md border bg-muted/40 px-3 py-2 text-xs">
+              <li><span className="text-muted-foreground">Voucher: </span><b>{duplicatePrompt?.match.voucherNumber}</b></li>
+              <li><span className="text-muted-foreground">Date: </span>{duplicatePrompt?.match.dateText}</li>
+              <li><span className="text-muted-foreground">Amount: </span>{duplicatePrompt?.match.amount}</li>
+              <li>
+                <span className="text-muted-foreground">Matched on: </span>
+                {(duplicatePrompt?.match.reasons ?? [])
+                  .map((r) => (r === "file" ? "same file" : r === "ref" ? "same reference" : r === "fields" ? "same date + amount" : "same narration"))
+                  .join(", ")}
+              </li>
+            </ul>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="rounded-md border px-3 py-1.5 text-xs" onClick={() => setDuplicatePrompt(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-md bg-amber-600 px-3 py-1.5 text-xs text-white"
+                onClick={() => {
+                  const go = duplicatePrompt?.proceed;
+                  setDuplicatePrompt(null);
+                  void go?.();
+                }}
+              >
+                Save anyway
+              </button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
       <VoucherDeleteConfirmAlertDialog
