@@ -51,11 +51,12 @@ export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptD
   /* Beneficiary "Account Name" is our company on a bank-to-bank slip (nobody sells to themselves):
    * that alone makes the receiving ledger ours -> contra, even before the account number matches. */
   const creditIsCompany = !!d.beneficiary_name && !!o.companyName && companyNameMatches(d.beneficiary_name, o.companyName);
-  /* Only PROVEN evidence promotes out -> contra: our own account matched on the receiving side, or the
-   * receiving Account Name is our company. The old regex over `bank_flow_reason` ("both sides are our
-   * company") is gone: the server already settles that against our real account list, and a free-text
+  /* Only PROVEN evidence promotes out -> contra: our own account matched by NUMBER or NAME on the
+   * receiving side, or the receiving Account Name is our company. A bank-name-only match is NOT proof
+   * (every Prabhu account would match "Prabhu Bank"). The old regex over `bank_flow_reason` ("both sides
+   * are our company") is gone: the server settles that against our real account list, and a free-text
    * reason that happens to contain those words used to turn supplier payments into contra. */
-  const destOurs = creditPick.ok || creditIsCompany;
+  const destOurs = creditIsCompany || (creditPick.ok && (creditPick.method === "account-no" || creditPick.method === "name"));
   const effectiveFlow = flow === "out" && senderPick.ok && destOurs ? "own_to_own" : flow;
   const charge = d.transfer_charges != null && d.transfer_charges > 0 ? { amount: d.transfer_charges } : undefined;
   const narration = [

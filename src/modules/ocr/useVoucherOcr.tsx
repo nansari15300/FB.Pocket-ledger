@@ -572,7 +572,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                     rExtra.push({
                       id: "create-party", label: "Create new party", value: nm, confidence: 0.8,
                       reason: `Counter-party "${nm}" matches no party / staff / tax payee — opens Create Party prefilled; you confirm Save`, deferred: true,
-                      apply: () => setCreatePrefill({ ...partyNamePrefill(nm), pan: "", phone: rc.parsed!.initiatorPhone ?? "", email: "", address: "", accountTypeId: PARTY_SYSTEM_CREDITORS_ID, extra: [bn.accountMasked && `Bank A/c: ${bn.accountMasked}`, bn.bankName, bn.branch].filter(Boolean).join(" | ") }),
+                      /* Phone is deliberately NOT prefilled from initiatorPhone: that is the SENDER's number
+                       * (our own account holder on a Prabhu/connectIPS slip), so it belongs to us, never to the
+                       * party being created. Bank details below come from the beneficiary side only. */
+                      apply: () => setCreatePrefill({ ...partyNamePrefill(nm), pan: "", phone: "", email: "", address: "", accountTypeId: PARTY_SYSTEM_CREDITORS_ID, extra: [bn.accountMasked && `Bank A/c: ${bn.accountMasked}`, bn.bankName, bn.branch].filter(Boolean).join(" | ") }),
                     });
                     rExtra.push({ id: "find-party", label: "Pick an existing account instead", value: "search by name", deferred: true, apply: () => setFindOpen(true) });
                   }

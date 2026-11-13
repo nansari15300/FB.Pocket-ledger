@@ -107,7 +107,18 @@ export type UniqueOwnAccount =
 /** Unique top score → auto-fill; near-tie → candidates for a pick popup. */
 export function pickUniqueOwnAccount(side: ReceiptAccountSide, own: readonly OwnAccountLike[]): UniqueOwnAccount {
   const scored = scoreOwnAccounts(side, own);
-  if (!scored.length) {
+  /* A bank name alone is NOT proof that this printed side is our account: every Prabhu account we own
+   * would "match" a slip that only says "Prabhu Bank". Treating it as a hit made the receiving side look
+   * ours and turned ordinary supplier payments into contra. Bank/branch only reinforce a name or number. */
+  const proven = scored.filter((x) => x.method === "account-no" || x.method === "name");
+  if (!proven.length) {
+    const weak = scored.filter((x) => x.method === "bank" || x.method === "branch");
+    if (weak.length) {
+      return { ok: false, candidates: weak, reason: `only the bank/branch matches ("${String(side.bankName ?? "").trim()}") — the account number does not` };
+    }
+  }
+  const pool = proven.length ? proven : scored;
+  if (!pool.length) {
     const bank = String(side.bankName ?? "").replace(/^\s*\d+\s*-\s*/, "").trim();
     // No account-number/bank/branch hit: fall back to proof-weighted NAME matching so a 50%+ account
     // name with supporting evidence still resolves, while a bare 50-90% name is offered, not filled.
@@ -129,8 +140,8 @@ export function pickUniqueOwnAccount(side: ReceiptAccountSide, own: readonly Own
     }
     return { ok: false, candidates: [], reason: `no own Bank/Cash account matches${bank ? ` "${bank}"` : " the sender/receiver"}` };
   }
-  const top = scored.filter((x) => x.score >= scored[0].score - TIE_GAP);
-  const reason = `${scored[0].reasons.join(", ")}`;
+  const top = pool.filter((x) => x.score >= pool[0].score - TIE_GAP);
+  const reason = `${pool[0].reasons.join(", ")}`;
   if (top.length === 1) {
     return { ok: true, acc: top[0].acc, score: top[0].score, method: top[0].method, reason };
   }
