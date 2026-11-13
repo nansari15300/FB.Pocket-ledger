@@ -78,7 +78,10 @@ export const connectIpsDetector: ReceiptFormatDetector = {
     if (!parsed.date) parsed.date = summary("invoice date") || summary("date");
     if (!parsed.particulars && party) parsed.particulars = party;
     if (!parsed.paymentMode && mode) parsed.paymentMode = mode;
-    if (!parsed.beneficiary.accountName && party) parsed.beneficiary = { ...parsed.beneficiary, accountName: party };
+    /* NOTE: `party` is the person we PAID / billed, never the receiving account holder. It must not be
+     * copied into `beneficiary.accountName`: identifyBeneficiaryMaster() reads that field as "whose
+     * account is this", so a supplier name there made every supplier payment look like a contra.
+     * The party travels in `particulars` (and the AI's counterParty) instead. */
     /* connectIPS slips print the payer as "connectIPS Account: <holder>". Without this the sender side had no
      * name at all, so a slip whose ledger is named after the company (not the holder) could never be matched
      * on the From side of a contra. */

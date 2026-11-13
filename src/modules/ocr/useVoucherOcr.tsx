@@ -824,7 +824,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             if (sg.some((x) => !x.blocked) || rMissing.length) setSugOpen(true);
             setMissingNow(rMissing);
             setDebugInfo({
-              text: [`--- OCR build ${OCR_BUILD} | OCR engine: ${raw.engine ?? "tesseract"}${raw.engineNote ? ` (${raw.engineNote})` : ""} | document: ${rc.format} (${Math.round(rc.confidence * 100)}%)${lowConf ? " | LOW CONFIDENCE" : ""} ---`, `Type: ${rc.voucherType ?? `undecided (${types.join(" / ")})`} (${Math.round(rc.typeConfidence * 100)}%)`, why, rc.narration ? `Narration: ${rc.narration}` : "", rc.otherCharge ? `Charge: ${rc.otherCharge.amount}` : "", rc.statusWarning ?? "", "--- OCR text ---", raw.text].filter(Boolean).join("\n"),
+              text: [`--- OCR build ${OCR_BUILD} | OCR engine: ${raw.engine ?? "tesseract"}${raw.engineNote ? ` (${raw.engineNote})` : ""} | document: ${rc.format} (${Math.round(rc.confidence * 100)}%)${lowConf ? " | LOW CONFIDENCE" : ""} ---`, `Type: ${rc.voucherType ?? `undecided (${types.join(" / ")})`} (${Math.round(rc.typeConfidence * 100)}%)${raw.ai?.data.voucher_type ? ` | Gemini said: ${raw.ai.data.voucher_type}${raw.ai.data.voucher_type_reason ? ` — ${raw.ai.data.voucher_type_reason}` : ""}` : ""}`, why, rc.narration ? `Narration: ${rc.narration}` : "", rc.otherCharge ? `Charge: ${rc.otherCharge.amount}` : "", rc.statusWarning ?? "", "--- OCR text ---", raw.text].filter(Boolean).join("\n"),
               meanConfidence: raw.meanConfidence, reasons: [why], filled: rFilled, missing: rMissing,
             });
             const here = !!(rc.voucherType && (rc.voucherType === cur || sameVoucherBucket(cur, rc.voucherType)));

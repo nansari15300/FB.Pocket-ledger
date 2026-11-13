@@ -21,6 +21,27 @@ export type OcrAiDocType = "purchase" | "sale" | "receipt" | "payment" | "contra
 export type OcrAiDocKind = "tax_invoice" | "vat_bill" | "bank_transfer" | "cheque" | "deposit_slip" | "purchase_order" | "receipt" | "other";
 /** Which way money moves; own_to_own = our bank -> our bank (contra). */
 export type OcrAiBankFlow = "own_to_own" | "out" | "in" | "none" | "unclear";
+/** The app's own voucher tabs. Gemini answers with one of these; the app opens that form as-is. */
+export type OcrAiVoucherType =
+  | "sale" | "purchase" | "payment_out" | "payment_in"
+  | "contra" | "direct_expense" | "direct_income" | "journal";
+
+/** What master collection a Dr/Cr line points at. The app looks the ledger up in that collection only. */
+export type OcrAiLineKind =
+  | "party" | "bank" | "cash" | "staff" | "tax" | "expense" | "income" | "item" | "discount" | "roundoff";
+
+/** One side of the double entry, as printed. The app never decides the sides itself. */
+export type OcrAiLine = {
+  side: "dr" | "cr";
+  kind: OcrAiLineKind;
+  name: string | null;
+  /** Bank / cash account number if printed (masked OK). */
+  account_no: string | null;
+  bank_name: string | null;
+  pan: string | null;
+  amount: number | null;
+};
+
 export type OcrAiItem = {
   sn: number | null;
   description: string;
@@ -29,8 +50,21 @@ export type OcrAiItem = {
   unit: string | null;
   rate: number | null;
   amount: number | null;
+  /** Raw printed cells: header text -> printed value, so columns map by header instead of by position. */
+  cells?: Record<string, string> | null;
 };
 export type OcrAiVoucher = {
+  /**
+   * THE answer the app acts on: which voucher form to open. Everything else is field data for that form.
+   * The app never re-derives the type from raw text (that is what made supplier payments show as contra).
+   */
+  voucher_type: OcrAiVoucherType | null;
+  /** One short line of printed evidence for the type. */
+  voucher_type_reason: string | null;
+  /** Double entry as printed (max 8). Empty for a plain item bill (purchase/sale build lines from items). */
+  lines: OcrAiLine[];
+  /** The printed item table's column headers, left to right. */
+  item_columns?: string[] | null;
   doc_type: OcrAiDocType | null;
   /** Document family Gemini picked before the accounting type. */
   doc_kind: OcrAiDocKind | null;
@@ -73,6 +107,58 @@ export type OcrAiResult = { provider: "gemini"; model: string; data: OcrAiVouche
 const DOC_TYPES: readonly OcrAiDocType[] = ["purchase", "sale", "receipt", "payment", "contra", "expense", "other"];
 const DOC_KINDS: readonly OcrAiDocKind[] = ["tax_invoice", "vat_bill", "bank_transfer", "cheque", "deposit_slip", "purchase_order", "receipt", "other"];
 const BANK_FLOWS: readonly OcrAiBankFlow[] = ["own_to_own", "out", "in", "none", "unclear"];
+const VOUCHER_TYPES: readonly OcrAiVoucherType[] = ["sale", "purchase", "payment_out", "payment_in", "contra", "direct_expense", "direct_income", "journal"];
+const LINE_KINDS: readonly OcrAiLineKind[] = ["party", "bank", "cash", "staff", "tax", "expense", "income", "item", "discount", "roundoff"];
+
+/** Old servers / cached replies only had doc_type: map it so a mismatch never lands on no tab. */
+function legacyVoucherType(dt: OcrAiDocType | null): OcrAiVoucherType | null {
+  switch (dt) {
+    case "payment": return "payment_out";
+    case "receipt": return "payment_in";
+    case "expense": return "direct_expense";
+    case "purchase": return "purchase";
+    case "sale": return "sale";
+    case "contra": return "contra";
+    default: return null;
+  }
+}
+
+function normalizeCells(raw: unknown): Record<string, string> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out: Record<string, string> = {};
+  let n = 0;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const key = String(k ?? "").replace(/\s+/g, " ").trim();
+    const val = str(v);
+    if (!key || !val) continue;
+    out[key] = val;
+    if (++n >= 16) break;
+  }
+  return n ? out : null;
+}
+
+function normalizeLines(raw: unknown): OcrAiLine[] {  if (!Array.isArray(raw)) return [];
+  const out: OcrAiLine[] = [];
+  for (const x of raw) {
+    if (!x || typeof x !== "object") continue;
+    const l = x as Record<string, unknown>;
+    const side = str(l.side)?.toLowerCase();
+    const kind = str(l.kind)?.toLowerCase() as OcrAiLineKind | undefined;
+    if (side !== "dr" && side !== "cr") continue;
+    if (!kind || !LINE_KINDS.includes(kind)) continue;
+    out.push({
+      side,
+      kind,
+      name: str(l.name),
+      account_no: str(l.account_no),
+      bank_name: str(l.bank_name),
+      pan: str(l.pan),
+      amount: aiNum(l.amount),
+    });
+    if (out.length >= 12) break;
+  }
+  return out;
+}
 
 function str(v: unknown): string | null {
   if (v == null) return null;
@@ -98,8 +184,18 @@ export function normalizeAiVoucher(raw: unknown): OcrAiVoucher {
   const kind = str(o.doc_kind)?.toLowerCase() as OcrAiDocKind | undefined;
   const flow = str(o.bank_flow)?.toLowerCase() as OcrAiBankFlow | undefined;
   const items = Array.isArray(o.items) ? o.items : [];
+  const vt = str(o.voucher_type)?.toLowerCase() as OcrAiVoucherType | undefined;
+  const docType = dt && DOC_TYPES.includes(dt) ? dt : null;
+  const cols = Array.isArray(o.item_columns)
+    ? o.item_columns.map((c) => str(c)).filter((c): c is string => !!c).slice(0, 14)
+    : [];
   return {
-    doc_type: dt && DOC_TYPES.includes(dt) ? dt : null,
+    /* Unknown/missing voucher_type falls back to the old doc_type so an older server still lands on a tab. */
+    voucher_type: vt && VOUCHER_TYPES.includes(vt) ? vt : legacyVoucherType(docType),
+    voucher_type_reason: str(o.voucher_type_reason),
+    lines: normalizeLines(o.lines),
+    item_columns: cols.length ? cols : null,
+    doc_type: docType,
     doc_kind: kind && DOC_KINDS.includes(kind) ? kind : null,
     our_company_role: role === "buyer" || role === "seller" || role === "none" ? role : null,
     bank_flow: flow && BANK_FLOWS.includes(flow) ? flow : null,
@@ -131,6 +227,7 @@ export function normalizeAiVoucher(raw: unknown): OcrAiVoucher {
         unit: str(x.unit),
         rate: aiNum(x.rate),
         amount: aiNum(x.amount),
+        cells: normalizeCells(x.cells),
       }))
       .filter((x) => x.description || x.amount != null),
     subtotal: aiNum(o.subtotal),
@@ -172,6 +269,16 @@ export function aiFallbackText(d: OcrAiVoucher): string {
   if (d.taxable != null) L.push(`TAXABLE AMOUNT ${d.taxable.toFixed(2)}`);
   if (d.vat_amount != null) L.push(`VAT ${d.vat_percent ?? 13}% ${d.vat_amount.toFixed(2)}`);
   if (d.grand_total != null) L.push(`GRAND TOTAL ${d.grand_total.toFixed(2)}`);
+  /* Debug / "Show OCR text": the type Gemini chose and the entry it wrote, so a wrong classification is
+   * visible without reading the whole JSON. */
+  if (d.voucher_type) L.push(`VOUCHER TYPE : ${d.voucher_type}${d.voucher_type_reason ? ` (${d.voucher_type_reason})` : ""}`);
+  if (d.lines.length) {
+    L.push("DR / CR");
+    for (const ln of d.lines) {
+      const who = [ln.name, ln.account_no ? `#${ln.account_no}` : "", ln.bank_name].filter(Boolean).join(" ");
+      L.push(`${ln.side.toUpperCase()} | ${ln.kind} | ${who || "-"} | ${ln.amount ?? "-"}`);
+    }
+  }
   return L.join("\n");
 }
 
