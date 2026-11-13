@@ -121,6 +121,7 @@ import { prepareVoucherAttachmentsForSave } from "@/lib/attachmentRecompressOnSa
 import { readLockedPdfFileUrlsFromRow } from "@/lib/attachmentPdfOptions";
 import { useAccountBalance } from "@/hooks/useAccountBalance";
 import { bankAccountAllowsVoucherMinusBalance } from "@/lib/bankAccountMinusBalancePolicy";
+import { checkLedgerAmountGate } from "@/lib/ledgerAmountGuard";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useResetLinkStateOnCopyTargetCompany } from "@/hooks/useResetLinkStateOnCopyTargetCompany";
 import { useCopyDraftFirstSave } from "@/hooks/useCopyDraftFirstSave";
@@ -849,6 +850,18 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     const selectedBalance = Number(fromAccountBalance) || 0;
     return enteredAmount > selectedBalance;
   }, [fromAccountId, fromAccountBalance, allowFromAccountMinusBalance]);
+
+  /** Live negative-balance guard: shown as red text under From and disables Save (the submit dialog stays as a backstop). */
+  const payeeAmountWatched = form.watch("payeeAmount");
+  const otherChargeWatched = form.watch("otherChargeAmount");
+  const fromAmountGate = checkLedgerAmountGate({
+    accountId: fromAccountId,
+    balance: fromAccountBalance,
+    minusAllowed: allowFromAccountMinusBalance,
+    outflow: (Number(payeeAmountWatched) || 0) + (Number(otherChargeWatched) || 0),
+  });
+  const contraSaveAmountBlocked = fromAmountGate.blocked;
+  const fromAccountAmountWarning = fromAmountGate.message;
 
   const isAutoVoucherEnabled = company?.autoVoucherNumbering?.contra ?? true;
   const isVoucherEditingAllowed = company?.allowVoucherNumberEditing?.contra ?? false;
@@ -1932,6 +1945,11 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                               </Button>
                             )}
                           </div>
+                          {fromAccountAmountWarning && (
+                            <p className="mt-1 text-[10px] font-semibold leading-snug text-red-600" role="alert">
+                              {fromAccountAmountWarning}
+                            </p>
+                          )}
                           <div className="mt-2">
                             <FormLabel className="text-[10px] text-muted-foreground">Total Out</FormLabel>
                             <Input type="number" value={contraTotalAmount || ""} readOnly className="mt-1 bg-muted font-semibold h-9 text-xs" />
@@ -2249,6 +2267,11 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                               </Button>
                             )}
                           </div>
+                          {fromAccountAmountWarning && (
+                            <p className="mt-1 text-[10px] font-semibold leading-snug text-red-600" role="alert">
+                              {fromAccountAmountWarning}
+                            </p>
+                          )}
                           <div className="min-w-0">
                             <FormLabel className="text-xs text-muted-foreground">Total Out</FormLabel>
                             <Input
@@ -2693,7 +2716,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                 <Button type="button" onClick={() => onVoucherAction?.('cancelled')} className={cn("w-full", BTN_CANCEL_CLASS)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
+                  <Button type="submit" disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || contraSaveAmountBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
                   {isLoading ? "..." : isEditingAndConverting ? "Convert" : "Save"}
                 </Button>
                 {voucher?.id ? (

@@ -6,7 +6,7 @@ import { parseSingleDocDate } from "../dates";
 import { isMaskedName, maskedNameSuffix } from "./genericFields";
 import { masterNameScore } from "./index";
 import { bankNameMatches, pickUniqueOwnAccount, type OwnAccountScore } from "./match";
-import type { NamedMaster, OwnAccountLike, ParsedReceipt } from "./types";
+import type { NamedMaster, OwnAccountLike, ParsedReceipt, ReceiptAccountSide as ReceiptSide } from "./types";
 
 export type PayeeMatch = { payeeType: "party" | "staff" | "tax"; id: string; name: string; score: number };
 export type FromAccountMatch =
@@ -51,6 +51,16 @@ export function suggestMaskedPayees(name: string | undefined | null, m: { partie
 const words = (s?: string) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const accText = (a: OwnAccountLike) => words(`${a.accountName ?? ""} ${a.bankName ?? ""} ${a.branch ?? ""}`);
 
+/**
+ * connectIPS prints only "Nabiullah Ansari" (the account holder), no bank and a masked A/c, so the number
+ * never proves anything. Feed the printed name into the side so the proof-weighted matcher can still find
+ * the ledger by holder name — account-number/bank hits always outrank it inside match.ts.
+ */
+function withName(side: ReceiptSide, p: ParsedReceipt): ReceiptSide {
+  const holder = side.accountName || p.sender.accountName || p.beneficiary.accountName;
+  return holder && !side.accountName ? { ...side, accountName: holder } : side;
+}
+
 /** "paid from Prabhu Itahari" / "paid frm NIC" in Particulars or Remarks. */
 export function paidFromPhrase(p: Pick<ParsedReceipt, "particulars" | "remarks">): string | null {
   const t = `${p.particulars ?? ""} ; ${p.remarks ?? ""}`;
@@ -64,7 +74,8 @@ export function matchFromAccount(p: ParsedReceipt, own: readonly OwnAccountLike[
   if (phrase) {
     const q = words(phrase);
     const sc = live.map((a) => ({ a, s: masterNameScore(phrase, a.accountName) })).sort((x, y) => y.s - x.s);
-    let byPhrase: OwnAccountLike[] = sc[0] && sc[0].s >= NAME_MIN && (!sc[1] || sc[0].s - sc[1].s >= NAME_GAP) ? [sc[0].a] : sc.filter((x) => x.s >= NAME_MIN).map((x) => x.a);
+    // Every account sharing the best score is a real tie (two ledgers with the same company name) — never a coin flip.
+    let byPhrase: OwnAccountLike[] = sc.length && sc[0].s >= NAME_MIN ? sc.filter((x) => x.s >= sc[0].s - NAME_GAP).map((x) => x.a) : sc.filter((x) => x.s >= NAME_MIN).map((x) => x.a);
     if (!byPhrase.length) byPhrase = live.filter((a) => q.length >= 3 && accText(a).includes(q));
     if (!byPhrase.length) byPhrase = live.filter((a) => bankNameMatches(phrase, a.bankName));
     if (byPhrase.length === 1) {
@@ -72,7 +83,7 @@ export function matchFromAccount(p: ParsedReceipt, own: readonly OwnAccountLike[
       return { ok: true, id: a.id, name: a.accountName ?? a.id, method: "paid-from", reason: `"paid from ${phrase}"` };
     }
   }
-  const picked = pickUniqueOwnAccount(side === "sender" ? p.sender : p.beneficiary, live);
+  const picked = pickUniqueOwnAccount(withName(side === "sender" ? p.sender : p.beneficiary, p), live);
   // tsconfig has strict:false (no strictNullChecks), so discriminated-union narrowing on `.ok` does not apply.
   if ("candidates" in picked) {
     const tied = picked.candidates;
