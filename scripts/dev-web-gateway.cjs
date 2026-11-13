@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Dev gateway on :3000
+ * Dev gateway — default :2000 (production runs on :3000 via `PORT`).
  *   /           → marketing website/ (source files, live edit)
- *   /app/**     → Next.js (WEB_APP_BASE_PATH=/app) on internal port
+ *   /app/**     → Next.js (WEB_APP_BASE_PATH=/app) on internal port (+1)
  *
  * Deploy: pocket-ledger.com/ + /app via Hosting + App Hosting (same URL shape).
  */
@@ -18,7 +18,8 @@ const projectRoot = process.cwd();
 const websiteRoot = path.join(projectRoot, "website");
 const releasesRoot = path.join(projectRoot, "releases");
 const argPort = process.argv.slice(2).find((a) => /^\d{4,5}$/.test(a));
-const publicPort = String(argPort || process.env.PORT || "3000");
+/** Dev default is 2000; production sets PORT=3000. An explicit CLI arg still wins for one-off runs. */
+const publicPort = String(argPort || process.env.PORT || "2000");
 const nextPort = String(process.env.NEXT_INTERNAL_PORT || (Number(publicPort) + 1));
 
 function listLanIPv4Addresses() {

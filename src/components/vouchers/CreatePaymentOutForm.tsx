@@ -2871,7 +2871,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                           control={form.control}
                           name="otherChargeAccountId"
                           render={({ field }: any) => (
-                            <FormItem className="min-w-0">
+                            <FormItem data-ocr-field="other-charge" className="min-w-0">
                               <div className="flex justify-between items-center gap-2">
                                 <FormLabel className="text-xs">Other Charge</FormLabel>
                                 <div className="flex items-center gap-1">
@@ -3339,7 +3339,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                         control={form.control}
                         name="otherChargeAccountId"
                         render={({ field }: any) => (
-                          <FormItem>
+                          <FormItem data-ocr-field="other-charge">
                             <div className="flex justify-between items-center gap-2">
                               <FormLabel>Other Charge</FormLabel>
                             </div>

@@ -136,7 +136,7 @@ export function ocrMissingFieldKey(label: string): string {
   if (l.startsWith("party")) return "party";
   if (l.startsWith("to account")) return "account";
   if (l.startsWith("bank") || l.startsWith("account")) return "account";
-  if (l.startsWith("other charge")) return "amount";
+  if (l.startsWith("other charge")) return "other-charge";
   if (l.startsWith("date")) return "date";
   if (l.includes("vat") || l.includes("tax")) return "tax";
   if (l.startsWith("line")) return "lines";

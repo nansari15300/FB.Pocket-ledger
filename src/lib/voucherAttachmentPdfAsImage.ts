@@ -10,6 +10,8 @@ import { sniffBlobKindForPreview } from "@/lib/attachmentFormatLabel";
 import { convertPdfToStitchedJpegFile } from "@/lib/pdfToImageExport";
 import { getBlobFromLocalFileRef, isLocalFileRef } from "@/lib/localPendingFiles";
 import { getRemoteAttachmentBlobPreferOfflineCache } from "@/lib/offlineAttachmentUrlCache";
+import { fetchAttachmentRefBlob } from "@/lib/attachmentRefBlobFetch";
+import { isPbAttachmentRef } from "@/lib/pocketbaseData/pbAttachments";
 
 export function looksLikePdfAttachmentUrl(url: string): boolean {
   const low = url.toLowerCase();
@@ -143,12 +145,26 @@ export async function convertPdfAttachmentsToJpegIfEnabled(
         trimmedUrl.startsWith("http://") || trimmedUrl.startsWith("https://")
           ? await getRemoteAttachmentBlobPreferOfflineCache(trimmedUrl)
           : null;
+      /* Bare `fetch(url)` yahan throw kar raha tha ("Failed to fetch" — CORS/offline/pbatt:) aur poori
+       * voucher save fail ho jati thi. Same resolver as preview (pbatt: / drive: / local: / bare object
+       * path) + hybrid HTTPS fetch, aur asli message throw karo taaki toast me reason dikhe. */
       if (!blob || blob.size === 0) {
-        const res = await fetch(url, { mode: "cors" });
-        if (!res.ok) throw new Error(String(res.status));
-        blob = await res.blob();
+        blob = await fetchAttachmentRefBlob(trimmedUrl);
       }
-      if (!blob || blob.size === 0) throw new Error("empty blob");
+      if ((!blob || blob.size === 0) && isPbAttachmentRef(trimmedUrl)) {
+        const { fetchPbAttachmentBlob } = await import("@/lib/pocketbaseData/pbAttachments");
+        blob = await fetchPbAttachmentBlob(trimmedUrl);
+      }
+      if (!blob || blob.size === 0) blob = await getRemoteAttachmentBlobPreferOfflineCache(trimmedUrl);
+      if (!blob || blob.size === 0) {
+        /* Save ko rokna nahi hai — PDF original hi rahe, sirf toast. (Pehle `fetch` ka bare throw
+         * pura contra/payment save giraye deta tha.) */
+        sonnerToast.warning("A linked PDF could not be read for conversion", {
+          description: "Keeping it as PDF. Reconnect or re-upload if it still fails.",
+        });
+        out.push(url);
+        continue;
+      }
       const kind = await sniffBlobKindForPreview(blob);
       if (kind !== "pdf") {
         out.push(url);

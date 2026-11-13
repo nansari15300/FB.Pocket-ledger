@@ -145,6 +145,9 @@ export function Combobox({
   const mergedPopoverContentClassName = cn(
     useMobileWideList &&
       "w-[80vw] max-w-[80vw] sm:min-w-[var(--radix-popover-trigger-width)] sm:w-auto sm:max-w-md",
+    // Desktop list: the trigger often sits in a narrow column (Other Charge / Pay from), but the panel has the
+    // whole screen to use — a 350px list turned "Party: Pratik Trade Center Pvt.Ltd" into "Party: Pra…".
+    !useMobileWideList && "sm:min-w-[min(32rem,90vw)] sm:w-auto sm:max-w-[min(46rem,92vw)]",
     popoverContentClassName
   );
 
@@ -264,6 +267,11 @@ export function Combobox({
   const qn = normalizeComboboxSearch(search);
   // Alias Name: from option.aliasText or the master alias index (by option value = entity id); searched, not shown as label.
   const aliasOf = (opt: { value: string; aliasText?: string }) => opt.aliasText || getMasterAlias(opt.value);
+  /** Hover tooltip: full label + alias, since the row truncates to fit one line. */
+  const optionTitle = (opt: { value: string; label: string; aliasText?: string }) => {
+    const al = aliasOf(opt);
+    return al && normalizeComboboxSearch(al) !== normalizeComboboxSearch(opt.label) ? `${opt.label} — ${al}` : opt.label;
+  };
   const filteredOptions = q.length === 0
     ? options
     : options.filter((opt) => {
@@ -455,7 +463,12 @@ export function Combobox({
             onKeyDown={(e) => e.stopPropagation()}
           />
           <CommandList
-            className={commandListClassName}
+            className={cn(
+              // Desktop: a proper picker panel (≈15 rows) — the dialog has the screen to spare, and scrolling
+              // two rows at a time made finding a party tedious. Mobile keeps the roomier default.
+              !isMobile && "md:max-h-[min(60vh,34rem)]",
+              commandListClassName
+            )}
             onPointerDownCapture={(e) => {
               listGestureStartRef.current = { x: e.clientX, y: e.clientY };
               blockSelectFromGestureRef.current = false;
@@ -501,6 +514,8 @@ export function Combobox({
                   value={option.value}
                   // Use option.value (id) so cmdk passes correct value; option.label can break selection.
                   disabled={option.disabled}
+                  // Truncated rows still need the full text: native tooltip on hover (desktop only, no-op touch).
+                  title={isMobile ? undefined : optionTitle(option)}
                   onSelect={() => {
                     if (option.disabled) return;
                     runIfNotScrollGesture(() => {
@@ -539,12 +554,17 @@ export function Combobox({
                       )}
                     />
                     {option.isSpecial && <Crown className="mr-2 h-4 w-4 shrink-0 text-amber-500" />}
-                    {renderOptionLabel(option.label)}
                     {(() => {
                       const al = aliasOf(option);
-                      return al && normalizeComboboxSearch(al) !== normalizeComboboxSearch(option.label) ? (
-                        <span className="ml-1.5 shrink-0 max-w-[45%] truncate text-[11px] text-muted-foreground" data-combobox-alias="">{al}</span>
-                      ) : null;
+                      const hasAlias = !!al && normalizeComboboxSearch(al) !== normalizeComboboxSearch(option.label);
+                      return (
+                        <>
+                          <span className={cn("min-w-0", hasAlias ? "flex-1 truncate" : "flex-1")}>{renderOptionLabel(option.label)}</span>
+                          {hasAlias ? (
+                            <span className="ml-1.5 max-w-[45%] shrink-0 truncate whitespace-nowrap text-[11px] text-muted-foreground" data-combobox-alias="">{al}</span>
+                          ) : null}
+                        </>
+                      );
                     })()}
                   </span>
                   {(() => {

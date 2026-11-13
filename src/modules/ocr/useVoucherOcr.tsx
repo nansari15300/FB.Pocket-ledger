@@ -49,6 +49,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useVouchers } from "@/hooks/useVouchers";
 import { detectReceipt, AUTO_SWITCH_MIN_CONF, type ReceiptDetection } from "@/lib/ocr/receiptDetect";
 import { accountDisplayLabel, buildMoneyVoucherFill, pickChargeAccount, receiptNarration, suggestMaskedPayees } from "@/lib/ocr/receiptDetect/fillPaymentOut";
+import type { ParsedReceipt } from "@/lib/ocr/receiptDetect/types";
 import { paymentAmountFromBill } from "./fillPaymentOut";
 import { normalizeName } from "./normalize";
 import { resolveOcrBubbles, snapshotFromForm } from "./reactiveBubbles";
@@ -174,6 +175,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const lastBillRef = useRef<OcrParsedBill | null>(null);
   const [lastBill, setLastBill] = useState<OcrParsedBill | null>(null);
   lastBillRef.current = lastBill;
+  /** Last OCR's money payload + label sources — lets the narration follow a later From/To dropdown change. */
+  const lastMoneyRef = useRef<{ parsed: ParsedReceipt; direction: "payment_out" | "payment_in" | "contra" } | null>(null);
   const [debugInfo, setDebugInfo] = useState<{ text: string; meanConfidence: number; reasons: string[]; filled: string[]; missing: string[] } | null>(null);
   const [suggestions, setSuggestions] = useState<OcrSuggestion[]>([]);
   const [receiptTarget, setReceiptTarget] = useState<string | null>(null);
@@ -616,7 +619,13 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 const selId = String(F.getValues(direction === "contra" ? (A.fromAccountPath ?? "fromAccountId") : (A.accountPath ?? "accountId")) ?? "");
                 const sel = (M.accounts ?? []).find((a) => a.id === selId);
                 const fromLabel = sel ? accountDisplayLabel(sel as never) : null;
-                const fullN = receiptNarration(rc.parsed!, fromLabel);
+                /* Contra "To" must name the destination ledger, not the slip's plain beneficiary name —
+                 * "To: New Parsa Engineering Workshop" hid which bank the money landed in. Read the field the
+                 * fill step just wrote so a manual pick (From/To dropdown) is reflected too. */
+                const toIdForLabel = direction === "contra" ? String(F.getValues(A.toAccountPath ?? "toAccountId") ?? "") : "";
+                const toAccForLabel = toIdForLabel ? (M.accounts ?? []).find((a) => a.id === toIdForLabel) : undefined;
+                const toLabel = direction === "contra" && toAccForLabel ? `To: ${accountDisplayLabel(toAccForLabel as never)}` : null;
+                const fullN = receiptNarration(rc.parsed!, fromLabel, toLabel);
                 if (getOcrPrefs().narrationStyle === "short") {
                   const toId = direction === "contra" ? String(F.getValues(A.toAccountPath ?? "toAccountId") ?? "") : "";
                   const toAcc = toId ? (M.accounts ?? []).find((a) => a.id === toId) : undefined;
@@ -630,6 +639,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                     toName: toAcc ? accountDisplayLabel(toAcc as never) : (rc.parsed!.beneficiary?.accountName ?? undefined),
                   });
                 } else pf.narration = fullN;
+                lastMoneyRef.current = { parsed: rc.parsed!, direction };
               }
               if (pf.narration && A.narration) {
                 const curN = String(F.getValues(A.narration) ?? "");
@@ -1628,6 +1638,37 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const getOwnCompany = useCallback(() => ({ name: ownRef.current.name, pan: ownRef.current.pan }), []);
 
   useEffect(() => { if (!visible) cancelAutoPostCountdown(); }, [visible, cancelAutoPostCountdown]);
+
+  /**
+   * Keep the OCR narration in step with the account dropdowns.
+   * The narration is produced once at fill time from whatever ledger was picked then. On a contra the whole
+   * point is naming both banks ("… Prabhu Bank (Bank) | To: … Himalayan Bank (Bank)"), so when the user later
+   * picks or corrects From/To — or creates the missing ledger — the text must be rewritten, not left stale.
+   * Only rewrites when the user has not typed their own narration.
+   */
+  useEffect(() => {
+    if (!visible) return;
+    const { form, adapter: A } = optsRef.current;
+    const money = lastMoneyRef.current;
+    if (!money) return;
+    const nPath = A.narration ?? "narration";
+    const lastOurs = filledRef.current.get(nPath);
+    const cur = String(form.getValues(nPath) ?? "");
+    if (lastOurs != null && cur !== String(lastOurs)) return; // user edited it — hands off
+    const accounts = (mastersRef.current.accounts ?? []) as { id: string; accountName?: string; accountType?: string }[];
+    const fromId = String(form.getValues(A.voucherType === "contra" ? (A.fromAccountPath ?? "fromAccountId") : (A.accountPath ?? "accountId")) ?? "");
+    const toId = money.direction === "contra" ? String(form.getValues(A.toAccountPath ?? "toAccountId") ?? "") : "";
+    const fromAcc = fromId ? (accounts ?? []).find((a) => a.id === fromId) : undefined;
+    const toAcc = toId ? (accounts ?? []).find((a) => a.id === toId) : undefined;
+    const next = receiptNarration(
+      money.parsed,
+      fromAcc ? accountDisplayLabel(fromAcc as never) : null,
+      money.direction === "contra" && toAcc ? `To: ${accountDisplayLabel(toAcc as never)}` : null,
+    );
+    if (!next || next === cur) return;
+    form.setValue(nPath, next as never, { shouldDirty: true, shouldValidate: false });
+    filledRef.current.set(nPath, next);
+  }, [visible, receiptTarget, mastersRef.current.accounts, suggestions, doneIds]);
 
   return {
     visible,

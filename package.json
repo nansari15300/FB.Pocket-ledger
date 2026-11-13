@@ -7,7 +7,7 @@
   },
   "scripts": {
     "postinstall": "patch-package && node scripts/copy-pdf-worker.cjs",
-    "dev": "node scripts/dev-web-gateway.cjs",
+    "dev": "node scripts/dev-web-gateway.cjs 2000",
     "dev:app-only": "node scripts/dev-stable.cjs",
     "dev:turbo": "next dev --hostname 0.0.0.0 --port 3000",
     "allow-dev-port": "powershell -ExecutionPolicy Bypass -File ./scripts/allow-next-dev-port-windows.ps1",
