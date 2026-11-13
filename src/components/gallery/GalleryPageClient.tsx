@@ -1118,7 +1118,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
       <div
         data-pl-gallery-scroll
         className={cn(
-          "pl-gallery-canvas min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain",
+          "pl-gallery-canvas min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-gutter:stable]",
           isMobile && !companyFooterExpanded && GALLERY_COLLAPSED_RIBBON_SCROLL_PB
         )}
       >
@@ -2766,7 +2766,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
         {...getRootProps({
           "data-pl-gallery-scroll": "",
           className: cn(
-            "pl-gallery-canvas min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain",
+            "pl-gallery-canvas min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-gutter:stable]",
             isMobile && !unassignedFooterExpanded ? GALLERY_COLLAPSED_RIBBON_SCROLL_PB : "pb-2"
           ),
         })}
@@ -3665,10 +3665,10 @@ export function GalleryPageContent() {
   }, [isEditVoucherOpen]);
 
   return (
-    <div data-pl-gallery-grey-shell className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-neutral-800 px-0 pt-2 pb-0 dark:bg-zinc-900 sm:px-2 sm:pt-3 sm:pb-4 md:px-3 md:pt-4 md:pb-5">
+    <div data-pl-gallery-grey-shell className="box-border flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-neutral-800 px-0 pt-2 pb-0 dark:bg-zinc-900 sm:px-2 sm:pt-3 sm:pb-4 md:px-3 md:pt-4 md:pb-5">
        {/* Mobile: tab buttons footer card ke andar. PC: yahan top me.
            PC: "Add File" tab pills ke baayein (mobile me ye footer card ke andar hi rehta hai). */}
-       <div className="hidden sm:flex sm:w-full sm:items-center sm:gap-2">
+       <div className="hidden shrink-0 sm:flex sm:w-full sm:items-center sm:gap-2">
          {activeTab === "unassigned" && (
            <Button
              type="button"
