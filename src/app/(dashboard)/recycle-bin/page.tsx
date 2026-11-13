@@ -1382,9 +1382,14 @@ function RecycleBinContent() {
                     }
                     const batch = writeBatch(firestore);
                     for (const item of nonCompanyItems) {
-                        batch.update(doc(firestore, `companies/${companyId}/${item.collectionPath}/${item.id}`), {
-                            movedToAdminRecycleAt: serverTimestamp(),
-                        });
+                        /* merge, not update: bin rows come from the local mirror and can be stale — the
+                         * server may already have removed this doc. `update` on a missing doc throws
+                         * "No document to update" and aborts the whole empty-bin batch. */
+                        batch.set(
+                            doc(firestore, `companies/${companyId}/${item.collectionPath}/${item.id}`),
+                            { movedToAdminRecycleAt: serverTimestamp() },
+                            { merge: true }
+                        );
                     }
                     await batch.commit();
                     if (companyId) {
