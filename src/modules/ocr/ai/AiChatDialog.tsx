@@ -482,15 +482,19 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
     if (!copilot || !open) return;
     setFocused(true);
   }, [copilot, open]);
+  /* Clicking anything outside the chat (the voucher, its master dialogs, the page behind) drops the
+   * chat back under the voucher, exactly like clicking another OS window. */
   React.useEffect(() => {
     if (!copilot || !open) return;
-    const drop = () => {
+    const onDown = (e: Event) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || t.closest("[data-pl-ocr-ai-chat]")) return;
       setFocused(false);
       const el = document.querySelector<HTMLElement>("[data-pl-ocr-ai-chat]");
       if (el) el.style.zIndex = String(COPILOT_Z);
     };
-    document.addEventListener("pl-voucher-shell-focus", drop);
-    return () => document.removeEventListener("pl-voucher-shell-focus", drop);
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
   }, [copilot, open]);
   /* A master dialog opened from the voucher (Create Party, Bank, Items…) must sit above the chat even
    * while the chat is focused. Watch only NEW dialogs appearing: a plain "any other role=dialog exists"
@@ -569,16 +573,6 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
         onInteractOutside={copilot ? (e) => e.preventDefault() : undefined}
         onEscapeKeyDown={copilot ? (e) => e.preventDefault() : undefined}
         onPointerDownCapture={copilot ? raiseChat : undefined}
-        onBlurCapture={
-          copilot
-            ? (e) => {
-                /* Only drop "active" when focus actually left the window — not when it moves between
-                 * our own controls (which would flicker the shadow on every click inside). */
-                const next = e.relatedTarget as Node | null;
-                if (!next || !(e.currentTarget as HTMLElement).contains(next)) setFocused(false);
-              }
-            : undefined
-        }
         onClick={(e) => e.stopPropagation()}
         data-pl-ocr-ai-chat=""
         data-pl-drag-surface={copilot ? "active" : undefined}

@@ -1777,15 +1777,8 @@ export function AddVoucherDialog(props: any) {
    * pointer-events:none, which would make the floating chat dead to clicks. */
   const ocrPrefs = useOcrPrefs();
   const copilotCapable = ocrPrefs.aiCopilot === true;
-  /* PC-window semantics with the AI copilot window: whichever shell was clicked last sits on top.
-   * The chat listens for this and drops its "active" z-index; nothing here closes anything. */
-  useEffect(() => {
-    const frame = dialogFrameRef.current;
-    if (!frame) return;
-    const bump = () => document.dispatchEvent(new CustomEvent("pl-voucher-shell-focus"));
-    frame.addEventListener("pointerdown", bump, true);
-    return () => frame.removeEventListener("pointerdown", bump, true);
-  }, []);
+  /* PC-window stacking with the AI copilot window is handled entirely inside AiChatDialog: it watches
+   * document pointerdown and drops itself under the voucher whenever the click misses the chat. */
   const copyButtonHostRef = useRef<HTMLDivElement | null>(null);
   /** Multi-gap picker main voucher Save se khula ho to dismiss/complete par parent voucher dialog band (`onOpenChange(false)`). */
   const recurringPickerCloseParentRef = useRef(false);
@@ -4969,6 +4962,7 @@ export function AddVoucherDialog(props: any) {
         >
           <div
             ref={dialogFrameRef}
+            data-voucher-frame=""
             className="flex flex-col rounded-lg border bg-background shadow-lg overflow-hidden flex-1 min-h-0"
             style={{
               position: "fixed",
@@ -5087,6 +5081,7 @@ export function AddVoucherDialog(props: any) {
         >
           <div
             ref={dialogFrameRef}
+            data-voucher-frame=""
             className={cn(
               "relative flex min-h-0 flex-col",
               "flex-1"
