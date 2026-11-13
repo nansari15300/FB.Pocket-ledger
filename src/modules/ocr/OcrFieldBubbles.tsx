@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { OcrSuggestion } from "./OcrSuggestionsDialog";
 import { OCR_LAYER_Z, useOcrPrefs } from "./prefs";
+import { translateToEnglishStrings } from "@/lib/i18n/gtxTranslate";
 
 /** Bubbles are hidden while any dialog / popover looks like it is layered above them. */
 function ocrCoveredByModal(): Element | null {
@@ -36,6 +37,7 @@ import { shouldDrawOcrBubbleTail, stretchOcrTailTip } from "./bubbleTail";
 
 export const OCR_BUBBLE_Z_CN = "z-[85]";
 const RING = ["ring-2", "ring-pink-500", "ring-offset-1", "rounded-md", "transition-shadow"];
+const HAS_NON_ENGLISH_SCRIPT = /[\u0370-\u052F\u0530-\u058F\u0590-\u08FF\u0900-\u0DFF\u0E00-\u0EFF\u0F00-\u11FF\u1780-\u18AF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]/;
 
 /** Suggestion id -> form field anchor key. */
 export function ocrFieldForSuggestion(id: string): string {
@@ -727,7 +729,7 @@ function CreateItemChoiceButton({
   className,
 }: {
   s: OcrSuggestion;
-  onApply: (s: OcrSuggestion, mode?: "auto" | "manual", language?: "original" | "english") => void;
+  onApply: (s: OcrSuggestion, mode?: "auto" | "manual", language?: "original" | "english", englishValue?: string) => void;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -761,7 +763,7 @@ function BubbleView({
   scrollOnMount,
 }: {
   b: OcrBubble;
-  onApply: (s: OcrSuggestion, mode?: "auto" | "manual", language?: "original" | "english") => void;
+  onApply: (s: OcrSuggestion, mode?: "auto" | "manual", language?: "original" | "english", englishValue?: string) => void;
   onDismiss: () => void;
   onCreateAllItems?: (items: OcrSuggestion[], language?: "original" | "english") => void;
   nav?: { i: number; n: number; prev: () => void; next: () => void };
@@ -775,16 +777,42 @@ function BubbleView({
   const [tail, setTail] = useState<TailGeom | null>(null);
   const [el, setEl] = useState<HTMLDivElement | null>(null);
   const [showEnglish, setShowEnglish] = useState(false);
-  const apply = (s: OcrSuggestion, mode?: "auto" | "manual") => onApply(s, mode, showEnglish ? "english" : "original");
-  const hasEnglishTranslation = Boolean(b.englishTitle || b.items.some((s) => s.englishValue || s.englishMasterName));
+  const [translating, setTranslating] = useState(false);
+  const [dynamicEnglish, setDynamicEnglish] = useState<Record<string, string>>({});
+  const hasNonEnglishText = HAS_NON_ENGLISH_SCRIPT.test([b.title, ...b.items.map((s) => s.value)].join(" "));
   const displaySuggestionValue = (s: OcrSuggestion) => {
     if (!showEnglish) return s.value;
+    if (dynamicEnglish[s.id]) return dynamicEnglish[s.id];
     if (s.englishValue) return s.englishValue;
-    if (!s.englishMasterName) return s.value;
-    const separator = s.id === "create-party" ? " · " : s.id.startsWith("create-item-") ? " | " : "";
-    const sourceName = separator ? s.value.split(separator)[0] : s.value;
-    return sourceName ? s.value.replace(sourceName, s.englishMasterName) : s.value;
+    if (s.englishMasterName) {
+      const separator = s.id === "create-party" ? " · " : s.id.startsWith("create-item-") ? " | " : "";
+      const sourceName = separator ? s.value.split(separator)[0] : s.value;
+      return sourceName ? s.value.replace(sourceName, s.englishMasterName) : s.value;
+    }
+    return s.value;
   };
+  const toggleEnglish = async () => {
+    if (showEnglish) { setShowEnglish(false); return; }
+    const entries = [
+      { key: "__title", source: b.title, preset: b.englishTitle },
+      ...b.items.map((s) => ({ key: s.id, source: s.value, preset: s.englishValue })),
+    ].filter((entry) => HAS_NON_ENGLISH_SCRIPT.test(entry.source) && !entry.preset && !dynamicEnglish[entry.key]);
+    if (entries.length) {
+      setTranslating(true);
+      try {
+        const translated = await translateToEnglishStrings(entries.map((entry) => entry.source));
+        setDynamicEnglish((prev) => {
+          const next = { ...prev };
+          entries.forEach((entry) => { next[entry.key] = translated.get(entry.source) ?? entry.source; });
+          return next;
+        });
+      } catch {
+        /* Keep the OCR text visible if the translation service is unavailable. */
+      } finally { setTranslating(false); }
+    }
+    setShowEnglish(true);
+  };
+  const apply = (s: OcrSuggestion, mode?: "auto" | "manual") => onApply(s, mode, showEnglish ? "english" : "original", showEnglish ? displaySuggestionValue(s) : undefined);
 
   const update = useCallback(() => {
     scheduleOcrBubbleLayout();
@@ -889,10 +917,10 @@ function BubbleView({
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden" style={{ zIndex: 2, background: connectorStyle === "line" ? "#ffffff" : "transparent" }}>
         <div className="flex shrink-0 items-start gap-2">
           <p className="min-w-0 flex-1 font-medium leading-snug">
-            {showEnglish && b.englishTitle ? b.englishTitle : b.title}
+            {showEnglish ? dynamicEnglish.__title ?? b.englishTitle ?? b.title : b.title}
             {pos?.fallback ? <span className="block text-[11px] font-normal text-slate-500">(field not on screen)</span> : null}
           </p>
-          {hasEnglishTranslation ? <button type="button" className="shrink-0 text-[10px] font-medium text-sky-700 underline" onClick={() => setShowEnglish((v) => !v)}>{showEnglish ? "Show original" : "Translate to English"}</button> : null}
+          {hasNonEnglishText ? <button type="button" disabled={translating} className="shrink-0 text-[10px] font-medium text-sky-700 underline disabled:opacity-50" onClick={() => void toggleEnglish()}>{translating ? "Translating…" : showEnglish ? "Show original" : "Translate to English"}</button> : null}
           <button type="button" aria-label="Dismiss" className="-mr-1 -mt-1 rounded-full p-1 text-slate-500 hover:bg-slate-100" onClick={onDismiss}>
             <X className="h-3.5 w-3.5" />
           </button>
@@ -929,7 +957,7 @@ function BubbleView({
             {b.items[0] ? (
               <>
                 <p className="break-words text-xs text-slate-500">{displaySuggestionValue(b.items[0])}</p>
-                {b.items[0].englishValue ? <button type="button" className="mt-1 text-[10px] font-medium text-sky-700 underline" onClick={() => setShowEnglish((v) => !v)}>{showEnglish ? "Show original" : "Translate to English"}</button> : null}
+                {hasNonEnglishText ? <button type="button" className="mt-1 text-[10px] font-medium text-sky-700 underline" disabled={translating} onClick={() => void toggleEnglish()}>{translating ? "Translating…" : showEnglish ? "Show original" : "Translate to English"}</button> : null}
                 {b.items[0].reason ? <p className="text-[11px] text-slate-500">{b.items[0].reason}</p> : null}
               </>
             ) : null}
@@ -940,7 +968,7 @@ function BubbleView({
         ) : party ? (
           <div className="mt-1.5">
             <p className="break-words text-xs text-slate-500">{displaySuggestionValue(party)}</p>
-            {party.englishValue ? <button type="button" className="mt-1 text-[10px] font-medium text-sky-700 underline" onClick={() => setShowEnglish((v) => !v)}>{showEnglish ? "Show original" : "Translate to English"}</button> : null}
+            {hasNonEnglishText ? <button type="button" className="mt-1 text-[10px] font-medium text-sky-700 underline" disabled={translating} onClick={() => void toggleEnglish()}>{translating ? "Translating…" : showEnglish ? "Show original" : "Translate to English"}</button> : null}
             <div className="mt-2 flex flex-wrap gap-1.5">
               <Button type="button" size="sm" className={pill} onClick={() => apply(party)}>Create</Button>
               {pick ? <Button type="button" size="sm" variant="outline" className={pill} onClick={() => apply(pick)}>Pick existing</Button> : null}
@@ -950,12 +978,12 @@ function BubbleView({
         ) : restItems.length === 1 ? (
           <div className="mt-1.5">
             <p className="break-words text-xs text-slate-500">{displaySuggestionValue(restItems[0])}</p>
-            {restItems[0].englishValue ? <button type="button" className="mt-1 text-[10px] font-medium text-sky-700 underline" onClick={() => setShowEnglish((v) => !v)}>{showEnglish ? "Show original" : "Translate to English"}</button> : null}
+            {hasNonEnglishText ? <button type="button" className="mt-1 text-[10px] font-medium text-sky-700 underline" disabled={translating} onClick={() => void toggleEnglish()}>{translating ? "Translating…" : showEnglish ? "Show original" : "Translate to English"}</button> : null}
             {restItems[0].reason ? <p className="text-[11px] text-slate-500">{restItems[0].reason}</p> : null}
             {restItems[0].blocked ? <p className="text-[11px] text-amber-700">{restItems[0].blocked}</p> : null}
             <div className="mt-2 flex flex-wrap gap-1.5">
               {!restItems[0].blocked ? (isCreateItemSuggestion(restItems[0]) ? <CreateItemChoiceButton s={restItems[0]} onApply={apply} className={pill} /> : <Button type="button" size="sm" className={pill} onClick={() => apply(restItems[0])}>{suggestionActionLabel(restItems[0], b.countdown)}</Button>) : null}
-              {restItems.filter((x) => isCreateItemSuggestion(x) && !x.blocked).length >= 2 ? <Button type="button" size="sm" variant="outline" className={pill} onClick={() => onCreateAllItems?.(restItems.filter((x) => isCreateItemSuggestion(x) && !x.blocked), showEnglish ? "english" : "original")}>Create All</Button> : null}
+              {restItems.filter((x) => isCreateItemSuggestion(x) && !x.blocked).length >= 2 ? <Button type="button" size="sm" variant="outline" className={pill} onClick={() => onCreateAllItems?.(restItems.filter((x) => isCreateItemSuggestion(x) && !x.blocked).map((x) => ({ ...x, englishValue: displaySuggestionValue(x) })), showEnglish ? "english" : "original")}>Create All</Button> : null}
               <Button type="button" size="sm" variant="ghost" className={pill} onClick={onDismiss}>Dismiss</Button>
             </div>
           </div>
@@ -971,14 +999,14 @@ function BubbleView({
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium">{s.label}</p>
                   <p className="break-words text-[11px] text-slate-500">{displaySuggestionValue(s)}</p>
-                  {s.englishValue ? <button type="button" className="mt-0.5 text-[10px] font-medium text-sky-700 underline" onClick={() => setShowEnglish((v) => !v)}>{showEnglish ? "Show original" : "Translate to English"}</button> : null}
+                  {hasNonEnglishText ? <button type="button" className="mt-0.5 text-[10px] font-medium text-sky-700 underline" disabled={translating} onClick={() => void toggleEnglish()}>{translating ? "Translating…" : showEnglish ? "Show original" : "Translate to English"}</button> : null}
                   {s.blocked ? <p className="text-[11px] text-amber-700">{s.blocked}</p> : null}
                 </div>
                 {!s.blocked ? (isCreateItemSuggestion(s) ? <CreateItemChoiceButton s={s} onApply={apply} className="h-6 rounded-full px-2.5 text-[11px]" /> : <Button type="button" size="sm" variant="outline" className="h-6 rounded-full px-2.5 text-[11px]" onClick={() => apply(s)}>{suggestionActionLabel(s, b.countdown)}</Button>) : null}
               </div>
             ))}
             <div className="flex flex-wrap justify-end gap-1.5">
-              {restItems.filter((x) => isCreateItemSuggestion(x) && !x.blocked).length >= 2 ? <Button type="button" size="sm" variant="outline" className={pill} onClick={() => onCreateAllItems?.(restItems.filter((x) => isCreateItemSuggestion(x) && !x.blocked), showEnglish ? "english" : "original")}>Create All</Button> : null}
+              {restItems.filter((x) => isCreateItemSuggestion(x) && !x.blocked).length >= 2 ? <Button type="button" size="sm" variant="outline" className={pill} onClick={() => onCreateAllItems?.(restItems.filter((x) => isCreateItemSuggestion(x) && !x.blocked).map((x) => ({ ...x, englishValue: displaySuggestionValue(x) })), showEnglish ? "english" : "original")}>Create All</Button> : null}
               <Button type="button" size="sm" variant="ghost" className={pill} onClick={onDismiss}>Dismiss</Button>
             </div>
           </div>
@@ -1004,7 +1032,7 @@ export function OcrFieldBubbles({
   onCreateAllItems,
 }: {
   bubbles: OcrBubble[];
-  onApply: (s: OcrSuggestion, mode?: "auto" | "manual", language?: "original" | "english") => void;
+  onApply: (s: OcrSuggestion, mode?: "auto" | "manual", language?: "original" | "english", englishValue?: string) => void;
   onDismiss: (b: OcrBubble) => void;
   onCreateAllItems?: (items: OcrSuggestion[], language?: "original" | "english") => void;
 }) {

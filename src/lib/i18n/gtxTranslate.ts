@@ -6,6 +6,7 @@ const GTX: Record<string, string> = { zh: "zh-CN", he: "iw", jv: "jw", nb: "no",
 const BATCH = 6;
 const MAX_CACHE_KEYS = 2500;
 const DEVA = /[\u0900-\u097F]/;
+const NON_LATIN_SCRIPT = /[\u0370-\u052F\u0530-\u058F\u0590-\u08FF\u0900-\u0DFF\u0E00-\u0EFF\u0F00-\u11FF\u1780-\u18AF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]/;
 const NEPALI_MARK = /छैन|गर्नु|होस्|हुन्छ|छन्|\bछ\b|लाई|बाट/;
 const HINDI_MARK = /हैं|होगा|लिए|खुलेगा|नहीं|\bहै\b/;
 const HINGLISH = /\b(sirf|nahi|nahin|khulega|khulegi|band|mat|wala|wali)\b/i;
@@ -55,7 +56,8 @@ function alreadyTarget(text: string, lang: string): boolean {
 
 function sourceLangFor(text: string, target: string): string | null {
   if (alreadyTarget(text, target)) return null;
-  if (DEVA.test(text)) {
+  if (NON_LATIN_SCRIPT.test(text)) {
+    if (!DEVA.test(text)) return "auto";
     if (target === "ne") return "hi";
     if (target === "hi") return "ne";
     return "auto";
@@ -204,6 +206,33 @@ export async function translateEnglishStrings(texts: string[], lang: string): Pr
       result.set(k, filled[k]);
     }
     writeCache(lang, cache);
+  }
+  return result;
+}
+
+/** Translate OCR/local-script text into English through the same cached app translation service. */
+export async function translateToEnglishStrings(texts: string[]): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const cache = readCache("en");
+  const missing: Record<string, string> = {};
+  for (const text of texts) {
+    if (!text) continue;
+    if (!NON_LATIN_SCRIPT.test(text)) {
+      result.set(text, text);
+      continue;
+    }
+    const fromServer = lookupServerLang("en", text);
+    if (fromServer != null) result.set(text, fromServer);
+    else if (cache[text] != null) result.set(text, cache[text]);
+    else missing[text] = text;
+  }
+  if (Object.keys(missing).length) {
+    const filled = await translateEnglishMap(missing, "en");
+    for (const [source, english] of Object.entries(filled)) {
+      cache[source] = english;
+      result.set(source, english);
+    }
+    writeCache("en", cache);
   }
   return result;
 }

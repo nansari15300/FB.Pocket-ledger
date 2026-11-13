@@ -11,26 +11,37 @@
 import React from "react";
 import { AiChatDialog, type CopilotBridge } from "./AiChatDialog";
 import type { VoucherOcrApi } from "../useVoucherOcr";
+import { setOcrPrefs, useOcrPrefs } from "../prefs";
 
 export type AiCopilotLayout = {
   enabled: boolean;
+  autoOpenOnOcr: boolean;
   open: boolean;
   toggle: () => void;
   setOpen: (v: boolean) => void;
+  setAutoOpenOnOcr: (v: boolean) => void;
 };
 
 /** One line per voucher form. OFF keeps `enabled` false and nothing renders. */
 export function useAiCopilotLayout(ocr: VoucherOcrApi): AiCopilotLayout {
   const [open, setOpen] = React.useState(false);
+  const prefs = useOcrPrefs();
   const enabled = ocr.copilotEnabled === true;
   React.useEffect(() => {
     /* fillSeq is the primary scan signal; statusLine also covers successful OCR paths that update
      * diagnostics without incrementing the counter (for example a reused/handoff result). */
-    if (enabled && (ocr.copilot.fillSeq > 0 || !!ocr.copilot.statusLine)) setOpen(true);
-  }, [enabled, ocr.copilot.fillSeq, ocr.copilot.statusLine]);
+    if (enabled && prefs.autoOpenCopilot && (ocr.copilot.fillSeq > 0 || !!ocr.copilot.statusLine)) setOpen(true);
+  }, [enabled, prefs.autoOpenCopilot, ocr.copilot.fillSeq, ocr.copilot.statusLine]);
   return React.useMemo(
-    () => ({ enabled, open: enabled && open, toggle: () => setOpen((v) => !v), setOpen }),
-    [enabled, open]
+    () => ({
+      enabled,
+      autoOpenOnOcr: prefs.autoOpenCopilot,
+      open: enabled && open,
+      toggle: () => setOpen((v) => !v),
+      setOpen,
+      setAutoOpenOnOcr: (v: boolean) => setOcrPrefs({ autoOpenCopilot: v }),
+    }),
+    [enabled, open, prefs.autoOpenCopilot]
   );
 }
 
@@ -70,6 +81,8 @@ export function VoucherOcrAiCopilot({ ocr, layout, thumbUrl }: { ocr: VoucherOcr
       getOwnCompany={ocr.getOwnCompany}
       autoStartKey={ocr.copilot.fillSeq > 0 ? `scan:${ocr.copilot.fillSeq}` : undefined}
       copilot={bridge}
+      autoOpenOnOcr={layout.autoOpenOnOcr}
+      onAutoOpenOnOcrChange={layout.setAutoOpenOnOcr}
     />
   );
 }

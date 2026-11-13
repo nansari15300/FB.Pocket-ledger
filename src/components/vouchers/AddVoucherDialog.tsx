@@ -4948,12 +4948,22 @@ export function AddVoucherDialog(props: any) {
 
   return (
     <VoucherMasterEditHost>
+    {dialogOpen && (!dialogRootModal || copilotCapable) && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            aria-hidden="true"
+            data-voucher-dialog-backdrop=""
+            className="pointer-events-none fixed inset-0 z-[80] bg-black/45 backdrop-blur-sm"
+          />,
+          document.body
+        )
+      : null}
     <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange} modal={dialogRootModal && !copilotCapable}>
       {children && <DialogTrigger asChild>{children}</DialogTrigger>}
       {isDesktop ? (
         <DialogContent
           hideCloseButton
-          overlayClassName="z-[80] bg-black/45"
+          overlayClassName="z-[80] bg-black/45 backdrop-blur-sm"
           onFocusOutside={(e) => e.preventDefault()}
           className={cn(
             "z-[81] flex flex-col p-0",
@@ -5071,7 +5081,7 @@ export function AddVoucherDialog(props: any) {
            overflow-hidden would clip bubble tails at this edge. Form scrolling stays on the inner wrapper below. */
         <DialogContent
           hideCloseButton
-          overlayClassName="z-[80] bg-black/45"
+          overlayClassName="z-[80] bg-black/45 backdrop-blur-sm"
           onFocusOutside={(e) => e.preventDefault()}
           className={cn(
             "z-[81] flex min-h-0 flex-col overflow-visible p-0 !gap-0",

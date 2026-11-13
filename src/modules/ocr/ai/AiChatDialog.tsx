@@ -88,6 +88,9 @@ export type AiChatDialogProps = {
   getOwnCompany?: () => { name?: string | null; pan?: string | null };
   /** New OCR run id; Copilot sends one initial review request once the window opens. */
   autoStartKey?: string;
+  /** When false, a voucher OCR scan does not automatically open this copilot window. */
+  autoOpenOnOcr?: boolean;
+  onAutoOpenOnOcrChange?: (v: boolean) => void;
   /**
    * Copilot mode (OCR Settings → Pocket AI): the SAME window renders as a floating, draggable,
    * resizable panel beside the voucher instead of a centred modal, and each turn may return a voucher
@@ -390,7 +393,7 @@ function RulesTypeSidebar({ rules, selected, onSelect, onToggle, t }: {
   );
 }
 
-export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, getVoucherJson, getOwnCompany, autoStartKey, copilot }: AiChatDialogProps) {
+export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, getVoucherJson, getOwnCompany, autoStartKey, copilot, autoOpenOnOcr = true, onAutoOpenOnOcrChange }: AiChatDialogProps) {
   const t = useAiChatStrings();
   const copilotMode = Boolean(copilot);
   const [copilotZIndex, setCopilotZIndex] = useState(COPILOT_Z_FOCUSED);
@@ -951,9 +954,28 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
             </div>
           </div>
           {/* Tabs — the pills click; the free header space beside them drags the window. */}
-          <div className="relative z-30 mt-2 flex items-center gap-1" style={{ width: "fit-content" }}>
-            {tabBtn("chat", t.tabChat)}
-            {tabBtn("rules", `${t.tabRules}${rules ? ` (${rulesCount(rules)})` : ""}`)}
+          <div className="relative z-30 mt-2 flex w-full items-center justify-between gap-2">
+            <div className="flex items-center gap-1">
+              {tabBtn("chat", t.tabChat)}
+              {tabBtn("rules", `${t.tabRules}${rules ? ` (${rulesCount(rules)})` : ""}`)}
+            </div>
+            {copilotMode && onAutoOpenOnOcrChange ? (
+              <button
+                type="button"
+                data-pl-no-drag="auto-open-ocr"
+                role="switch"
+                aria-checked={autoOpenOnOcr}
+                title={t.openWithVoucherOcr}
+                onClick={() => onAutoOpenOnOcrChange(!autoOpenOnOcr)}
+                className="flex shrink-0 items-center gap-1.5 rounded-full border border-white/35 bg-white/10 px-2 py-1 text-[10px] text-white hover:bg-white/20"
+              >
+                <span>{t.openWithVoucherOcr}</span>
+                <span className={cn("relative h-3.5 w-7 rounded-full transition-colors", autoOpenOnOcr ? "bg-emerald-300" : "bg-slate-400")}>
+                  <span className={cn("absolute top-0.5 h-2.5 w-2.5 rounded-full bg-white transition-transform", autoOpenOnOcr ? "translate-x-4" : "translate-x-0.5")} />
+                </span>
+                <span className="font-semibold">{autoOpenOnOcr ? t.on : t.off}</span>
+              </button>
+            ) : null}
           </div>
         </DialogHeader>
 

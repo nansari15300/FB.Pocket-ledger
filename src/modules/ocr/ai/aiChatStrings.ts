@@ -48,6 +48,9 @@ export type AiChatStrings = {
   intro: string;
   tabChat: string;
   tabRules: string;
+  openWithVoucherOcr: string;
+  on: string;
+  off: string;
   newChat: string;
   newChatTitle: string;
   showChatList: string;
@@ -133,6 +136,9 @@ const EN: AiChatStrings = {
   intro: "Explain how a document must be read (which column is the quantity, who the party is, which date to use). Gemini suggests a rule; Save rule stores it on the server and every later AI scan of that type uses it. Each message costs tokens: only the last {n} messages are sent, a photo only when you attach it.",
   tabChat: "Chat",
   tabRules: "Saved rules",
+  openWithVoucherOcr: "Open with voucher OCR",
+  on: "On",
+  off: "Off",
   newChat: "New chat",
   newChatTitle: "Start a new chat (old messages are no longer sent)",
   showChatList: "Show chat list",
@@ -229,6 +235,9 @@ const HI: AiChatStrings = {
   intro: "बताइए डॉक्यूमेंट कैसे पढ़ना है (कौन-सा कॉलम मात्रा है, पार्टी कौन है, कौन-सी तारीख लेनी है)। Gemini एक नियम सुझाएगा; «नियम सहेजें» दबाने पर वह सर्वर पर सहेजा जाएगा और उस प्रकार के हर अगले AI स्कैन में लगेगा। हर संदेश पर टोकन लगते हैं: सिर्फ़ आख़िरी {n} संदेश भेजे जाते हैं, फ़ोटो तभी जब आप जोड़ें।",
   tabChat: "चैट",
   tabRules: "सहेजे नियम",
+  openWithVoucherOcr: "वाउचर OCR के साथ खोलें",
+  on: "चालू",
+  off: "बंद",
   newChat: "नई चैट",
   newChatTitle: "नई चैट शुरू करें (पुराने संदेश अब नहीं भेजे जाएँगे)",
   showChatList: "चैट सूची दिखाएँ",
@@ -325,6 +334,9 @@ const NE: AiChatStrings = {
   intro: "कागजात कसरी पढ्ने भन्नुहोस् (कुन कोलम परिमाण हो, पार्टी को हो, कुन मिति लिने)। Gemini ले एउटा नियम सुझाउँछ; «नियम सुरक्षित गर्नुहोस्» थिच्दा सर्भरमा सुरक्षित हुन्छ र त्यस प्रकारको हरेक अर्को AI स्क्यानमा लाग्छ। हरेक सन्देशमा टोकन लाग्छ: अन्तिम {n} सन्देश मात्र पठाइन्छ, फोटो तपाईंले जोड्दा मात्र।",
   tabChat: "च्याट",
   tabRules: "सुरक्षित नियमहरू",
+  openWithVoucherOcr: "भौचर OCR सँग खोल्नुहोस्",
+  on: "खोल्नुहोस्",
+  off: "बन्द",
   newChat: "नयाँ च्याट",
   newChatTitle: "नयाँ च्याट सुरु गर्नुहोस् (पुराना सन्देश अब पठाइँदैन)",
   showChatList: "च्याट सूची देखाउनुहोस्",

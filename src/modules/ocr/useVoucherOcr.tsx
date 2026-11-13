@@ -346,7 +346,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const itemCreateApiRef = useRef<{
     auto: (index: number, row: { description: string; unit?: string; rate: number }, known?: { id: string; name?: string; isDeleted?: boolean }[]) => Promise<{ ok: true; id: string; reused: boolean; name: string } | { ok: false; message: string }>;
     manual: (index: number, row: { description: string; unit?: string; rate: number }) => Promise<void>;
-    all: (items: { id: string }[], language?: "original" | "english") => Promise<void>;
+    all: (items: { id: string; englishValue?: string }[], language?: "original" | "english") => Promise<void>;
   }>(null as never);
 
   const applyCreatedItemToLine = useCallback((index: number, id: string, billUnit?: string) => {
@@ -431,8 +431,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         const id = items[i].id;
         const index = Number(id.slice("create-item-".length));
         const sourceRow = billRows[index];
+        const englishDescription = items[i].englishValue?.split(" | ")[0];
         const row = language === "english" && sourceRow
-          ? { ...sourceRow, description: translatedOcrText(sourceRow.description, lastRawRef.current?.ai?.data.english_translations) ?? sourceRow.description }
+          ? { ...sourceRow, description: englishDescription || translatedOcrText(sourceRow.description, lastRawRef.current?.ai?.data.english_translations) || sourceRow.description }
           : sourceRow;
         if (!row || Number.isNaN(index)) { failed++; continue; }
         const res = await itemCreateApiRef.current.auto(index, row, known);
@@ -608,7 +609,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                        * (our own account holder on a Prabhu/connectIPS slip), so it belongs to us, never to the
                        * party being created. Bank details below come from the beneficiary side only. */
                       apply: (ctx) => {
-                        const englishName = translatedOcrText(nm, raw.ai?.data.english_translations);
+                        const englishName = ctx?.englishValue?.split(" · ")[0] || translatedOcrText(nm, raw.ai?.data.english_translations);
                         const chosenName = ctx?.language === "english" ? englishName ?? nm : nm;
                         const prefill = partyNamePrefill(chosenName);
                         setCreatePrefill({ ...prefill, aliasName: chosenName !== nm ? nm : prefill.aliasName, pan: "", phone: "", email: "", address: "", accountTypeId: PARTY_SYSTEM_CREDITORS_ID, extra: [bn.accountMasked && `Bank A/c: ${bn.accountMasked}`, bn.bankName, bn.branch].filter(Boolean).join(" | ") });
@@ -637,7 +638,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                     id: "create-account-from", label: "Create bank account (From)", value: accName || "from this slip",
                     confidence: 0.7, reason: "Opens Create Bank/Cash prefilled — you confirm Save, then it fills From", deferred: true,
                     apply: (ctx) => {
-                      const accountName = ctx?.language === "english" ? translatedOcrText(accName, raw.ai?.data.english_translations) ?? accName : accName;
+                      const accountName = ctx?.language === "english" ? ctx.englishValue ?? translatedOcrText(accName, raw.ai?.data.english_translations) ?? accName : accName;
                       setCreateAccountFor({ side: "from", prefill: { accountName: accountName || undefined, accountType: "Bank" } });
                     },
                   });
@@ -660,7 +661,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                       id: "create-account-to", label: "Create bank account (To)", value: toName || "from this slip",
                       confidence: 0.7, reason: "Opens Create Bank/Cash prefilled — you confirm Save, then it fills To", deferred: true,
                       apply: (ctx) => {
-                        const accountName = ctx?.language === "english" ? translatedOcrText(toName, raw.ai?.data.english_translations) ?? toName : toName;
+                        const accountName = ctx?.language === "english" ? ctx.englishValue ?? translatedOcrText(toName, raw.ai?.data.english_translations) ?? toName : toName;
                         setCreateAccountFor({ side: "to", prefill: { accountName: accountName || undefined, accountType: "Bank" } });
                       },
                     });
@@ -1146,7 +1147,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             deferred: true,
             apply: (ctx) => {
               const sourceName = bill.partyName?.value ?? "";
-              const englishName = translatedOcrText(sourceName, raw.ai?.data.english_translations);
+              const englishName = ctx?.englishValue?.split(" · ")[0] || translatedOcrText(sourceName, raw.ai?.data.english_translations);
               const chosenName = ctx?.language === "english" ? englishName ?? sourceName : sourceName;
               const prefill = partyNamePrefill(chosenName);
               setCreatePrefill({
@@ -1187,7 +1188,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               deferred: true,
               apply: async (ctx) => {
                 const row = ctx?.language === "english"
-                  ? { ...r, description: translatedOcrText(r.description, raw.ai?.data.english_translations) ?? r.description }
+                  ? { ...r, description: ctx.englishValue?.split(" | ")[0] || translatedOcrText(r.description, raw.ai?.data.english_translations) || r.description }
                   : r;
                 if (ctx?.mode === "auto") { await itemCreateApiRef.current.auto(index, row); return; }
                 await itemCreateApiRef.current.manual(index, row);
@@ -1580,16 +1581,16 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     };
   }, [missingNow, suggestions, dismissedMissingKeys, dismissedKeys, doneIds, formVals, o.adapter, o.taxes, lastBill]);
 
-  const runApply = useCallback(async (list: OcrSuggestion[], language?: "original" | "english") => {
+  const runApply = useCallback(async (list: OcrSuggestion[], language?: "original" | "english", englishValue?: string) => {
     const sw = list.find((s) => s.id === "switch");
     if (sw) {
       setSugOpen(false);
-      await sw.apply({ selectedIds: list.filter((s) => s.id !== "switch").map((s) => s.id), language });
+      await sw.apply({ selectedIds: list.filter((s) => s.id !== "switch").map((s) => s.id), language, englishValue });
       return;
     }
-    for (const s of list.filter((x) => !x.deferred)) await s.apply({ selectedIds: [], language });
+    for (const s of list.filter((x) => !x.deferred)) await s.apply({ selectedIds: [], language, englishValue });
     setDoneIds((p) => new Set([...p, ...list.map((x) => x.id)]));
-    for (const s of list.filter((x) => x.deferred)) await s.apply({ selectedIds: [], language });
+    for (const s of list.filter((x) => x.deferred)) await s.apply({ selectedIds: [], language, englishValue });
   }, []);
   // "Apply all" in the OCR bar: every shown, non-blocked suggestion that applies directly (no dialog / voucher switch)
   const tickedList = sugOpen ? liveBubbles.suggestions.filter((s) => !s.blocked && !s.deferred && s.id !== "switch") : [];
@@ -1719,10 +1720,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         <>
           <OcrFieldBubbles
             bubbles={bubbles}
-            onApply={(sg, mode, language) => {
+            onApply={(sg, mode, language, englishValue) => {
               if (sg.id !== "switch") cancelSwitchCountdown();
-              if (sg.id.startsWith("create-item-") && mode) { void sg.apply({ selectedIds: [], mode, language }); return; }
-              void runApply([sg], language);
+              if (sg.id.startsWith("create-item-") && mode) { void sg.apply({ selectedIds: [], mode, language, englishValue }); return; }
+              void runApply([sg], language, englishValue);
             }}
             onCreateAllItems={(items, language) => { cancelSwitchCountdown(); void itemCreateApiRef.current.all(items, language); }}
             onDismiss={(b) => {
