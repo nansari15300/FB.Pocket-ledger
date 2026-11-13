@@ -49,7 +49,9 @@ export function masterEditPopoverContentClassName(
   ...extra: (string | undefined | false | null)[]
 ): string {
   return cn(
-    mode === "nested-ledger" ? NESTED_LEDGER_MASTER_EDIT_POPOVER_CN : "z-[102]",
+    // "default" = master add/edit opened from a voucher: its shell is now z-[121], so the old z-[102]
+    // rendered the calendar UNDER the form (the "Pick a date" button looked dead). Keep it above z-[125].
+    mode === "nested-ledger" ? NESTED_LEDGER_MASTER_EDIT_POPOVER_CN : "!z-[126]",
     ...extra
   );
 }

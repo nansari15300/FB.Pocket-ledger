@@ -100,6 +100,29 @@ export function parseSingleDocDate(text?: string, opts?: DateParseOpts): Date | 
   return any ? any.date : null;
 }
 
+/**
+ * Same as parseSingleDocDate, but also resolves DD/MM-vs-MM/DD ambiguity instead of returning null.
+ * Nepali slips write day-first (06/08/2026 = 6 Aug). The voucher window disambiguates when only one
+ * reading is plausible; otherwise day-first wins. Without this a connectIPS slip printing only
+ * "INVOICE DATE: 06/08/2026" left the Date field empty.
+ */
+export function parseSingleDocDateLoose(text?: string, opts?: DateParseOpts): Date | null {
+  const t = String(text ?? "");
+  const strict = parseSingleDocDate(t, opts);
+  if (strict) return strict;
+  const dmy = /\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})\b/.exec(t);
+  if (!dmy) return null;
+  const a = +dmy[1], b = +dmy[2], y = +dmy[3];
+  if (y < 2010 || y > 2045 || a > 12 || b > 12 || a === b) return null;
+  const dmyDate = ad(y, b, a);
+  const mdyDate = ad(y, a, b);
+  const dmyOk = !!dmyDate && inRange(dmyDate, opts);
+  const mdyOk = !!mdyDate && inRange(mdyDate, opts);
+  if (dmyOk && !mdyOk) return dmyDate;
+  if (mdyOk && !dmyOk) return mdyDate;
+  return dmyDate ?? mdyDate;
+}
+
 /** Default voucher window: last ~400 days through +7 days from today. */
 export function defaultVoucherDateWindow(now = new Date()): DateParseOpts {
   return { min: new Date(now.getTime() - 400 * 864e5), max: new Date(now.getTime() + 7 * 864e5) };

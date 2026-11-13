@@ -54,10 +54,23 @@ export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptD
     d.transfer_mode, d.transfer_reference && `Ref: ${d.transfer_reference}`,
   ].filter(Boolean).join(" | ");
 
+  /* Gemini's JSON is the only place the payer name exists on a connectIPS slip (the compact text summary prints
+   * it once as "connectIPS Account: X"). Handing it to the fill step is what lets a ledger named after the
+   * company be found from the holder name alone (via its Alias Name, or a 50%+ name match + proof). */
+  const aiParsed = {
+    sender: { accountName: d.account_holder_name ?? undefined, bankName: d.debit_bank ?? undefined, accountMasked: d.debit_account ?? undefined },
+    beneficiary: { accountName: d.beneficiary_name ?? d.party_name ?? undefined, bankName: d.credit_bank ?? undefined, accountMasked: d.credit_account ?? undefined },
+    date: d.date_ad ?? d.date_bs ?? undefined,
+    amount: d.grand_total ?? undefined,
+    charge: d.transfer_charges ?? undefined,
+    referenceId: d.transfer_reference ?? undefined,
+    particulars: d.party_name ?? undefined,
+  };
+
   const base = {
     format: "connectips",
     confidence: 0.95,
-    parsed: null,
+    parsed: aiParsed,
     counterParty: d.party_name ?? null,
     otherCharge: charge,
     narration,

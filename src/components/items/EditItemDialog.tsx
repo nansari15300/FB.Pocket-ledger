@@ -61,6 +61,7 @@ import {
 import { refineMasterOpeningBalanceDateRequired } from "@/lib/masterOpeningBalanceDateRequired";
 import { useMasterOpeningBalanceDateRequired } from "@/hooks/useMasterOpeningBalanceDateRequired";
 import { cn } from "@/lib/utils";
+import { masterEditPopoverContentClassName } from "@/lib/nestedLedgerMasterEditPresentation";
 import { format } from "date-fns";
 import { toast as sonnerToast } from "sonner";
 
@@ -1534,7 +1535,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                                         </Button>
                                       </FormControl>
                                     </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0 z-[102]" align="start">
+                                    <PopoverContent className={cn("w-auto p-0", masterEditPopoverContentClassName())} align="start">
                                       <Calendar mode="single" selected={field.value} onSelect={(date) => { field.onChange(date); setIsCalendarOpen(false); }} initialFocus />
                                     </PopoverContent>
                                   </Popover>

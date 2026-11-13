@@ -79,6 +79,11 @@ export const connectIpsDetector: ReceiptFormatDetector = {
     if (!parsed.particulars && party) parsed.particulars = party;
     if (!parsed.paymentMode && mode) parsed.paymentMode = mode;
     if (!parsed.beneficiary.accountName && party) parsed.beneficiary = { ...parsed.beneficiary, accountName: party };
+    /* connectIPS slips print the payer as "connectIPS Account: <holder>". Without this the sender side had no
+     * name at all, so a slip whose ledger is named after the company (not the holder) could never be matched
+     * on the From side of a contra. */
+    const holder = summary("connectips account") ?? (/connectips\s*account\s*:\s*([^\n|]+)/i.exec(t)?.[1]?.trim());
+    if (holder && !parsed.sender.accountName) parsed.sender = { ...parsed.sender, accountName: holder };
     return parsed;
   },
 };

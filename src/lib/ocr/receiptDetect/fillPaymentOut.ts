@@ -2,7 +2,7 @@
  * Money-document -> Payment / Receipt / Contra form values (pure).
  * Unified own-account scorer (mask + bank + branch + title) is used for both classification and fill.
  */
-import { parseSingleDocDate } from "../dates";
+import { parseSingleDocDateLoose } from "../dates";
 import { isMaskedName, maskedNameSuffix } from "./genericFields";
 import { masterNameScore } from "./index";
 import { bankNameMatches, pickUniqueOwnAccount, type OwnAccountScore } from "./match";
@@ -97,9 +97,9 @@ export function matchFromAccount(p: ParsedReceipt, own: readonly OwnAccountLike[
   return { ok: true, id: picked.acc.id, name: picked.acc.accountName ?? picked.acc.id, method: picked.method, reason: picked.reason };
 }
 
-/** "17-Oct-2026 01:44:04 PM" / "06 Nov 2026" / "15/07/2083" -> local Date. */
+/** "17-Oct-2026 01:44:04 PM" / "06 Nov 2026" / "15/07/2083" / "06/08/2026" (DD/MM) -> local Date. */
 export function parseReceiptDate(s?: string): Date | null {
-  return parseSingleDocDate(s ?? "");
+  return parseSingleDocDateLoose(s ?? "");
 }
 
 /** Same text as the From Bank/Cash dropdown trigger: "Prabhu Bank Limited (Bank)". */

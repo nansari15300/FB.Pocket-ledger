@@ -17,8 +17,9 @@ export const VOUCHER_EDIT_DIALOG_CONTENT_CN = "z-[81]";
 export const NESTED_VOUCHER_LINK_DIALOG_OVERLAY_CN = "z-[90] bg-black/45 backdrop-blur-sm";
 export const NESTED_VOUCHER_LINK_DIALOG_CONTENT_CN = "z-[91]";
 
-/** Date/calendar popovers inside voucher add/edit dialog — above content z-[81] and nested link z-[91]. */
-export const VOUCHER_DIALOG_CALENDAR_POPOVER_CN = "z-[102]";
+/** Date/calendar popovers inside voucher add/edit dialog — above content z-[81] and nested link z-[91],
+ * and also above master add/edit (z-[121]) so the calendar never renders under the form the user is filling. */
+export const VOUCHER_DIALOG_CALENDAR_POPOVER_CN = "!z-[126]";
 
 /** Reuse company attachment — voucher edit z-[81] ke upar. */
 export const NESTED_VOUCHER_ATTACHMENT_REUSE_OVERLAY_CN = "z-[100] bg-black/45 backdrop-blur-sm";
@@ -36,6 +37,14 @@ export const NESTED_MASTER_GROUP_DIALOG_CONTENT_CN = "!z-[123]";
 /** AlertDialogs inside voucher add/edit (IC pay mode, change detected, delete confirm) — above master create z-[121]. */
 export const NESTED_VOUCHER_ALERT_OVERLAY_CN = "z-[124] bg-black/45 backdrop-blur-sm";
 export const NESTED_VOUCHER_ALERT_CONTENT_CN = "!z-[125]";
+
+/**
+ * Date pickers INSIDE a master add/edit form (Opening Balance "As on Date", footer "Pick a date").
+ * The voucher-level `VOUCHER_DIALOG_CALENDAR_POPOVER_CN` (z-[102]) sits BELOW the master shell (z-[121]),
+ * so the calendar rendered under the form and appeared to be "behind" it. Above master z-[121], nested
+ * group z-[123] and nested alert z-[125]; still below the OCR settings modal.
+ */
+export const NESTED_MASTER_DIALOG_CALENDAR_POPOVER_CN = "z-[126]";
 
 /** Spread onto AlertDialogContent (or small DialogContent) nested inside voucher add/edit. */
 export const NESTED_VOUCHER_ALERT_SHELL = {

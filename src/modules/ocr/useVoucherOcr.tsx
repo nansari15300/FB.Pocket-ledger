@@ -442,7 +442,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         {
           const M = mastersRef.current;
           const textRc: ReceiptDetection = detectReceipt(`${raw.text}\n${raw.altText ?? ""}`, {
-            ownAccounts: (M.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType, branch: (a as { branch?: string }).branch })),
+            ownAccounts: (M.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType, branch: (a as { branch?: string }).branch, aliasName: (a as { aliasName?: string }).aliasName })),
             parties: (M.parties ?? []).filter((p) => !(p as { isDeleted?: boolean }).isDeleted).map((p) => ({ id: p.id, name: String((p as { name?: string }).name ?? ""), aliasName: (p as { aliasName?: string }).aliasName })),
             staff: (M.staff ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => ({ id: x.id, name: String((x as { name?: string }).name ?? "") })),
             companyName: own.name ?? undefined,
@@ -451,13 +451,33 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
            * customer/beneficiary sections the compact summary text lacks, so prefer its type — but keep
            * the text parser's amount/date/charge payload when it has one. */
           const aiRc = raw.ai ? classifyAiReceipt(raw.ai.data, {
-            ownAccounts: (M.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType, branch: (a as { branch?: string }).branch })),
+            ownAccounts: (M.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType, branch: (a as { branch?: string }).branch, aliasName: (a as { aliasName?: string }).aliasName })),
             parties: (M.parties ?? []).filter((p) => !(p as { isDeleted?: boolean }).isDeleted).map((p) => ({ id: p.id, name: String((p as { name?: string }).name ?? ""), aliasName: (p as { aliasName?: string }).aliasName })),
             staff: (M.staff ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => ({ id: x.id, name: String((x as { name?: string }).name ?? "") })),
             companyName: own.name ?? undefined,
           }) : null;
           const rc: ReceiptDetection = aiRc
-            ? { ...aiRc, parsed: aiRc.parsed ?? textRc.parsed, format: textRc.parsed ? textRc.format : aiRc.format, confidence: Math.max(aiRc.confidence, textRc.confidence) }
+            ? (() => {
+                /* Prefer Gemini's structured payload (holder name, charge, date, both accounts) and only borrow the
+                 * text parser's extra fields — it can see raw labels the compact JSON skipped. */
+                const ai = aiRc.parsed;
+                const text = textRc.parsed;
+                const parsed = ai && text
+                  ? {
+                      ...text,
+                      ...ai,
+                      sender: { ...text.sender, ...ai.sender },
+                      beneficiary: { ...text.beneficiary, ...ai.beneficiary },
+                      amount: ai.amount ?? text.amount,
+                      charge: ai.charge ?? text.charge,
+                      date: ai.date ?? text.date,
+                      txnId: ai.txnId ?? text.txnId,
+                      referenceId: ai.referenceId ?? text.referenceId,
+                      particulars: ai.particulars ?? text.particulars,
+                    }
+                  : (ai ?? text);
+                return { ...aiRc, parsed: parsed ?? null, format: textRc.parsed ? textRc.format : aiRc.format, confidence: Math.max(aiRc.confidence, textRc.confidence) };
+              })()
             : textRc;
           if (rc.format && rc.format !== "tax_invoice") {
             const cur = opt.currentVoucherType ?? opt.adapter.voucherType;
@@ -466,7 +486,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             const m = rc.master;
             const masterTxt = m.kind ? `${m.kind === "own_bank" ? "own bank" : m.kind}: ${m.name ?? "-"} (${Math.round(m.score * 100)}%)` : "no master matched";
             const why = `${rc.format} document; ${rc.reason}; ${masterTxt}${rc.payeeType === "staff" ? "; payee type Staff" : ""}`;
-            const ownAcc = (M.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType, branch: (a as { branch?: string }).branch }));
+            const ownAcc = (M.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType, branch: (a as { branch?: string }).branch, aliasName: (a as { aliasName?: string }).aliasName }));
             const parties = (M.parties ?? []).filter((p) => isOcrSelectableParty(p as never)).map((p) => ({ id: p.id, name: String((p as { name?: string }).name ?? ""), aliasName: (p as { aliasName?: string }).aliasName }));
             const staff = (M.staff ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => ({ id: x.id, name: String((x as { name?: string }).name ?? "") }));
             const taxes = (opt.taxes ?? []).map((tx) => ({ id: tx.id, name: String(tx.name ?? "") }));

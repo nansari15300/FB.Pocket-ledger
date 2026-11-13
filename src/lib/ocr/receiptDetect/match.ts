@@ -112,7 +112,7 @@ export function pickUniqueOwnAccount(side: ReceiptAccountSide, own: readonly Own
     // No account-number/bank/branch hit: fall back to proof-weighted NAME matching so a 50%+ account
     // name with supporting evidence still resolves, while a bare 50-90% name is offered, not filled.
     if (side.accountName) {
-      const m = matchMasters(side.accountName, own, (a) => [String(a.accountName ?? ""), String(a.bankName ?? "")], (a) =>
+      const m = matchMasters(side.accountName, own, (a) => [String(a.accountName ?? ""), String(a.aliasName ?? ""), String(a.bankName ?? "")], (a) =>
         accountProof(
           { accountNumber: side.accountMasked, bankName: side.bankName, branch: side.branch },
           { accountNumber: a.accountNumber, bankName: a.bankName, branch: a.branch },

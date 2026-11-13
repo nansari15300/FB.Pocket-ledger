@@ -126,6 +126,7 @@ import { readLockedPdfFileUrlsFromRow } from "@/lib/attachmentPdfOptions";
 import { usePrewarmVisibleAttachments } from "@/hooks/usePrewarmVisibleAttachments";
 import { useAccountBalance } from "@/hooks/useAccountBalance";
 import { bankAccountAllowsVoucherMinusBalance } from "@/lib/bankAccountMinusBalancePolicy";
+import { checkLedgerAmountGate } from "@/lib/ledgerAmountGuard";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useResetLinkStateOnCopyTargetCompany } from "@/hooks/useResetLinkStateOnCopyTargetCompany";
 import { useCopyDraftFirstSave } from "@/hooks/useCopyDraftFirstSave";
@@ -658,6 +659,17 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     },
     [accountId, accountBalance, bookedPayFromAmountCreditBack, allowPayFromMinusBalance]
   );
+
+  /* Save gate: account stays selectable (OCR / picker), but a negative or over-spent ledger blocks Save with a red reason. */
+  const payeeAmountWatched = Number(form.watch("payeeAmount")) || 0;
+  const otherChargeWatched = Number(form.watch("otherChargeAmount")) || 0;
+  const payFromGate = checkLedgerAmountGate({
+    accountId,
+    balance: accountBalance,
+    creditBack: bookedPayFromAmountCreditBack,
+    minusAllowed: allowPayFromMinusBalance,
+    outflow: payeeAmountWatched + otherChargeWatched,
+  });
 
   const expenseAccountId = form.watch("expenseAccountId");
   const toAccountId = form.watch("toAccountId");
@@ -2577,6 +2589,11 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                               </div>
                             )}
                           </div>
+                          {payFromGate.message && (
+                            <p className="mt-1 text-[10px] font-semibold leading-snug text-red-600" role="alert">
+                              {payFromGate.message}
+                            </p>
+                          )}
                           <FormMessage />
                         </FormItem>
                       )}
@@ -3017,6 +3034,11 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                             </div>
                           )}
                           </div>
+                          {payFromGate.message && (
+                            <p className="mt-1 text-[10px] font-semibold leading-snug text-red-600" role="alert">
+                              {payFromGate.message}
+                            </p>
+                          )}
                           <FormMessage />
                         </FormItem>
                       )}
@@ -3953,7 +3975,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     <Button type="button" onClick={() => { setAllocations(initialAllocationsRef.current.map((a) => ({ voucherId: a.voucherId, amount: a.amount }))); setLinkedPaymentInIds(initialLinkedPaymentInIdsRef.current); onVoucherAction?.('cancelled'); }} className={cn("w-full", BTN_CANCEL_CLASS)}>
                       Cancel
                     </Button>
-                    <Button type="submit" disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
+                    <Button type="submit" disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || payFromGate.blocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
                       {isLoading ? "..." : isEditingAndConverting ? "Convert" : "Save"}
                     </Button>
                     <Button type="button" onClick={async (e) => { e.preventDefault(); if (isFormDirty || isEditingAndConverting) await handleFormSubmit(e, { approveAfterSave: true }); else onApprove?.(); }} disabled={linkPayOthersDisabled || isAttachmentProcessing || editingDisabled || !showApproveButton || !onApprove || isApproving || (!!voucher?.isApproved && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_APPROVE_CLASS)}>
@@ -3974,7 +3996,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     <Button type="button" onClick={() => { setAllocations(initialAllocationsRef.current.map((a) => ({ voucherId: a.voucherId, amount: a.amount }))); setLinkedPaymentInIds(initialLinkedPaymentInIdsRef.current); onVoucherAction?.('cancelled'); }} className={cn("w-full", BTN_CANCEL_CLASS)}>
                       Cancel
                     </Button>
-                    <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
+                    <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || payFromGate.blocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_SAVE_CLASS)}>
                       {isLoading ? "..." : isEditingAndConverting ? "Convert" : "Save"}
                     </Button>
                     <Button type="button" onClick={async (e) => { e.preventDefault(); if (isFormDirty || isEditingAndConverting) await handleFormSubmit(e, { approveAfterSave: true }); else onApprove?.(); }} disabled={isAttachmentProcessing || editingDisabled || !showApproveButton || !onApprove || isApproving || (!!voucher?.isApproved && !isFormDirty && !isEditingAndConverting)} className={cn("w-full", BTN_APPROVE_CLASS)}>
@@ -4007,7 +4029,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                         <Printer className="mr-2 h-4 w-4" />
                         Save & Print
                       </Button>
-                      <Button type="submit" disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
+                      <Button type="submit" disabled={linkPayOthersDisabled || isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || payFromGate.blocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
                         {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         {isEditingAndConverting ? "Convert" : "Save"}
                       </Button>
@@ -4046,7 +4068,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                         <Printer className="mr-2 h-4 w-4" />
                         Save & Print
                       </Button>
-                      <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
+                      <Button type="submit" disabled={isLoading || isAttachmentProcessing || editingDisabled || recurringVoucherSaveBlocked || payFromGate.blocked || (!!voucher?.id && !isFormDirty && !isEditingAndConverting)} className={cn("shrink-0 rounded-full", BTN_SAVE_CLASS)}>
                         {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         {isEditingAndConverting ? "Convert" : "Save"}
                       </Button>

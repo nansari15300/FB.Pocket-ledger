@@ -57,6 +57,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Calendar } from "../ui/calendar";
 import BsDatePicker from "@/components/ui/BsDatePicker";
 import { cn } from "@/lib/utils";
+import { masterEditPopoverContentClassName } from "@/lib/nestedLedgerMasterEditPresentation";
 import {
   MASTER_DIALOG_CANCEL_GRAY_PILL_BTN_CLASS,
   MASTER_DIALOG_FOOTER_ROW_CLASS,
@@ -756,7 +757,7 @@ export function CreateTaxForm({
                                       </Button>
                                     </FormControl>
                                   </PopoverTrigger>
-                                  <PopoverContent className="w-auto p-0 z-[102]" align="start">
+                                  <PopoverContent className={cn("w-auto p-0", masterEditPopoverContentClassName())} align="start">
                                     <Calendar mode="single" selected={field.value} onSelect={(date) => { field.onChange(date); setIsCalendarOpen(false); }} initialFocus />
                                   </PopoverContent>
                                 </Popover>

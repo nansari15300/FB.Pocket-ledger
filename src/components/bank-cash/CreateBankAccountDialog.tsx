@@ -80,6 +80,7 @@ import {
   masterEntityDialogFormWrapperClassName,
 } from "@/lib/masterEntityDialogClasses";
 import { NESTED_VOUCHER_MASTER_CREATE_OVERLAY_CN } from "@/lib/dialogShellChrome";
+import { masterEditPopoverContentClassName } from "@/lib/nestedLedgerMasterEditPresentation";
 import {
   BankCashFormThreeColGrid,
   BankCashFormTwoColGrid,
@@ -1020,7 +1021,7 @@ export function CreateBankAccountDialog({
                                     </Button>
                                   </FormControl>
                                 </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0 z-[102]" align="start">
+                                <PopoverContent className={cn("w-auto p-0", masterEditPopoverContentClassName())} align="start">
                                   <Calendar mode="single" selected={field.value} onSelect={(date) => { field.onChange(date); setIsCalendarOpen(false); }} initialFocus />
                                 </PopoverContent>
                               </Popover>

@@ -112,7 +112,13 @@ export function resolveKhaltiSecretKeyFromEnv(): string | undefined {
   return s || undefined;
 }
 
-const keysDocRef = doc(firestore, 'app_settings', 'payment_gateways');
+/* Module scope must stay server-safe: `doc(firestore, ...)` throws when the module is evaluated on the
+ * server (Next collects page data for /api routes that transitively import this file). Build it lazily. */
+let _keysDocRef: ReturnType<typeof doc> | null = null;
+function keysDocRef() {
+  if (!_keysDocRef) _keysDocRef = doc(firestore, "app_settings", "payment_gateways");
+  return _keysDocRef;
+}
 
 /** eSewa public UAT defaults — only auto-filled in development. */
 function isDevPaymentFallbackEnabled(): boolean {
@@ -180,10 +186,10 @@ export async function getGatewayKeys(): Promise<GatewayKeys> {
       // Server login: Firestore is offline. Admin Panel (super admin) reads via the server; otherwise no keys.
       const seam = await import('@/lib/pocketbaseData/pbReadSeam');
       if (!seam.isAdminServerDataActive()) return {};
-      const snap = await seam.getDoc(keysDocRef);
+      const snap = await seam.getDoc(keysDocRef());
       return snap.exists() ? (snap.data() as GatewayKeys) : {};
     }
-    const docSnap = await getDoc(keysDocRef);
+    const docSnap = await getDoc(keysDocRef());
     if (docSnap.exists()) {
       return docSnap.data() as GatewayKeys;
     }
@@ -202,14 +208,14 @@ export async function getGatewayKeys(): Promise<GatewayKeys> {
 export async function updateGatewayPaymentFlags(
   patch: Partial<GatewayPaymentFlags>
 ): Promise<void> {
-  await setDoc(keysDocRef, patch, { merge: true });
+  await setDoc(keysDocRef(), patch, { merge: true });
 }
 
 export async function updateGatewayKeys(keys: GatewayKeys): Promise<void> {
   // Firestore rejects `undefined` (and non-primitive oddities); normalise every field to string.
   const str = (v: unknown) => (v === undefined || v === null ? '' : String(v));
   await setDoc(
-    keysDocRef,
+    keysDocRef(),
     {
       stripeSecretKey: str(keys.stripeSecretKey),
       khaltiPublicKey: str(keys.khaltiPublicKey),

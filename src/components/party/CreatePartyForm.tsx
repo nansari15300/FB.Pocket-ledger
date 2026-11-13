@@ -35,6 +35,7 @@ import { Separator } from "../ui/separator";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { masterEditPopoverContentClassName } from "@/lib/nestedLedgerMasterEditPresentation";
 
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -937,7 +938,7 @@ export function CreatePartyForm({
                                     </Button>
                                   </FormControl>
                                 </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0 z-[102]" align="start">
+                                <PopoverContent className={cn("w-auto p-0", masterEditPopoverContentClassName())} align="start">
                                   <Calendar mode="single" selected={field.value} onSelect={(date) => { field.onChange(date); setIsCalendarOpen(false); }} initialFocus />
                                 </PopoverContent>
                               </Popover>

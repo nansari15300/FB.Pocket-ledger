@@ -20,7 +20,10 @@ export type ParsedReceipt = {
 };
 
 /** Company's own Bank/Cash ledger (subset of components/bank-cash/types Account). */
-export type OwnAccountLike = { id: string; accountName?: string; bankName?: string; accountNumber?: string; accountType?: string; branch?: string };
+export type OwnAccountLike = { id: string; accountName?: string; bankName?: string; accountNumber?: string; accountType?: string; branch?: string;
+  /** Bank/Cash "Alias Name (optional) — other name on bills / short name". On a connectIPS slip the printed
+   * account holder ("Nabiullah Ansari") is often this exactly, while the ledger is named after the company. */
+  aliasName?: string };
 
 export type ReceiptFormatDetector = {
   format: string;

@@ -45,6 +45,7 @@ import { Tabs, TabsList, TabsTrigger } from "../ui/tabs";
 import { Checkbox } from "../ui/checkbox";
 import { CalendarIcon, Loader2, PlusCircle, Trash2, Printer, Upload, FileText, ArrowDownUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { masterEditPopoverContentClassName } from "@/lib/nestedLedgerMasterEditPresentation";
 import {
   MASTER_DIALOG_CANCEL_GRAY_PILL_BTN_CLASS,
   MASTER_DIALOG_FOOTER_ROW_CLASS,
@@ -1346,7 +1347,7 @@ const capitalizeFirstLetter = (str: string) => {
                                           </Button>
                                         </FormControl>
                                       </PopoverTrigger>
-                                      <PopoverContent className="w-auto p-0 z-[102]" align="start">
+                                      <PopoverContent className={cn("w-auto p-0", masterEditPopoverContentClassName())} align="start">
                                         <Calendar mode="single" selected={field.value} onSelect={(date) => { field.onChange(date); setIsCalendarOpen(false); }} initialFocus />
                                       </PopoverContent>
                                     </Popover>
