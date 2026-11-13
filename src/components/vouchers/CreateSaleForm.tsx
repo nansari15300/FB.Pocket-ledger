@@ -2,7 +2,7 @@
 
 import { useReconciledPointGuard } from "@/components/vouchers/ReconciledPointGuardContext";
 import { addDoc } from "@/lib/writeGateway/pbWrites";
-import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
+import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar, VoucherOcrAiCopilot, useAiCopilotLayout, useCopilotThumb } from "@/modules/ocr";
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useFieldArray, useForm, useWatch, type Resolver, type FieldErrors } from "react-hook-form";
@@ -1523,6 +1523,9 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     isEditing,
     disabled: !!editingDisabled,
   });
+  /* AI Copilot (split view). OFF = nothing renders, the classic OCR flow is untouched. */
+  const copilot = useAiCopilotLayout(ocr);
+  const thumbUrl = useCopilotThumb(files);
 
    const processAndSave = useCallback(
     async (
@@ -4113,7 +4116,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                           className="mb-2"
                         />
                       )}
-                      <VoucherOcrRefreshBar ocr={ocr} />
+                      <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
                       <RestrictedFileUploader>
                         {/* When linked: add/remove disabled; existing files stay clickable to open */}
                         <VoucherAttachmentPcDropRow
@@ -4451,7 +4454,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                             className="mb-2"
                           />
                         )}
-                        <VoucherOcrRefreshBar ocr={ocr} />
+                        <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
                         <RestrictedFileUploader>
                           {/* When linked: add/remove disabled; existing files stay clickable to open */}
                           <VoucherAttachmentPcDropRow
@@ -4767,6 +4770,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
             )}
           </div>
         </form>
+      <VoucherOcrAiCopilot ocr={ocr} layout={copilot} thumbUrl={thumbUrl} />
       </Form>
 
       {convertPresentation ? (

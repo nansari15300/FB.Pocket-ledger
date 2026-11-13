@@ -37,6 +37,12 @@ export type OcrAiChatTurn = {
   tokens?: number;
   /** Error notes are shown but never sent to the AI. */
   error?: boolean;
+  /* ---- Copilot mode only (OCR Settings → AI Copilot) ---- */
+  /** Labels of the form fields this turn changed ("Narration", "Date"…). */
+  applied?: string[];
+  /** Master this turn proposed to create (the app opens the prefilled Create form on click). */
+  proposal?: import("./aiClient").OcrAiMasterProposal;
+  proposalDone?: "created" | "dismissed";
 };
 export type OcrAiRule = { id: string; text: string; created?: string; source?: string };
 export type OcrAiRulesGroup = { rules: OcrAiRule[]; removed: number; error?: string };

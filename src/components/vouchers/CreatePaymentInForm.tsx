@@ -3,7 +3,7 @@
 import { useReconciledPointGuard } from "@/components/vouchers/ReconciledPointGuardContext";
 import { addDoc, updateDoc, deleteDoc } from "@/lib/writeGateway/pbWrites";
 import { uploadVoucherFilesOrStageLocalPending, checkStorageLimitSafe } from "@/lib/voucherFormAttachmentsBeforeSave";
-import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
+import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar, VoucherOcrAiCopilot, useAiCopilotLayout, useCopilotThumb } from "@/modules/ocr";
 import { STAFF_ENTITY_LABEL, STAFF_ENTITY_TYPE_KEY, STAFF_ENTITY_SEARCH_PLACEHOLDER, STAFF_ENTITY_ADD_BUTTON, staffEntityDisplayLabel } from "@/lib/staffEntityDisplayName";
 
 import * as React from "react";
@@ -476,6 +476,9 @@ export function CreatePaymentInForm({
     isEditing: !!(voucher as { id?: string } | null | undefined)?.id,
     disabled: !!editingDisabled,
   });
+  /* AI Copilot (split view). OFF = nothing renders, the classic OCR flow is untouched. */
+  const copilot = useAiCopilotLayout(ocr);
+  const thumbUrl = useCopilotThumb(files);
   
 const { isDirty: _isFormFieldsDirty } = form.formState;
   const _isFileDirty = (() => {
@@ -2134,7 +2137,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           onSubmit={(e) => handleFormSubmit(e)}
           className="h-full flex flex-col min-w-0 w-full max-w-full"
         >
-          <ScrollArea className={cn("flex-1 overflow-x-hidden min-w-0 w-full", !isMobile && "pr-6 -mr-6")}>
+<ScrollArea className={cn("flex-1 overflow-x-hidden min-w-0 w-full", !isMobile && "pr-6 -mr-6")}>
             <div className={cn(
               "space-y-6 min-w-0 max-w-full w-full overflow-x-hidden [&>*]:min-w-0 [&>*]:max-w-full",
               isMobile ? "" : "px-[2px]"
@@ -2886,7 +2889,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     className="mb-2"
                   />
                 )}
-                <VoucherOcrRefreshBar ocr={ocr} />
+                <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
                 <RestrictedFileUploader>
                   <div className="flex flex-wrap gap-4">
                     {files.map((file, index) => (
@@ -3338,6 +3341,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
             )}
           </div>
         </form>
+      <VoucherOcrAiCopilot ocr={ocr} layout={copilot} thumbUrl={thumbUrl} />
       </Form>
       {convertPresentation ? (
         <VoucherEditConvertConfirmDialog

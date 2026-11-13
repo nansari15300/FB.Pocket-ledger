@@ -7,12 +7,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 /* Same stacking as Add New master from a voucher: above AddVoucherDialog (overlay z-80 / content z-81). */
 import { NESTED_VOUCHER_OCR_DEBUG_CONTENT_CN, NESTED_VOUCHER_OCR_DEBUG_OVERLAY_CN } from "@/lib/dialogShellChrome";
 import type { VoucherOcrApi } from "./useVoucherOcr";
-import { AiChatButton } from "./ai/AiChatDialog";
+import { AiChatButton, AiPanelToggle } from "./ai/AiChatDialog";
+import { CopilotMissingBar, type AiCopilotLayout } from "./ai/AiCopilotSplit";
 
 /** One pill style for every OCR bar button (same as Refresh OCR). */
 const OCR_BAR_PILL_CN = "h-7 gap-1 text-xs";
 
-export function VoucherOcrRefreshBar({ ocr }: { ocr: VoucherOcrApi }) {
+export function VoucherOcrRefreshBar({ ocr, copilot }: { ocr: VoucherOcrApi; copilot?: AiCopilotLayout }) {
   const [dbgOpen, setDbgOpen] = useState(false);
   if (!ocr.visible) return null;
   const d = ocr.debugInfo;
@@ -40,9 +41,12 @@ export function VoucherOcrRefreshBar({ ocr }: { ocr: VoucherOcrApi }) {
           Read by: {readByLabel}
         </span>
       ) : null}
-      {ocr.companyId ? (
+      {ocr.companyId && ocr.copilotEnabled ? (
+        <AiPanelToggle on={!!copilot?.open} onClick={() => copilot?.toggle()} className={OCR_BAR_PILL_CN} />
+      ) : ocr.companyId ? (
         <AiChatButton companyId={ocr.companyId} docType={ocr.aiDocType} getBill={ocr.hasFile ? ocr.getBillForChat : undefined} getVoucherJson={ocr.getAiVoucherJson} getOwnCompany={ocr.getOwnCompany} className={OCR_BAR_PILL_CN} />
       ) : null}
+      <CopilotMissingBar ocr={ocr} />
       {ocr.canFindAccount ? (
         <Button type="button" size="sm" variant="outline" className={OCR_BAR_PILL_CN} onClick={ocr.openFindAccount}>
           <UserSearch className="h-3.5 w-3.5" /> Find account

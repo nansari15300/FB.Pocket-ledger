@@ -1247,6 +1247,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         if (process.env.NODE_ENV !== "production") console.debug("[OCR] dump\n" + [...(bill.debug ?? []), ...devDump].join("\n"));
         setDebugInfo({ text: raw.text, meanConfidence: raw.meanConfidence, reasons: [...(bill.debug ?? []), ...devDump], filled: [...filled], missing: [...new Set(missing)] });
         toast.success(filled.length ? `OCR filled by ${seen.length ? seen[seen.length - 1] : "Offline"}: ${filled.join(", ")}` : "OCR: nothing could be filled safely", { id: tId, duration: 3000, position: "top-right" });
+        /* Fresh scan: bump the counter so the AI Copilot panel (if open) starts a new chat for THIS bill. */
+        setFillSeq((n) => n + 1);
 
         // Missing fields: arrow bubbles on those fields (stay until OK / X)
         setMissingNow([...new Set(missing)]);
@@ -1845,6 +1847,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   /** Amber badges from the copilot's missing_masters list (name only; the master form is opened by the user). */
   const [copilotMissing, setCopilotMissing] = useState<{ kind: string; name: string; hint?: string }[]>([]);
   const setCopilotMissingCb = useCallback((list: { kind: string; name: string; hint?: string }[]) => setCopilotMissing(list), []);
+  /** Increments on every completed OCR fill; the copilot panel remounts on a new value (new scan = new chat). */
+  const [fillSeq, setFillSeq] = useState(0);
 
   /**
    * "Create & link" in the copilot chat: opens the app's own Create-master dialog prefilled. The copilot
@@ -1957,6 +1961,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       setCopilotMissing: setCopilotMissingCb,
       /** Names the copilot reported as missing (amber list). */
       missingMasters: copilotMissing,
+      /** Bumps after each OCR fill, so the copilot panel knows a fresh scan landed and opens afresh. */
+      fillSeq,
     },
   };
 }

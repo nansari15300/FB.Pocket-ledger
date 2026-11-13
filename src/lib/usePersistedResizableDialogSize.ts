@@ -195,33 +195,72 @@ export function usePersistedResizableDialogSize(
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
       if (!enabled) return;
-      const t = e.target as HTMLElement;
+      const target = e.target as HTMLElement;
+      /* Interactive controls (buttons, inputs, the info popup…) click normally — never start a drag. */
       if (
-        t.closest(
-          "button, a, input, textarea, select, [role='switch'], [role='combobox'], [data-radix-select-trigger]"
+        target.closest(
+          "button, a, input, textarea, select, label, [role='switch'], [role='combobox'], [role='tab'], [data-radix-select-trigger], [data-pl-no-drag]"
         )
       ) {
         return;
       }
       e.preventDefault();
-      dragRef.current = {
-        startX: e.clientX,
-        startY: e.clientY,
-        startLeft: latestBoundsRef.current.position.x,
-        startTop: latestBoundsRef.current.position.y,
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startLeft = latestBoundsRef.current.position.x;
+      const startTop = latestBoundsRef.current.position.y;
+      /*
+       * The shell to move is the one that owns the element we grabbed, not a global lookup — a global
+       * querySelector could return another form's (hidden) copilot window.
+       */
+      const el = (e.currentTarget as HTMLElement).closest<HTMLElement>("[data-pl-drag-surface]");
+      if (!el) return;
+      /* Smooth drag: transform per animation frame, commit to state ONCE on mouseup (no re-render per
+       * move — that was the jump). */
+      const smooth = true;
+      /* Dragging must not select the chat text underneath. */
+      document.body.style.userSelect = "none";
+      el.style.willChange = "left, top";
+      let lastX = startLeft;
+      let lastY = startTop;
+      let raf = 0;
+
+      const apply = () => {
+        raf = 0;
+        /* Absolute position of the window while dragging (left/top, not transform: Radix DialogContent
+         * keeps its own centring transform in inline style and would overwrite ours). */
+        el.style.left = `${lastX}px`;
+        el.style.top = `${lastY}px`;
       };
+
       const onMove = (ev: MouseEvent) => {
-        if (!dragRef.current) return;
         const vw = window.innerWidth;
         const vh = window.innerHeight;
-        const rawX = dragRef.current.startLeft + ev.clientX - dragRef.current.startX;
-        const rawY = dragRef.current.startTop + ev.clientY - dragRef.current.startY;
-        const nextPos = clampPosition(rawX, rawY, latestBoundsRef.current.size.w, latestBoundsRef.current.size.h, vw, vh);
+        let dx = ev.clientX - startX;
+        let dy = ev.clientY - startY;
+        /* Soft clamp while dragging: a little overhang is allowed so the window never fights the
+         * cursor; it snaps fully inside on release. */
+        const slack = 48;
+        const maxX = vw - latestBoundsRef.current.size.w + slack;
+        const maxY = vh - latestBoundsRef.current.size.h + slack;
+        if (startLeft + dx < -slack) dx = -slack - startLeft;
+        if (startLeft + dx > maxX) dx = maxX - startLeft;
+        if (startTop + dy < -slack) dy = -slack - startTop;
+        if (startTop + dy > maxY) dy = maxY - startTop;
+        lastX = startLeft + dx;
+        lastY = startTop + dy;
+        if (!raf) raf = requestAnimationFrame(apply);
+      };
+
+      const onUp = () => {
+        if (raf) { cancelAnimationFrame(raf); raf = 0; }
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        document.body.style.userSelect = "";
+        el.style.willChange = "";
+        const nextPos = clampPosition(lastX, lastY, latestBoundsRef.current.size.w, latestBoundsRef.current.size.h, vw, vh);
         setPosition(nextPos);
         latestBoundsRef.current.position = nextPos;
-      };
-      const onUp = () => {
-        dragRef.current = null;
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
         saveLiveBounds();
@@ -252,6 +291,8 @@ export function usePersistedResizableDialogSize(
         startLeft: latestBoundsRef.current.position.x,
         startTop: latestBoundsRef.current.position.y,
       };
+      const el = (e.currentTarget as HTMLElement).closest<HTMLElement>("[data-pl-drag-surface]");
+      if (el) { el.style.willChange = "width, height, left, top"; }
       const onMove = (ev: MouseEvent) => {
         if (!resizeRef.current) return;
         const { handle: h, startX, startY, startW, startH, startLeft, startTop } = resizeRef.current;
@@ -270,6 +311,15 @@ export function usePersistedResizableDialogSize(
         let ny = startTop;
         if (h === "w" || h === "sw" || h === "nw") nx = startLeft + (startW - next.w);
         if (h === "n" || h === "nw" || h === "ne") ny = startTop + (startH - next.h);
+        if (el) {
+          /* Same no-render trick as drag: size the element directly, commit on mouseup. */
+          el.style.width = `${next.w}px`;
+          el.style.height = `${next.h}px`;
+          el.style.left = `${nx}px`;
+          el.style.top = `${ny}px`;
+          latestBoundsRef.current = { size: next, position: { x: nx, y: ny } };
+          return;
+        }
         setSize(next);
         if (nx !== startLeft || ny !== startTop) {
           const nextPos = clampPosition(nx, ny, next.w, next.h, vw, vh);
@@ -281,6 +331,16 @@ export function usePersistedResizableDialogSize(
       };
       const onUp = () => {
         resizeRef.current = null;
+        const b = latestBoundsRef.current;
+        if (el) {
+          el.style.width = "";
+          el.style.height = "";
+          el.style.left = "";
+          el.style.top = "";
+          el.style.willChange = "";
+          setSize(b.size);
+          setPosition(b.position);
+        }
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
         saveLiveBounds();

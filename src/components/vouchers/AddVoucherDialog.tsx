@@ -1426,7 +1426,7 @@ function VoucherDialogContent({
             </Select>
             ) : null}
             {/* Mobile: date selector — desktop par sirf purple ribbon (tab strip duplicate hata diya). */}
-            {!isEditing ? <VoucherOcrHeaderToggles className="ml-auto max-w-[45vw] overflow-x-auto" /> : null}
+            {!isEditing ? <VoucherOcrHeaderToggles className="ml-auto min-w-0" /> : null}
             <VoucherDialogDateSystemSwitcher />
           </div>
         ) : (
@@ -4399,7 +4399,7 @@ export function AddVoucherDialog(props: any) {
                       {voucherDialogTitle}
                     </DialogTitle>
                     {copiedDraftHeaderBadge}
-                    {!voucherForDialogChrome?.id ? <VoucherOcrHeaderToggles className="ml-3 min-w-0 max-w-[40vw] overflow-x-auto [scrollbar-width:thin]" /> : null}
+                    {!voucherForDialogChrome?.id ? <VoucherOcrHeaderToggles className="ml-3 min-w-0" /> : null}
                   </div>
                   <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:thin]">
                     <div className="flex w-max min-w-full justify-center">
@@ -4438,12 +4438,13 @@ export function AddVoucherDialog(props: any) {
                 </div>
               ) : (
                 <div className="flex w-full min-w-0 flex-nowrap items-center gap-2">
-                  <div className="flex min-w-0 flex-row flex-wrap items-center gap-x-2 gap-y-0">
-                    <DialogTitle className="m-0 font-bold font-headline text-inherit text-xl leading-tight">
+                  <div className="flex min-w-0 flex-1 flex-row flex-nowrap items-center gap-x-2 overflow-hidden">
+                    <DialogTitle className="m-0 shrink-0 font-bold font-headline text-inherit text-xl leading-tight">
                       {voucherDialogTitle}
                     </DialogTitle>
                     {copiedDraftHeaderBadge}
-                    {!voucherForDialogChrome?.id ? <VoucherOcrHeaderToggles className="ml-3 min-w-0 max-w-[40vw] overflow-x-auto [scrollbar-width:thin]" /> : null}
+                    {/* Pills shrink and drop one by one (Overwrite → Auto Post → gear); OCR switch never hides. */}
+                    {!voucherForDialogChrome?.id ? <VoucherOcrHeaderToggles className="ml-3 min-w-0" /> : null}
                   </div>
                   <div className="ml-auto flex shrink-0 items-center gap-[10px]">
                     {interCompanyPayModeHeaderBadge}

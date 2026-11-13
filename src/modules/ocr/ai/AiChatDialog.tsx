@@ -4,12 +4,13 @@
  */
 import React, { useEffect, useRef, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Bot, Info, Loader2, MessageSquare, Paperclip, Plus, Save, Send, Sparkles, Trash2, X } from "lucide-react";
+import { Bot, Info, Loader2, MessageSquare, Paperclip, Plus, Save, Send, Sparkles, Trash2, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { usePersistedResizableDialogSize } from "@/lib/usePersistedResizableDialogSize";
 import { aiChatJpeg } from "../engine";
-import { OcrAiError, getOcrAiStatus, getOcrAiStatusCached, invalidateOcrAiStatus, listOcrAiRules, ocrAiChat, ocrAiErrorText, removeOcrAiRule, saveOcrAiRule, setOcrAiModel, type OcrAiLimits, type OcrAiModelOption } from "./aiClient";
+import { OcrAiError, getOcrAiStatus, getOcrAiStatusCached, invalidateOcrAiStatus, listOcrAiRules, ocrAiChat, ocrAiErrorText, removeOcrAiRule, saveOcrAiRule, setOcrAiModel, type OcrAiLimits, type OcrAiMasterLists, type OcrAiMasterProposal, type OcrAiMissingMaster, type OcrAiModelOption, type OcrAiVoucherPatch } from "./aiClient";
 import { AiChatUsageChips } from "./AiChatUsageChips";
 import { AiModelPicker } from "./AiModelPicker";
 import { clearUsage, loadUsage, recordUsage, type AiChatUsageState } from "./aiChatUsage";
@@ -34,6 +35,9 @@ import {
 } from "./aiChatModel";
 
 const CHAT_Z = 2147483002;
+/** Copilot window: above the voucher shell (z-81) + bubbles, below the OCR settings gear. */
+const COPILOT_Z = 2147483000 - 20;
+const COPILOT_STORAGE_KEY = "pl.ocr.copilot.window.v3";
 const CHAT_CONTENT_STYLE: React.CSSProperties = {
   zIndex: CHAT_Z,
   height: "88vh",
@@ -77,6 +81,28 @@ export type AiChatDialogProps = {
   getBill?: () => Promise<{ blob: Blob; mime: string } | null>;
   getVoucherJson?: () => unknown;
   getOwnCompany?: () => { name?: string | null; pan?: string | null };
+  /**
+   * Copilot mode (OCR Settings → AI Copilot): the SAME window renders as a floating, draggable,
+   * resizable panel beside the voucher instead of a centred modal, and each turn may return a voucher
+   * patch / master proposal that these callbacks receive. Nothing is duplicated — one chat, two modes.
+   */
+  copilot?: CopilotBridge;
+};
+
+/** What the copilot mode needs from the voucher form (all from useVoucherOcr). */
+export type CopilotBridge = {
+  /** Master name lists so Gemini can tell a real miss from a spelling variant. */
+  getMasters: () => OcrAiMasterLists;
+  /** Apply a patch to the live form; returns the labels actually written. */
+  onPatch: (patch: OcrAiVoucherPatch) => string[];
+  /** User pressed "Create & link" on a proposal. */
+  onCreateMaster: (m: OcrAiMasterProposal) => void;
+  /** Printed names with no master record (amber chips). */
+  onMissingMasters?: (list: OcrAiMissingMaster[]) => void;
+  /** Receipt thumbnail + status line for the header. */
+  thumbUrl?: string | null;
+  statusLine?: string | null;
+  missingFields?: string[];
 };
 
 function chatErrorText(e: unknown, t: AiChatStrings): string {
@@ -235,7 +261,7 @@ function ChatHistorySidebar({ sessions, activeId, onSelect, onDelete, onNew }: {
   );
 }
 
-export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, getVoucherJson, getOwnCompany }: AiChatDialogProps) {
+export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, getVoucherJson, getOwnCompany, copilot }: AiChatDialogProps) {
   const t = useAiChatStrings();
   const [tab, setTab] = useState<"chat" | "rules">("chat");
   const [turns, setTurns] = useState<OcrAiChatTurn[]>(() => loadChatSession(companyId));
@@ -374,9 +400,12 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
       if (fileToSend) { const r = await aiChatJpeg(fileToSend.file, fileToSend.file.type); imageBase64 = r.b64; mimeType = "image/jpeg"; }
       else if (wantBill && getBill) { const b = await getBill(); if (!b) throw new Error(t.noBill); imageBase64 = (await aiChatJpeg(b.blob, b.mime)).b64; mimeType = "image/jpeg"; }
       const voucherJson = wantJson && getVoucherJson ? getVoucherJson() ?? undefined : undefined;
-      const r = await ocrAiChat({ companyId, messages: chatPayload(next), docType, imageBase64, mimeType, voucherJson, ownCompany: getOwnCompany?.(), signal: ac.signal });
+      const r = await ocrAiChat({ companyId, messages: chatPayload(next), docType, imageBase64, mimeType, voucherJson, ownCompany: getOwnCompany?.(), copilot: !!copilot, masters: copilot ? copilot.getMasters() : undefined, signal: ac.signal });
       setUsage(recordUsage(companyId, { ok: true, promptTokens: r.usage.promptTokens, outputTokens: r.usage.outputTokens, totalTokens: r.usage.totalTokens, hadImage }));
-      const finalTurns = [...next, { id: newTurnId(), role: "model" as const, text: r.reply === "(no answer)" ? t.noAnswer : r.reply, at: Date.now(), proposedRule: r.proposedRule, tokens: r.usage.totalTokens }];
+      /* Copilot: the patch goes into the LIVE form first, so the chips describe what really changed. */
+      const applied = copilot && r.voucherPatch ? copilot.onPatch(r.voucherPatch) : [];
+      if (copilot && r.missingMasters.length) copilot.onMissingMasters?.(r.missingMasters);
+      const finalTurns = [...next, { id: newTurnId(), role: "model" as const, text: r.reply === "(no answer)" ? t.noAnswer : r.reply, at: Date.now(), proposedRule: r.proposedRule, tokens: r.usage.totalTokens, applied: applied.length ? applied : undefined, proposal: copilot ? r.masterCreate ?? undefined : undefined }];
       setTurns(finalTurns);
       const sid = flushToHistory(finalTurns, activeSessionId);
       if (!activeSessionId) setActiveSessionId(sid);
@@ -426,27 +455,88 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
     </button>
   );
 
+  /* Copilot mode: the SAME chat shell, but as a floating resizable window — no overlay, no focus trap,
+   * so the voucher form stays visible AND editable beside it. Modal mode is untouched. */
+  const copilotResizable = usePersistedResizableDialogSize(!!copilot && open, !!copilot && open, COPILOT_STORAGE_KEY, {
+    minW: 320,
+    minH: 280,
+    defaultW: (vw) => Math.round(Math.min(460, vw * 0.32)),
+    defaultH: (vh) => Math.round(vh * 0.7),
+  });
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <div aria-hidden className="fixed inset-0 bg-black/60 backdrop-blur-md" style={{ zIndex: CHAT_Z - 1 }} />
-      </DialogPrimitive.Portal>
+    <Dialog open={open} onOpenChange={onOpenChange} modal={!copilot}>
+      {copilot ? null : (
+        <DialogPrimitive.Portal>
+          <div aria-hidden className="fixed inset-0 bg-black/60 backdrop-blur-md" style={{ zIndex: CHAT_Z - 1 }} />
+        </DialogPrimitive.Portal>
+      )}
       <DialogContent
         overlayClassName="hidden"
         hideCloseButton
-        style={CHAT_CONTENT_STYLE}
-        className="flex flex-col gap-0 overflow-hidden p-0"
+        style={
+          copilot
+            ? {
+                zIndex: COPILOT_Z,
+                left: copilotResizable.position.x,
+                top: copilotResizable.position.y,
+                width: copilotResizable.size.w,
+                height: copilotResizable.size.h,
+                transform: "none",
+                translate: "none",
+                position: "fixed",
+                borderRadius: "0.75rem",
+                overflow: "hidden",
+                padding: 0,
+                border: "1px solid rgb(203 213 225)",
+                boxShadow: "0 24px 60px -16px rgba(15,23,42,0.35), 0 8px 20px -8px rgba(15,23,42,0.18)",
+              }
+            : CHAT_CONTENT_STYLE
+        }
+        className={cn(
+          "flex flex-col gap-0 overflow-hidden p-0",
+          /* Copilot is a free-floating window: kill Radix's centring + zoom/slide keyframes, which keep
+           * writing transform and fight a dragged left/top. */
+          copilot && "!left-0 !top-0 !translate-x-0 !translate-y-0 animate-none duration-0"
+        )}
         onFocusOutside={(e) => e.preventDefault()}
         onClick={(e) => e.stopPropagation()}
         data-pl-ocr-ai-chat=""
+        data-pl-drag-surface={copilot ? "active" : undefined}
       >
+        {/* Copilot: resize handles + draggable ribbon (same machinery as the voucher dialogs). */}
+        {copilot ? (
+          <>
+            {(["n", "s", "w", "e", "nw", "ne", "sw", "se"] as const).map((h) => (
+              <div
+                key={h}
+                onMouseDown={(e) => copilotResizable.handleResizeStart(e, h)}
+                className={cn(
+                  "absolute z-30",
+                  h === "n" && "left-2 right-2 top-0 h-1.5 cursor-ns-resize",
+                  h === "s" && "left-2 right-2 bottom-0 h-1.5 cursor-ns-resize",
+                  h === "w" && "top-2 bottom-2 left-0 w-1.5 cursor-ew-resize",
+                  h === "e" && "top-2 bottom-2 right-0 w-1.5 cursor-ew-resize",
+                  h === "nw" && "left-0 top-0 h-3 w-3 cursor-nwse-resize",
+                  h === "ne" && "right-0 top-0 h-3 w-3 cursor-nesw-resize",
+                  h === "sw" && "left-0 bottom-0 h-3 w-3 cursor-nesw-resize",
+                  h === "se" && "right-0 bottom-0 h-3 w-3 cursor-nwse-resize"
+                )}
+                aria-hidden
+              />
+            ))}
+            {/* Header itself is the drag handle (see DialogHeader onMouseDown); its buttons are
+                pointer-events-auto so they never start a drag. */}
+          </>
+        ) : null}
         {/* ── Header (WhatsApp green) ── */}
         <DialogHeader
-          className="shrink-0 px-4 pb-2.5 pt-3 text-left"
+          className="relative shrink-0 px-4 pb-2.5 pt-3 text-left"
           style={{ background: ACCENT }}
+          onMouseDown={copilot ? copilotResizable.handleDragStart : undefined}
         >
-          <div className="flex items-center justify-between gap-2">
-            <DialogTitle className="flex items-center gap-2 text-sm font-semibold text-white">
+          <div className="relative z-30 flex items-center justify-between gap-2">
+            <DialogTitle className="flex items-center gap-2 text-sm font-semibold text-white" data-pl-no-drag="title">
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20">
                 <Bot className="h-4 w-4 text-white" />
               </div>
@@ -461,13 +551,21 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                 onClear={() => setUsage(clearUsage(companyId))}
               />
               {/* Close button */}
-              <DialogPrimitive.Close className="shrink-0 rounded-full p-1.5 text-white/80 transition hover:bg-white/15 hover:text-white">
+              <DialogPrimitive.Close
+                className={cn(
+                  "shrink-0 rounded-full p-1.5 transition",
+                  copilot
+                    ? "absolute right-1 top-1 z-40 bg-white text-slate-600 ring-1 ring-black/10 hover:bg-slate-100 hover:text-slate-900"
+                    : "text-white/80 hover:bg-white/15 hover:text-white"
+                )}
+                style={copilot ? { width: 24, height: 24, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" } : undefined}
+              >
                 <X className="h-4 w-4" />
               </DialogPrimitive.Close>
             </div>
           </div>
-          {/* Tabs */}
-          <div className="mt-2 flex items-center gap-1" style={{ width: "fit-content" }}>
+          {/* Tabs — the pills click; the free header space beside them drags the window. */}
+          <div className="relative z-30 mt-2 flex items-center gap-1" style={{ width: "fit-content" }}>
             {tabBtn("chat", t.tabChat)}
             {tabBtn("rules", `${t.tabRules}${rules ? ` (${rulesCount(rules)})` : ""}`)}
           </div>
@@ -536,6 +634,58 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                           <p className="text-[10px] text-slate-400">
                             {t.tokens} {turn.tokens}
                           </p>
+                        ) : null}
+                        {/* Copilot: what this turn changed on the live form (left window). */}
+                        {turn.applied?.length ? (
+                          <p className="flex flex-wrap gap-1">
+                            {turn.applied.map((a) => (
+                              <span key={a} className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-200">
+                                ✓ {a}
+                              </span>
+                            ))}
+                          </p>
+                        ) : null}
+                        {/* Copilot: master creation proposal — the user confirms, the app opens its own form. */}
+                        {turn.proposal && !turn.proposalDone ? (
+                          <div className="mt-2 space-y-1.5 rounded-lg border border-amber-300 bg-amber-50 p-2">
+                            <p className="text-[11px] font-medium text-amber-900">
+                              Create {turn.proposal.kind}: <b>{turn.proposal.name}</b>?
+                            </p>
+                            {turn.proposal.account_no || turn.proposal.pan || turn.proposal.phone ? (
+                              <p className="text-[10px] text-amber-800">
+                                {[
+                                  turn.proposal.pan && `PAN ${turn.proposal.pan}`,
+                                  turn.proposal.phone && `Phone ${turn.proposal.phone}`,
+                                  turn.proposal.account_no && `A/c ${turn.proposal.account_no}${turn.proposal.bank_name ? ` (${turn.proposal.bank_name})` : ""}`,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </p>
+                            ) : null}
+                            <div className="flex gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  copilot?.onCreateMaster(turn.proposal!);
+                                  setTurns((c) => c.map((x) => (x.id === turn.id ? { ...x, proposalDone: "created" } : x)));
+                                }}
+                                className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium text-white"
+                                style={{ background: ACCENT }}
+                              >
+                                <UserPlus className="h-3 w-3" /> Create &amp; link
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setTurns((c) => c.map((x) => (x.id === turn.id ? { ...x, proposalDone: "dismissed" } : x)))}
+                                className="rounded-lg border border-slate-300 px-2.5 py-1 text-[11px] text-slate-600 hover:bg-white"
+                              >
+                                Not now
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                        {turn.proposalDone ? (
+                          <p className="text-[10px] text-slate-400">{turn.proposalDone === "created" ? "✓ Create form opened — confirm Save there" : "Not created"}</p>
                         ) : null}
                         {turn.proposedRule ? (
                           <div className="mt-2 space-y-2 rounded-lg border border-black/10 bg-slate-50 p-2.5">
@@ -789,5 +939,27 @@ export function AiChatButton({ label, className, ...rest }: Omit<AiChatDialogPro
       </Button>
       {open ? <AiChatDialog key={rest.companyId} open={open} onOpenChange={setOpen} {...rest} /> : null}
     </>
+  );
+}
+
+/**
+ * OCR-bar AI button. In copilot mode it does NOT open the popup chat (the docked panel is the chat);
+ * it just toggles that panel, so the form and the conversation stay visible together.
+ */
+export function AiPanelToggle({ on, onClick, className, label }: { on: boolean; onClick: () => void; className?: string; label?: string }) {
+  const t = useAiChatStrings();
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant={on ? "default" : "outline"}
+      className={className}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      title={on ? "Hide AI Copilot" : "Open AI Copilot beside the form"}
+      data-pl-ocr-ai-copilot-toggle=""
+    >
+      <Bot className="h-3.5 w-3.5" /> {label ?? (on ? "Hide AI" : "AI Copilot")}
+      <span className="sr-only">{t.buttonTitle}</span>
+    </Button>
   );
 }

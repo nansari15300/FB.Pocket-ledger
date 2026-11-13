@@ -753,7 +753,7 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
 }
 
 function OcrSettingsGear({
-  connectorStyle, narrationStyle, autoPost, overwriteEdited, seconds, switchOn, switchSeconds, enginePref, companyId, scriptPref, translateToEnglish, langCustomized,
+  connectorStyle, narrationStyle, autoPost, overwriteEdited, seconds, switchOn, switchSeconds, enginePref, companyId, scriptPref, translateToEnglish, langCustomized, aiCopilot,
 }: {
   connectorStyle: OcrConnectorStyle;
   narrationStyle: OcrNarrationStyle;
@@ -768,6 +768,8 @@ function OcrSettingsGear({
   scriptPref: OcrScriptPref;
   /** Gemini/AI output ko English me translate karwao. */
   translateToEnglish: boolean;
+  /** aiCopilot pref — "Live chat for voucher fill" switch. */
+  aiCopilot: boolean;
   /** scriptPref != auto ya translateToEnglish on — Reset button enabled. */
   langCustomized: boolean;
 }) {
@@ -889,6 +891,20 @@ function OcrSettingsGear({
               </button>
             </div>
           </Section>
+          {/* AI Copilot: turns the OCR panel into a split view — live form on the left, Gemini chat on
+              the right. OFF = the classic flow (fill + bubbles + popup AI chat), untouched. */}
+          <Section
+            title="AI Copilot"
+            hint={aiCopilot ? "On: after OCR the form opens with a chat beside it. Ask for changes in chat — the form updates live. No popup covers the form." : "Off: the classic OCR flow (auto-fill + field bubbles + AI button opens the chat popup)."}
+          >
+            <SwitchRow
+              id="pl-ocr-copilot"
+              label="Live chat for voucher fill"
+              sub="Split view: form (left) + Gemini chat (right), updates applied instantly"
+              checked={aiCopilot}
+              onChange={(v) => setOcrPrefs({ aiCopilot: v })}
+            />
+          </Section>
           </div>
         </div>
         <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 px-5 py-3 dark:border-slate-700">
@@ -900,15 +916,62 @@ function OcrSettingsGear({
   );
 }
 
+/**
+ * Desktop header narrows as the voucher dialog shrinks. Pills drop out in a fixed priority order instead
+ * of piling on top of each other (that overlap is what the "Both" date pill was covering):
+ *   1st → "Overwrite edited"     (least used)
+ *   2nd → "Auto Post"
+ *   never → the OCR switch, the settings gear and the date-system pill (always visible)
+ *
+ * Measured, not guessed: the row compares its own clientWidth with the width its pills actually need
+ * (scrollWidth). If they fit → nothing hides. That works at any zoom, font and pill wording, where a
+ * hardcoded breakpoint always hid things on wide screens.
+ */
+function useHeaderCrowding() {
+  const rowRef = React.useRef<HTMLDivElement | null>(null);
+  /**
+   * 0 = wide. Each extra step hides one more pill. `overflow-hidden` keeps the row from growing, so
+   * clientWidth stays the available space and scrollWidth stays the wanted space.
+   */
+  const [tightness, setTightness] = React.useState(0);
+
+  React.useEffect(() => {
+    const el = rowRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      setTightness((cur) => {
+        /* Space still left after the currently visible pills (clientWidth includes the hidden slack). */
+        const overflow = el.scrollWidth - el.clientWidth;
+        /* One more pill fits once the overflow is negative by ~half a pill. */
+        if (overflow <= 0 && cur !== 0) return 0;
+        if (overflow > 0) return Math.min(2, cur + 1);
+        return cur;
+      });
+    };
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    /* Pill content also changes (OCR / OCR Off), so watch children too. */
+    measure();
+    return () => ro.disconnect();
+  }, []);
+
+  return {
+    rowRef,
+    hideOverwrite: tightness >= 1,
+    hideAutoPost: tightness >= 2,
+  };
+}
+
 export function VoucherOcrHeaderToggles({ className }: { className?: string }) {
   const allowed = useOcrPlanAllowed();
   const p = useOcrPrefs();
   const { companyId } = useCompany();
+  const { rowRef: crowdRef, hideOverwrite, hideAutoPost } = useHeaderCrowding();
   if (!allowed) return null;
   const style: OcrConnectorStyle = p.connectorStyle === "line" ? "line" : "tail";
   const narrationStyle: OcrNarrationStyle = p.narrationStyle === "short" ? "short" : "full";
   return (
-    <div className={cn("flex shrink-0 items-center gap-1", className)} data-pl-ocr-header-toggles="">
+    <div ref={crowdRef} className={cn("flex min-w-0 flex-1 items-center gap-1 overflow-hidden", className)} data-pl-ocr-header-toggles="">
       <Pill
         id="pl-ocr-enabled"
         label={p.enabled ? "OCR" : "OCR Off"}
@@ -930,16 +993,21 @@ export function VoucherOcrHeaderToggles({ className }: { className?: string }) {
             companyId={companyId ?? null}
             scriptPref={p.scriptPref}
             translateToEnglish={p.translateToEnglish === true}
+            aiCopilot={p.aiCopilot === true}
             langCustomized={isOcrLanguageCustomized(p)}
           />
-          <Pill
-            id="pl-ocr-autopost"
-            label="Auto Post"
-            checked={p.autoPost}
-            onChange={(v) => setOcrPrefs({ autoPost: v })}
-            title="Save automatically after OCR (always UNAPPROVED)"
-          />
-          <Pill id="pl-ocr-overwrite" label="Overwrite edited" checked={p.overwriteEdited} onChange={(v) => setOcrPrefs({ overwriteEdited: v })} title="Refresh re-fills fields you edited by hand too" />
+          {hideAutoPost ? null : (
+            <Pill
+              id="pl-ocr-autopost"
+              label="Auto Post"
+              checked={p.autoPost}
+              onChange={(v) => setOcrPrefs({ autoPost: v })}
+              title="Save automatically after OCR (always UNAPPROVED)"
+            />
+          )}
+          {hideOverwrite ? null : (
+            <Pill id="pl-ocr-overwrite" label="Overwrite edited" checked={p.overwriteEdited} onChange={(v) => setOcrPrefs({ overwriteEdited: v })} title="Refresh re-fills fields you edited by hand too" />
+          )}
         </>
       ) : null}
     </div>

@@ -1,6 +1,7 @@
 export { useVoucherOcr, type VoucherOcrApi, type UseVoucherOcrOptions } from "./useVoucherOcr";
 export { VoucherOcrHeaderToggles } from "./VoucherOcrHeaderToggles";
 export { VoucherOcrRefreshBar } from "./VoucherOcrRefreshBar";
+export { VoucherOcrAiCopilot, CopilotMissingBar, useAiCopilotLayout, useCopilotThumb, type AiCopilotLayout } from "./ai/AiCopilotSplit";
 export { useOcrPlanAllowed, OCR_ENTITLEMENT_KEY } from "./gate";
 export { useOcrPrefs, setOcrPrefs, getOcrPrefs } from "./prefs";
 export { parseBill } from "./parser";

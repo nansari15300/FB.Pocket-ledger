@@ -2,7 +2,7 @@
 
 import { useReconciledPointGuard } from "@/components/vouchers/ReconciledPointGuardContext";
 import { addDoc, updateDoc, deleteDoc } from "@/lib/writeGateway/pbWrites";
-import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar } from "@/modules/ocr";
+import { ocrAdapters, useVoucherOcr, VoucherOcrRefreshBar, VoucherOcrAiCopilot, useAiCopilotLayout, useCopilotThumb } from "@/modules/ocr";
 import { STAFF_ENTITY_LABEL, STAFF_ENTITY_TYPE_KEY, STAFF_ENTITY_SEARCH_PLACEHOLDER, STAFF_ENTITY_ADD_BUTTON, staffEntityDisplayLabel } from "@/lib/staffEntityDisplayName";
 
 import * as React from "react";
@@ -490,6 +490,9 @@ export function CreatePaymentOutForm({
     isEditing: !!(voucher as { id?: string } | null | undefined)?.id,
     disabled: !!editingDisabled,
   });
+  const copilot = useAiCopilotLayout(ocr);
+  /* Receipt thumbnail for the copilot header — the first attached file when it is an image. */
+  const thumbUrl = useCopilotThumb(files);
   const [otherChargeEnabled, setOtherChargeEnabled] = useState(
     Boolean((voucher || defaultVoucherData)?.otherChargeAccountId || Number((voucher || defaultVoucherData)?.otherChargeAmount || 0) > 0)
   );
@@ -2322,7 +2325,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
         <form
           data-suppress-global-copy-red
           onSubmit={(e) => handleFormSubmit(e)}
-          className="h-full flex flex-col min-w-0 w-full max-w-full"
+          className={cn("h-full flex flex-col min-w-0 w-full max-w-full")}
         >
           <ScrollArea className={cn("flex-1 overflow-x-hidden min-w-0 w-full", !isMobile && "pr-6 -mr-6")}>
             <div className={cn(
@@ -3434,7 +3437,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     className="mb-2"
                   />
                 )}
-                <VoucherOcrRefreshBar ocr={ocr} />
+                <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
                 <RestrictedFileUploader>
                   {/* When linked: no add/remove; existing files view-only (click to open still works). */}
                   <VoucherAttachmentPcDropRow
@@ -4090,6 +4093,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
             )}
           </div>
         </form>
+      <VoucherOcrAiCopilot ocr={ocr} layout={copilot} thumbUrl={thumbUrl} />
       </Form>
       {convertPresentation ? (
         <VoucherEditConvertConfirmDialog
