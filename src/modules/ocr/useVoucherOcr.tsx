@@ -43,7 +43,7 @@ import { resolveOcrItemUnit } from "./extras";
 import { inferItemGroupFromName } from "./extras";
 import { findOrCreateSheetSizeItemGroups, mergeMasterGroups, type MasterGroupLike } from "@/lib/masterEntityGroupWrite";
 import { billVatPercent, cleanItemName, partyNamePrefill, findVat13, isOwnCompany, otherPans, pickLedgerAccount } from "./extras";
-import { OcrAiError, ocrAiErrorCode, ocrAiErrorText } from "./ai/aiClient";
+import { OcrAiError, ocrAiErrorCode, ocrAiErrorText, type OcrAiMasterProposal, type OcrAiVoucherPatch } from "./ai/aiClient";
 import { getBlobFromLocalFileRef, isLocalFileRef } from "@/lib/localPendingFiles";
 import { fetchPbAttachmentBlob } from "@/lib/pocketbaseData/pbAttachments";
 import { useCompany } from "@/hooks/useCompany";
@@ -306,6 +306,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     }
     return !form.getFieldState(path).isDirty;
   }, []);
+  /** Same gate, reachable from callbacks declared after it (copilot patch) without re-creating them. */
+  const canWriteRef = useRef(canWrite);
+  canWriteRef.current = canWrite;
 
   const write = useCallback((path: string, value: unknown) => {
     const { form } = optsRef.current;
@@ -1795,6 +1798,80 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
 
   useEffect(() => { if (!visible) cancelAutoPostCountdown(); }, [visible, cancelAutoPostCountdown]);
 
+  /* ===== AI Copilot helpers (split view) =====================================================
+   * The copilot never touches the form directly: it hands a patch back, and these functions are the
+   * only place a chat answer is written into the live form. Same canWrite() gate as the OCR fill, so a
+   * copilot cannot overwrite a field the user is not allowed to edit. */
+
+  /** Party/bank/staff/expense/income name lists — what the company already has. */
+  const getMasters = useCallback(() => {
+    const M = mastersRef.current;
+    const names = (list: readonly { name?: unknown; isDeleted?: boolean }[] | undefined) =>
+      (list ?? []).filter((x) => !x.isDeleted).map((x) => String(x.name ?? "").trim()).filter(Boolean);
+    const M2 = M as { accounts?: readonly { accountName?: unknown; isDeleted?: boolean }[]; parties?: readonly { name?: unknown }[]; staff?: readonly { name?: unknown }[]; taxes?: readonly { name?: unknown }[] };
+    return {
+      parties: names(M2.parties as never),
+      banks: (M2.accounts ?? []).filter((a) => !a.isDeleted).map((a) => String(a.accountName ?? "").trim()).filter(Boolean),
+      staff: names(M2.staff as never),
+      /* The app has no separate expense/income master list on this form; taxes are the closest ledger
+       * pool the copilot can name, so it is sent so Gemini does not invent a "missing" ledger. */
+      expenses: names(M2.taxes as never),
+      incomes: [],
+    };
+  }, []);
+
+  /**
+   * Write a chat patch into the live form. Only fields the adapter actually has for this voucher type
+   * are written; the returned labels tell the chat bubble what really changed ("Narration", "Date"…).
+   */
+  const applyPatch = useCallback((patch: OcrAiVoucherPatch): string[] => {
+    const { form, adapter: A } = optsRef.current;
+    const done: string[] = [];
+    const set = (path: string | undefined, value: unknown, label: string) => {
+      if (!path || value == null || value === "") return;
+      if (!canWriteRef.current(path)) return;
+      form.setValue(path as never, value as never, { shouldDirty: true, shouldValidate: true });
+      filledRef.current.set(path, value);
+      done.push(label);
+    };
+    if (patch.date) set(A.date ?? "date", patch.date, "Date");
+    if (patch.narration) set(A.narration ?? "narration", patch.narration, "Narration");
+    if (patch.amount != null) set(A.payeeAmount && (A.voucherType === "payment_out" || A.voucherType === "contra") ? A.payeeAmount : A.amount ?? "amount", patch.amount, "Amount");
+    if (patch.voucher_number) set("voucherNumber", patch.voucher_number, "Voucher No.");
+    if (patch.reference) set("referenceId", patch.reference, "Ref");
+    return done;
+  }, []);
+
+  /** Amber badges from the copilot's missing_masters list (name only; the master form is opened by the user). */
+  const [copilotMissing, setCopilotMissing] = useState<{ kind: string; name: string; hint?: string }[]>([]);
+  const setCopilotMissingCb = useCallback((list: { kind: string; name: string; hint?: string }[]) => setCopilotMissing(list), []);
+
+  /**
+   * "Create & link" in the copilot chat: opens the app's own Create-master dialog prefilled. The copilot
+   * only fills what the paper printed — the user still confirms Save, and the new master is linked by the
+   * same code path the OCR bubbles already use.
+   */
+  const createMasterFromProposal = useCallback((m: OcrAiMasterProposal) => {
+    if (m.kind === "party") {
+      setCreatePrefill({
+        ...partyNamePrefill(m.name),
+        aliasName: m.alias ?? m.name.toUpperCase(),
+        pan: m.pan ?? "",
+        phone: m.phone ?? "",
+        email: m.email ?? "",
+        address: m.address ?? "",
+        accountTypeId: optsRef.current.adapter.partySide === "seller" ? PARTY_SYSTEM_CREDITORS_ID : PARTY_FORM_DEFAULT_ACCOUNT_TYPE_ID,
+      });
+      return;
+    }
+    /* bank / staff / expense / income: no inline create dialog on this form — guide the user to the
+     * master page instead of silently doing nothing. */
+    toast.message(`Create ${m.kind}: ${m.name}`, {
+      description: m.account_no ? `Bank A/c ${m.account_no}${m.bank_name ? ` (${m.bank_name})` : ""} — open the master page to add it, then Refresh OCR.` : "Open the master page to add it, then Refresh OCR to link it.",
+      duration: 8000,
+    });
+  }, []);
+
   /**
    * Keep the OCR narration in step with the account dropdowns.
    * The narration is produced once at fill time from whatever ledger was picked then. On a contra the whole
@@ -1863,6 +1940,24 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     getBillForChat,
     getAiVoucherJson,
     getOwnCompany,
+    /* ---- AI Copilot (split view). Only used when prefs.aiCopilot is ON; the classic flow above is
+     * untouched when it is OFF, so nothing here changes existing behaviour. ---- */
+    copilotEnabled: prefs.aiCopilot === true,
+    copilot: {
+      statusLine: debugInfo
+        ? `${debugInfo.filled.length ? "Filled" : "Read"}: ${(o.currentVoucherType ?? o.adapter.voucherType ?? "voucher").replace(/_/g, " ")}${readBy?.engine ? ` · ${readBy.engine === "gemini" ? "Gemini" : readBy.engine}` : ""}`
+        : null,
+      missingFields: debugInfo?.missing ?? [],
+      /** Master name lists so the copilot can tell a real miss from a spelling variant. */
+      getMasters,
+      /** Apply a chat patch to the live form (only known, writable fields). Returns the labels written. */
+      applyPatch,
+      /** Open the app's Create-master dialog prefilled from a copilot proposal. */
+      createMasterFromProposal,
+      setCopilotMissing: setCopilotMissingCb,
+      /** Names the copilot reported as missing (amber list). */
+      missingMasters: copilotMissing,
+    },
   };
 }
 

@@ -38,6 +38,13 @@ export type OcrPrefs = {
    * phir har slip ka item/party/narration English me aata hai.
    */
   translateToEnglish: boolean;
+  /**
+   * Live AI Copilot (split-view chat beside the voucher form).
+   * OFF (default) = the existing OCR pipeline: read → detect → detect type → fill → bubbles.
+   * ON = the OCR panel opens a docked chat next to the form. Gemini answers in chat with a JSON patch,
+   * which is applied to the live form immediately, and can propose master creation for unmatched names.
+   */
+  aiCopilot: boolean;
 };
 export type OcrOnlineProvider = "google" | "azure" | "";
 /** auto = detect per slip (default) | eng = force English | local = force Devanagari/Nepali. */
@@ -56,7 +63,7 @@ export function clampAutoPostSeconds(v: unknown): number {
 export const OCR_LAYER_Z = 100;
 
 const KEY = "pl.ocr.prefs.v1";
-const DEFAULTS: OcrPrefs = { enabled: true, autoPost: false, overwriteEdited: false, autoPostSeconds: 10, autoSwitchVoucher: true, autoSwitchSeconds: 10, connectorStyle: "tail", narrationStyle: "full", engine: "auto", onlineProvider: "", scriptPref: "auto", translateToEnglish: false };
+const DEFAULTS: OcrPrefs = { enabled: true, autoPost: false, overwriteEdited: false, autoPostSeconds: 10, autoSwitchVoucher: true, autoSwitchSeconds: 10, connectorStyle: "tail", narrationStyle: "full", engine: "auto", onlineProvider: "", scriptPref: "auto", translateToEnglish: false, aiCopilot: false };
 const subs = new Set<() => void>();
 let cache: OcrPrefs | null = null;
 
@@ -70,6 +77,7 @@ function normalize(raw: Partial<OcrPrefs> | null | undefined): OcrPrefs {
     onlineProvider: raw?.onlineProvider === "google" || raw?.onlineProvider === "azure" ? raw.onlineProvider : "",
     scriptPref: raw?.scriptPref === "eng" || raw?.scriptPref === "local" ? raw.scriptPref : "auto",
     translateToEnglish: raw?.translateToEnglish === true,
+    aiCopilot: raw?.aiCopilot === true,
   };
 }
 

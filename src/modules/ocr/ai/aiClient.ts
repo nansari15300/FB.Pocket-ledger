@@ -345,6 +345,46 @@ export function useOcrAiStatus(companyId: string | null | undefined, enabled = t
 /* ---- AI chat / teaching (ai-plan.md Phase 1 + 3) ---- */
 const AI_CHAT_TIMEOUT_MS = 95_000;
 
+/** Copilot: fields a chat turn may change on the live voucher form (server whitelists these too). */
+export type OcrAiVoucherPatch = {
+  date?: string;
+  narration?: string;
+  amount?: number;
+  voucher_number?: string;
+  reference?: string;
+  party_name?: string;
+  account_name?: string;
+  notes?: string;
+};
+
+export type OcrAiMasterKind = "party" | "bank" | "staff" | "expense" | "income";
+
+/** A master Gemini proposes to create for a name printed on the document but absent from masters. */
+export type OcrAiMasterProposal = {
+  kind: OcrAiMasterKind;
+  name: string;
+  alias?: string;
+  pan?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  account_no?: string;
+  bank_name?: string;
+  account_type?: "sundry_debtors" | "sundry_creditors" | "bank" | "cash" | "expense" | "income";
+};
+
+/** A printed name that matches no master; the app flags it amber and offers "Create". */
+export type OcrAiMissingMaster = { kind: OcrAiMasterKind; name: string; hint?: string };
+
+/** Compact master name lists so Gemini can tell a real miss from a spelling variant. */
+export type OcrAiMasterLists = {
+  parties?: string[];
+  banks?: string[];
+  staff?: string[];
+  expenses?: string[];
+  incomes?: string[];
+};
+
 export type OcrAiChatInput = {
   companyId: string;
   /** Last N text turns only (see chatPayload). */
@@ -355,16 +395,78 @@ export type OcrAiChatInput = {
   mimeType?: string;
   voucherJson?: unknown;
   ownCompany?: { name?: string | null; pan?: string | null };
+  /** Copilot mode: ask for voucher_patch / master_create / missing_masters too. */
+  copilot?: boolean;
+  /** Copilot mode: master names already in the company (see OcrAiMasterLists). */
+  masters?: OcrAiMasterLists;
   signal?: AbortSignal;
 };
 
 export type OcrAiChatResult = {
   reply: string;
   proposedRule: OcrAiProposedRule | null;
+  /** Live form edits to apply immediately (copilot only; null = nothing to change). */
+  voucherPatch: OcrAiVoucherPatch | null;
+  /** Master the user agreed to create (copilot only). */
+  masterCreate: OcrAiMasterProposal | null;
+  /** Printed names with no master record (copilot only). */
+  missingMasters: OcrAiMissingMaster[];
   model: string;
   usage: { promptTokens: number; outputTokens: number; totalTokens: number };
   rulesUsed: number;
 };
+
+const MASTER_PATCH_KEYS = ["date", "narration", "voucher_number", "reference", "party_name", "account_name", "notes"] as const;
+const MASTER_KINDS: readonly OcrAiMasterKind[] = ["party", "bank", "staff", "expense", "income"];
+
+function normVoucherPatch(raw: unknown): OcrAiVoucherPatch | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  const out: OcrAiVoucherPatch = {};
+  let n = 0;
+  for (const k of MASTER_PATCH_KEYS) {
+    const v = typeof o[k] === "string" ? o[k].trim() : "";
+    if (!v) continue;
+    if (k === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(v)) continue;
+    out[k] = v;
+    n++;
+  }
+  const amt = Number(o.amount);
+  if (Number.isFinite(amt) && amt > 0 && amt < 1e12) { out.amount = Math.round(amt * 100) / 100; n++; }
+  return n ? out : null;
+}
+
+function normMasterProposal(raw: unknown): OcrAiMasterProposal | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  const kind = typeof o.kind === "string" ? (o.kind.trim().toLowerCase() as OcrAiMasterKind) : null;
+  const name = typeof o.name === "string" ? o.name.trim() : "";
+  if (!kind || !MASTER_KINDS.includes(kind) || !name) return null;
+  const out: OcrAiMasterProposal = { kind, name };
+  for (const k of ["alias", "pan", "phone", "email", "address", "account_no", "bank_name"] as const) {
+    const v = typeof o[k] === "string" ? o[k].trim() : "";
+    if (v) out[k] = v;
+  }
+  const at = typeof o.account_type === "string" ? o.account_type.trim().toLowerCase() : "";
+  if (at === "sundry_debtors" || at === "sundry_creditors" || at === "bank" || at === "cash" || at === "expense" || at === "income") out.account_type = at;
+  return out;
+}
+
+function normMissingMasters(raw: unknown): OcrAiMissingMaster[] {
+  if (!Array.isArray(raw)) return [];
+  const out: OcrAiMissingMaster[] = [];
+  for (const x of raw) {
+    if (!x || typeof x !== "object") continue;
+    const o = x as Record<string, unknown>;
+    const kind = typeof o.kind === "string" ? (o.kind.trim().toLowerCase() as OcrAiMasterKind) : null;
+    const name = typeof o.name === "string" ? o.name.trim() : "";
+    if (!kind || !MASTER_KINDS.includes(kind) || !name) continue;
+    const hint = typeof o.hint === "string" && o.hint.trim() ? o.hint.trim() : undefined;
+    out.push(hint ? { kind, name, hint } : { kind, name });
+    if (out.length >= 6) break;
+  }
+  return out;
+}
 
 export async function ocrAiChat(input: OcrAiChatInput): Promise<OcrAiChatResult> {
   const body: Record<string, unknown> = { company: input.companyId, provider: "gemini", messages: input.messages };
@@ -375,12 +477,27 @@ export async function ocrAiChat(input: OcrAiChatInput): Promise<OcrAiChatResult>
   }
   if (input.voucherJson != null) body.voucherJson = input.voucherJson;
   if (input.ownCompany) body.ownCompany = { name: input.ownCompany.name ?? "", pan: input.ownCompany.pan ?? "" };
+  if (input.copilot) body.copilot = true;
+  if (input.masters && typeof input.masters === "object") {
+    /* Cap every list client-side too: the payload rides on each turn. */
+    const cap = (v?: string[]) => (Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.trim()).slice(0, 400) : undefined);
+    const m: OcrAiMasterLists = {};
+    if (cap(input.masters.parties)?.length) m.parties = cap(input.masters.parties);
+    if (cap(input.masters.banks)?.length) m.banks = cap(input.masters.banks);
+    if (cap(input.masters.staff)?.length) m.staff = cap(input.masters.staff);
+    if (cap(input.masters.expenses)?.length) m.expenses = cap(input.masters.expenses);
+    if (cap(input.masters.incomes)?.length) m.incomes = cap(input.masters.incomes);
+    if (Object.keys(m).length) body.masters = m;
+  }
   const raw = await call<Record<string, unknown>>("/api/ocr-cloud/ai-chat", { method: "POST", body, timeoutMs: AI_CHAT_TIMEOUT_MS, signal: input.signal });
   const u = (raw?.usage && typeof raw.usage === "object" ? raw.usage : {}) as Record<string, unknown>;
   const n = (v: unknown) => (Number.isFinite(Number(v)) ? Math.max(0, Math.round(Number(v))) : 0);
   return {
     reply: typeof raw?.reply === "string" && raw.reply.trim() ? raw.reply : "(no answer)",
     proposedRule: normalizeProposedRule(raw?.proposedRule),
+    voucherPatch: normVoucherPatch(raw?.voucherPatch),
+    masterCreate: normMasterProposal(raw?.masterCreate),
+    missingMasters: normMissingMasters(raw?.missingMasters),
     model: typeof raw?.model === "string" ? raw.model : "",
     usage: { promptTokens: n(u.promptTokens), outputTokens: n(u.outputTokens), totalTokens: n(u.totalTokens) },
     rulesUsed: n(raw?.rulesUsed),
