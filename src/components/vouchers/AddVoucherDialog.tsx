@@ -1,7 +1,7 @@
 "use client";
 import { VoucherMasterEditHost } from "@/components/vouchers/VoucherMasterEditHost";
 import { ReconciledPointGuardProvider } from "@/components/vouchers/ReconciledPointGuardContext";
-import { VoucherOcrHeaderToggles, OCR_SWITCH_EVENT } from "@/modules/ocr";
+import { VoucherOcrHeaderToggles, OCR_SWITCH_EVENT, useOcrPrefs } from "@/modules/ocr";
 import dynamic from "next/dynamic";
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from "react";
@@ -1767,6 +1767,25 @@ export function AddVoucherDialog(props: any) {
   // Copy button ko existing action-row ke andar (Save & Print ke left) portal mount node se inject karte hain.
   const [copyButtonMountNode, setCopyButtonMountNode] = useState<HTMLDivElement | null>(null);
   const dialogFrameRef = useRef<HTMLDivElement | null>(null);
+  /* AI copilot chat floats beside the voucher. While it is open the voucher shell MUST be non-modal:
+   * Radix modal dialogs set pointer-events:none on everything outside, which makes the chat dead to
+   * clicks. The chat announces itself through this event, so every AddVoucherDialog host (page-level
+   * dialogs, forms, …) adapts without threading a prop through 20 callers. */
+  /* The AI-copilot setting is read here (not the chat's open state) so the shell is already non-modal
+   * from the first frame. Flipping `modal` mid-life makes Radix remount the whole dialog subtree —
+   * the form and the chat both vanish in a blink. Radix modal also marks everything outside as
+   * pointer-events:none, which would make the floating chat dead to clicks. */
+  const ocrPrefs = useOcrPrefs();
+  const copilotCapable = ocrPrefs.aiCopilot === true;
+  /* PC-window semantics with the AI copilot window: whichever shell was clicked last sits on top.
+   * The chat listens for this and drops its "active" z-index; nothing here closes anything. */
+  useEffect(() => {
+    const frame = dialogFrameRef.current;
+    if (!frame) return;
+    const bump = () => document.dispatchEvent(new CustomEvent("pl-voucher-shell-focus"));
+    frame.addEventListener("pointerdown", bump, true);
+    return () => frame.removeEventListener("pointerdown", bump, true);
+  }, []);
   const copyButtonHostRef = useRef<HTMLDivElement | null>(null);
   /** Multi-gap picker main voucher Save se khula ho to dismiss/complete par parent voucher dialog band (`onOpenChange(false)`). */
   const recurringPickerCloseParentRef = useRef(false);
@@ -4936,7 +4955,7 @@ export function AddVoucherDialog(props: any) {
 
   return (
     <VoucherMasterEditHost>
-    <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange} modal={dialogRootModal}>
+    <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange} modal={dialogRootModal && !copilotCapable}>
       {children && <DialogTrigger asChild>{children}</DialogTrigger>}
       {isDesktop ? (
         <DialogContent

@@ -35,9 +35,12 @@ import {
 } from "./aiChatModel";
 
 const CHAT_Z = 2147483002;
-/** Copilot window: above the voucher shell (z-81) + bubbles, below the OCR settings gear. */
-const COPILOT_Z = 2147483000 - 20;
-const COPILOT_STORAGE_KEY = "pl.ocr.copilot.window.v3";
+/* The voucher dialog keeps its own stacking (z-[81]); we never touch it. The chat hops around it:
+ * click the chat   → z-82 (above the voucher shell AND its portals)
+ * click the voucher → z-79 (under the voucher and under its master dialogs) */
+const COPILOT_Z = 79;
+const COPILOT_Z_FOCUSED = 82;
+const COPILOT_STORAGE_KEY = "pl.ocr.copilot.window.v4";
 const CHAT_CONTENT_STYLE: React.CSSProperties = {
   zIndex: CHAT_Z,
   height: "88vh",
@@ -462,7 +465,34 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
     minH: 280,
     defaultW: (vw) => Math.round(Math.min(460, vw * 0.32)),
     defaultH: (vh) => Math.round(vh * 0.7),
+    /* Open against the right edge so the chat never covers the voucher dialog (which stays at
+     * z-[81]); the user can drag it anywhere afterwards. */
+    defaultPosition: (vw, vh, w, h) => ({
+      x: Math.max(0, vw - w - 12),
+      y: Math.max(0, Math.round((vh - h) / 2)),
+    }),
   });
+
+  /* Clicking the voucher dialog (or anywhere outside) must NOT dismiss the chat. Only the X (or the
+   * header pill toggle) closes it. `focused` is purely cosmetic (deeper shadow on the active window). */
+  const [focused, setFocused] = React.useState(false);
+  /* Opening the chat is itself a user action on the chat: start it on top (z-82) instead of behind the
+   * voucher, otherwise it looks dead — you cannot click a window that is already underneath. */
+  React.useEffect(() => {
+    if (!copilot || !open) return;
+    setFocused(true);
+  }, [copilot, open]);
+  React.useEffect(() => {
+    if (!copilot || !open) return;
+    const drop = () => setFocused(false);
+    document.addEventListener("pl-voucher-shell-focus", drop);
+    return () => document.removeEventListener("pl-voucher-shell-focus", drop);
+  }, [copilot, open]);
+  const raiseChat = React.useCallback(() => {
+    if (!copilot) return;
+    setFocused(true);
+  }, [copilot]);
+  const copilotZ = focused ? COPILOT_Z_FOCUSED : COPILOT_Z;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal={!copilot}>
@@ -477,7 +507,7 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
         style={
           copilot
             ? {
-                zIndex: COPILOT_Z,
+                zIndex: copilotZ,
                 left: copilotResizable.position.x,
                 top: copilotResizable.position.y,
                 width: copilotResizable.size.w,
@@ -489,17 +519,33 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
                 overflow: "hidden",
                 padding: 0,
                 border: "1px solid rgb(203 213 225)",
-                boxShadow: "0 24px 60px -16px rgba(15,23,42,0.35), 0 8px 20px -8px rgba(15,23,42,0.18)",
+                boxShadow: focused
+                  ? "0 24px 60px -16px rgba(15,23,42,0.45), 0 8px 20px -8px rgba(15,23,42,0.22)"
+                  : "0 18px 44px -16px rgba(15,23,42,0.28), 0 6px 16px -8px rgba(15,23,42,0.14)",
               }
             : CHAT_CONTENT_STYLE
         }
         className={cn(
           "flex flex-col gap-0 overflow-hidden p-0",
-          /* Copilot is a free-floating window: kill Radix's centring + zoom/slide keyframes, which keep
-           * writing transform and fight a dragged left/top. */
-          copilot && "!left-0 !top-0 !translate-x-0 !translate-y-0 animate-none duration-0"
+          /* Copilot is a free-floating window. Do NOT add `!left-0 !top-0` here: those compile to
+           * `!important` and silently beat the inline left/top that drag writes, pinning the window. */
+          copilot && "animate-none duration-0"
         )}
         onFocusOutside={(e) => e.preventDefault()}
+        onPointerDownOutside={copilot ? (e) => e.preventDefault() : undefined}
+        onInteractOutside={copilot ? (e) => e.preventDefault() : undefined}
+        onEscapeKeyDown={copilot ? (e) => e.preventDefault() : undefined}
+        onPointerDownCapture={copilot ? raiseChat : undefined}
+        onBlurCapture={
+          copilot
+            ? (e) => {
+                /* Only drop "active" when focus actually left the window — not when it moves between
+                 * our own controls (which would flicker the shadow on every click inside). */
+                const next = e.relatedTarget as Node | null;
+                if (!next || !(e.currentTarget as HTMLElement).contains(next)) setFocused(false);
+              }
+            : undefined
+        }
         onClick={(e) => e.stopPropagation()}
         data-pl-ocr-ai-chat=""
         data-pl-drag-surface={copilot ? "active" : undefined}
@@ -531,12 +577,12 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
         ) : null}
         {/* ── Header (WhatsApp green) ── */}
         <DialogHeader
-          className="relative shrink-0 px-4 pb-2.5 pt-3 text-left"
+          className={cn("relative shrink-0 px-4 pb-2.5 pt-3 text-left", copilot && "cursor-move select-none")}
           style={{ background: ACCENT }}
           onMouseDown={copilot ? copilotResizable.handleDragStart : undefined}
         >
           <div className="relative z-30 flex items-center justify-between gap-2">
-            <DialogTitle className="flex items-center gap-2 text-sm font-semibold text-white" data-pl-no-drag="title">
+            <DialogTitle className="flex items-center gap-2 text-sm font-semibold text-white">
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20">
                 <Bot className="h-4 w-4 text-white" />
               </div>
@@ -552,6 +598,7 @@ export function AiChatDialog({ open, onOpenChange, companyId, docType, getBill, 
               />
               {/* Close button */}
               <DialogPrimitive.Close
+                data-pl-no-drag="close"
                 className={cn(
                   "shrink-0 rounded-full p-1.5 transition",
                   copilot

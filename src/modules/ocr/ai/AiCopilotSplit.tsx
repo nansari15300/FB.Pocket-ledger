@@ -21,7 +21,7 @@ export type AiCopilotLayout = {
 
 /** One line per voucher form. OFF keeps `enabled` false and nothing renders. */
 export function useAiCopilotLayout(ocr: VoucherOcrApi): AiCopilotLayout {
-  const [open, setOpen] = React.useState(true);
+  const [open, setOpen] = React.useState(false);
   const enabled = ocr.copilotEnabled === true;
   return React.useMemo(
     () => ({ enabled, open: enabled && open, toggle: () => setOpen((v) => !v), setOpen }),

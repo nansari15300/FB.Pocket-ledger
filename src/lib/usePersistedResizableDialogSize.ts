@@ -23,6 +23,8 @@ export type ResizableDialogOptions = {
   defaultH?: (vh: number) => number;
   maxWPercent?: number;
   maxHPercent?: number;
+  /** Where the window first opens (before any saved bounds). Defaults to centre. */
+  defaultPosition?: (vw: number, vh: number, w: number, h: number) => DialogPosition;
 };
 
 function clampSize(
@@ -153,7 +155,7 @@ export function usePersistedResizableDialogSize(
         saved?.size ??
         defaultSizeForViewport(vw, vh, opts?.defaultW, opts?.defaultH, oMinW, oMinH, oMaxWP, oMaxHP);
       setSize(nextSize);
-      const nextPos = saved?.position ?? centerPosition(nextSize.w, nextSize.h, vw, vh);
+      const nextPos = saved?.position ?? (opts?.defaultPosition ? opts.defaultPosition(vw, vh, nextSize.w, nextSize.h) : centerPosition(nextSize.w, nextSize.h, vw, vh));
       setPosition(nextPos);
       latestBoundsRef.current = { size: nextSize, position: nextPos };
     } else if (prevIsOpenRef.current && !isOpen) {
@@ -196,12 +198,9 @@ export function usePersistedResizableDialogSize(
     (e: React.MouseEvent) => {
       if (!enabled) return;
       const target = e.target as HTMLElement;
-      /* Interactive controls (buttons, inputs, the info popup…) click normally — never start a drag. */
-      if (
-        target.closest(
-          "button, a, input, textarea, select, label, [role='switch'], [role='combobox'], [role='tab'], [data-radix-select-trigger], [data-pl-no-drag]"
-        )
-      ) {
+      /* Only real controls opt out. Plain spans/divs inside the header (token stats, "reset" label,
+       * title) stay draggable, otherwise a narrow ribbon has zero grab area. */
+      if (target.closest("button, a, input, textarea, select, [role='switch'], [role='combobox'], [role='tab'], [data-radix-select-trigger], [data-pl-no-drag]")) {
         return;
       }
       e.preventDefault();
