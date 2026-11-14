@@ -12,7 +12,7 @@ import { getOrCreateDeviceId } from "@/lib/writeGateway/legacy/deviceLimitClient
 import { fetchAttachmentRefBlob } from "@/lib/attachmentRefBlobFetch";
 import { fetchPbAttachmentBlob } from "@/lib/pocketbaseData/pbAttachments";
 import { parseBill } from "@/modules/ocr/parser";
-import { runTesseractOnFile } from "@/modules/ocr/engine";
+import { runOcrOnFile } from "@/modules/ocr/engine";
 import { queueOcrHandoff } from "@/modules/ocr/handoff";
 import { isOcrSelectableParty } from "@/modules/ocr/types";
 import type { OcrParsedBill, OcrRawResult } from "@/modules/ocr/types";
@@ -26,6 +26,7 @@ type LocalAutoPostSettings = {
   scheduleMinutes: number;
   scheduleDate: string;
   scheduleTime: string;
+  scanEngine: "gemini" | "google" | "azure";
   localRunnerUid: string;
   localRunnerDeviceId: string;
 };
@@ -40,6 +41,7 @@ type UnassignedRow = {
   isDeleted?: boolean;
   deleted?: boolean;
   autoOcrStatus?: string;
+  autoOcrProvider?: "gemini" | "google" | "azure";
   autoOcrStartedAtMs?: number;
   autoOcrDeviceId?: string;
 };
@@ -128,12 +130,12 @@ export function GalleryLocalAutoPostRunner({
     }, { merge: true });
   }, [fsId]);
 
-  const failJob = useCallback(async (row: UnassignedRow, message: string) => {
+  const failJob = useCallback(async (row: UnassignedRow, message: string, provider = settingsRefValue.current.scanEngine || "gemini") => {
     try {
       await writeStatus(row, {
         autoOcrStatus: "failed",
         autoOcrError: message.slice(0, 500),
-        autoOcrProvider: "local-tesseract",
+        autoOcrProvider: provider,
         autoOcrFinishedAt: serverTimestamp(),
       });
     } catch (error) {
@@ -143,6 +145,7 @@ export function GalleryLocalAutoPostRunner({
 
   const processOne = useCallback(async (row: UnassignedRow) => {
     if (!fsId || !user?.uid || !navigator.onLine) return false;
+    const scanEngine = settingsRefValue.current.scanEngine || "gemini";
     const rowRef = doc(firestore, `companies/${fsId}/unassigned_documents`, row.id);
     const claimed = await runTransaction(firestore, async (tx) => {
       const snapshot = await tx.get(rowRef);
@@ -156,7 +159,7 @@ export function GalleryLocalAutoPostRunner({
         autoOcrStartedAtMs: Date.now(),
         autoOcrDeviceId: deviceId,
         autoOcrUserId: user.uid,
-        autoOcrProvider: "local-tesseract",
+        autoOcrProvider: scanEngine,
         autoOcrError: "",
       });
       return true;
@@ -172,15 +175,22 @@ export function GalleryLocalAutoPostRunner({
       if (!blob?.size) throw new Error("Could not download the document to this PC.");
       if (!navigator.onLine) throw new Error("This PC went offline before the scan could finish.");
 
-      const raw = await runTesseractOnFile(blob, blob.type || mimeFor(row));
-      if (!navigator.onLine) throw new Error("This PC went offline before Auto post could save.");
       const partyRows = masters.processedParties as any[];
       const itemRows = masters.processedItems as any[];
-      if (!partyRows?.length || !itemRows?.length) throw new Error("Company parties or items are still loading.");
+      if (!partyRows?.length) throw new Error("No active parties are available for this company.");
+      if (!itemRows?.length) throw new Error("No active item masters are available for this company.");
+
+      const raw = await runOcrOnFile(blob, blob.type || mimeFor(row), {
+        companyId: fsId,
+        enginePref: scanEngine === "gemini" ? "ai" : "online",
+        cloudProvider: scanEngine === "google" ? "google" : scanEngine === "azure" ? "azure" : undefined,
+        ownCompany: { name: (company as any)?.name || "", pan: (company as any)?.pan || (company as any)?.panNumber || "" },
+      });
+      if (!navigator.onLine) throw new Error("This PC went offline before Auto post could save.");
       const target = safeInvoiceTarget(raw, partyRows, itemRows, (company as any)?.name, (company as any)?.pan || (company as any)?.panNumber);
       if ("error" in target) throw new Error(target.error);
 
-      activeJobRef.current = row;
+      activeJobRef.current = { ...row, autoOcrProvider: scanEngine };
       savedJobRef.current = false;
       setVoucherData({
         defaultTab: target.type,
@@ -196,7 +206,7 @@ export function GalleryLocalAutoPostRunner({
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await failJob(row, message);
+      await failJob(row, message, scanEngine);
       toast.message("Local Auto post needs review", { description: message });
       return false;
     }
@@ -205,7 +215,7 @@ export function GalleryLocalAutoPostRunner({
   const processPending = useCallback(async () => {
     if (!canRun || !navigator.onLine || busyRef.current) return;
     if (settings.runOnUpload) drainQueueRef.current = true;
-    if (!drainQueueRef.current) return;
+    if (!drainQueueRef.current || masters.loading) return;
     const next = rowsRef.current.find((row) =>
       row.url && row.status !== "ASSIGNED" && row.status !== "LOCKED" && row.isDeleted !== true && row.deleted !== true &&
       row.autoOcrStatus !== "complete" && row.autoOcrStatus !== "failed" &&
@@ -235,8 +245,13 @@ export function GalleryLocalAutoPostRunner({
       busyRef.current = false;
       window.setTimeout(() => void processPendingRef.current(), 0);
     }
-  }, [canRun, processOne, settings.runOnUpload]);
+  }, [canRun, masters.loading, processOne, settings.runOnUpload]);
   processPendingRef.current = processPending;
+
+  useEffect(() => {
+    if (!canRun || masters.loading || !drainQueueRef.current) return;
+    void processPending();
+  }, [canRun, masters.loading, processPending]);
 
   useEffect(() => {
     if (!canRun || !fsId) {
@@ -306,7 +321,7 @@ export function GalleryLocalAutoPostRunner({
         console.warn("[GalleryLocalAutoPost] voucher saved but gallery status update failed", error);
       }
     } else if (!savedJobRef.current) {
-      await failJob(job, "Auto post was closed before a voucher was saved.");
+      await failJob(job, "Auto post was closed before a voucher was saved.", job.autoOcrProvider);
     }
     activeJobRef.current = null;
     busyRef.current = false;

@@ -82,6 +82,8 @@ export type RunOcrOptions = {
   companyId?: string | null;
   /** "auto" (default) tries the saved online provider first when allowed; "offline" = tesseract only; "online" = cloud only, no tesseract fallback. */
   enginePref?: OcrEnginePref;
+  /** Auto post can pin Google vs Azure without changing this device's interactive OCR preference. */
+  cloudProvider?: "google" | "azure";
   /** Our company (name + PAN) so the AI knows whether we are buyer or seller. */
   ownCompany?: { name?: string | null; pan?: string | null };
   /** Our own Bank/Cash ledgers — the server matches full account numbers to prove a contra transfer. */
@@ -140,7 +142,11 @@ async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promi
     return { raw: null, note: `Online OCR status unavailable (${ocrCloudErrorCode(e)})` };
   }
   if (!status.serverOcrEnabled) return { raw: null, note: "Online OCR off on server" };
-  if (!status.canUse) return { raw: null, note: !status.companyEnabled ? "Online OCR off for this company" : !status.hasKey ? "no online OCR key" : "Online OCR not allowed for this user" };
+  const requestedProvider = opts.cloudProvider || getOcrPrefs().onlineProvider || status.provider || "google";
+  const providerAvailable = status.isAdmin
+    ? status.keys ? !!status.keys[requestedProvider] : !!status.hasKey && status.provider === requestedProvider
+    : !!status.canUse && (status.providers ? status.providers.includes(requestedProvider) : status.provider === requestedProvider);
+  if (!status.canUse || !providerAvailable) return { raw: null, note: !status.companyEnabled ? "Online OCR off for this company" : !providerAvailable ? `no ${requestedProvider} OCR key or access` : "Online OCR not allowed for this user" };
   if (opts.signal?.aborted) return { raw: null, note: "Online OCR cancelled" };
   const ac = new AbortController();
   let t: ReturnType<typeof setTimeout> | undefined;
@@ -149,8 +155,8 @@ async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promi
   try {
     const img = await cloudJpeg(file, mime);
     const res = await Promise.race([
-      // provider: Google / Azure picked in Switch Engine (also used by Auto and the AI fallback); "" = server's latest key
-      ocrCloud.vision(opts.companyId, img.b64, { signal: ac.signal, languageHints: ["ne", "hi", "en"], provider: getOcrPrefs().onlineProvider || undefined }),
+      // Provider may be pinned by Auto post; interactive OCR keeps its normal device preference.
+      ocrCloud.vision(opts.companyId, img.b64, { signal: ac.signal, languageHints: ["ne", "hi", "en"], provider: requestedProvider }),
       new Promise<never>((_, rej) => { t = setTimeout(() => { ac.abort(); rej(new Error("Online OCR timed out")); }, CLOUD_TIMEOUT_MS); }),
     ]);
     const text = String(res?.text ?? "");
@@ -247,7 +253,7 @@ export async function runOcrOnFile(file: Blob, mime: string, opts: RunOcrOptions
 
   // ---- Google / Azure picked: only that cloud engine, no tesseract ----
   if (pref === "online") {
-    const provider = getOcrPrefs().onlineProvider || "";
+    const provider = opts.cloudProvider || getOcrPrefs().onlineProvider || "";
     stage(provider || "cloud");
     const cloud = await tryCloudOcr(file, mime, opts).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})` }));
     if (cloud.raw) return cloud.raw;

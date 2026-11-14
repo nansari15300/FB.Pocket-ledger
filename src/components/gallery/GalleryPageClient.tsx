@@ -1988,6 +1988,8 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
   const [fileToRename, setFileToRename] = useState<UnassignedFile | null>(null);
   /** Duplicate tab: "Why Duplicate" panel — kis file ka reason dikha rahe hain. */
   const [whyDuplicateFile, setWhyDuplicateFile] = useState<UnassignedFile | null>(null);
+  /** Auto post failed tab: saved scan/validation reason for the selected file. */
+  const [whyFailedFile, setWhyFailedFile] = useState<UnassignedFile | null>(null);
   /** 3-dot → "Edit file": camera editor me existing image kholne ke liye. */
   const [fileToEdit, setFileToEdit] = useState<UnassignedFile | null>(null);
   // async resolve — local refs blobs me badalne padte hain
@@ -2928,6 +2930,20 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
                         Why Duplicate
                       </button>
                     )}
+                    {mode === "auto-failed" && (
+                      <button
+                        type="button"
+                        className="absolute bottom-1.5 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full border border-rose-400/80 bg-rose-50/95 px-2 py-1 text-[10px] font-medium leading-none text-rose-900 opacity-0 shadow-sm transition-opacity hover:bg-rose-100 group-hover:opacity-100 focus-visible:opacity-100 dark:bg-rose-950/90 dark:text-rose-100"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setWhyFailedFile(file);
+                        }}
+                        title="Why did Auto post fail?"
+                      >
+                        <HelpCircle className="mr-1 inline h-3 w-3 -translate-y-[0.5px]" aria-hidden />
+                        Why failed?
+                      </button>
+                    )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="outline" size="icon" className="absolute top-1 right-1 h-7 w-7 opacity-0 group-hover:opacity-100 z-20" onClick={(e) => e.stopPropagation()}>
@@ -3538,6 +3554,31 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <Dialog open={!!whyFailedFile} onOpenChange={(open) => !open && setWhyFailedFile(null)}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-sm">
+                <HelpCircle className="h-4 w-4 shrink-0 text-rose-600" aria-hidden />
+                Why did Auto post fail?
+              </DialogTitle>
+              <DialogDescription className="break-words text-xs">
+                {whyFailedFile ? getCleanName(whyFailedFile.name) : ""}
+              </DialogDescription>
+            </DialogHeader>
+            {whyFailedFile ? (
+              <div className="space-y-3 text-sm">
+                <div className="rounded-md border border-rose-200 bg-rose-50/70 p-3 text-rose-950 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100">
+                  <p className="whitespace-pre-wrap break-words">{whyFailedFile.autoOcrError?.trim() || "No failure details were recorded for this file. Review the document and try again."}</p>
+                </div>
+                {whyFailedFile.autoOcrProvider ? <p className="text-xs text-muted-foreground">{formatAutoOcrProvider(whyFailedFile.autoOcrProvider)}</p> : null}
+              </div>
+            ) : null}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setWhyFailedFile(null)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
     </div>
   );
 }
@@ -3558,6 +3599,14 @@ function hasWhyDuplicate(file: UnassignedFile): boolean {
       file.duplicateMatchedNarration ||
       file.duplicateOfVoucherNumber
   );
+}
+
+function formatAutoOcrProvider(provider: string): string {
+  if (provider === "gemini") return "Selected engine: Pocket AI (Gemini)";
+  if (provider === "google") return "Selected engine: Google OCR";
+  if (provider === "azure") return "Selected engine: Azure OCR";
+  if (provider === "local-tesseract") return "Legacy scan label: local-tesseract (older records may not reflect the engine selected in settings).";
+  return `Selected engine: ${provider}`;
 }
 
 function getCleanName(name: string) {

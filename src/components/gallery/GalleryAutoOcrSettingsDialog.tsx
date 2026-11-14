@@ -393,6 +393,10 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
       setError(LOCAL_DEVICE_COPY[introLang].required);
       return;
     }
+    if (settings.enabled && settings.runLocation === "local-pc" && !scanEngineAvailable[settings.scanEngine]) {
+      setError("The selected scan engine has no configured key or access for this company.");
+      return;
+    }
     if (settings.enabled && settings.runOnSchedule && settings.scheduleMode === "date-time" && (!settings.scheduleDate || !settings.scheduleTime)) {
       setError("Choose both a date and time for the scheduled scan.");
       return;
@@ -565,7 +569,7 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
               </div>}
             </section>
 
-            <section hidden={settings.runLocation === "local-pc"} className="space-y-3 rounded-xl border border-indigo-300 bg-gradient-to-br from-indigo-100 via-sky-50 to-violet-100 p-3 shadow-[0_5px_14px_rgba(49,46,129,0.18)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_10px_22px_rgba(49,46,129,0.24)]">
+            <section className="space-y-3 rounded-xl border border-indigo-300 bg-gradient-to-br from-indigo-100 via-sky-50 to-violet-100 p-3 shadow-[0_5px_14px_rgba(49,46,129,0.18)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_10px_22px_rgba(49,46,129,0.24)]">
               <div className="flex items-center gap-2 text-sm font-semibold"><Gauge className="h-4 w-4" />Usage and voucher saving</div>
               <div className="rounded-lg border border-indigo-200 bg-white/90 p-2.5 shadow-[0_2px_6px_rgba(30,41,59,0.12)]">
                 <div className="mb-2 text-xs font-medium text-foreground">Scan Engine</div>
@@ -588,7 +592,9 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
               </div>
               <div className="rounded-lg border border-indigo-200 bg-white/90 p-2.5 shadow-[0_2px_6px_rgba(30,41,59,0.12)]">
                 <NumberSetting label={`Maximum ${SCAN_ENGINES[settings.scanEngine].name} calls per minute`} value={settings.maxCallsPerMinute} min={1} max={15} onChange={(maxCallsPerMinute) => patch({ maxCallsPerMinute })} disabled={!settings.enabled} />
-                <p className="mt-2 text-xs text-muted-foreground">Limit applies to this company. The server’s engine safety limit may be lower.</p>
+                <p className="mt-2 text-xs text-muted-foreground">{settings.runLocation === "local-pc"
+                  ? "The selected PC runs the scan using this company’s configured engine key. Server and provider safety limits may still apply."
+                  : "Limit applies to this company. The server’s engine safety limit may be lower."}</p>
               </div>
               <p className="rounded-lg border border-indigo-200 bg-white/80 p-2.5 text-xs text-muted-foreground shadow-[0_2px_6px_rgba(30,41,59,0.1)]">Automatically created vouchers remain unapproved. Use the safeguard card below to choose how incomplete scans are handled.</p>
             </section>
