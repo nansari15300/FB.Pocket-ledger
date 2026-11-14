@@ -19,6 +19,7 @@ import type { OcrParsedBill, OcrRawResult } from "@/modules/ocr/types";
 
 type LocalAutoPostSettings = {
   enabled: boolean;
+  processingMode: "semi" | "full";
   runLocation: "local-pc" | "server";
   runOnUpload: boolean;
   runOnSchedule: boolean;
@@ -29,6 +30,7 @@ type LocalAutoPostSettings = {
   scanEngine: "gemini" | "google" | "azure";
   localRunnerUid: string;
   localRunnerDeviceId: string;
+  missingFieldAction: "fail-and-continue" | "pause-and-hold";
 };
 
 type UnassignedRow = {
@@ -108,22 +110,29 @@ export function GalleryLocalAutoPostRunner({
   const canRun = settingsReady && settings.enabled && settings.runLocation === "local-pc" && isCompanyAdmin &&
     !!user?.uid && settings.localRunnerUid === user.uid && settings.localRunnerDeviceId === deviceId &&
     !!fsId && !settingsDialogOpen;
+  const canControlRunner = settings.enabled && settings.runLocation === "local-pc" && isCompanyAdmin &&
+    !!user?.uid && settings.localRunnerUid === user.uid && settings.localRunnerDeviceId === deviceId && !!fsId;
   const [rows, setRows] = useState<UnassignedRow[]>([]);
   const [voucherOpen, setVoucherOpen] = useState(false);
   const [voucherData, setVoucherData] = useState<Record<string, unknown> | null>(null);
   const [processDialogVisible, setProcessDialogVisible] = useState(true);
+  const [runnerHeld, setRunnerHeld] = useState(false);
   const [activeProcess, setActiveProcess] = useState<{ id: string; name: string } | null>(null);
   const activeJobRef = useRef<UnassignedRow | null>(null);
   const busyRef = useRef(false);
+  const runnerHeldRef = useRef(false);
+  const runnerStartedRef = useRef(false);
   const drainQueueRef = useRef(false);
   const staleRetryTimerRef = useRef<number | null>(null);
   const manualRetryIdsRef = useRef<Set<string>>(new Set());
   const processPendingRef = useRef<() => Promise<void>>(async () => {});
   const savedJobRef = useRef(false);
+  const handledMissingJobIdRef = useRef("");
   const rowsRef = useRef<UnassignedRow[]>([]);
   const settingsRefValue = useRef(settings);
   settingsRefValue.current = settings;
   rowsRef.current = rows;
+  runnerHeldRef.current = runnerHeld;
   const clearManualRetryId = useCallback((id: string) => {
     manualRetryIdsRef.current.delete(id);
     if (manualRetryIdsRef.current.size === 0 && !settingsRefValue.current.runOnUpload) drainQueueRef.current = false;
@@ -173,12 +182,31 @@ export function GalleryLocalAutoPostRunner({
     });
     if (!claimed) return false;
     activeJobRef.current = { ...row, autoOcrProvider: scanEngine };
-    setProcessDialogVisible(true);
+    handledMissingJobIdRef.current = "";
+    savedJobRef.current = false;
+    setProcessDialogVisible(settingsRefValue.current.processingMode === "semi");
     setActiveProcess({ id: row.id, name: row.name || "Document" });
 
+    let scannedRaw: OcrRawResult | null = null;
     try {
       const url = String(row.url || "").trim();
       if (!url) throw new Error("Document has no attachment URL.");
+      const enginePref = scanEngine === "gemini" ? "ai" as const : "online" as const;
+      const cloudProvider = scanEngine === "google" ? "google" as const : scanEngine === "azure" ? "azure" as const : undefined;
+      if (settingsRefValue.current.processingMode === "semi") {
+        // Open the regular voucher first. The explicit OCR handoff starts one scan with the
+        // selected engine; normal manually attached vouchers remain manual-scan only.
+        savedJobRef.current = false;
+        setVoucherData({
+          defaultTab: "sale",
+          unassignedFile: { id: row.id, url, path: row.path || "", name: row.name || "" },
+          fileUrls: [url],
+        });
+        queueOcrHandoff("sale", [url], { autoPost: true, enginePref, cloudProvider });
+        setVoucherOpen(true);
+        toast.info("Semi automatic scan started", { description: "The file is attached to its voucher. It will save automatically only when all required checks pass; otherwise this dialog stays open for review." });
+        return true;
+      }
       const blob = url.startsWith("pbatt:")
         ? await fetchPbAttachmentBlob(url)
         : await fetchAttachmentRefBlob(url, { companyId: fsId });
@@ -192,13 +220,16 @@ export function GalleryLocalAutoPostRunner({
 
       const raw = await runOcrOnFile(blob, blob.type || mimeFor(row), {
         companyId: fsId,
-        enginePref: scanEngine === "gemini" ? "ai" : "online",
-        cloudProvider: scanEngine === "google" ? "google" : scanEngine === "azure" ? "azure" : undefined,
+        enginePref,
+        cloudProvider,
         ownCompany: { name: (company as any)?.name || "", pan: (company as any)?.pan || (company as any)?.panNumber || "" },
       });
+      scannedRaw = raw;
       if (!navigator.onLine) throw new Error("This PC went offline before Auto post could save.");
       const target = safeInvoiceTarget(raw, partyRows, itemRows, (company as any)?.name, (company as any)?.pan || (company as any)?.panNumber);
-      if ("error" in target) throw new Error(target.error);
+      if ("error" in target) {
+        throw new Error(target.error);
+      }
 
       savedJobRef.current = false;
       setVoucherData({
@@ -215,6 +246,35 @@ export function GalleryLocalAutoPostRunner({
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const isRequiredDataIssue = /customer or supplier could not be matched|invoice date needs manual review|invoice total could not be verified|(?:invoice )?items do not match|line items did not pass|tds needs a manual|no active parties|no active item masters|could not confidently identify this as a sale or purchase/i.test(message);
+      if (settingsRefValue.current.missingFieldAction === "pause-and-hold" && isRequiredDataIssue && row.url) {
+        const url = String(row.url).trim();
+        runnerHeldRef.current = true;
+        runnerStartedRef.current = false;
+        setRunnerHeld(true);
+        setProcessDialogVisible(true);
+        setVoucherData({ defaultTab: "sale", unassignedFile: { id: row.id, url, path: row.path || "", name: row.name || "" }, fileUrls: [url] });
+        if (scannedRaw) queueOcrHandoff("sale", [url], { raw: scannedRaw, autoPost: false });
+        setVoucherOpen(true);
+        toast.message("Auto post paused for review", { description: message });
+        return true;
+      }
+      if (settingsRefValue.current.processingMode === "full") {
+        await failJob(row, message, scanEngine);
+        clearManualRetryId(row.id);
+        activeJobRef.current = null;
+        setActiveProcess(null);
+        toast.message("Full Auto post skipped this file", { description: `${message} The runner will continue with the next file.` });
+        return false;
+      }
+      if (row.url) {
+        toast.message("Auto post paused for review", { description: message });
+        setProcessDialogVisible(true);
+        const url = String(row.url).trim();
+        setVoucherData({ defaultTab: "sale", unassignedFile: { id: row.id, url, path: row.path || "", name: row.name || "" }, fileUrls: [url] });
+        setVoucherOpen(true);
+        return true;
+      }
       await failJob(row, message, scanEngine);
       clearManualRetryId(row.id);
       activeJobRef.current = null;
@@ -225,8 +285,8 @@ export function GalleryLocalAutoPostRunner({
   }, [clearManualRetryId, company, deviceId, failJob, fsId, masters.processedItems, masters.processedParties, user?.uid]);
 
   const processPending = useCallback(async () => {
-    if (!canRun || !navigator.onLine || busyRef.current) return;
-    if (settings.runOnUpload) drainQueueRef.current = true;
+    if (!canRun || !navigator.onLine || busyRef.current || runnerHeldRef.current) return;
+    if (settings.runOnUpload || runnerStartedRef.current) drainQueueRef.current = true;
     if (!drainQueueRef.current || masters.loading) return;
     const next = rowsRef.current.find((row) =>
       row.url && row.status !== "ASSIGNED" && row.status !== "LOCKED" && row.isDeleted !== true && row.deleted !== true &&
@@ -291,7 +351,7 @@ export function GalleryLocalAutoPostRunner({
 
   useEffect(() => {
     const publishState = () => window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-state", {
-      detail: { companyId: fsId, active: Boolean(activeProcess), fileName: activeProcess?.name || "", visible: processDialogVisible },
+      detail: { companyId: fsId, active: Boolean(activeProcess), fileName: activeProcess?.name || "", visible: processDialogVisible, held: runnerHeld, controlAvailable: canControlRunner },
     }));
     publishState();
     const onVisibility = (event: Event) => {
@@ -303,13 +363,56 @@ export function GalleryLocalAutoPostRunner({
       const detail = (event as CustomEvent<{ companyId?: string }>).detail;
       if (!detail?.companyId || String(detail.companyId) === fsId) publishState();
     };
+    const onHold = (event: Event) => {
+      const detail = (event as CustomEvent<{ companyId?: string; held?: boolean }>).detail;
+      if (String(detail?.companyId || "") !== fsId || typeof detail?.held !== "boolean") return;
+      runnerHeldRef.current = detail.held;
+      runnerStartedRef.current = !detail.held;
+      setRunnerHeld(detail.held);
+      if (!detail.held) {
+        drainQueueRef.current = true;
+        window.setTimeout(() => void processPendingRef.current(), 0);
+      }
+    };
+    const onRequiredFieldsMissing = (event: Event) => {
+      const detail = (event as CustomEvent<{ companyId?: string; missing?: string[] }>).detail;
+      const job = activeJobRef.current;
+      if (String(detail?.companyId || "") !== fsId || !job || handledMissingJobIdRef.current === job.id) return;
+      handledMissingJobIdRef.current = job.id;
+      const missing = Array.isArray(detail.missing) ? detail.missing.map((field) => String(field || "").trim()).filter(Boolean) : [];
+      const message = `Required information is missing: ${missing.join(", ") || "review the highlighted fields"}.`;
+      if (settingsRefValue.current.missingFieldAction === "fail-and-continue") {
+        void (async () => {
+          await failJob(job, message, job.autoOcrProvider);
+          clearManualRetryId(job.id);
+          activeJobRef.current = null;
+          savedJobRef.current = true;
+          setActiveProcess(null);
+          setVoucherOpen(false);
+          setVoucherData(null);
+          busyRef.current = false;
+          toast.message("Auto post moved to failed", { description: `${message} The runner will continue with the next file.` });
+          if (!runnerHeldRef.current) window.setTimeout(() => void processPendingRef.current(), 0);
+        })();
+        return;
+      }
+      runnerHeldRef.current = true;
+      runnerStartedRef.current = false;
+      setRunnerHeld(true);
+      setProcessDialogVisible(true);
+      toast.message("Auto post paused for review", { description: `${message} The voucher is still open; use Start runner after handling it.` });
+    };
     window.addEventListener("pl:gallery:auto-post-process-visibility", onVisibility);
     window.addEventListener("pl:gallery:auto-post-process-state-request", onStateRequest);
+    window.addEventListener("pl:gallery:auto-post-runner-hold", onHold);
+    window.addEventListener("pl:gallery:auto-post-required-fields-missing", onRequiredFieldsMissing);
     return () => {
       window.removeEventListener("pl:gallery:auto-post-process-visibility", onVisibility);
       window.removeEventListener("pl:gallery:auto-post-process-state-request", onStateRequest);
+      window.removeEventListener("pl:gallery:auto-post-runner-hold", onHold);
+      window.removeEventListener("pl:gallery:auto-post-required-fields-missing", onRequiredFieldsMissing);
     };
-  }, [activeProcess, fsId, processDialogVisible]);
+  }, [activeProcess, canControlRunner, clearManualRetryId, failJob, fsId, processDialogVisible, runnerHeld]);
 
   useEffect(() => {
     if (!canRun || masters.loading || !drainQueueRef.current) return;
@@ -330,10 +433,10 @@ export function GalleryLocalAutoPostRunner({
   }, [canRun, fsId]);
 
   useEffect(() => {
-    if (!canRun || !settings.runOnUpload) return;
+    if (!canRun || (!settings.runOnUpload && !runnerStartedRef.current)) return;
     drainQueueRef.current = true;
     void processPending();
-  }, [canRun, processPending, rows, settings.runOnUpload]);
+  }, [canRun, processPending, rows, settings.runOnUpload, runnerHeld]);
 
   useEffect(() => {
     if (!canRun || !settings.runOnSchedule) return;
@@ -392,7 +495,7 @@ export function GalleryLocalAutoPostRunner({
     busyRef.current = false;
     setVoucherOpen(false);
     setVoucherData(null);
-    window.setTimeout(() => void processPendingRef.current(), 0);
+    if (!runnerHeldRef.current) window.setTimeout(() => void processPendingRef.current(), 0);
   }, [clearManualRetryId, failJob, writeStatus]);
 
   return (

@@ -1702,6 +1702,28 @@ export function AddVoucherDialog(props: any) {
   /** Offline + Firestore-mode company (non-embedded APK cloud): view-only — Save / Copy / Approve band. */
   const apkOfflineViewOnly = useMemo(() => apkCloudCompanyOfflineViewOnly(company, navigatorOnline), [company, navigatorOnline]);
   const { user, customUser } = useAuth();
+  const [galleryRunnerControl, setGalleryRunnerControl] = useState<{ available: boolean; held: boolean }>({ available: false, held: false });
+  useEffect(() => {
+    if (!dialogOpen || !companyId) return;
+    const onRunnerState = (event: Event) => {
+      const detail = (event as CustomEvent<{ companyId?: string; held?: boolean; controlAvailable?: boolean }>).detail;
+      if (String(detail?.companyId || "") !== companyId) return;
+      setGalleryRunnerControl({ available: detail.controlAvailable === true, held: detail.held === true });
+    };
+    window.addEventListener("pl:gallery:auto-post-process-state", onRunnerState);
+    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-state-request", { detail: { companyId } }));
+    return () => window.removeEventListener("pl:gallery:auto-post-process-state", onRunnerState);
+  }, [companyId, dialogOpen]);
+  const autoPostRunnerToggleNode = useMemo(() => galleryRunnerControl.available ? (
+    <Button
+      type="button"
+      className="h-8 shrink-0 rounded-full border border-green-600 bg-white px-3 text-[11px] font-medium text-green-900 shadow-sm hover:bg-green-50"
+      aria-pressed={!galleryRunnerControl.held}
+      onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId, held: !galleryRunnerControl.held } }))}
+    >
+      {galleryRunnerControl.held ? "Start runner" : "Stop runner"}
+    </Button>
+  ) : null, [companyId, galleryRunnerControl.available, galleryRunnerControl.held]);
   /** Company Display settings se AD/BS/Both — recurring dialog labels + apply-from picker. */
   const { dateSystem, formatDate, formatDateBS, formatCurrencyForPrint } = useDate();
   const calLab = useMemo(() => recurringAutoVoucherLabels(dateSystem), [dateSystem]);
@@ -1769,6 +1791,7 @@ export function AddVoucherDialog(props: any) {
   }>({ open: false, title: "", message: "" });
   // Copy button ko existing action-row ke andar (Save & Print ke left) portal mount node se inject karte hain.
   const [copyButtonMountNode, setCopyButtonMountNode] = useState<HTMLDivElement | null>(null);
+  const [autoProcessRunnerMountNode, setAutoProcessRunnerMountNode] = useState<HTMLDivElement | null>(null);
   const dialogFrameRef = useRef<HTMLDivElement | null>(null);
   /* AI copilot chat floats beside the voucher. While it is open the voucher shell MUST be non-modal:
    * Radix modal dialogs set pointer-events:none on everything outside, which makes the chat dead to
@@ -1783,6 +1806,7 @@ export function AddVoucherDialog(props: any) {
   /* PC-window stacking with the AI copilot window is handled entirely inside AiChatDialog: it watches
    * document pointerdown and drops itself under the voucher whenever the click misses the chat. */
   const copyButtonHostRef = useRef<HTMLDivElement | null>(null);
+  const autoProcessRunnerHostRef = useRef<HTMLDivElement | null>(null);
   /** Multi-gap picker main voucher Save se khula ho to dismiss/complete par parent voucher dialog band (`onOpenChange(false)`). */
   const recurringPickerCloseParentRef = useRef(false);
   const [liveVoucher, setLiveVoucher] = useState<any>(null);
@@ -2403,9 +2427,14 @@ export function AddVoucherDialog(props: any) {
           // Second row (4 cols): har cell poora use ho — Sv & Copy To pehle content-width reh jata tha kyunki portal button me w-full nahi tha.
           btn.style.width = compact ? "100%" : "";
         };
-        const firstRowCount = rows[0];
+        let rowEnd = rows[0];
+        let rowIndex = 0;
         children.forEach((child, index) => {
-          const cols = index < firstRowCount ? rows[0] : rows[1];
+          while (index >= rowEnd && rowIndex < rows.length - 1) {
+            rowIndex += 1;
+            rowEnd += rows[rowIndex];
+          }
+          const cols = rows[rowIndex];
           const w = widthForCols(cols);
           // Keep each row buttons same length while matching requested row counts.
           child.style.flex = `0 0 ${w}`;
@@ -2463,6 +2492,54 @@ export function AddVoucherDialog(props: any) {
       setCopyButtonMountNode((prev) => (prev === null ? prev : null));
     };
   }, [isOpen, isMobile, voucher?.id, copyButtonLabel, postCopyNewFormSeed, copyToDisabledForInterCompany]);
+
+  useEffect(() => {
+    if (!dialogOpen || !autoPostRunnerToggleNode) {
+      const host = autoProcessRunnerHostRef.current;
+      if (host?.isConnected) host.remove();
+      autoProcessRunnerHostRef.current = null;
+      setAutoProcessRunnerMountNode((prev) => (prev === null ? prev : null));
+      return;
+    }
+    const syncRunnerButtonHost = () => {
+      const frame = dialogFrameRef.current;
+      if (!frame) return;
+      const normalize = (txt: string) => txt.replace(/\s+/g, " ").trim().toLowerCase();
+      const buttons = Array.from(frame.querySelectorAll("button")) as HTMLButtonElement[];
+      const pocketAiButton = buttons.find((button) => {
+        const text = normalize(button.textContent || "");
+        const title = normalize(button.title || button.getAttribute("aria-label") || "");
+        return (text === "pocket ai" || text === "hide ai" || title.includes("pocket ai")) && button.offsetParent !== null;
+      });
+      const actionRow = pocketAiButton?.parentElement;
+      if (!actionRow || !pocketAiButton) return;
+      let host = autoProcessRunnerHostRef.current;
+      if (!host || !host.isConnected || host.parentElement !== actionRow) {
+        if (host?.isConnected) host.remove();
+        host = document.createElement("div");
+        host.className = "inline-flex shrink-0 items-center";
+        actionRow.insertBefore(host, pocketAiButton.nextSibling);
+        autoProcessRunnerHostRef.current = host;
+        setAutoProcessRunnerMountNode(host);
+      } else {
+        host.className = "inline-flex shrink-0 items-center";
+        const target = pocketAiButton.nextSibling;
+        if (host !== target) actionRow.insertBefore(host, target);
+      }
+    };
+    syncRunnerButtonHost();
+    const intervalId = window.setInterval(() => { if (!document.hidden) syncRunnerButtonHost(); }, 700);
+    const onResize = () => syncRunnerButtonHost();
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("resize", onResize);
+      const host = autoProcessRunnerHostRef.current;
+      if (host?.isConnected) host.remove();
+      autoProcessRunnerHostRef.current = null;
+      setAutoProcessRunnerMountNode((prev) => (prev === null ? prev : null));
+    };
+  }, [dialogOpen, autoPostRunnerToggleNode]);
 
   // Draggable & resizable (desktop only)
   const [dialogPosition, setDialogPosition] = useState({ x: 0, y: 0 });
@@ -5210,6 +5287,9 @@ export function AddVoucherDialog(props: any) {
           </Button>,
           copyButtonMountNode
         )}
+      {autoProcessRunnerMountNode && autoPostRunnerToggleNode
+        ? createPortal(autoPostRunnerToggleNode, autoProcessRunnerMountNode)
+        : null}
       {/* Auto Monthly: rate bump + Save / Generate Now — main voucher dialog ke upar nested portal. */}
       <Dialog open={recurringSettingsOpen} onOpenChange={setRecurringSettingsOpen}>
         <DialogContent

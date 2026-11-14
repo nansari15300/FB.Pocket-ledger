@@ -1,7 +1,7 @@
 "use client";
 
 import "./gallery-canvas.css";
-import { writeBatch, updateDoc, deleteDoc } from "@/lib/writeGateway/pbWrites";
+import { writeBatch, updateDoc, deleteDoc, setDoc } from "@/lib/writeGateway/pbWrites";
 import { STAFF_ENTITY_LABEL } from "@/lib/staffEntityDisplayName";
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
@@ -114,6 +114,7 @@ import { companyUsesLocalAttachmentSourcesOnly } from "@/lib/staticAttachmentDis
 import { FIREBASE_LEDGER_COMPANY_SYNC_PREFS_CHANGED_EVENT } from "@/lib/firebaseLedgerCompanySyncPrefs";
 import { setVisiblePageAttachmentUrls } from "@/lib/attachmentNetworkGate";
 import { GalleryAutoOcrSettingsDialog } from "@/components/gallery/GalleryAutoOcrSettingsDialog";
+import { AutoPostModeSwitch, type AutoPostMode } from "@/components/gallery/AutoPostModeSwitch";
 
 
 const ATTACHABLE_VOUCHER_TYPES = [
@@ -291,6 +292,124 @@ const GALLERY_TAB_IDLE_CN =
 const GALLERY_TAB_ACTIVE_CN =
   "-translate-y-[3px] !border-2 !border-green-600 bg-blue-200/90 font-semibold !text-blue-900 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),0_4px_0_0_#15803d,0_6px_10px_-2px_rgba(21,128,61,0.45)] ring-1 ring-green-300 active:translate-y-0 active:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),0_1px_0_0_#15803d] hover:!bg-blue-200 hover:!border-green-600";
 
+function GalleryRunnerControls() {
+  const { company, companyId } = useCompany();
+  const fsId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
+  const [state, setState] = useState<{ active: boolean; fileName: string; visible: boolean; held: boolean }>({ active: false, fileName: "", visible: true, held: false });
+  useEffect(() => {
+    if (!fsId) return;
+    const onState = (event: Event) => {
+      const detail = (event as CustomEvent<{ companyId?: string; active?: boolean; fileName?: string; visible?: boolean; held?: boolean }>).detail;
+      if (String(detail?.companyId || "") !== fsId) return;
+      setState({ active: detail.active === true, fileName: String(detail.fileName || ""), visible: detail.visible !== false, held: detail.held === true });
+    };
+    window.addEventListener("pl:gallery:auto-post-process-state", onState);
+    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-state-request", { detail: { companyId: fsId } }));
+    return () => window.removeEventListener("pl:gallery:auto-post-process-state", onState);
+  }, [fsId]);
+  if (!state.active && !state.held) return null;
+  const dispatchVisibility = (visible: boolean) => {
+    setState((current) => ({ ...current, visible }));
+    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-visibility", { detail: { companyId: fsId, visible } }));
+  };
+  return (
+    <div className="flex min-w-0 shrink-0 flex-nowrap items-center gap-[10px] rounded-full border border-amber-300 bg-amber-50/80 px-2 py-1 text-[11px] text-amber-950" role="group" aria-label="Auto post runner controls">
+      <span className="max-w-44 truncate font-medium" title={state.fileName}>
+        {state.held ? "Runner on hold" : state.fileName ? `Processing: ${state.fileName}` : "Auto post running"}
+      </span>
+      {state.active ? <Button type="button" size="sm" variant="outline" className="h-8 shrink-0 rounded-full px-3 text-xs" onClick={() => dispatchVisibility(!state.visible)}>
+        {state.visible ? "Hide process" : "Show process"}
+      </Button> : null}
+    </div>
+  );
+}
+
+function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
+  const { company, companyId } = useCompany();
+  const { user } = useAuth();
+  const fsId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
+  const uid = String(user?.uid || "");
+  const isCompanyAdmin = !!uid && !!company && (
+    String((company as any).ownerId || (company as any).owner || "") === uid ||
+    (Array.isArray((company as any).sharedWith) && (company as any).sharedWith.some((member: any) =>
+      String(member?.uid || member?.userId || "") === uid && ["admin", "CompanyAdmin", "SuperAdmin"].includes(String(member?.role || ""))))
+  );
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (!fsId) return;
+    const onState = (event: Event) => {
+      const detail = (event as CustomEvent<{ companyId?: string; held?: boolean }>).detail;
+      if (String(detail?.companyId || "") === fsId) setHeld(detail?.held === true);
+    };
+    window.addEventListener("pl:gallery:auto-post-process-state", onState);
+    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-state-request", { detail: { companyId: fsId } }));
+    return () => window.removeEventListener("pl:gallery:auto-post-process-state", onState);
+  }, [fsId]);
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      aria-pressed={!held}
+      disabled={!isCompanyAdmin || !fsId}
+      title={held ? "Start the selected Auto post mode and keep watching for documents" : "Stop the Auto post runner"}
+      onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId: fsId, held: !held } }))}
+      className={cn("h-8 shrink-0 rounded-full border px-3 text-xs", held ? "!border-green-600 !bg-green-100 !text-green-950" : "!border-amber-500 !bg-amber-100 !text-amber-950", inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0 max-sm:px-2")}
+    >
+      {held ? "Start runner" : "Stop runner"}
+    </Button>
+  );
+}
+
+function GalleryAutoPostModeRibbon({ inline = false }: { inline?: boolean }) {
+  const { company, companyId } = useCompany();
+  const { user } = useAuth();
+  const fsId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
+  const uid = String(user?.uid || "");
+  const isCompanyAdmin = !!uid && !!company && (
+    String((company as any).ownerId || (company as any).owner || "") === uid ||
+    (Array.isArray((company as any).sharedWith) && (company as any).sharedWith.some((member: any) =>
+      String(member?.uid || member?.userId || "") === uid && ["admin", "CompanyAdmin", "SuperAdmin"].includes(String(member?.role || ""))))
+  );
+  const [savedSettings, setSavedSettings] = useState<Record<string, unknown>>({});
+  const [mode, setMode] = useState<AutoPostMode>("manual");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!fsId) return;
+    return onSnapshot(doc(firestore, `companies/${fsId}/auto_ocr_settings`, "server_auto_ocr"), (snapshot) => {
+      const value = snapshot.exists() ? snapshot.data() as Record<string, unknown> : {};
+      setSavedSettings(value);
+      setMode(value.enabled !== true ? "manual" : value.processingMode === "full" ? "full" : "semi");
+    });
+  }, [fsId]);
+  const chooseMode = async (next: AutoPostMode) => {
+    if (!fsId || !uid || !isCompanyAdmin || saving || next === mode) return;
+    if (next !== "manual" && savedSettings.runLocation === "local-pc" && (!savedSettings.localRunnerUid || !savedSettings.localRunnerDeviceId)) {
+      toast.error("Select an admin device in Auto post settings before enabling the runner.");
+      window.dispatchEvent(new Event("pl:gallery:auto-ocr-settings"));
+      return;
+    }
+    const previous = mode;
+    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId: fsId, held: true } }));
+    setMode(next);
+    setSaving(true);
+    try {
+      await setDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, "server_auto_ocr"), {
+        enabled: next !== "manual",
+        processingMode: next === "full" ? "full" : "semi",
+        updatedAt: serverTimestamp(),
+        updatedBy: uid,
+      }, { merge: true });
+    } catch (error) {
+      setMode(previous);
+      toast.error("Could not change Auto post mode", { description: error instanceof Error ? error.message : "Please try again." });
+    } finally {
+      setSaving(false);
+    }
+  };
+  return <AutoPostModeSwitch mode={mode} onModeChange={(next) => void chooseMode(next)} disabled={!isCompanyAdmin || saving || !fsId} className={cn(inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0")} />;
+}
+
 function GalleryTabSwitch({
   activeTab,
   onTabChange,
@@ -354,6 +473,8 @@ function GalleryTabSwitch({
       >
         Company Doc
       </Button>
+      <GalleryAutoPostModeRibbon inline={inline} />
+      <GalleryRunnerHoldButton inline={inline} />
       <Button
         type="button"
         size="sm"
@@ -376,7 +497,7 @@ function GalleryTabSwitch({
   if (inline) return buttons;
 
   return (
-    <div className={cn("shrink-0 flex-wrap items-center justify-end gap-1.5", className)}>{buttons}</div>
+    <div className={cn("min-w-0 flex flex-nowrap items-center gap-[10px]", className)}>{buttons}</div>
   );
 }
 
@@ -1958,24 +2079,6 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const { company, companyId } = useCompany();
-  const [autoPostProcess, setAutoPostProcess] = useState<{ active: boolean; fileName: string; visible: boolean }>({ active: false, fileName: "", visible: true });
-  const galleryFirestoreCompanyId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
-  useEffect(() => {
-    if (typeof window === "undefined" || !galleryFirestoreCompanyId) return;
-    const onState = (event: Event) => {
-      const detail = (event as CustomEvent<{ companyId?: string; active?: boolean; fileName?: string; visible?: boolean }>).detail;
-      if (String(detail?.companyId || "") !== galleryFirestoreCompanyId) return;
-      setAutoPostProcess({ active: detail?.active === true, fileName: String(detail?.fileName || ""), visible: detail?.visible !== false });
-    };
-    window.addEventListener("pl:gallery:auto-post-process-state", onState);
-    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-state-request", { detail: { companyId: galleryFirestoreCompanyId } }));
-    return () => window.removeEventListener("pl:gallery:auto-post-process-state", onState);
-  }, [galleryFirestoreCompanyId]);
-  const toggleAutoPostProcessVisibility = () => {
-    const visible = !autoPostProcess.visible;
-    setAutoPostProcess((current) => ({ ...current, visible }));
-    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-visibility", { detail: { companyId: galleryFirestoreCompanyId, visible } }));
-  };
   const [filesTickEpoch, setFilesTickEpoch] = useState(0);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2888,17 +2991,6 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
           ),
         })}
       >
-        {mode === "unassigned" && autoPostProcess.active ? (
-          <div className="sticky top-0 z-20 flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-background/95 px-3 py-2 text-sm shadow-sm backdrop-blur">
-            <div className="min-w-0">
-              <span className="font-medium">Auto post processing</span>
-              <span className="ml-2 truncate text-muted-foreground">{autoPostProcess.fileName}</span>
-            </div>
-            <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={toggleAutoPostProcessVisibility}>
-              {autoPostProcess.visible ? "Hide process" : "Show process"}
-            </Button>
-          </div>
-        ) : null}
         {/* Upload trigger lives in the Unassigned tab header ("Add File"); the big dashed
             dropzone was removed. Hidden input + drop still work for drag & drop. */}
         <input {...getInputProps()} className="hidden" />
@@ -3431,6 +3523,8 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
               fullWidth={isMobile}
             />
 
+            {isMobile ? <div className="col-span-2 flex w-full justify-start"><GalleryRunnerControls /></div> : null}
+
             {/* Tab switch — mobile par grid ki last row: dono buttons aadhi-aadhi full width */}
             <GalleryTabSwitch
               activeTab={mode === "auto-failed" ? "auto-failed" : "unassigned"}
@@ -3864,7 +3958,8 @@ export function GalleryPageContent() {
     <div data-pl-gallery-grey-shell className="box-border flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-neutral-800 px-0 pt-2 pb-0 dark:bg-zinc-900 sm:px-2 sm:pt-3 sm:pb-4 md:px-3 md:pt-4 md:pb-5">
        {/* Mobile: tab buttons footer card ke andar. PC: yahan top me.
            PC: "Add File" tab pills ke baayein (mobile me ye footer card ke andar hi rehta hai). */}
-       <div className="hidden shrink-0 sm:flex sm:w-full sm:items-center sm:gap-2">
+       <div className="hidden shrink-0 sm:flex sm:w-full">
+        <div className="flex min-w-0 w-full flex-nowrap items-center gap-[10px] overflow-x-auto rounded-xl border border-slate-300/80 bg-background/95 p-2 shadow-md">
          {activeTab === "unassigned" && (
            <Button
              type="button"
@@ -3876,7 +3971,9 @@ export function GalleryPageContent() {
              Add File
            </Button>
          )}
-         <GalleryTabSwitch activeTab={activeTab} onTabChange={setGalleryTab} className="flex" />
+         <GalleryTabSwitch activeTab={activeTab} onTabChange={setGalleryTab} className="flex-1 !w-auto justify-start" />
+         <GalleryRunnerControls />
+        </div>
        </div>
 
         {/* min-h-0: dashboard main ke andar sirf yahan grid scroll, tab row + footer card fixed */}

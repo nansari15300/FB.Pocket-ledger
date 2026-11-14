@@ -1,7 +1,7 @@
 "use client";
 /**
  * useVoucherOcr — wires local OCR into ANY voucher form via a small per-type adapter (see adapters.ts).
- * - Triggers when the FIRST file is added (OCR toggle on + plan allows).
+ * - File attachment does not trigger OCR; the user starts a scan with Refresh OCR, or Gallery hands off a runner scan.
  * - Fills only validated ("fill") fields; never touches approval fields.
  * - Refresh: re-runs on the first attachment; keeps user-edited fields unless "Overwrite edited" is on.
  * - Auto Post: saves via the form's own submit with `ocrAutoPost` (form forces isApproved=false).
@@ -36,7 +36,6 @@ import { baseUnitConversions, normalizeItemUnitName } from "@/components/items/i
 import { CreateTaxDialog } from "@/components/tax/CreateTaxDialog";
 import { PARTY_FORM_DEFAULT_ACCOUNT_TYPE_ID, PARTY_SYSTEM_CREDITORS_ID } from "@/lib/partySystemGroups";
 import { installOcrOriginalCapture, linkOcrOriginal, takeOcrOriginal } from "./ocrOriginals";
-import { registerPreOcr } from "./ocrOriginals";
 import type { OcrRawResult } from "./types";
 import { isOcrSelectableParty } from "./types";
 import { resolveOcrItemUnit } from "./extras";
@@ -255,8 +254,6 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const [createTaxOpen, setCreateTaxOpen] = useState(false);
   const [vatPct, setVatPct] = useState(13);
   const filledRef = useRef(new Map<string, unknown>());
-  const preOcrDoneRef = useRef(false);
-  const pendingAutoPostRef = useRef(false);
   const handoffAutoPostRef = useRef(false);
   const localAutoPostPendingRef = useRef(false);
   /* Auto Post countdown: after OCR, wait the configured seconds (header gear, default 10) then save; bubble above Save can cancel. */
@@ -267,7 +264,6 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const cancelAutoPostCountdown = useCallback(() => {
     if (apTimerRef.current != null) { window.clearInterval(apTimerRef.current); apTimerRef.current = null; }
     localAutoPostPendingRef.current = false;
-    pendingAutoPostRef.current = false;
     setApCount(null);
   }, []);
   const startAutoPostCountdown = useCallback(() => {
@@ -300,7 +296,6 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   useEffect(() => () => { if (apTimerRef.current != null) window.clearInterval(apTimerRef.current); }, []);
   const apPrefOn = useOcrPrefs().autoPost;
   useEffect(() => { if (!apPrefOn) cancelAutoPostCountdown(); }, [apPrefOn, cancelAutoPostCountdown]);
-  const [preReading, setPreReading] = useState<string | null>(null);
   const lastRawRef = useRef<OcrRawResult | null>(null);
   const [readBy, setReadBy] = useState<{ engine: "google" | "azure" | "tesseract" | "gemini"; note?: string } | null>(null);
   const inputNoteRef = useRef("handoff (no OCR)");
@@ -466,10 +461,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
 
 
   const run = useCallback(
-    async (reason: "auto" | "refresh" | "handoff", reuse?: { raw?: OcrRawResult; selectedIds?: string[]; direct?: File }) => {
+    async (reason: "auto" | "refresh" | "handoff", reuse?: { raw?: OcrRawResult; selectedIds?: string[]; enginePref?: import("./prefs").OcrEnginePref; cloudProvider?: "google" | "azure" }) => {
       const opt = optsRef.current;
-      // direct = ORIGINAL picked file, OCR runs BEFORE compression/append (see ocrOriginals pre-OCR gate)
-      const first = reuse?.direct ?? opt.files[0];
+      const first = opt.files[0];
       if (!first || running) return;
       setRunning(true);
       setOcrFail(null);
@@ -510,7 +504,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           }
           raw = await runOcrOnFile(src.blob, src.mime, {
             companyId: opt.companyId,
-            enginePref: getOcrPrefs().engine,
+            enginePref: reuse?.enginePref ?? getOcrPrefs().engine,
+            cloudProvider: reuse?.cloudProvider,
             ownCompany: { name: ownRef.current.name, pan: ownRef.current.pan },
             ownAccounts: (mastersRef.current.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ accountName: a.accountName, aliasName: (a as { aliasName?: string }).aliasName, accountNumber: a.accountNumber, bankName: a.bankName, accountType: a.accountType })),
             aiDocType: aiDocTypeForVoucher(opt.currentVoucherType ?? null, opt.adapter.partySide),
@@ -912,8 +907,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 apScheduledForRef.current = raw;
                 if (F.getValues("isApproved") !== undefined) F.setValue("isApproved", false as never);
                 toast.info("OCR Auto Post: saving as UNAPPROVED", { duration: 2500 });
-                if (reuse?.direct) pendingAutoPostRef.current = true;
-                else startAutoPostCountdown();
+                startAutoPostCountdown();
               } else {
                 toast.message("OCR Auto Post skipped", { description: "Required fields missing, type is uncertain, or the document needs review.", duration: 5000 });
               }
@@ -1333,11 +1327,28 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         void partyApplies;
 
         if ((reason === "auto" || reason === "handoff") && (getOcrPrefs().autoPost || (reason === "handoff" && handoffAutoPostRef.current)) && !opt.isEditing && apScheduledForRef.current !== raw) {
+          const unresolvedItems = A.lineItems && bill.lineItems?.status === "fill"
+            ? bill.lineItems.value.map((line, index) => !line.itemId ? `Item on line ${index + 1}` : "").filter(Boolean)
+            : [];
+          const missingRequiredPaths = (A.requiredPaths ?? [])
+            .filter((path) => isEmptyVal(F.getValues(path)))
+            .map((path) => `Required ${path.split(".").pop()?.replace(/Id$/, "").replace(/([A-Z])/g, " $1").trim() || "field"}`);
+          const requiredMissing = [
+            ...missing.filter((field) => field !== "Bill No"),
+            ...unresolvedItems,
+            ...missingRequiredPaths,
+            ...(ledgerMissing ? ["Purchase account"] : []),
+            ...(A.accountPath && isEmptyVal(F.getValues(A.accountPath)) ? ["Bank/cash account"] : []),
+          ];
+          const hasMissingVatAccount = missing.some((field) => /tax account/i.test(field));
           const coreOk =
             A.autoPost &&
             partyOk &&
             (!A.date || filledKeys.has("date")) &&
             (!A.lineItems || filledKeys.has("lines")) &&
+            unresolvedItems.length === 0 &&
+            !ledgerMissing &&
+            !hasMissingVatAccount &&
             (!A.amount || filledKeys.has("amount")) &&
             (A.requiredPaths ?? []).every((p) => !isEmptyVal(F.getValues(p)));
           if (coreOk) {
@@ -1345,13 +1356,18 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             if (F.getValues("isApproved") !== undefined) F.setValue("isApproved", false as never);
             toast.info("OCR Auto Post: saving as UNAPPROVED…", { duration: 2500 });
             // Pre-OCR path: attachment is appended (compressed) only after OCR -> post once it is in state
-            if (reuse?.direct) pendingAutoPostRef.current = true;
-            else startAutoPostCountdown();
+            startAutoPostCountdown();
           } else {
             toast.message("OCR Auto Post skipped", {
               description: A.autoPost ? "Required fields missing - review and save manually." : "This voucher type needs manual review before saving.",
               duration: 5000,
             });
+            if (A.autoPost && reason === "handoff" && handoffAutoPostRef.current) {
+              const fieldNames = [...new Set(requiredMissing.length ? requiredMissing : ["Required voucher fields"] )];
+              window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-required-fields-missing", {
+                detail: { companyId: opt.companyId, missing: fieldNames },
+              }));
+            }
           }
         }
       } catch (e) {
@@ -1387,7 +1403,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   );
 
   // Voucher-type switch hand-off: receive the attachment, then OCR it here.
-  const handoffRunRef = useRef<{ raw?: OcrRawResult; selectedIds?: string[]; autoPost?: boolean } | null>(null);
+  const handoffRunRef = useRef<{ raw?: OcrRawResult; selectedIds?: string[]; autoPost?: boolean; enginePref?: import("./prefs").OcrEnginePref; cloudProvider?: "google" | "azure" } | null>(null);
   // Files handed over by a voucher switch; kept briefly so a form's own "new voucher" hydration (setFiles([]) in an effect
   // that runs AFTER this hook's effect) cannot wipe them.
   const handoffFilesRef = useRef<{ files: (File | string)[]; until: number } | null>(null);
@@ -1397,7 +1413,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     const formType = o.currentVoucherType ?? o.adapter.voucherType;
     const h = takeOcrHandoff(formType) ?? resumeOcrSession(formType);
     if (h?.files.length) {
-      handoffRunRef.current = { raw: h.raw, selectedIds: h.selectedIds, autoPost: h.autoPost };
+      handoffRunRef.current = { raw: h.raw, selectedIds: h.selectedIds, autoPost: h.autoPost, enginePref: h.enginePref, cloudProvider: h.cloudProvider };
       handoffAutoPostRef.current = h.autoPost === true;
       handoffFilesRef.current = { files: h.files, until: Date.now() + 2500 };
       linkOcrOriginal(h.files[0], h.original ?? null);
@@ -1426,46 +1442,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     if (handoffRunRef.current && o.files.length && visible) {
       const h = handoffRunRef.current;
       handoffRunRef.current = null;
-      prevLen.current = o.files.length;
-      void (h.raw ? run("handoff", { raw: h.raw, selectedIds: h.selectedIds }) : run("auto"));
+      void (h.raw ? run("handoff", { raw: h.raw, selectedIds: h.selectedIds }) : run("handoff", { enginePref: h.enginePref, cloudProvider: h.cloudProvider }));
     }
   }, [o.files, visible, run]);
-
-  // Auto-trigger: first file added (0 → ≥1) on a new upload, including string refs (local:/pbatt:/https).
-  // Also runs once if the first attachment is already present on mount (new voucher only; `visible` excludes edit mode).
-  // Skipped when OCR already ran on the original pre-compression.
-  const prevLen = useRef(0);
-  useEffect(() => {
-    const prev = prevLen.current;
-    prevLen.current = o.files.length;
-    if (!visible || prev !== 0 || o.files.length === 0) return;
-    // switch hand-off re-applying its files is not a new upload (the handoff run re-uses the OCR text)
-    if (handoffFilesRef.current && Date.now() < handoffFilesRef.current.until) return;
-    if (preOcrDoneRef.current) {
-      preOcrDoneRef.current = false;
-      if (pendingAutoPostRef.current) {
-        pendingAutoPostRef.current = false;
-        startAutoPostCountdown();
-      }
-      return;
-    }
-    void run("auto");
-  }, [o.files, visible, run]);
-
-  // OCR-then-compress: while this form is visible, the wrapped attachment helpers ask us to read the ORIGINAL first
-  useEffect(() => {
-    if (!visible) return;
-    return registerPreOcr(async (file: File) => {
-      if (optsRef.current.files.length > 0) return; // only the first file of a new upload
-      setPreReading(file.name || "bill");
-      try {
-        await run("auto", { direct: file });
-      } finally {
-        preOcrDoneRef.current = true;
-        setPreReading(null);
-      }
-    });
-  }, [visible, run]);
 
   // Re-apply newly created party / items / VAT once the master lists include them (the form may clear an unknown id)
   useEffect(() => {
@@ -2045,7 +2024,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     running,
     hasFile: o.files.length > 0,
     /** Original being read before compression (file not attached yet). */
-    preReading,
+    preReading: null,
     refresh: () => void run("refresh"),
     openFindAccount: () => setFindOpen(true),
     debugInfo,

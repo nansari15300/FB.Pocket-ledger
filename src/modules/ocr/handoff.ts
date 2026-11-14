@@ -1,5 +1,6 @@
 /** Voucher-type switch: carry attachments + the already-read OCR result to the newly opened form (in-memory, one shot). */
 import type { OcrRawResult } from "./types";
+import type { OcrEnginePref } from "./prefs";
 
 export const OCR_SWITCH_EVENT = "pl-ocr-switch-voucher-type";
 
@@ -13,6 +14,9 @@ export type OcrHandoff = {
   selectedIds?: string[];
   /** Gallery local Auto post: use the voucher form's normal guarded save after OCR autofill. */
   autoPost?: boolean;
+  /** Local Gallery Auto post can keep the company-selected OCR engine in the voucher review form. */
+  enginePref?: OcrEnginePref;
+  cloudProvider?: "google" | "azure";
 };
 
 /**

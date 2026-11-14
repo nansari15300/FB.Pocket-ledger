@@ -24,12 +24,14 @@ import { useOcrAiStatus } from "@/modules/ocr/ai/aiClient";
 import { useOcrCloudStatus } from "@/modules/ocr/cloud/ocrCloudClient";
 import { getOrCreateDeviceId } from "@/lib/writeGateway/legacy/deviceLimitClient";
 import { GalleryLocalAutoPostRunner } from "@/components/gallery/GalleryLocalAutoPostRunner";
+import { AutoPostModeSwitch } from "@/components/gallery/AutoPostModeSwitch";
 import { pbListAppDocs } from "@/lib/pocketbaseData/pbSync";
 
 const SETTINGS_DOC_ID = "server_auto_ocr";
 
 type AutoOcrSettings = {
   enabled: boolean;
+  processingMode: "semi" | "full";
   runLocation: "local-pc" | "server";
   localRunnerUid: string;
   localRunnerDeviceId: string;
@@ -42,12 +44,14 @@ type AutoOcrSettings = {
   scanEngine: "gemini" | "google" | "azure";
   maxCallsPerMinute: number;
   failOnMissingFields: boolean;
+  missingFieldAction: "fail-and-continue" | "pause-and-hold";
   checkDuplicateVouchers: boolean;
   duplicateVoucherAction: "move-to-duplicates" | "pause-for-review" | "save-anyway";
 };
 
 const DEFAULT_SETTINGS: AutoOcrSettings = {
   enabled: false,
+  processingMode: "semi",
   runLocation: "server",
   localRunnerUid: "",
   localRunnerDeviceId: "",
@@ -60,6 +64,7 @@ const DEFAULT_SETTINGS: AutoOcrSettings = {
   scanEngine: "gemini",
   maxCallsPerMinute: 5,
   failOnMissingFields: true,
+  missingFieldAction: "pause-and-hold",
   checkDuplicateVouchers: true,
   duplicateVoucherAction: "move-to-duplicates",
 };
@@ -144,18 +149,24 @@ const LOCAL_DEVICE_COPY = {
 
 type AdminDevice = { id: string; userId: string; deviceLabel?: string; deviceType?: "mobile" | "desktop" };
 
-const MISSING_FIELDS_COPY = {
+const MISSING_FIELD_ACTION_COPY = {
   en: {
-    title: "Block vouchers with missing required fields",
-    description: "This safeguard is always on. If any required field or master is missing, no voucher is created and the document is sent to the Auto post failed Tab for review.",
+    label: "When required information is missing",
+    description: "Use the same rule for Party, Item, Bank/Cash, Account, Date, Tax and other required fields.",
+    pause: "Pause runner and keep the voucher open for review",
+    fail: "Cancel voucher, move document to Auto post failed, then continue",
   },
   hi: {
-    title: "ज़रूरी जानकारी अधूरी हो तो voucher रोकें",
-    description: "यह सुरक्षा हमेशा चालू रहती है। कोई ज़रूरी field या master न मिलने पर voucher नहीं बनेगा और document जाँच के लिए Auto post failed Tab में भेज दिया जाएगा।",
+    label: "ज़रूरी जानकारी न मिलने पर",
+    description: "यह नियम Party, Item, Bank/Cash, Account, Date, Tax और बाकी सभी ज़रूरी fields पर लागू होगा।",
+    pause: "Runner रोकें और review के लिए voucher खुला रखें",
+    fail: "Voucher cancel करें, document को Auto post failed में भेजें और आगे बढ़ें",
   },
   ne: {
-    title: "आवश्यक विवरण अपूरो भए voucher रोक्नुहोस्",
-    description: "यो सुरक्षा सधैँ चालु रहन्छ। कुनै आवश्यक field वा master नभेटिए voucher बन्ने छैन र document जाँचका लागि Auto post failed Tab मा पठाइनेछ।",
+    label: "आवश्यक विवरण नभेटिएमा",
+    description: "यो नियम Party, Item, Bank/Cash, Account, Date, Tax र अन्य सबै आवश्यक field मा लागू हुन्छ।",
+    pause: "Runner रोक्नुहोस् र review का लागि voucher खुला राख्नुहोस्",
+    fail: "Voucher cancel गरी document लाई Auto post failed मा पठाएर अगाडि बढ्नुहोस्",
   },
 } as const;
 
@@ -194,6 +205,7 @@ function normalizeSettings(raw: unknown): AutoOcrSettings {
   };
   return {
     enabled: value.enabled === true,
+    processingMode: value.processingMode === "full" ? "full" : "semi",
     runLocation: value.runLocation === "local-pc" ? "local-pc" : "server",
     localRunnerUid: typeof value.localRunnerUid === "string" ? value.localRunnerUid : "",
     localRunnerDeviceId: typeof value.localRunnerDeviceId === "string" ? value.localRunnerDeviceId : "",
@@ -206,6 +218,7 @@ function normalizeSettings(raw: unknown): AutoOcrSettings {
     scanEngine: value.scanEngine === "google" || value.scanEngine === "azure" ? value.scanEngine : "gemini",
     maxCallsPerMinute: bounded(value.maxCallsPerMinute, DEFAULT_SETTINGS.maxCallsPerMinute, 1, 15),
     failOnMissingFields: true,
+    missingFieldAction: value.missingFieldAction === "fail-and-continue" ? "fail-and-continue" : "pause-and-hold",
     checkDuplicateVouchers: value.checkDuplicateVouchers !== false,
     duplicateVoucherAction: value.duplicateVoucherAction === "pause-for-review" || value.duplicateVoucherAction === "save-anyway"
       ? value.duplicateVoucherAction
@@ -430,16 +443,66 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
     }
   };
 
+  const selectedAutoMode: "manual" | "semi" | "full" = !settings.enabled
+    ? "manual"
+    : settings.processingMode === "full" ? "full" : "semi";
+  const applyAutoMode = async (mode: "manual" | "semi" | "full") => {
+    if (!fsId || !user?.uid || !isCompanyAdmin || saving || loading || mode === selectedAutoMode) return;
+    const enabled = mode !== "manual";
+    if (enabled && settings.runLocation === "local-pc" && !selectedAdminDevice) {
+      setError(LOCAL_DEVICE_COPY[introLang].required);
+      return;
+    }
+    if (enabled && settings.runLocation === "local-pc" && !scanEngineAvailable[settings.scanEngine]) {
+      setError("The selected scan engine has no configured key or access for this company.");
+      return;
+    }
+    if (enabled && settings.runOnSchedule && settings.scheduleMode === "date-time" && (!settings.scheduleDate || !settings.scheduleTime)) {
+      setError("Choose both a date and time for the scheduled scan.");
+      return;
+    }
+    // Mode selection only configures the runner. Keep it paused until Resume is pressed.
+    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", {
+      detail: { companyId: fsId, held: true },
+    }));
+    setSaving(true);
+    setError(null);
+    const nextSettings = {
+      ...settings,
+      enabled,
+      processingMode: mode === "full" ? "full" as const : "semi" as const,
+      localRunnerUid: settings.runLocation === "local-pc" && enabled ? selectedAdminDevice!.userId : settings.localRunnerUid,
+      localRunnerDeviceId: settings.runLocation === "local-pc" && enabled ? selectedAdminDevice!.id : settings.localRunnerDeviceId,
+      scheduleTimeZone: typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC",
+      failOnMissingFields: true,
+      updatedAt: serverTimestamp(),
+      updatedBy: user.uid,
+      provider: SCAN_ENGINES[settings.scanEngine].provider,
+      providerLabel: SCAN_ENGINES[settings.scanEngine].name,
+      saveApproved: false,
+    };
+    try {
+      await setDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID), nextSettings, { merge: true });
+      setSettings(nextSettings);
+      setSettingsLoadedFor(fsId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not apply Auto post mode.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <>
     <GalleryLocalAutoPostRunner settings={settings} settingsDialogOpen={open} isCompanyAdmin={isCompanyAdmin} settingsReady={settingsLoadedFor === fsId && !!fsId} />
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88dvh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[88dvh] flex-col overflow-hidden sm:max-w-lg">
+        <DialogHeader className="shrink-0">
           <DialogTitle>Auto post settings</DialogTitle>
           <DialogDescription>Choose where Auto post scans Unassigned documents and creates vouchers.</DialogDescription>
         </DialogHeader>
 
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-1">
         {!isCompanyAdmin ? (
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Only a company owner or admin can change these settings.</div>
         ) : loading ? (
@@ -447,8 +510,40 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
         ) : (
           <div className="space-y-4">
             <section className="rounded-xl border bg-background/80 p-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
-              <SettingToggle icon={<Bot className="h-4 w-4" />} title="Enable Auto post vouchers" checked={settings.enabled} onChange={(enabled) => patch({ enabled })} />
-              <p className="mt-1 pl-8 text-xs text-muted-foreground">Automatically create unapproved vouchers from matching documents.</p>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium"><Bot className="h-4 w-4" />Enable Auto post vouchers</div>
+                <div className="ml-6">
+                  <AutoPostModeSwitch
+                    mode={selectedAutoMode}
+                    onModeChange={(mode) => void applyAutoMode(mode)}
+                    disabled={!isCompanyAdmin || saving || loading || !fsId}
+                  />
+                </div>
+              </div>
+              <p className="mt-1 pl-8 text-xs text-muted-foreground">
+                {selectedAutoMode === "manual"
+                  ? "Manual mode: Auto post will not scan Unassigned documents."
+                  : selectedAutoMode === "semi"
+                    ? "Semi automatic opens each voucher for OCR; complete scans save automatically and issues stay open for review."
+                    : "Full automatic scans in the background, saves vouchers that pass checks, and continues past failed files."}
+              </p>
+              <div className="ml-6 rounded-lg border border-amber-200 bg-amber-50/70 p-2.5">
+                <label className="mb-1.5 block text-xs font-semibold" htmlFor="auto-ocr-missing-field-action">{MISSING_FIELD_ACTION_COPY[introLang].label}</label>
+                <p className="mb-2 text-[11px] leading-relaxed text-muted-foreground">{MISSING_FIELD_ACTION_COPY[introLang].description}</p>
+                <Select
+                  value={settings.missingFieldAction}
+                  onValueChange={(missingFieldAction) => patch({ missingFieldAction: missingFieldAction as AutoOcrSettings["missingFieldAction"] })}
+                  disabled={!isCompanyAdmin || loading || saving}
+                >
+                  <SelectTrigger id="auto-ocr-missing-field-action" className="h-auto min-h-9 whitespace-normal bg-white text-left text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pause-and-hold">{MISSING_FIELD_ACTION_COPY[introLang].pause}</SelectItem>
+                    <SelectItem value="fail-and-continue">{MISSING_FIELD_ACTION_COPY[introLang].fail}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </section>
 
             <section className="space-y-3 rounded-xl border bg-background/80 p-3 shadow-sm">
@@ -596,23 +691,7 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
                   ? "The selected PC runs the scan using this company’s configured engine key. Server and provider safety limits may still apply."
                   : "Limit applies to this company. The server’s engine safety limit may be lower."}</p>
               </div>
-              <p className="rounded-lg border border-indigo-200 bg-white/80 p-2.5 text-xs text-muted-foreground shadow-[0_2px_6px_rgba(30,41,59,0.1)]">Automatically created vouchers remain unapproved. Use the safeguard card below to choose how incomplete scans are handled.</p>
-            </section>
-
-            <section className="rounded-xl border border-amber-300 bg-gradient-to-br from-amber-100 via-orange-50 to-rose-100 p-3 shadow-[0_5px_14px_rgba(154,52,18,0.17)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_10px_22px_rgba(154,52,18,0.23)]">
-              <div className="rounded-lg border border-amber-200 bg-white/90 p-2.5 shadow-[0_2px_6px_rgba(30,41,59,0.12)]">
-                <SettingToggle
-                  title={MISSING_FIELDS_COPY[introLang].title}
-                  checked
-                  onChange={() => {}}
-                  disabled
-                />
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  {MISSING_FIELDS_COPY[introLang].description.split("Auto post failed Tab")[0]}
-                  <span className="mx-0.5 inline-flex translate-y-[-1px] items-center rounded-md border border-rose-300 bg-rose-100 px-1.5 py-0.5 text-sm font-semibold leading-none text-rose-800 shadow-sm">Auto post failed</span>
-                  {MISSING_FIELDS_COPY[introLang].description.split("Auto post failed Tab")[1]}
-                </p>
-              </div>
+              <p className="rounded-lg border border-indigo-200 bg-white/80 p-2.5 text-xs text-muted-foreground shadow-[0_2px_6px_rgba(30,41,59,0.1)]">Automatically created vouchers remain unapproved. Use the required-information rule in the Auto post mode card above to handle incomplete scans.</p>
             </section>
 
             <section className="rounded-xl border border-rose-300 bg-gradient-to-br from-rose-100 via-pink-50 to-orange-100 p-3 shadow-[0_5px_14px_rgba(159,18,57,0.17)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_10px_22px_rgba(159,18,57,0.23)]">
@@ -646,8 +725,9 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
           </div>
         )}
 
-        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <DialogFooter>
+        {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
+        </div>
+        <DialogFooter className="shrink-0 border-t bg-background pt-3">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           {isCompanyAdmin && <Button type="button" onClick={() => void save()} disabled={loading || saving || !fsId}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save</Button>}
         </DialogFooter>
