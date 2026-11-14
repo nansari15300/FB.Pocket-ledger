@@ -315,7 +315,7 @@ function GalleryTabSwitch({
           activeTab === "unassigned" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
       >
-        Unassigned Documents
+        Unassigned Doc
       </Button>
       {/* Duplicate Documents — Unassigned ka mirror; duplicate guard se "Move to Duplicate" yahan aata hai. */}
       <Button
@@ -328,7 +328,7 @@ function GalleryTabSwitch({
           activeTab === "duplicate" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
       >
-        Duplicate Documents
+        Duplicate Doc
       </Button>
       <Button
         onClick={() => onTabChange("auto-failed")}
@@ -352,7 +352,7 @@ function GalleryTabSwitch({
           activeTab === "company-files" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
       >
-        Company Files
+        Company Doc
       </Button>
       <Button
         type="button"
@@ -1805,7 +1805,7 @@ type UnassignedFile = {
     duplicateMatchedDateText?: string;
     duplicateIncomingRef?: string;
     movedAtMs?: number;
-    autoOcrStatus?: "queued" | "processing" | "failed" | "complete";
+    autoOcrStatus?: "queued" | "processing" | "failed" | "complete" | "restored";
     autoOcrError?: string;
     autoOcrProvider?: string;
     autoOcrVoucherId?: string;
@@ -1990,6 +1990,8 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
   const [whyDuplicateFile, setWhyDuplicateFile] = useState<UnassignedFile | null>(null);
   /** Auto post failed tab: saved scan/validation reason for the selected file. */
   const [whyFailedFile, setWhyFailedFile] = useState<UnassignedFile | null>(null);
+  const [restoreAllFailedFiles, setRestoreAllFailedFiles] = useState(false);
+  const [failedFileActionBusy, setFailedFileActionBusy] = useState(false);
   /** 3-dot → "Edit file": camera editor me existing image kholne ke liye. */
   const [fileToEdit, setFileToEdit] = useState<UnassignedFile | null>(null);
   // async resolve — local refs blobs me badalne padte hain
@@ -2620,6 +2622,60 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
     return filtered;
   }, [unassignedFiles, selectedUploaderId, dateRange]);
 
+  const handleFailedFileAction = async (action: "restore" | "retry") => {
+    if (!whyFailedFile || !companyId || failedFileActionBusy) return;
+    const targets = restoreAllFailedFiles
+      ? unassignedFiles.filter((file) => file.autoOcrStatus === "failed")
+      : [whyFailedFile];
+    if (!targets.length) return;
+    const ids = new Set(targets.map((file) => file.id));
+    const nextStatus = action === "restore" ? "restored" : "queued";
+    const update = {
+      autoOcrStatus: nextStatus,
+      autoOcrError: "",
+      autoOcrProvider: "",
+      autoOcrFinishedAt: null,
+      ...(action === "retry" ? { autoOcrStartedAtMs: 0 } : {}),
+      ...(action === "restore" ? { autoOcrRestoredAt: serverTimestamp() } : {}),
+      updatedAt: serverTimestamp(),
+    };
+    setFailedFileActionBusy(true);
+    try {
+      const deviceOnly = unassignedUseDeviceLocalOnly === true;
+      if (deviceOnly) {
+        const current = readLocalUnassignedDocs(localKind);
+        const localUpdate = { ...update, updatedAt: new Date(), autoOcrRestoredAt: new Date() };
+        const next = current.map((file) => ids.has(file.id) ? { ...file, ...localUpdate } as UnassignedFile : file);
+        writeLocalUnassignedDocs(next, localKind);
+      } else {
+        const fsId = firestoreCompanyIdForGallery(companyId, company);
+        for (let offset = 0; offset < targets.length; offset += 450) {
+          const batch = writeBatch(firestore);
+          targets.slice(offset, offset + 450).forEach((file) => {
+            batch.update(doc(firestore, `companies/${fsId}/unassigned_documents`, file.id), update);
+          });
+          await batch.commit();
+        }
+      }
+      setUnassignedFiles((prev) => prev.filter((file) => !ids.has(file.id)));
+      setSelectedFileIds((prev) => new Set([...prev].filter((id) => !ids.has(id))));
+      setWhyFailedFile(null);
+      setRestoreAllFailedFiles(false);
+      if (action === "retry") {
+        window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-retry", { detail: { companyId: firestoreCompanyIdForGallery(companyId, company), fileIds: [...ids] } }));
+        toast.success(`${targets.length} file${targets.length === 1 ? "" : "s"} queued for retry`);
+      } else {
+        toast.success(`${targets.length} file${targets.length === 1 ? "" : "s"} restored to Unassigned Documents`);
+      }
+    } catch (error) {
+      toast.error(action === "retry" ? "Could not retry failed files" : "Could not restore failed files", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setFailedFileActionBusy(false);
+    }
+  };
+
   const unassignedTotalPages = Math.max(1, Math.ceil(filteredFiles.length / unassignedFilesPerPage));
   const unassignedPageClamped = Math.min(Math.max(1, unassignedFilesPage), unassignedTotalPages);
   const unassignedSliceStart = (unassignedPageClamped - 1) * unassignedFilesPerPage;
@@ -2936,6 +2992,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
                         className="absolute bottom-1.5 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full border border-rose-400/80 bg-rose-50/95 px-2 py-1 text-[10px] font-medium leading-none text-rose-900 opacity-0 shadow-sm transition-opacity hover:bg-rose-100 group-hover:opacity-100 focus-visible:opacity-100 dark:bg-rose-950/90 dark:text-rose-100"
                         onClick={(e) => {
                           e.stopPropagation();
+                          setRestoreAllFailedFiles(false);
                           setWhyFailedFile(file);
                         }}
                         title="Why did Auto post fail?"
@@ -3572,10 +3629,22 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
                   <p className="whitespace-pre-wrap break-words">{whyFailedFile.autoOcrError?.trim() || "No failure details were recorded for this file. Review the document and try again."}</p>
                 </div>
                 {whyFailedFile.autoOcrProvider ? <p className="text-xs text-muted-foreground">{formatAutoOcrProvider(whyFailedFile.autoOcrProvider)}</p> : null}
+                <label className="flex cursor-pointer items-center gap-2 rounded-md border bg-background p-2 text-xs">
+                  <input type="checkbox" checked={restoreAllFailedFiles} onChange={(event) => setRestoreAllFailedFiles(event.target.checked)} disabled={failedFileActionBusy} className="h-4 w-4 accent-primary" />
+                  <span>All failed files ({unassignedFiles.filter((file) => file.autoOcrStatus === "failed").length})</span>
+                  <span className="text-muted-foreground">{restoreAllFailedFiles ? "Apply to every failed file" : "Only this file"}</span>
+                </label>
               </div>
             ) : null}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setWhyFailedFile(null)}>Close</Button>
+              <Button type="button" variant="outline" onClick={() => void handleFailedFileAction("restore")} disabled={failedFileActionBusy}>
+                {failedFileActionBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+                Restore to Unassigned
+              </Button>
+              <Button type="button" onClick={() => void handleFailedFileAction("retry")} disabled={failedFileActionBusy}>
+                Retry now
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => { setWhyFailedFile(null); setRestoreAllFailedFiles(false); }} disabled={failedFileActionBusy}>Close</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

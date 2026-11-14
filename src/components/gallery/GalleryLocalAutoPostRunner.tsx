@@ -115,12 +115,17 @@ export function GalleryLocalAutoPostRunner({
   const busyRef = useRef(false);
   const drainQueueRef = useRef(false);
   const staleRetryTimerRef = useRef<number | null>(null);
+  const manualRetryIdsRef = useRef<Set<string>>(new Set());
   const processPendingRef = useRef<() => Promise<void>>(async () => {});
   const savedJobRef = useRef(false);
   const rowsRef = useRef<UnassignedRow[]>([]);
   const settingsRefValue = useRef(settings);
   settingsRefValue.current = settings;
   rowsRef.current = rows;
+  const clearManualRetryId = useCallback((id: string) => {
+    manualRetryIdsRef.current.delete(id);
+    if (manualRetryIdsRef.current.size === 0 && !settingsRefValue.current.runOnUpload) drainQueueRef.current = false;
+  }, []);
 
   const writeStatus = useCallback(async (row: UnassignedRow, patch: Record<string, unknown>) => {
     if (!fsId) return;
@@ -152,7 +157,7 @@ export function GalleryLocalAutoPostRunner({
       if (!snapshot.exists()) return false;
       const current = snapshot.data() as Record<string, unknown>;
       if (current.isDeleted === true || current.deleted === true || current.status === "ASSIGNED" || current.status === "LOCKED") return false;
-      if (current.autoOcrStatus === "complete" || current.autoOcrStatus === "failed") return false;
+      if (current.autoOcrStatus === "complete" || current.autoOcrStatus === "failed" || current.autoOcrStatus === "restored") return false;
       if (current.autoOcrStatus === "processing" && Date.now() - Number(current.autoOcrStartedAtMs || 0) < CLAIM_STALE_MS) return false;
       tx.update(rowRef, {
         autoOcrStatus: "processing",
@@ -207,10 +212,11 @@ export function GalleryLocalAutoPostRunner({
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await failJob(row, message, scanEngine);
+      clearManualRetryId(row.id);
       toast.message("Local Auto post needs review", { description: message });
       return false;
     }
-  }, [company, deviceId, failJob, fsId, masters.processedItems, masters.processedParties, user?.uid]);
+  }, [clearManualRetryId, company, deviceId, failJob, fsId, masters.processedItems, masters.processedParties, user?.uid]);
 
   const processPending = useCallback(async () => {
     if (!canRun || !navigator.onLine || busyRef.current) return;
@@ -218,7 +224,8 @@ export function GalleryLocalAutoPostRunner({
     if (!drainQueueRef.current || masters.loading) return;
     const next = rowsRef.current.find((row) =>
       row.url && row.status !== "ASSIGNED" && row.status !== "LOCKED" && row.isDeleted !== true && row.deleted !== true &&
-      row.autoOcrStatus !== "complete" && row.autoOcrStatus !== "failed" &&
+      row.autoOcrStatus !== "complete" && row.autoOcrStatus !== "failed" && row.autoOcrStatus !== "restored" &&
+      (manualRetryIdsRef.current.size === 0 || manualRetryIdsRef.current.has(row.id)) &&
       !(row.autoOcrStatus === "processing" && Date.now() - Number(row.autoOcrStartedAtMs || 0) < CLAIM_STALE_MS)
     );
     if (!next) {
@@ -228,8 +235,18 @@ export function GalleryLocalAutoPostRunner({
         const retryIn = Math.max(1_000, CLAIM_STALE_MS - (Date.now() - Number(lockedRow.autoOcrStartedAtMs || 0)) + 250);
         staleRetryTimerRef.current = window.setTimeout(() => {
           staleRetryTimerRef.current = null;
+          drainQueueRef.current = true;
           void processPendingRef.current();
         }, retryIn);
+        return;
+      }
+      if (manualRetryIdsRef.current.size > 0) {
+        if (staleRetryTimerRef.current != null) window.clearTimeout(staleRetryTimerRef.current);
+        staleRetryTimerRef.current = window.setTimeout(() => {
+          staleRetryTimerRef.current = null;
+          drainQueueRef.current = true;
+          void processPendingRef.current();
+        }, 500);
         return;
       }
       drainQueueRef.current = false;
@@ -247,6 +264,24 @@ export function GalleryLocalAutoPostRunner({
     }
   }, [canRun, masters.loading, processOne, settings.runOnUpload]);
   processPendingRef.current = processPending;
+
+  useEffect(() => {
+    const onRetryRequested = (event: Event) => {
+      const detail = (event as CustomEvent<{ companyId?: string; fileIds?: string[] }>).detail;
+      if (String(detail?.companyId || "") !== fsId) return;
+      const ids = Array.isArray(detail?.fileIds) ? detail.fileIds.map((id) => String(id || "")).filter(Boolean) : [];
+      if (!ids.length) return;
+      if (!canRun) {
+        toast.message("Retry is not running on this device", { description: "Open Gallery on the selected Local PC admin device and try again." });
+        return;
+      }
+      ids.forEach((id) => manualRetryIdsRef.current.add(id));
+      drainQueueRef.current = true;
+      void processPendingRef.current();
+    };
+    window.addEventListener("pl:gallery:auto-post-retry", onRetryRequested);
+    return () => window.removeEventListener("pl:gallery:auto-post-retry", onRetryRequested);
+  }, [canRun, fsId]);
 
   useEffect(() => {
     if (!canRun || masters.loading || !drainQueueRef.current) return;
@@ -323,12 +358,13 @@ export function GalleryLocalAutoPostRunner({
     } else if (!savedJobRef.current) {
       await failJob(job, "Auto post was closed before a voucher was saved.", job.autoOcrProvider);
     }
+    clearManualRetryId(job.id);
     activeJobRef.current = null;
     busyRef.current = false;
     setVoucherOpen(false);
     setVoucherData(null);
     window.setTimeout(() => void processPendingRef.current(), 0);
-  }, [failJob, writeStatus]);
+  }, [clearManualRetryId, failJob, writeStatus]);
 
   return (
     <AddVoucherDialog
