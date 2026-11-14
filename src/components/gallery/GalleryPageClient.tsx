@@ -23,6 +23,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
@@ -115,6 +119,7 @@ import { FIREBASE_LEDGER_COMPANY_SYNC_PREFS_CHANGED_EVENT } from "@/lib/firebase
 import { setVisiblePageAttachmentUrls } from "@/lib/attachmentNetworkGate";
 import { GalleryAutoOcrSettingsDialog } from "@/components/gallery/GalleryAutoOcrSettingsDialog";
 import { AutoPostModeSwitch, type AutoPostMode } from "@/components/gallery/AutoPostModeSwitch";
+import { DEFAULT_GALLERY_QUEUE_SEQUENCE, DEFAULT_GALLERY_SORT_ORDER, GALLERY_QUEUE_SEQUENCES, normalizeGalleryQueueSequence, normalizeGallerySortOrder, orderGalleryQueue, sortGalleryFiles, type GalleryQueueSequence, type GallerySortOrder } from "@/components/gallery/galleryQueueSequence";
 
 
 const ATTACHABLE_VOUCHER_TYPES = [
@@ -410,6 +415,88 @@ function GalleryAutoPostModeRibbon({ inline = false }: { inline?: boolean }) {
   return <AutoPostModeSwitch mode={mode} onModeChange={(next) => void chooseMode(next)} disabled={!isCompanyAdmin || saving || !fsId} className={cn(inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0")} />;
 }
 
+function GalleryQueueSequenceRibbon({ inline = false }: { inline?: boolean }) {
+  const { company, companyId } = useCompany();
+  const { user } = useAuth();
+  const fsId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
+  const uid = String(user?.uid || "");
+  const isCompanyAdmin = !!uid && !!company && (
+    String((company as any).ownerId || (company as any).owner || "") === uid ||
+    (Array.isArray((company as any).sharedWith) && (company as any).sharedWith.some((member: any) =>
+      String(member?.uid || member?.userId || "") === uid && ["admin", "CompanyAdmin", "SuperAdmin"].includes(String(member?.role || ""))))
+  );
+  const [sequence, setSequence] = useState<GalleryQueueSequence>(DEFAULT_GALLERY_QUEUE_SEQUENCE);
+  const [sortOrder, setSortOrder] = useState<GallerySortOrder>(DEFAULT_GALLERY_SORT_ORDER);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!fsId) return;
+    return onSnapshot(doc(firestore, `companies/${fsId}/auto_ocr_settings`, "server_auto_ocr"), (snapshot) => {
+      const value = snapshot.exists() ? snapshot.data() : {};
+      setSequence(normalizeGalleryQueueSequence(value?.queueSequence));
+      setSortOrder(normalizeGallerySortOrder(value?.gallerySortOrder));
+    });
+  }, [fsId]);
+  const persistSequenceSetting = async (field: "queueSequence" | "gallerySortOrder", value: GalleryQueueSequence | GallerySortOrder) => {
+    if (!fsId || !uid || !isCompanyAdmin || saving) return;
+    setSaving(true);
+    try {
+      await setDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, "server_auto_ocr"), {
+        [field]: value,
+        updatedAt: serverTimestamp(),
+        updatedBy: uid,
+      }, { merge: true });
+    } catch (error) {
+      toast.error("Could not save Gallery order", { description: error instanceof Error ? error.message : "Please try again." });
+    } finally {
+      setSaving(false);
+    }
+  };
+  const updateSequence = (value: string) => {
+    const next = normalizeGalleryQueueSequence(value);
+    setSequence(next);
+    void persistSequenceSetting("queueSequence", next);
+  };
+  const updateSortOrder = (value: string) => {
+    const next = normalizeGallerySortOrder(value);
+    setSortOrder(next);
+    void persistSequenceSetting("gallerySortOrder", next);
+  };
+  const sequenceLabel = GALLERY_QUEUE_SEQUENCES.find((option) => option.value === sequence)?.label || "Top left to right";
+  const sortLabel = sortOrder === "newest-first" ? "Newest first" : "Oldest first";
+  return (
+    <div className={cn("flex shrink-0 items-center gap-1.5", inline && "hidden max-sm:col-span-2 max-sm:flex max-sm:w-full")}>
+      <span className="shrink-0 text-[11px] font-medium text-muted-foreground">Queue</span>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!isCompanyAdmin || saving || !fsId}
+            aria-label="Post queue and sorting settings"
+            title="Choose the Post queue direction and Gallery sorting order"
+            className="pl-chrome-btn-drop h-8 w-[250px] min-w-0 shrink-0 justify-between rounded-full border border-blue-300 bg-blue-100/80 px-3 text-[11px] text-blue-900 hover:border-blue-400 hover:bg-blue-200/80 max-sm:w-full"
+          >
+            <span className="truncate">{sequenceLabel} · {sortLabel}</span>
+            <ChevronDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-64">
+          <DropdownMenuLabel>Post queue</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={sequence} onValueChange={updateSequence}>
+            {GALLERY_QUEUE_SEQUENCES.map((option) => <DropdownMenuRadioItem key={option.value} value={option.value}>{option.label}</DropdownMenuRadioItem>)}
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Sorting</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={sortOrder} onValueChange={updateSortOrder}>
+            <DropdownMenuRadioItem value="newest-first">Newest first</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="oldest-first">Oldest first</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 function GalleryTabSwitch({
   activeTab,
   onTabChange,
@@ -475,6 +562,7 @@ function GalleryTabSwitch({
       </Button>
       <GalleryAutoPostModeRibbon inline={inline} />
       <GalleryRunnerHoldButton inline={inline} />
+      <GalleryQueueSequenceRibbon inline={inline} />
       <Button
         type="button"
         size="sm"
@@ -2079,6 +2167,17 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const { company, companyId } = useCompany();
+  const [queueSequence, setQueueSequence] = useState<GalleryQueueSequence>(DEFAULT_GALLERY_QUEUE_SEQUENCE);
+  const [gallerySortOrder, setGallerySortOrder] = useState<GallerySortOrder>(DEFAULT_GALLERY_SORT_ORDER);
+  const queueSettingsCompanyId = firestoreCompanyIdForGallery(companyId, company);
+  useEffect(() => {
+    if (!queueSettingsCompanyId) return;
+    return onSnapshot(doc(firestore, `companies/${queueSettingsCompanyId}/auto_ocr_settings`, "server_auto_ocr"), (snapshot) => {
+      const value = snapshot.exists() ? snapshot.data() : {};
+      setQueueSequence(normalizeGalleryQueueSequence(value?.queueSequence));
+      setGallerySortOrder(normalizeGallerySortOrder(value?.gallerySortOrder));
+    });
+  }, [queueSettingsCompanyId]);
   const [filesTickEpoch, setFilesTickEpoch] = useState(0);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2740,8 +2839,14 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
             return uploadedAt >= fromDate && uploadedAt <= toDate;
         });
     }
-    return filtered;
-  }, [unassignedFiles, selectedUploaderId, dateRange]);
+    // Sorting changes the visible file order; queue direction then numbers/processes that grid.
+    return mode === "unassigned" ? sortGalleryFiles(filtered, gallerySortOrder) : filtered;
+  }, [unassignedFiles, selectedUploaderId, dateRange, mode, gallerySortOrder]);
+
+  const queuePositionByFileId = useMemo(() => {
+    const queued = orderGalleryQueue(filteredFiles, queueSequence, Number(previewColumns) || 2, gallerySortOrder);
+    return new Map(queued.map((file, index) => [file.id, index + 1]));
+  }, [filteredFiles, queueSequence, previewColumns, gallerySortOrder]);
 
   const handleFailedFileAction = async (action: "restore" | "retry") => {
     if (!whyFailedFile || !companyId || failedFileActionBusy) return;
@@ -3010,6 +3115,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
               </div>
             ))}
             {paginatedUnassignedFiles.map((file) => {
+              const sequenceNumber = queuePositionByFileId.get(file.id) || 0;
               const uploadDate = getUploadedAtDate(file.uploadedAt);
               const resolved = userNames[file.uploadedBy];
               const uploaderName = resolved && resolved !== "Unknown"
@@ -3063,6 +3169,15 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
                       fileSize={file.size}
                       size={Number(tileSize) || 120}
                     />
+                    {mode === "unassigned" && sequenceNumber > 0 ? (
+                      <span
+                        className="pointer-events-none absolute bottom-1.5 right-1.5 z-20 inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-blue-300 bg-white/95 px-1.5 text-xs font-bold leading-none text-blue-900 shadow-sm"
+                        title={`Queue position ${sequenceNumber}`}
+                        aria-label={`Queue position ${sequenceNumber}`}
+                      >
+                        {sequenceNumber}
+                      </span>
+                    ) : null}
                     <div
                       className={cn(
                         "absolute top-1.5 left-1.5 z-20 flex items-center justify-center rounded bg-white/90 dark:bg-zinc-900/90 p-0.5 shadow-sm transition-opacity",

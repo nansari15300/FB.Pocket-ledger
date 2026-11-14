@@ -16,6 +16,7 @@ import { runOcrOnFile } from "@/modules/ocr/engine";
 import { queueOcrHandoff } from "@/modules/ocr/handoff";
 import { isOcrSelectableParty } from "@/modules/ocr/types";
 import type { OcrParsedBill, OcrRawResult } from "@/modules/ocr/types";
+import { DEFAULT_GALLERY_QUEUE_SEQUENCE, DEFAULT_GALLERY_SORT_ORDER, normalizeGalleryQueueSequence, normalizeGallerySortOrder, orderGalleryQueue, type GalleryQueueSequence, type GallerySortOrder } from "@/components/gallery/galleryQueueSequence";
 
 type LocalAutoPostSettings = {
   enabled: boolean;
@@ -31,6 +32,8 @@ type LocalAutoPostSettings = {
   localRunnerUid: string;
   localRunnerDeviceId: string;
   missingFieldAction: "fail-and-continue" | "pause-and-hold";
+  queueSequence: GalleryQueueSequence;
+  gallerySortOrder: GallerySortOrder;
 };
 
 type UnassignedRow = {
@@ -106,6 +109,11 @@ export function GalleryLocalAutoPostRunner({
   const masters = useVouchers();
   const deviceId = useMemo(() => getOrCreateDeviceId(), []);
   const fsId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
+  const runnerHoldStorageKey = `pl.gallery.auto-post.runner-hold.v1:${fsId}:${deviceId}`;
+  const readRunnerHeld = (key: string) => {
+    if (typeof window === "undefined") return false;
+    try { return window.localStorage.getItem(key) === "held"; } catch { return false; }
+  };
   const settingsRef = useMemo(() => fsId ? doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID) : null, [fsId]);
   const canRun = settingsReady && settings.enabled && settings.runLocation === "local-pc" && isCompanyAdmin &&
     !!user?.uid && settings.localRunnerUid === user.uid && settings.localRunnerDeviceId === deviceId &&
@@ -116,12 +124,13 @@ export function GalleryLocalAutoPostRunner({
   const [voucherOpen, setVoucherOpen] = useState(false);
   const [voucherData, setVoucherData] = useState<Record<string, unknown> | null>(null);
   const [processDialogVisible, setProcessDialogVisible] = useState(true);
-  const [runnerHeld, setRunnerHeld] = useState(false);
+  const [runnerHeld, setRunnerHeld] = useState(() => readRunnerHeld(runnerHoldStorageKey));
+  const [runnerHoldLoadedFor, setRunnerHoldLoadedFor] = useState(runnerHoldStorageKey);
   const [activeProcess, setActiveProcess] = useState<{ id: string; name: string } | null>(null);
   const activeJobRef = useRef<UnassignedRow | null>(null);
   const busyRef = useRef(false);
-  const runnerHeldRef = useRef(false);
-  const runnerStartedRef = useRef(false);
+  const runnerHeldRef = useRef(runnerHeld);
+  const runnerStartedRef = useRef(!runnerHeld);
   const drainQueueRef = useRef(false);
   const staleRetryTimerRef = useRef<number | null>(null);
   const manualRetryIdsRef = useRef<Set<string>>(new Set());
@@ -133,6 +142,13 @@ export function GalleryLocalAutoPostRunner({
   settingsRefValue.current = settings;
   rowsRef.current = rows;
   runnerHeldRef.current = runnerHeld;
+  useEffect(() => {
+    const held = readRunnerHeld(runnerHoldStorageKey);
+    runnerHeldRef.current = held;
+    runnerStartedRef.current = !held;
+    setRunnerHeld(held);
+    setRunnerHoldLoadedFor(runnerHoldStorageKey);
+  }, [runnerHoldStorageKey]);
   const clearManualRetryId = useCallback((id: string) => {
     manualRetryIdsRef.current.delete(id);
     if (manualRetryIdsRef.current.size === 0 && !settingsRefValue.current.runOnUpload) drainQueueRef.current = false;
@@ -285,10 +301,13 @@ export function GalleryLocalAutoPostRunner({
   }, [clearManualRetryId, company, deviceId, failJob, fsId, masters.processedItems, masters.processedParties, user?.uid]);
 
   const processPending = useCallback(async () => {
-    if (!canRun || !navigator.onLine || busyRef.current || runnerHeldRef.current) return;
+    if (!canRun || runnerHoldLoadedFor !== runnerHoldStorageKey || !navigator.onLine || busyRef.current || runnerHeldRef.current) return;
     if (settings.runOnUpload || runnerStartedRef.current) drainQueueRef.current = true;
     if (!drainQueueRef.current || masters.loading) return;
-    const next = rowsRef.current.find((row) =>
+    const storedColumns = typeof window !== "undefined" ? Number(localStorage.getItem("galleryPreviewColumns") || 2) : 2;
+    const queueSequence = normalizeGalleryQueueSequence(settings.queueSequence || DEFAULT_GALLERY_QUEUE_SEQUENCE);
+    const sortOrder = normalizeGallerySortOrder(settings.gallerySortOrder || DEFAULT_GALLERY_SORT_ORDER);
+    const next = orderGalleryQueue(rowsRef.current, queueSequence, storedColumns, sortOrder).find((row) =>
       row.url && row.status !== "ASSIGNED" && row.status !== "LOCKED" && row.isDeleted !== true && row.deleted !== true &&
       row.autoOcrStatus !== "complete" && row.autoOcrStatus !== "failed" &&
       (manualRetryIdsRef.current.size === 0 || manualRetryIdsRef.current.has(row.id)) &&
@@ -328,7 +347,7 @@ export function GalleryLocalAutoPostRunner({
       busyRef.current = false;
       window.setTimeout(() => void processPendingRef.current(), 0);
     }
-  }, [canRun, masters.loading, processOne, settings.runOnUpload]);
+  }, [canRun, masters.loading, processOne, runnerHoldLoadedFor, runnerHoldStorageKey, settings.gallerySortOrder, settings.queueSequence, settings.runOnUpload]);
   processPendingRef.current = processPending;
 
   useEffect(() => {
@@ -368,6 +387,7 @@ export function GalleryLocalAutoPostRunner({
       if (String(detail?.companyId || "") !== fsId || typeof detail?.held !== "boolean") return;
       runnerHeldRef.current = detail.held;
       runnerStartedRef.current = !detail.held;
+      try { window.localStorage.setItem(runnerHoldStorageKey, detail.held ? "held" : "running"); } catch { /* persistence is best-effort */ }
       setRunnerHeld(detail.held);
       if (!detail.held) {
         drainQueueRef.current = true;
@@ -398,6 +418,7 @@ export function GalleryLocalAutoPostRunner({
       }
       runnerHeldRef.current = true;
       runnerStartedRef.current = false;
+      try { window.localStorage.setItem(runnerHoldStorageKey, "held"); } catch { /* persistence is best-effort */ }
       setRunnerHeld(true);
       setProcessDialogVisible(true);
       toast.message("Auto post paused for review", { description: `${message} The voucher is still open; use Start runner after handling it.` });
@@ -412,7 +433,7 @@ export function GalleryLocalAutoPostRunner({
       window.removeEventListener("pl:gallery:auto-post-runner-hold", onHold);
       window.removeEventListener("pl:gallery:auto-post-required-fields-missing", onRequiredFieldsMissing);
     };
-  }, [activeProcess, canControlRunner, clearManualRetryId, failJob, fsId, processDialogVisible, runnerHeld]);
+  }, [activeProcess, canControlRunner, clearManualRetryId, failJob, fsId, processDialogVisible, runnerHeld, runnerHoldStorageKey]);
 
   useEffect(() => {
     if (!canRun || masters.loading || !drainQueueRef.current) return;

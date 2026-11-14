@@ -26,6 +26,7 @@ import { getOrCreateDeviceId } from "@/lib/writeGateway/legacy/deviceLimitClient
 import { GalleryLocalAutoPostRunner } from "@/components/gallery/GalleryLocalAutoPostRunner";
 import { AutoPostModeSwitch } from "@/components/gallery/AutoPostModeSwitch";
 import { pbListAppDocs } from "@/lib/pocketbaseData/pbSync";
+import { DEFAULT_GALLERY_QUEUE_SEQUENCE, DEFAULT_GALLERY_SORT_ORDER, normalizeGalleryQueueSequence, normalizeGallerySortOrder, type GalleryQueueSequence, type GallerySortOrder } from "@/components/gallery/galleryQueueSequence";
 
 const SETTINGS_DOC_ID = "server_auto_ocr";
 
@@ -45,6 +46,8 @@ type AutoOcrSettings = {
   maxCallsPerMinute: number;
   failOnMissingFields: boolean;
   missingFieldAction: "fail-and-continue" | "pause-and-hold";
+  queueSequence: GalleryQueueSequence;
+  gallerySortOrder: GallerySortOrder;
   checkDuplicateVouchers: boolean;
   duplicateVoucherAction: "move-to-duplicates" | "pause-for-review" | "save-anyway";
 };
@@ -65,6 +68,8 @@ const DEFAULT_SETTINGS: AutoOcrSettings = {
   maxCallsPerMinute: 5,
   failOnMissingFields: true,
   missingFieldAction: "pause-and-hold",
+  queueSequence: DEFAULT_GALLERY_QUEUE_SEQUENCE,
+  gallerySortOrder: DEFAULT_GALLERY_SORT_ORDER,
   checkDuplicateVouchers: true,
   duplicateVoucherAction: "move-to-duplicates",
 };
@@ -219,6 +224,8 @@ function normalizeSettings(raw: unknown): AutoOcrSettings {
     maxCallsPerMinute: bounded(value.maxCallsPerMinute, DEFAULT_SETTINGS.maxCallsPerMinute, 1, 15),
     failOnMissingFields: true,
     missingFieldAction: value.missingFieldAction === "fail-and-continue" ? "fail-and-continue" : "pause-and-hold",
+    queueSequence: normalizeGalleryQueueSequence(value.queueSequence),
+    gallerySortOrder: normalizeGallerySortOrder(value.gallerySortOrder),
     checkDuplicateVouchers: value.checkDuplicateVouchers !== false,
     duplicateVoucherAction: value.duplicateVoucherAction === "pause-for-review" || value.duplicateVoucherAction === "save-anyway"
       ? value.duplicateVoucherAction
