@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { AlertCircle, Bot, Clock3, Gauge, Loader2 } from "lucide-react";
+import { AlertCircle, Bot, Clock3, Gauge, Loader2, Monitor, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -21,11 +21,16 @@ import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { firestore } from "@/lib/plClientSession";
 import { useOcrAiStatus } from "@/modules/ocr/ai/aiClient";
 import { useOcrCloudStatus } from "@/modules/ocr/cloud/ocrCloudClient";
+import { getOrCreateClientDeviceId } from "@/lib/security/deviceIdentity";
+import { GalleryLocalAutoPostRunner } from "@/components/gallery/GalleryLocalAutoPostRunner";
 
 const SETTINGS_DOC_ID = "server_auto_ocr";
 
 type AutoOcrSettings = {
   enabled: boolean;
+  runLocation: "local-pc" | "server";
+  localRunnerUid: string;
+  localRunnerDeviceId: string;
   runOnUpload: boolean;
   runOnSchedule: boolean;
   scheduleMode: "interval" | "date-time";
@@ -35,10 +40,15 @@ type AutoOcrSettings = {
   scanEngine: "gemini" | "google" | "azure";
   maxCallsPerMinute: number;
   failOnMissingFields: boolean;
+  checkDuplicateVouchers: boolean;
+  duplicateVoucherAction: "move-to-duplicates" | "pause-for-review" | "save-anyway";
 };
 
 const DEFAULT_SETTINGS: AutoOcrSettings = {
   enabled: false,
+  runLocation: "server",
+  localRunnerUid: "",
+  localRunnerDeviceId: "",
   runOnUpload: true,
   runOnSchedule: false,
   scheduleMode: "interval",
@@ -48,6 +58,8 @@ const DEFAULT_SETTINGS: AutoOcrSettings = {
   scanEngine: "gemini",
   maxCallsPerMinute: 5,
   failOnMissingFields: true,
+  checkDuplicateVouchers: true,
+  duplicateVoucherAction: "move-to-duplicates",
 };
 
 const SCAN_ENGINES = {
@@ -56,10 +68,10 @@ const SCAN_ENGINES = {
   azure: { name: "Azure Vision", provider: "azure" },
 } as const;
 
-const INTRO_COPY = {
-  en: "Unassigned files can be processed by Pocket AI on the Pocket Ledger Server, whether this app is open or closed. Choose when files are scanned and whether matching vouchers are created automatically.",
-  hi: "इस ऐप के खुले या बंद रहने पर भी, Pocket AI Pocket Ledger Server पर मौजूद Unassigned files को process कर सकता है। चुनें कि files कब scan हों और matching vouchers अपने आप बनाए जाएँ या नहीं।",
-  ne: "यो app खुला वा बन्द हुँदा पनि Pocket AI ले Pocket Ledger Server मा रहेका Unassigned files प्रक्रिया गर्न सक्छ। Files कहिले scan गर्ने र मिल्ने vouchers स्वतः बनाउने कि नबनाउने छान्नुहोस्।",
+const LOCAL_INFO = {
+  en: "Local PC runs OCR on this device. The app and internet must stay available; if this PC is offline, Auto post pauses and pending files wait. Only the company admin account and this saved device can run it.",
+  hi: "Local PC चुनने पर OCR इसी कंप्यूटर पर चलेगा। App और internet चालू रहना चाहिए; PC offline होने पर Auto post रुक जाएगा और files pending रहेंगी। इसे केवल company admin account और यह saved device चला सकते हैं।",
+  ne: "Local PC छान्दा OCR यही कम्प्युटरमा चल्छ। App र internet उपलब्ध हुनुपर्छ; PC offline हुँदा Auto post रोकिन्छ र files pending रहन्छन्। Company admin account र यही saved device ले मात्र चलाउन सक्छ।",
 } as const;
 
 const MISSING_FIELDS_COPY = {
@@ -77,6 +89,33 @@ const MISSING_FIELDS_COPY = {
   },
 } as const;
 
+const DUPLICATE_COPY = {
+  en: {
+    title: "Check for duplicate vouchers",
+    description: "Before creating a voucher, compare its transaction reference, date, amount, and party or account with existing vouchers. Choose what should happen when a possible duplicate is found.",
+    actionLabel: "When a duplicate is found",
+    move: "Move document to Duplicate Documents",
+    pause: "Pause auto-scan and ask me to review",
+    save: "Show warning, then create unapproved voucher",
+  },
+  hi: {
+    title: "Duplicate voucher की जाँच करें",
+    description: "Voucher बनाने से पहले transaction reference, date, amount और party या account का मौजूदा vouchers से मिलान करें। संभावित duplicate मिलने पर आगे क्या करना है, चुनें।",
+    actionLabel: "Duplicate मिलने पर",
+    move: "Document को Duplicate Documents में भेजें",
+    pause: "Auto-scan रोकें और मुझसे review माँगें",
+    save: "Warning दिखाकर unapproved voucher बनाएँ",
+  },
+  ne: {
+    title: "Duplicate voucher जाँच गर्नुहोस्",
+    description: "Voucher बनाउनुअघि transaction reference, date, amount र party वा account लाई पहिलेका vouchers सँग मिलाउनुहोस्। सम्भावित duplicate भेटिएपछि के गर्ने हो छान्नुहोस्।",
+    actionLabel: "Duplicate भेटिएमा",
+    move: "Document लाई Duplicate Documents मा पठाउनुहोस्",
+    pause: "Auto-scan रोकेर मलाई review गर्न सोध्नुहोस्",
+    save: "Warning देखाएर unapproved voucher बनाउनुहोस्",
+  },
+} as const;
+
 function normalizeSettings(raw: unknown): AutoOcrSettings {
   const value = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
   const bounded = (v: unknown, fallback: number, min: number, max: number) => {
@@ -85,6 +124,9 @@ function normalizeSettings(raw: unknown): AutoOcrSettings {
   };
   return {
     enabled: value.enabled === true,
+    runLocation: value.runLocation === "local-pc" ? "local-pc" : "server",
+    localRunnerUid: typeof value.localRunnerUid === "string" ? value.localRunnerUid : "",
+    localRunnerDeviceId: typeof value.localRunnerDeviceId === "string" ? value.localRunnerDeviceId : "",
     runOnUpload: value.runOnUpload !== false,
     runOnSchedule: value.runOnSchedule === true,
     scheduleMode: value.scheduleMode === "date-time" ? "date-time" : "interval",
@@ -94,6 +136,10 @@ function normalizeSettings(raw: unknown): AutoOcrSettings {
     scanEngine: value.scanEngine === "google" || value.scanEngine === "azure" ? value.scanEngine : "gemini",
     maxCallsPerMinute: bounded(value.maxCallsPerMinute, DEFAULT_SETTINGS.maxCallsPerMinute, 1, 15),
     failOnMissingFields: true,
+    checkDuplicateVouchers: value.checkDuplicateVouchers !== false,
+    duplicateVoucherAction: value.duplicateVoucherAction === "pause-for-review" || value.duplicateVoucherAction === "save-anyway"
+      ? value.duplicateVoucherAction
+      : "move-to-duplicates",
   };
 }
 
@@ -122,7 +168,9 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
   const { dateSystem, formatDate, formatDateBS } = useDate();
   const { company, companyId } = useCompany();
   const { user } = useAuth();
+  const localDeviceId = useMemo(() => getOrCreateClientDeviceId(), []);
   const [settings, setSettings] = useState<AutoOcrSettings>(DEFAULT_SETTINGS);
+  const [settingsLoadedFor, setSettingsLoadedFor] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -153,7 +201,7 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
   }, [aiEngineStatus, visionEngineStatus]);
 
   useEffect(() => {
-    if (!open || !fsId) return;
+    if (!fsId) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -161,13 +209,18 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
       .then((snapshot) => {
         if (cancelled) return;
         setSettings(normalizeSettings(snapshot.exists() ? snapshot.data() : DEFAULT_SETTINGS));
+        setSettingsLoadedFor(fsId);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load settings.");
+        if (!cancelled) {
+          setSettings(DEFAULT_SETTINGS);
+          setSettingsLoadedFor(fsId);
+          setError(err instanceof Error ? err.message : "Could not load settings.");
+        }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open, fsId]);
+  }, [fsId]);
 
   const isCompanyAdmin = useMemo(() => {
     const uid = String(user?.uid || "");
@@ -188,18 +241,24 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
     setSaving(true);
     setError(null);
     try {
-      await setDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID), {
+      const settingsToSave = {
         ...settings,
+        localRunnerUid: settings.runLocation === "local-pc" ? user.uid : settings.localRunnerUid,
+        localRunnerDeviceId: settings.runLocation === "local-pc" ? localDeviceId : settings.localRunnerDeviceId,
         scheduleMinutes: Math.max(1, Math.min(1440, Math.round(Number(settings.scheduleMinutes) || DEFAULT_SETTINGS.scheduleMinutes))),
         scheduleTimeZone: typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC",
         maxCallsPerMinute: Math.max(1, Math.min(15, Math.round(Number(settings.maxCallsPerMinute) || DEFAULT_SETTINGS.maxCallsPerMinute))),
         failOnMissingFields: true,
+        checkDuplicateVouchers: settings.checkDuplicateVouchers,
         updatedAt: serverTimestamp(),
         updatedBy: user.uid,
         provider: SCAN_ENGINES[settings.scanEngine].provider,
         providerLabel: SCAN_ENGINES[settings.scanEngine].name,
         saveApproved: false,
-      }, { merge: true });
+      };
+      await setDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID), settingsToSave, { merge: true });
+      setSettings(settingsToSave);
+      setSettingsLoadedFor(fsId);
       onOpenChange(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save settings.");
@@ -209,11 +268,13 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
   };
 
   return (
+    <>
+    <GalleryLocalAutoPostRunner settings={settings} settingsDialogOpen={open} isCompanyAdmin={isCompanyAdmin} settingsReady={settingsLoadedFor === fsId && !!fsId} />
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[88dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Server Auto OCR settings</DialogTitle>
-          <DialogDescription>{INTRO_COPY[introLang]}</DialogDescription>
+          <DialogTitle>Auto post settings</DialogTitle>
+          <DialogDescription>Choose where Auto post scans Unassigned documents and creates vouchers.</DialogDescription>
         </DialogHeader>
 
         {!isCompanyAdmin ? (
@@ -224,7 +285,16 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
           <div className="space-y-4">
             <section className="rounded-xl border bg-background/80 p-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
               <SettingToggle icon={<Bot className="h-4 w-4" />} title="Enable Auto post vouchers" checked={settings.enabled} onChange={(enabled) => patch({ enabled })} />
-              <p className="mt-1 pl-8 text-xs text-muted-foreground">New and scheduled scans are processed by Pocket AI (Gemini); no browser needs to stay open.</p>
+              <p className="mt-1 pl-8 text-xs text-muted-foreground">Automatically create unapproved vouchers from matching documents.</p>
+            </section>
+
+            <section className="space-y-3 rounded-xl border bg-background/80 p-3 shadow-sm">
+              <div className="text-sm font-semibold">Run Auto post on</div>
+              <RadioGroup value={settings.runLocation} onValueChange={(runLocation) => patch({ runLocation: runLocation as AutoOcrSettings["runLocation"] })} disabled={!settings.enabled} className="grid gap-2 sm:grid-cols-2">
+                <label htmlFor="auto-ocr-local-pc" className="flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm shadow-sm"><RadioGroupItem id="auto-ocr-local-pc" value="local-pc" /><Monitor className="h-4 w-4" /><span>Local PC</span></label>
+                <label htmlFor="auto-ocr-server" className="flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm shadow-sm"><RadioGroupItem id="auto-ocr-server" value="server" /><Server className="h-4 w-4" /><span>Server</span></label>
+              </RadioGroup>
+              {settings.runLocation === "local-pc" ? <div className="rounded-md border border-sky-200 bg-sky-50 p-2.5 text-xs leading-relaxed text-sky-950">{LOCAL_INFO[introLang]}{settings.localRunnerDeviceId && (settings.localRunnerUid !== user?.uid || settings.localRunnerDeviceId !== localDeviceId) ? <div className="mt-2 font-semibold">This setting is bound to a different admin account/device. Save Local PC here to move the runner to this device.</div> : null}</div> : <div className="rounded-md border bg-muted/50 p-2.5 text-xs text-muted-foreground">Server mode needs the Pocket Ledger Server Auto OCR worker enabled; the app does not run scans on this PC in this mode.</div>}
             </section>
 
             <section className="space-y-3 rounded-xl border bg-background/80 p-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
@@ -274,7 +344,7 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
               </div>}
             </section>
 
-            <section className="space-y-3 rounded-xl border border-indigo-300 bg-gradient-to-br from-indigo-100 via-sky-50 to-violet-100 p-3 shadow-[0_5px_14px_rgba(49,46,129,0.18)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_10px_22px_rgba(49,46,129,0.24)]">
+            <section hidden={settings.runLocation === "local-pc"} className="space-y-3 rounded-xl border border-indigo-300 bg-gradient-to-br from-indigo-100 via-sky-50 to-violet-100 p-3 shadow-[0_5px_14px_rgba(49,46,129,0.18)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_10px_22px_rgba(49,46,129,0.24)]">
               <div className="flex items-center gap-2 text-sm font-semibold"><Gauge className="h-4 w-4" />Usage and voucher saving</div>
               <div className="rounded-lg border border-indigo-200 bg-white/90 p-2.5 shadow-[0_2px_6px_rgba(30,41,59,0.12)]">
                 <div className="mb-2 text-xs font-medium text-foreground">Scan Engine</div>
@@ -318,7 +388,34 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
               </div>
             </section>
 
-            <div className="flex items-start gap-2 rounded-lg border bg-muted/60 p-3 text-xs text-muted-foreground shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />Files stored only on this device cannot be scanned while the app is closed. The setting applies to files saved on the Pocket Ledger Server.</div>
+            <section className="rounded-xl border border-rose-300 bg-gradient-to-br from-rose-100 via-pink-50 to-orange-100 p-3 shadow-[0_5px_14px_rgba(159,18,57,0.17)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_10px_22px_rgba(159,18,57,0.23)]">
+              <div className="rounded-lg border border-rose-200 bg-white/90 p-2.5 shadow-[0_2px_6px_rgba(30,41,59,0.12)]">
+                <SettingToggle
+                  title={DUPLICATE_COPY[introLang].title}
+                  checked={settings.checkDuplicateVouchers}
+                  onChange={(checkDuplicateVouchers) => patch({ checkDuplicateVouchers })}
+                  disabled={!settings.enabled}
+                />
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{DUPLICATE_COPY[introLang].description}</p>
+                <div className="mt-3 space-y-1.5">
+                  <label className="text-xs font-medium" htmlFor="auto-ocr-duplicate-action">{DUPLICATE_COPY[introLang].actionLabel}</label>
+                  <Select
+                    value={settings.duplicateVoucherAction}
+                    onValueChange={(action) => patch({ duplicateVoucherAction: action as AutoOcrSettings["duplicateVoucherAction"] })}
+                    disabled={!settings.enabled || !settings.checkDuplicateVouchers}
+                  >
+                    <SelectTrigger id="auto-ocr-duplicate-action" className="h-9 bg-white"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="move-to-duplicates">{DUPLICATE_COPY[introLang].move}</SelectItem>
+                      <SelectItem value="pause-for-review">{DUPLICATE_COPY[introLang].pause}</SelectItem>
+                      <SelectItem value="save-anyway">{DUPLICATE_COPY[introLang].save}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </section>
+
+            <div className="flex items-start gap-2 rounded-lg border bg-muted/60 p-3 text-xs text-muted-foreground shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />Files must be uploaded to the Pocket Ledger Server so the selected runner can access them.</div>
           </div>
         )}
 
@@ -329,6 +426,7 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
 

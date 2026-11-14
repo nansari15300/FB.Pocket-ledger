@@ -11,6 +11,8 @@ export type OcrHandoff = {
   original?: File | null;
   /** Suggestions ticked together with the switch (applied in the new form). */
   selectedIds?: string[];
+  /** Gallery local Auto post: use the voucher form's normal guarded save after OCR autofill. */
+  autoPost?: boolean;
 };
 
 /**
@@ -35,9 +37,15 @@ const forType = (formType: string | undefined, target: string) => !formType || f
 
 /** Park the bill for the target form and ask the dialog to switch. Returns a token for cancelOcrHandoff. */
 export function requestOcrVoucherSwitch(type: string, files: readonly (File | string)[], extra?: Omit<OcrHandoff, "files">): number {
+  const token = queueOcrHandoff(type, files, extra);
+  window.dispatchEvent(new CustomEvent(OCR_SWITCH_EVENT, { detail: { type } }));
+  return token;
+}
+
+/** Park OCR data for a form that is opened directly by its owner (without switching every open voucher dialog). */
+export function queueOcrHandoff(type: string, files: readonly (File | string)[], extra?: Omit<OcrHandoff, "files">): number {
   const token = ++seq;
   pending = { files: [...files], ...extra, at: Date.now(), type, token };
-  window.dispatchEvent(new CustomEvent(OCR_SWITCH_EVENT, { detail: { type } }));
   return token;
 }
 

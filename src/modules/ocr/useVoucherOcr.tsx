@@ -257,6 +257,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const filledRef = useRef(new Map<string, unknown>());
   const preOcrDoneRef = useRef(false);
   const pendingAutoPostRef = useRef(false);
+  const handoffAutoPostRef = useRef(false);
+  const localAutoPostPendingRef = useRef(false);
   /* Auto Post countdown: after OCR, wait the configured seconds (header gear, default 10) then save; bubble above Save can cancel. */
   const [apCount, setApCount] = useState<number | null>(null);
   /** OCR result (raw) that already scheduled an Auto Post -> never schedule twice for the same read. */
@@ -264,11 +266,13 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const apTimerRef = useRef<number | null>(null);
   const cancelAutoPostCountdown = useCallback(() => {
     if (apTimerRef.current != null) { window.clearInterval(apTimerRef.current); apTimerRef.current = null; }
+    localAutoPostPendingRef.current = false;
     pendingAutoPostRef.current = false;
     setApCount(null);
   }, []);
   const startAutoPostCountdown = useCallback(() => {
     if (apTimerRef.current != null) window.clearInterval(apTimerRef.current);
+    if (handoffAutoPostRef.current) localAutoPostPendingRef.current = true;
     let n = clampAutoPostSeconds(getOcrPrefs().autoPostSeconds);
     setApCount(n);
     apTimerRef.current = window.setInterval(() => {
@@ -277,10 +281,22 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       if (apTimerRef.current != null) window.clearInterval(apTimerRef.current);
       apTimerRef.current = null;
       setApCount(null);
+      if (localAutoPostPendingRef.current && typeof navigator !== "undefined" && !navigator.onLine) {
+        toast.info("Local Auto post paused", { description: "This PC is offline. Auto post will continue when the connection returns." });
+        return;
+      }
+      localAutoPostPendingRef.current = false;
       savedRef.current = true;
       optsRef.current.autoPost();
     }, 1000);
   }, []);
+  useEffect(() => {
+    const resumeLocalAutoPost = () => {
+      if (localAutoPostPendingRef.current && apTimerRef.current == null) startAutoPostCountdown();
+    };
+    window.addEventListener("online", resumeLocalAutoPost);
+    return () => window.removeEventListener("online", resumeLocalAutoPost);
+  }, [startAutoPostCountdown]);
   useEffect(() => () => { if (apTimerRef.current != null) window.clearInterval(apTimerRef.current); }, []);
   const apPrefOn = useOcrPrefs().autoPost;
   useEffect(() => { if (!apPrefOn) cancelAutoPostCountdown(); }, [apPrefOn, cancelAutoPostCountdown]);
@@ -881,7 +897,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 ? `Filled: ${rFilled.join(", ") || "nothing"}${rMissing.length ? ` | Missing: ${rMissing.map((x) => x.split(" (")[0]).join(", ")}` : ""}`
                 : here && highUnique ? `${niceType(cur)} is the right voucher.` : !highUnique ? "Cannot detect voucher type — stay on the current voucher or pick one." : `Suggested: ${types.map(niceType).join(" / ")}.`,
             });
-            if ((reason === "auto" || reason === "handoff") && getOcrPrefs().autoPost && !opt.isEditing && opt.adapter.autoPost && apScheduledForRef.current !== raw) {
+            if ((reason === "auto" || reason === "handoff") && (getOcrPrefs().autoPost || (reason === "handoff" && handoffAutoPostRef.current)) && !opt.isEditing && opt.adapter.autoPost && apScheduledForRef.current !== raw) {
               const F = opt.form;
               const ok =
                 !lowConf &&
@@ -1316,7 +1332,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         const partyOk = !A.party || !partyApplies || !!F.getValues(A.party.path);
         void partyApplies;
 
-        if ((reason === "auto" || reason === "handoff") && getOcrPrefs().autoPost && !opt.isEditing && apScheduledForRef.current !== raw) {
+        if ((reason === "auto" || reason === "handoff") && (getOcrPrefs().autoPost || (reason === "handoff" && handoffAutoPostRef.current)) && !opt.isEditing && apScheduledForRef.current !== raw) {
           const coreOk =
             A.autoPost &&
             partyOk &&
@@ -1362,6 +1378,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           toast.dismiss(tId);
         }
       } finally {
+        if (reason === "handoff") handoffAutoPostRef.current = false;
         if (ocrAbortRef.current === ac) ocrAbortRef.current = null;
         setRunning(false);
       }
@@ -1370,7 +1387,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   );
 
   // Voucher-type switch hand-off: receive the attachment, then OCR it here.
-  const handoffRunRef = useRef<{ raw?: OcrRawResult; selectedIds?: string[] } | null>(null);
+  const handoffRunRef = useRef<{ raw?: OcrRawResult; selectedIds?: string[]; autoPost?: boolean } | null>(null);
   // Files handed over by a voucher switch; kept briefly so a form's own "new voucher" hydration (setFiles([]) in an effect
   // that runs AFTER this hook's effect) cannot wipe them.
   const handoffFilesRef = useRef<{ files: (File | string)[]; until: number } | null>(null);
@@ -1380,7 +1397,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     const formType = o.currentVoucherType ?? o.adapter.voucherType;
     const h = takeOcrHandoff(formType) ?? resumeOcrSession(formType);
     if (h?.files.length) {
-      handoffRunRef.current = { raw: h.raw, selectedIds: h.selectedIds };
+      handoffRunRef.current = { raw: h.raw, selectedIds: h.selectedIds, autoPost: h.autoPost };
+      handoffAutoPostRef.current = h.autoPost === true;
       handoffFilesRef.current = { files: h.files, until: Date.now() + 2500 };
       linkOcrOriginal(h.files[0], h.original ?? null);
       o.setFiles(h.files);
