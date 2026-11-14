@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Smartphone, Loader2, Trash2, Monitor, History, Info } from "lucide-react";
+import { Smartphone, Loader2, Trash2, Monitor, History, Info, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -255,6 +255,7 @@ export function ManageDevices() {
   const [confirmOverviewBulk, setConfirmOverviewBulk] = useState<{ firestoreCompanyId: string; name: string } | null>(null);
   /** Kick dialog must know which `companies/{id}` path to hit (overview ≠ selected company). */
   const [confirmKick, setConfirmKick] = useState<{ device: DeviceRow; firestoreCompanyId: string } | null>(null);
+  const [confirmDeviceWideKick, setConfirmDeviceWideKick] = useState<{ device: DeviceRow; companies: Array<{ id: string; name: string }> } | null>(null);
   const [confirmBulkKick, setConfirmBulkKick] = useState(false);
   /** Firestore `companies/{id}` id whose multi-device toggle is saving (any card). */
   const [multiDeviceSavingFsId, setMultiDeviceSavingFsId] = useState<string | null>(null);
@@ -272,7 +273,7 @@ export function ManageDevices() {
   /** Cross-company device snapshots (one full-width card per company, same columns as “Synced devices”). */
   const [companyDevicesOverview, setCompanyDevicesOverview] = useState<CompanyDevicesOverviewRow[]>([]);
   const [companyDevicesOverviewLoading, setCompanyDevicesOverviewLoading] = useState(false);
-  const [deviceView, setDeviceView] = useState<"company" | "device" | "user">("company");
+  const [deviceView, setDeviceView] = useState<"company" | "device" | "user">("device");
   const [expandedDeviceRows, setExpandedDeviceRows] = useState<Set<string>>(() => new Set());
   const [expandedUserRows, setExpandedUserRows] = useState<Set<string>>(() => new Set());
   /** Bump after kicks/removes so the multi-company list refetches (device rows change). */
@@ -755,6 +756,42 @@ export function ManageDevices() {
     })();
   };
 
+  const kickDeviceFromAllCompanies = () => {
+    const pending = confirmDeviceWideKick;
+    if (!pending || pending.companies.length === 0) return;
+    setConfirmDeviceWideKick(null);
+    const keys = pending.companies.map((entry) => optimisticDeviceKey(entry.id, pending.device.id));
+    setOptimisticRemovedIds((prev) => new Set([...prev, ...keys]));
+    setKickInFlight(true);
+    void (async () => {
+      try {
+        await Promise.all(pending.companies.map((entry) => pending.device.id === currentDeviceId
+          ? removeThisDevice(entry.id)
+          : kickOutDevicesBatch(entry.id, [{
+              id: pending.device.id,
+              userId: pending.device.userId,
+              deviceType: pending.device.deviceType,
+              deviceLabel: pending.device.deviceLabel,
+            }])));
+        setAdminOverviewTick((tick) => tick + 1);
+        toast({
+          title: pending.device.id === currentDeviceId ? "Device removed" : "Device removed",
+          description: `Device removed from ${pending.companies.length} company${pending.companies.length === 1 ? "" : "ies"}.`,
+        });
+      } catch (error) {
+        setOptimisticRemovedIds((prev) => {
+          const next = new Set(prev);
+          keys.forEach((key) => next.delete(key));
+          return next;
+        });
+        setAdminOverviewTick((tick) => tick + 1);
+        toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to remove device", variant: "destructive" });
+      } finally {
+        setKickInFlight(false);
+      }
+    })();
+  };
+
   const handleSaveHistoryLimit = async () => {
     if (!companyId) return;
     const num = Math.max(1, Math.min(1000, parseInt(historyLimitInput, 10) || DEFAULT_HISTORY_LIMIT));
@@ -864,12 +901,13 @@ export function ManageDevices() {
     const sources = companyDevicesOverview.map((row) => ({
       id: row.firestoreCompanyId,
       name: row.name,
+      isLocal: row.isLocal,
       devices: row.firestoreCompanyId === selectedFirestoreCompanyId ? devices : row.devices,
     }));
     if (selectedFirestoreCompanyId && !sources.some((row) => row.id === selectedFirestoreCompanyId)) {
-      sources.push({ id: selectedFirestoreCompanyId, name: String(company?.name || companyId), devices });
+      sources.push({ id: selectedFirestoreCompanyId, name: String(company?.name || companyId), isLocal: isLocalCompany, devices });
     }
-    const groups = new Map<string, { id: string; label: string; deviceType?: DeviceRow["deviceType"]; userId: string; companies: Array<{ id: string; name: string }> }>();
+    const groups = new Map<string, { id: string; label: string; deviceLabel?: string; deviceType?: DeviceRow["deviceType"]; userId: string; companies: Array<{ id: string; name: string; isLocal: boolean }> }>();
     for (const source of sources) {
       for (const device of source.devices) {
         const id = String(device.id || "");
@@ -877,17 +915,18 @@ export function ManageDevices() {
         const group = groups.get(id) || {
           id,
           label: shortDeviceLabelForList(device.deviceLabel, device.deviceType),
+          deviceLabel: device.deviceLabel,
           deviceType: device.deviceType,
           userId: device.userId,
           companies: [],
         };
-        if (!group.companies.some((entry) => entry.id === source.id)) group.companies.push({ id: source.id, name: source.name });
+        if (!group.companies.some((entry) => entry.id === source.id)) group.companies.push({ id: source.id, name: source.name, isLocal: source.isLocal });
         if (!group.userId && device.userId) group.userId = device.userId;
         groups.set(id, group);
       }
     }
     return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label));
-  }, [companyDevicesOverview, selectedFirestoreCompanyId, devices, company?.name, companyId]);
+  }, [companyDevicesOverview, selectedFirestoreCompanyId, devices, company?.name, companyId, isLocalCompany]);
 
   const userWiseRows = useMemo(() => {
     const groups = new Map<string, { id: string; name: string; devices: Map<string, { id: string; label: string; companies: Set<string> }> }>();
@@ -948,7 +987,7 @@ export function ManageDevices() {
 
   return (
     <div className="w-full min-w-0 max-w-full space-y-3 rounded-xl border border-border/50 bg-slate-50/85 px-[2px] py-3 dark:bg-slate-950/35 sm:space-y-4 md:px-3 md:py-3">
-      <div role="tablist" aria-label="Device views" className="flex flex-wrap gap-2">
+      <div role="tablist" aria-label="Device views" className="flex flex-wrap justify-start gap-2">
         <Button type="button" role="tab" aria-selected={deviceView === "company"} variant={deviceView === "company" ? "default" : "outline"} size="sm" onClick={() => setDeviceView("company")}>Company wise devices</Button>
         <Button type="button" role="tab" aria-selected={deviceView === "device"} variant={deviceView === "device" ? "default" : "outline"} size="sm" onClick={() => setDeviceView("device")}>Device wise companies</Button>
         {canViewAllUsers ? <Button type="button" role="tab" aria-selected={deviceView === "user"} variant={deviceView === "user" ? "default" : "outline"} size="sm" onClick={() => setDeviceView("user")}>User wise devices</Button> : null}
@@ -1393,15 +1432,21 @@ export function ManageDevices() {
             {companyDevicesOverviewLoading ? <div className="flex items-center gap-2 py-6 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading devices…</div> : deviceWiseRows.length === 0 ? <p className="py-4 text-sm text-muted-foreground">No devices registered yet.</p> : (
               <div className={DEVICE_SYNC_TABLE_SCROLL_SHELL}>
                 <Table scrollContainer={false} className={DEVICE_SYNC_TABLE_CLASS}>
-                  <TableHeader><TableRow className={DEVICE_RULE_H_BLACK}><TableHead>Device</TableHead><TableHead>User name</TableHead><TableHead className="text-right">Companies</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow className={DEVICE_RULE_H_BLACK}><TableHead>Device</TableHead><TableHead>User name</TableHead><TableHead className="text-right">Companies</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                   <TableBody>{deviceWiseRows.map((row) => {
                     const expanded = expandedDeviceRows.has(row.id);
                     const displayName = row.userId === ownerId ? "Admin" : (userNames[row.userId] || "—");
+                    const onlineCompanies = row.companies.filter((entry) => !entry.isLocal);
+                    const deviceRecord: DeviceRow = { id: row.id, userId: row.userId, lastActive: null, deviceType: row.deviceType, deviceLabel: row.deviceLabel };
                     return <Fragment key={row.id}>
                       <TableRow className={cn(DEVICE_RULE_H_BLACK, "cursor-pointer")} onClick={() => setExpandedDeviceRows((prev) => { const next = new Set(prev); expanded ? next.delete(row.id) : next.add(row.id); return next; })}>
-                        <TableCell className="whitespace-nowrap font-medium">{row.label}</TableCell><TableCell className="whitespace-nowrap">{displayName}</TableCell><TableCell className="text-right tabular-nums">{row.companies.length}</TableCell>
+                        <TableCell className="whitespace-nowrap font-medium">{row.label}{row.id === currentDeviceId ? <span className="ml-2 text-xs font-normal text-muted-foreground">This device</span> : null}</TableCell><TableCell className="whitespace-nowrap">{displayName}</TableCell><TableCell className="text-right tabular-nums">{row.companies.length}</TableCell><TableCell className="text-right">
+                          {!expanded && onlineCompanies.length > 0 ? <Button type="button" variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={kickInFlight || removingThisDeviceCompanyId !== null} onClick={(event) => { event.stopPropagation(); setConfirmDeviceWideKick({ device: deviceRecord, companies: onlineCompanies.map(({ id, name }) => ({ id, name })) }); }}><Trash2 className="mr-1 h-4 w-4" />{row.id === currentDeviceId ? "Remove" : "Kick out"}</Button> : null}
+                        </TableCell>
                       </TableRow>
-                      {expanded ? row.companies.map((entry) => <TableRow key={`${row.id}-${entry.id}`} className="bg-muted/30"><TableCell colSpan={3} className="pl-8 text-sm">↳ {entry.name}</TableCell></TableRow>) : null}
+                      {expanded ? row.companies.map((entry) => <TableRow key={`${row.id}-${entry.id}`} className="bg-muted/30"><TableCell /><TableCell /><TableCell className="whitespace-nowrap text-sm">↳ {entry.name}{row.id === currentDeviceId ? <span className="ml-2 text-xs font-medium text-muted-foreground">This device</span> : null}</TableCell><TableCell className="text-right">
+                        {entry.isLocal ? <span className="text-sm text-muted-foreground">—</span> : row.id === currentDeviceId ? <Button type="button" variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={removingThisDeviceCompanyId !== null || kickInFlight} onClick={(event) => { event.stopPropagation(); void handleRemoveThisDeviceForCompany(entry.id); }}><Trash2 className="mr-1 h-4 w-4" />Remove</Button> : <Button type="button" variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={kickInFlight} onClick={(event) => { event.stopPropagation(); setConfirmKick({ device: deviceRecord, firestoreCompanyId: entry.id }); }}><Trash2 className="mr-1 h-4 w-4" />Kick out</Button>}
+                      </TableCell></TableRow>) : null}
                     </Fragment>;
                   })}</TableBody>
                 </Table>
@@ -1425,8 +1470,8 @@ export function ManageDevices() {
                   <TableBody>{userWiseRows.map((row) => {
                     const expanded = expandedUserRows.has(row.id);
                     return <Fragment key={row.id}>
-                      <TableRow className={cn(DEVICE_RULE_H_BLACK, "cursor-pointer")} onClick={() => setExpandedUserRows((prev) => { const next = new Set(prev); expanded ? next.delete(row.id) : next.add(row.id); return next; })}>
-                        <TableCell className="whitespace-nowrap font-medium">{row.name}</TableCell><TableCell className="text-right tabular-nums">{row.devices.size}</TableCell>
+                      <TableRow className={DEVICE_RULE_H_BLACK}>
+                        <TableCell className="whitespace-nowrap font-medium"><span className="inline-flex items-center gap-1.5"><Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={`${expanded ? "Collapse" : "Expand"} devices for ${row.name}`} aria-expanded={expanded} onClick={() => setExpandedUserRows((prev) => { const next = new Set(prev); expanded ? next.delete(row.id) : next.add(row.id); return next; })}><ChevronRight className={cn("h-4 w-4 transition-transform", expanded && "rotate-90")} /></Button>{row.name}</span></TableCell><TableCell className="text-right tabular-nums">{row.devices.size}</TableCell>
                       </TableRow>
                       {expanded ? [...row.devices.values()].map((device) => <TableRow key={`${row.id}-${device.id}`} className="bg-muted/30"><TableCell colSpan={2} className="pl-8 text-sm">↳ {device.label} <span className="text-muted-foreground">· {device.companies.size} companies</span></TableCell></TableRow>) : null}
                     </Fragment>;
@@ -1546,6 +1591,23 @@ export function ManageDevices() {
       </Card>
 
       {/* Kick in-flight par dialog accidental close band — UX clear */}
+      <AlertDialog open={!!confirmDeviceWideKick} onOpenChange={(open) => { if (!open && !kickInFlight) setConfirmDeviceWideKick(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmDeviceWideKick?.device.id === currentDeviceId ? "Remove this device from all companies?" : "Kick out this device from all companies?"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmDeviceWideKick ? `This will remove the device from ${confirmDeviceWideKick.companies.length} online compan${confirmDeviceWideKick.companies.length === 1 ? "y" : "ies"}: ${confirmDeviceWideKick.companies.map((entry) => entry.name).join(", ")}.` : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={kickInFlight}>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={kickInFlight} onClick={(event) => { event.preventDefault(); kickDeviceFromAllCompanies(); }}>
+              {confirmDeviceWideKick?.device.id === currentDeviceId ? "Remove" : "Kick out"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog open={!!confirmKick} onOpenChange={(open) => { if (!open && !kickInFlight) setConfirmKick(null); }}>
         <AlertDialogContent>
           <AlertDialogTitle>Remove this device?</AlertDialogTitle>
