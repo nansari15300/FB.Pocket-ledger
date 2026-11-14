@@ -287,7 +287,7 @@ function GalleryPagerInCard({
  * `theme-pro main button.pl-chrome-btn-drop`), so the gallery ribbon matches the header row.
  * The selected pill is a raised 3D button — lifted, thick green edge, presses down on click. */
 const GALLERY_TAB_IDLE_CN =
-  "!border !border-[#93c5fd] !bg-[#dbeafe] !text-[#1e3a8a] hover:!border-[#60a5fa] hover:!bg-[#bfdbfe]";
+  "!border !border-blue-300 !bg-blue-100/80 !text-blue-900 hover:!bg-blue-200/80";
 const GALLERY_TAB_ACTIVE_CN =
   "-translate-y-[3px] !border-2 !border-green-600 bg-blue-200/90 font-semibold !text-blue-900 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),0_4px_0_0_#15803d,0_6px_10px_-2px_rgba(21,128,61,0.45)] ring-1 ring-green-300 active:translate-y-0 active:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),0_1px_0_0_#15803d] hover:!bg-blue-200 hover:!border-green-600";
 
@@ -307,6 +307,7 @@ function GalleryTabSwitch({
     <>
       <Button
         onClick={() => onTabChange("unassigned")}
+        variant="secondary"
         size="sm"
         className={cn(
           "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
@@ -319,6 +320,7 @@ function GalleryTabSwitch({
       {/* Duplicate Documents — Unassigned ka mirror; duplicate guard se "Move to Duplicate" yahan aata hai. */}
       <Button
         onClick={() => onTabChange("duplicate")}
+        variant="secondary"
         size="sm"
         className={cn(
           "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
@@ -330,6 +332,7 @@ function GalleryTabSwitch({
       </Button>
       <Button
         onClick={() => onTabChange("auto-failed")}
+        variant="secondary"
         size="sm"
         className={cn(
           "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
@@ -341,6 +344,7 @@ function GalleryTabSwitch({
       </Button>
       <Button
         onClick={() => onTabChange("company-files")}
+        variant="secondary"
         size="sm"
         className={cn(
           "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
