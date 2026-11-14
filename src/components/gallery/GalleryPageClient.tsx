@@ -283,6 +283,13 @@ function GalleryPagerInCard({
 }
 
 /** Gallery tab switch pills — PC pe page ke top me, mobile pe footer card ke andar. */
+/* One colour for every tab pill (inactive): light blue. The selected pill is a raised 3D button —
+ * lifted up, thick green edge underneath, soft drop shadow, and it presses down on click. */
+const GALLERY_TAB_IDLE_CN =
+  "!border !border-blue-300 !bg-blue-100/80 !text-blue-900 hover:!border-blue-400 hover:!bg-blue-200/80";
+const GALLERY_TAB_ACTIVE_CN =
+  "-translate-y-[3px] !border-2 !border-green-600 bg-blue-200/90 font-semibold !text-blue-900 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),0_4px_0_0_#15803d,0_6px_10px_-2px_rgba(21,128,61,0.45)] ring-1 ring-green-300 active:translate-y-0 active:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),0_1px_0_0_#15803d] hover:!bg-blue-200 hover:!border-green-600";
+
 function GalleryTabSwitch({
   activeTab,
   onTabChange,
@@ -303,9 +310,7 @@ function GalleryTabSwitch({
         className={cn(
           "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
           inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
-          activeTab === "unassigned"
-            ? "-translate-y-0.5 border-2 border-green-600 bg-blue-100/80 font-semibold text-blue-900 shadow-md ring-1 ring-green-200 hover:bg-blue-200/80"
-            : "border-blue-300 bg-blue-100/80 text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
+          activeTab === "unassigned" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
       >
         Unassigned Documents
@@ -317,9 +322,7 @@ function GalleryTabSwitch({
         className={cn(
           "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
           inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
-          activeTab === "duplicate"
-            ? "-translate-y-0.5 border-2 border-green-600 bg-amber-100/80 font-semibold text-amber-900 shadow-md ring-1 ring-green-200 hover:bg-amber-200/80"
-            : "border-amber-300 bg-amber-100/70 text-amber-900 hover:border-amber-400 hover:bg-amber-200/80"
+          activeTab === "duplicate" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
       >
         Duplicate Documents
@@ -330,9 +333,7 @@ function GalleryTabSwitch({
         className={cn(
           "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
           inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
-          activeTab === "auto-failed"
-            ? "-translate-y-0.5 border-2 border-green-600 bg-rose-100/80 font-semibold text-rose-900 shadow-md ring-1 ring-green-200 hover:bg-rose-200/80"
-            : "border-rose-300 bg-rose-100/70 text-rose-900 hover:border-rose-400 hover:bg-rose-200/80"
+          activeTab === "auto-failed" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
       >
         Auto failed
@@ -343,9 +344,7 @@ function GalleryTabSwitch({
         className={cn(
           "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
           inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
-          activeTab === "company-files"
-            ? "-translate-y-0.5 border-2 border-green-600 bg-blue-100/80 font-semibold text-blue-900 shadow-md ring-1 ring-green-200 hover:bg-blue-200/80"
-            : "border-blue-300 bg-blue-100/80 text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
+          activeTab === "company-files" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
       >
         Company Files
@@ -358,7 +357,8 @@ function GalleryTabSwitch({
         aria-label="Auto OCR settings"
         onClick={() => typeof window !== "undefined" && window.dispatchEvent(new Event("pl:gallery:auto-ocr-settings"))}
         className={cn(
-          "h-8 w-8 shrink-0 rounded-full border-blue-300 bg-blue-100/80 text-blue-900 hover:border-blue-400 hover:bg-blue-200/80",
+          "h-8 w-8 shrink-0 rounded-full",
+          GALLERY_TAB_IDLE_CN,
           inline && "hidden max-sm:inline-flex"
         )}
       >
@@ -3207,7 +3207,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
                 type="button"
                 variant="outline"
                 onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:add-file"))}
-                className="h-8 w-full min-w-0 gap-1.5 rounded-full border-blue-300 bg-blue-100/80 px-3 text-xs text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
+                className={cn("h-8 w-full min-w-0 gap-1.5 rounded-full px-3 text-xs", GALLERY_TAB_IDLE_CN)}
               >
                 <Plus className="h-3.5 w-3.5" aria-hidden />
                 Add File
@@ -3713,7 +3713,7 @@ export function GalleryPageContent() {
              type="button"
              variant="outline"
              onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:add-file"))}
-             className="h-8 shrink-0 gap-1.5 rounded-full border-blue-300 bg-blue-100/80 px-3 text-xs text-blue-900 hover:border-blue-400 hover:bg-blue-200/80"
+             className={cn("h-8 shrink-0 gap-1.5 rounded-full px-3 text-xs", GALLERY_TAB_IDLE_CN)}
            >
              <Plus className="h-3.5 w-3.5" aria-hidden />
              Add File
