@@ -1958,6 +1958,24 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const { company, companyId } = useCompany();
+  const [autoPostProcess, setAutoPostProcess] = useState<{ active: boolean; fileName: string; visible: boolean }>({ active: false, fileName: "", visible: true });
+  const galleryFirestoreCompanyId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
+  useEffect(() => {
+    if (typeof window === "undefined" || !galleryFirestoreCompanyId) return;
+    const onState = (event: Event) => {
+      const detail = (event as CustomEvent<{ companyId?: string; active?: boolean; fileName?: string; visible?: boolean }>).detail;
+      if (String(detail?.companyId || "") !== galleryFirestoreCompanyId) return;
+      setAutoPostProcess({ active: detail?.active === true, fileName: String(detail?.fileName || ""), visible: detail?.visible !== false });
+    };
+    window.addEventListener("pl:gallery:auto-post-process-state", onState);
+    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-state-request", { detail: { companyId: galleryFirestoreCompanyId } }));
+    return () => window.removeEventListener("pl:gallery:auto-post-process-state", onState);
+  }, [galleryFirestoreCompanyId]);
+  const toggleAutoPostProcessVisibility = () => {
+    const visible = !autoPostProcess.visible;
+    setAutoPostProcess((current) => ({ ...current, visible }));
+    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-visibility", { detail: { companyId: galleryFirestoreCompanyId, visible } }));
+  };
   const [filesTickEpoch, setFilesTickEpoch] = useState(0);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2866,6 +2884,17 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
           ),
         })}
       >
+        {mode === "unassigned" && autoPostProcess.active ? (
+          <div className="sticky top-0 z-20 flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-background/95 px-3 py-2 text-sm shadow-sm backdrop-blur">
+            <div className="min-w-0">
+              <span className="font-medium">Auto post processing</span>
+              <span className="ml-2 truncate text-muted-foreground">{autoPostProcess.fileName}</span>
+            </div>
+            <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={toggleAutoPostProcessVisibility}>
+              {autoPostProcess.visible ? "Hide process" : "Show process"}
+            </Button>
+          </div>
+        ) : null}
         {/* Upload trigger lives in the Unassigned tab header ("Add File"); the big dashed
             dropzone was removed. Hidden input + drop still work for drag & drop. */}
         <input {...getInputProps()} className="hidden" />

@@ -111,6 +111,8 @@ export function GalleryLocalAutoPostRunner({
   const [rows, setRows] = useState<UnassignedRow[]>([]);
   const [voucherOpen, setVoucherOpen] = useState(false);
   const [voucherData, setVoucherData] = useState<Record<string, unknown> | null>(null);
+  const [processDialogVisible, setProcessDialogVisible] = useState(true);
+  const [activeProcess, setActiveProcess] = useState<{ id: string; name: string } | null>(null);
   const activeJobRef = useRef<UnassignedRow | null>(null);
   const busyRef = useRef(false);
   const drainQueueRef = useRef(false);
@@ -170,6 +172,9 @@ export function GalleryLocalAutoPostRunner({
       return true;
     });
     if (!claimed) return false;
+    activeJobRef.current = { ...row, autoOcrProvider: scanEngine };
+    setProcessDialogVisible(true);
+    setActiveProcess({ id: row.id, name: row.name || "Document" });
 
     try {
       const url = String(row.url || "").trim();
@@ -195,7 +200,6 @@ export function GalleryLocalAutoPostRunner({
       const target = safeInvoiceTarget(raw, partyRows, itemRows, (company as any)?.name, (company as any)?.pan || (company as any)?.panNumber);
       if ("error" in target) throw new Error(target.error);
 
-      activeJobRef.current = { ...row, autoOcrProvider: scanEngine };
       savedJobRef.current = false;
       setVoucherData({
         defaultTab: target.type,
@@ -213,6 +217,8 @@ export function GalleryLocalAutoPostRunner({
       const message = error instanceof Error ? error.message : String(error);
       await failJob(row, message, scanEngine);
       clearManualRetryId(row.id);
+      activeJobRef.current = null;
+      setActiveProcess(null);
       toast.message("Local Auto post needs review", { description: message });
       return false;
     }
@@ -282,6 +288,28 @@ export function GalleryLocalAutoPostRunner({
     window.addEventListener("pl:gallery:auto-post-retry", onRetryRequested);
     return () => window.removeEventListener("pl:gallery:auto-post-retry", onRetryRequested);
   }, [canRun, fsId]);
+
+  useEffect(() => {
+    const publishState = () => window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-state", {
+      detail: { companyId: fsId, active: Boolean(activeProcess), fileName: activeProcess?.name || "", visible: processDialogVisible },
+    }));
+    publishState();
+    const onVisibility = (event: Event) => {
+      const detail = (event as CustomEvent<{ companyId?: string; visible?: boolean }>).detail;
+      if (String(detail?.companyId || "") !== fsId || typeof detail?.visible !== "boolean") return;
+      setProcessDialogVisible(detail.visible);
+    };
+    const onStateRequest = (event: Event) => {
+      const detail = (event as CustomEvent<{ companyId?: string }>).detail;
+      if (!detail?.companyId || String(detail.companyId) === fsId) publishState();
+    };
+    window.addEventListener("pl:gallery:auto-post-process-visibility", onVisibility);
+    window.addEventListener("pl:gallery:auto-post-process-state-request", onStateRequest);
+    return () => {
+      window.removeEventListener("pl:gallery:auto-post-process-visibility", onVisibility);
+      window.removeEventListener("pl:gallery:auto-post-process-state-request", onStateRequest);
+    };
+  }, [activeProcess, fsId, processDialogVisible]);
 
   useEffect(() => {
     if (!canRun || masters.loading || !drainQueueRef.current) return;
@@ -360,6 +388,7 @@ export function GalleryLocalAutoPostRunner({
     }
     clearManualRetryId(job.id);
     activeJobRef.current = null;
+    setActiveProcess(null);
     busyRef.current = false;
     setVoucherOpen(false);
     setVoucherData(null);
@@ -375,6 +404,12 @@ export function GalleryLocalAutoPostRunner({
       }}
       voucher={undefined}
       defaultVoucherData={voucherData}
+      hideAutoProcessDialog={voucherOpen && !processDialogVisible}
+      autoProcessVisibilityToggle={activeProcess ? (
+        <button type="button" className="rounded-full border bg-background px-3 py-1.5 text-xs font-medium shadow-md" onClick={() => setProcessDialogVisible(false)}>
+          Hide process
+        </button>
+      ) : null}
       suppressDashboardRedirectGuard
       onVoucherAction={(status: "saved" | "cancelled", _saveAndNew?: boolean, newId?: string) => void closeJob(status, newId)}
     />

@@ -1606,6 +1606,8 @@ export function AddVoucherDialog(props: any) {
     voucher,
     defaultVoucherData,
     dialogRootModal = true,
+    hideAutoProcessDialog = false,
+    autoProcessVisibilityToggle,
     editCompanyId,
     defaultTab: defaultTabProp,
     allowedTabs,
@@ -1625,6 +1627,7 @@ export function AddVoucherDialog(props: any) {
     Array.isArray(allowedTabs) && allowedTabs.length === 1 && allowedTabs[0] === "adjustment";
   const [internalOpen, setInternalOpen] = useState(false);
   const dialogOpen = typeof isOpen === "boolean" ? isOpen : internalOpen;
+  const autoProcessDialogHidden = hideAutoProcessDialog && dialogOpen;
   const setDialogOpen = useCallback(
     (open: boolean) => {
       if (typeof isOpen !== "boolean") setInternalOpen(open);
@@ -4948,7 +4951,7 @@ export function AddVoucherDialog(props: any) {
 
   return (
     <VoucherMasterEditHost>
-    {dialogOpen && (!dialogRootModal || copilotCapable) && typeof document !== "undefined"
+    {dialogOpen && !autoProcessDialogHidden && (!dialogRootModal || copilotCapable) && typeof document !== "undefined"
       ? createPortal(
           <div
             aria-hidden="true"
@@ -4958,18 +4961,21 @@ export function AddVoucherDialog(props: any) {
           document.body
         )
       : null}
-    <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange} modal={dialogRootModal && !copilotCapable}>
+    <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange} modal={dialogRootModal && !copilotCapable && !autoProcessDialogHidden}>
       {children && <DialogTrigger asChild>{children}</DialogTrigger>}
       {isDesktop ? (
         <DialogContent
           hideCloseButton
-          overlayClassName="z-[80] bg-black/45 backdrop-blur-sm"
-          onFocusOutside={(e) => e.preventDefault()}
+          overlayClassName={cn("z-[80] bg-black/45 backdrop-blur-sm", autoProcessDialogHidden && "!hidden")}
+          style={autoProcessDialogHidden ? { display: "none" } : undefined}
+          onOpenAutoFocus={(e) => { if (autoProcessDialogHidden) e.preventDefault(); }}
+          onFocusOutside={(e) => { if (!autoProcessDialogHidden) e.preventDefault(); }}
           className={cn(
             "z-[81] flex flex-col p-0",
             "md:!left-0 md:!top-0 md:!translate-x-0 md:!translate-y-0 md:w-full md:h-full md:max-w-none md:max-h-none md:border-0 md:bg-transparent md:shadow-none md:rounded-none"
           )}
         >
+          {!autoProcessDialogHidden && autoProcessVisibilityToggle ? <div className="fixed right-16 top-3 z-[120]">{autoProcessVisibilityToggle}</div> : null}
           <div
             ref={dialogFrameRef}
             data-voucher-frame=""
@@ -5081,14 +5087,17 @@ export function AddVoucherDialog(props: any) {
            overflow-hidden would clip bubble tails at this edge. Form scrolling stays on the inner wrapper below. */
         <DialogContent
           hideCloseButton
-          overlayClassName="z-[80] bg-black/45 backdrop-blur-sm"
-          onFocusOutside={(e) => e.preventDefault()}
+          overlayClassName={cn("z-[80] bg-black/45 backdrop-blur-sm", autoProcessDialogHidden && "!hidden")}
+          style={autoProcessDialogHidden ? { display: "none" } : undefined}
+          onOpenAutoFocus={(e) => { if (autoProcessDialogHidden) e.preventDefault(); }}
+          onFocusOutside={(e) => { if (!autoProcessDialogHidden) e.preventDefault(); }}
           className={cn(
             "z-[81] flex min-h-0 flex-col overflow-visible p-0 !gap-0",
             "box-border h-[100dvh] max-h-[100dvh] w-full max-w-none !left-0 !top-0 !translate-x-0 !translate-y-0 rounded-none border-0 shadow-lg",
             "pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]"
           )}
         >
+          {!autoProcessDialogHidden && autoProcessVisibilityToggle ? <div className="fixed right-3 top-3 z-[120]">{autoProcessVisibilityToggle}</div> : null}
           <div
             ref={dialogFrameRef}
             data-voucher-frame=""
