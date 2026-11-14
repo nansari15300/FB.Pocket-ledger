@@ -4,6 +4,7 @@ import { deleteDoc, updateDoc, writeBatch } from "@/lib/writeGateway/pbWrites";
 import { useEffect, useState, useMemo } from "react";
 import { collection, doc, query, where, orderBy } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
+import { pbListAppDocs } from "@/lib/pocketbaseData/pbSync";
 import { firestore } from "@/lib/plClientSession";
 import { useCompany } from "@/hooks/useCompany";
 import { useAuth } from "@/hooks/useAuth";
@@ -350,17 +351,16 @@ export function ManageDevices() {
             };
           }
           try {
-            const snap = await getDocs(collection(firestore, "companies", fsCompanyId, "devices"));
-            const deviceRows: DeviceRow[] = snap.docs.map((d) => {
-              const data = d.data();
+            const deviceDocs = await pbListAppDocs(fsCompanyId, "devices");
+            const deviceRows: DeviceRow[] = deviceDocs.map((data) => {
               const la = data?.lastActive;
-              const lastActive = la && typeof la.toMillis === "function" ? new Date(la.toMillis()) : null;
+              const lastActive = la && typeof (la as { toMillis?: () => number }).toMillis === "function" ? new Date((la as { toMillis: () => number }).toMillis()) : typeof la === "string" || typeof la === "number" ? new Date(la) : null;
               const deviceType = (data?.deviceType === "mobile" || data?.deviceType === "desktop" ? data.deviceType : undefined) as DeviceRow["deviceType"];
               const deviceLabel = typeof data?.deviceLabel === "string" ? data.deviceLabel : undefined;
               const ds = data?.deviceSlot;
               const deviceSlot =
                 typeof ds === "number" && Number.isFinite(ds) && Math.floor(ds) >= 1 ? Math.floor(ds) : undefined;
-              return { id: d.id, userId: data?.userId ?? "", lastActive, deviceType, deviceLabel, deviceSlot };
+              return { id: String(data.id || ""), userId: String(data?.userId ?? ""), lastActive, deviceType, deviceLabel, deviceSlot };
             });
             deviceRows.sort((a, b) => (b.lastActive?.getTime() ?? 0) - (a.lastActive?.getTime() ?? 0));
             return {
@@ -417,24 +417,31 @@ export function ManageDevices() {
       setLoading(false);
       return;
     }
-    const devicesRef = collection(firestore, "companies", selectedFirestoreCompanyId, "devices");
-    const unsub = onSnapshot(devicesRef, (snap) => {
-      const rows: DeviceRow[] = snap.docs.map((d) => {
-        const data = d.data();
+    let cancelled = false;
+    const refreshDevices = async () => {
+      try {
+      const docs = await pbListAppDocs(selectedFirestoreCompanyId, "devices");
+      if (cancelled) return;
+      const rows: DeviceRow[] = docs.map((data) => {
         const la = data?.lastActive;
-        const lastActive = la && typeof la.toMillis === "function" ? new Date(la.toMillis()) : null;
+        const lastActive = la && typeof (la as { toMillis?: () => number }).toMillis === "function" ? new Date((la as { toMillis: () => number }).toMillis()) : typeof la === "string" || typeof la === "number" ? new Date(la) : null;
         const deviceType = (data?.deviceType === "mobile" || data?.deviceType === "desktop" ? data.deviceType : undefined) as DeviceRow["deviceType"];
         const deviceLabel = typeof data?.deviceLabel === "string" ? data.deviceLabel : undefined;
         const ds = data?.deviceSlot;
         const deviceSlot =
           typeof ds === "number" && Number.isFinite(ds) && Math.floor(ds) >= 1 ? Math.floor(ds) : undefined;
-        return { id: d.id, userId: data?.userId ?? "", lastActive, deviceType, deviceLabel, deviceSlot };
+        return { id: String(data.id || ""), userId: String(data?.userId ?? ""), lastActive, deviceType, deviceLabel, deviceSlot };
       });
       rows.sort((a, b) => (b.lastActive?.getTime() ?? 0) - (a.lastActive?.getTime() ?? 0));
       setDevices(rows);
       setLoading(false);
-    });
-    return () => unsub();
+      } catch {
+        if (!cancelled) { setDevices([]); setLoading(false); }
+      }
+    };
+    void refreshDevices();
+    const timer = window.setInterval(() => void refreshDevices(), 8000);
+    return () => { cancelled = true; window.clearInterval(timer); };
   }, [companyId, selectedFirestoreCompanyId, currentDeviceId, isLocalCompany, user?.uid]);
 
   const ownerId = company?.ownerId ?? "";
@@ -808,7 +815,6 @@ export function ManageDevices() {
     setOptimisticRemovedIds((prev) => new Set(prev).add(optKey));
     try {
       await removeThisDevice(targetFirestoreCompanyId);
-      refreshDeviceCheck();
       setAdminOverviewTick((t) => t + 1);
       toast({
         title: "Device removed",

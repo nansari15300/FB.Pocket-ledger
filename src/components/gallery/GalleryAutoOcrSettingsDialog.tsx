@@ -16,7 +16,7 @@ import BsDatePicker from "@/components/ui/BsDatePicker";
 import { useDate } from "@/hooks/useDate";
 import { useCompany } from "@/hooks/useCompany";
 import { useAuth } from "@/hooks/useAuth";
-import { collection, doc, onSnapshot, serverTimestamp } from "@/lib/pbCompat/firestore";
+import { doc, onSnapshot, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { kickOutDevicesBatch, removeThisDevice } from "@/lib/deviceLimitClient";
 import { firestore } from "@/lib/plClientSession";
@@ -24,6 +24,7 @@ import { useOcrAiStatus } from "@/modules/ocr/ai/aiClient";
 import { useOcrCloudStatus } from "@/modules/ocr/cloud/ocrCloudClient";
 import { getOrCreateDeviceId } from "@/lib/writeGateway/legacy/deviceLimitClient";
 import { GalleryLocalAutoPostRunner } from "@/components/gallery/GalleryLocalAutoPostRunner";
+import { pbListAppDocs } from "@/lib/pocketbaseData/pbSync";
 
 const SETTINGS_DOC_ID = "server_auto_ocr";
 
@@ -307,22 +308,28 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
       setAdminDevicesLoading(false);
       return;
     }
+    let cancelled = false;
     setAdminDevicesLoading(true);
-    return onSnapshot(collection(firestore, `companies/${fsId}/devices`), (snapshot) => {
-      setAdminDevices(snapshot.docs.map((device) => {
-        const row = device.data() as Record<string, unknown>;
-        return {
-          id: device.id,
+    const refreshDevices = async () => {
+      try {
+        const rows = await pbListAppDocs(fsId, "devices");
+        if (cancelled) return;
+        const devices: AdminDevice[] = rows.map((row) => ({
+          id: String(row.id || ""),
           userId: String(row.userId || ""),
           deviceLabel: typeof row.deviceLabel === "string" ? row.deviceLabel : undefined,
-          deviceType: typeof row.deviceType === "string" ? row.deviceType : undefined,
-        };
-      }).filter((device) => !!device.userId));
-      setAdminDevicesLoading(false);
-    }, () => {
-      setAdminDevices([]);
-      setAdminDevicesLoading(false);
-    });
+          deviceType: (row.deviceType === "mobile" || row.deviceType === "desktop" ? row.deviceType : undefined) as AdminDevice["deviceType"],
+        })).filter((device) => !!device.id && !!device.userId);
+        setAdminDevices(devices);
+      } catch {
+        if (!cancelled) setAdminDevices([]);
+      } finally {
+        if (!cancelled) setAdminDevicesLoading(false);
+      }
+    };
+    void refreshDevices();
+    const timer = window.setInterval(() => void refreshDevices(), 8000);
+    return () => { cancelled = true; window.clearInterval(timer); };
   }, [fsId, isCompanyAdmin]);
 
   const activeAdminIds = useMemo(() => {

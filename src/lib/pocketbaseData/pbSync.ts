@@ -727,6 +727,17 @@ export async function pbBatchWrite(appCompanyId: string, ops: PbBatchOp[], expec
   return results;
 }
 
+/** Direct PocketBase list for one app collection (bypasses the Firestore-shaped read seam). */
+export async function pbListAppDocs(appCompanyId: string, appColl: string): Promise<Record<string, unknown>[]> {
+  const target = pbTargetForAppCollection(appColl);
+  if (!target) throw new PocketBaseRequestError(`Pocket Ledger Server: unsupported collection "${appColl}"`, 400);
+  const companyRec = await ensurePocketBaseCompany(appCompanyId);
+  let filter = `company = ${pbQuote(companyRec)} && deleted = false`;
+  for (const [key, value] of Object.entries(target.key)) filter += ` && ${key} = ${pbQuote(value)}`;
+  const rows = await pbListAll<PbRecord>(target.collection, filter, { sort: "-updatedAtMs" });
+  return rows.map((row) => pbRecordToAppDoc(row));
+}
+
 /**
  * Write one app document to the server (one-op batch).
  * - set: replace the document

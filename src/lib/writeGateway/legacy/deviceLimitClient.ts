@@ -1,12 +1,11 @@
 "use client";
 
-import { setDoc, deleteDoc, writeBatch } from "@/lib/writeGateway/firestoreMutationsInternal";
-import { doc, collection, collectionGroup, serverTimestamp, query, orderBy, where } from "@/lib/pbCompat/firestore";
-import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
-import { firestore } from "@/lib/plClientSession";
+import { serverTimestamp } from "@/lib/pbCompat/firestore";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import { resolveDeviceSlotForCompanyWrite } from "@/lib/deviceSlotForUserDevices";
 import { isUnlimitedEntitlementCap } from "@/config/plans";
+import { listPocketBaseCompanyIds } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { pbBatchWrite, pbListAppDocs, pbReadCompanyRoot, type PbBatchOp } from "@/lib/pocketbaseData/pbSync";
 
 type PlElectronDeviceApi = { getDisplayLabel?: () => Promise<string> };
 
@@ -14,6 +13,31 @@ const DEVICE_ID_KEY = "pocket_ledger_device_id";
 /** `localStorage` wipe par bhi UUID wapas mile — sirf ek hi jagah rakhe to duplicate Firestore `/devices/{id}` docs kam */
 const DEVICE_ID_COOKIE = "pl_did_v1";
 const KICKED_STORAGE_PREFIX = "pl_kicked_";
+
+async function listPbDevices(companyId: string): Promise<Record<string, unknown>[]> {
+  return (await pbListAppDocs(companyId, "devices")).filter((row) => row.isDeleted !== true);
+}
+
+async function commitPbDeviceOps(companyId: string, ops: PbBatchOp[]): Promise<void> {
+  const results = await pbBatchWrite(companyId, ops);
+  const rejected = results.find((result) => result.status === "rejected");
+  if (rejected) throw new Error(`Pocket Ledger Server rejected device change (${rejected.status}). Refresh and try again.`);
+}
+
+function newDeviceRecordId(): string {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `dev_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+async function writeDeviceRow(companyId: string, deviceId: string, data: Record<string, unknown>): Promise<void> {
+  await commitPbDeviceOps(companyId, [{ coll: "devices", id: deviceId, mode: "set", data }]);
+}
+
+async function deleteDeviceRows(companyId: string, deviceIds: string[]): Promise<void> {
+  if (!deviceIds.length) return;
+  await commitPbDeviceOps(companyId, deviceIds.map((id) => ({ coll: "devices", id, mode: "delete", data: {} })));
+}
 
 function readDeviceIdFromCookie(): string {
   if (typeof document === "undefined") return "";
@@ -207,26 +231,29 @@ export async function registerDeviceAndCheckLimit(
 
   const deviceType = typeof navigator !== "undefined" && /Mobile|Android|iPhone|iPad|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? "mobile" : "desktop";
 
-  const [companySnap, allDevicesSnap, accountDevicesSnap] = await Promise.all([
-    getDoc(doc(firestore, "companies", companyId)),
-    getDocs(collection(firestore, "companies", companyId, "devices")),
-    options?.accountScoped
-      ? getDocs(query(collectionGroup(firestore, "devices"), where("userId", "==", userId)))
-      : Promise.resolve(null),
+  const [companyRoot, allDevices] = await Promise.all([
+    pbReadCompanyRoot(companyId),
+    listPbDevices(companyId),
   ]);
-  const companyData = companySnap.data();
-  // Prefer caller's value (from company context, real-time) so ON takes effect immediately; fallback to Firestore
+  const accountDeviceRows = options?.accountScoped
+    ? (await Promise.all([...new Set([...listPocketBaseCompanyIds(), companyId])].map((id) => listPbDevices(id).catch(() => []))))
+      .flat()
+      .filter((row) => String(row.userId || "") === userId)
+    : allDevices;
+  const companyData = companyRoot.data;
+  // Prefer caller's live company context; the fallback root read is PocketBase-only.
   const userCanUseMultiDevice =
     options?.userCanUseMultiDevice !== undefined
       ? options.userCanUseMultiDevice !== false
       : (companyData?.userCanUseMultiDevice !== false);
   const isOwner = options?.isOwner === true;
 
-  const accountDeviceIds = new Set(accountDevicesSnap?.docs.map((d) => d.id) ?? []);
-  const totalCount = options?.accountScoped ? accountDeviceIds.size : allDevicesSnap.size;
-  const existing = allDevicesSnap.docs.find((d) => d.id === deviceId);
+  const accountDeviceIds = new Set(accountDeviceRows.map((row) => String(row.id || "")).filter(Boolean));
+  const totalCount = options?.accountScoped ? accountDeviceIds.size : allDevices.length;
+  const existing = allDevices.find((row) => row.id === deviceId);
   const existingForQuota = options?.accountScoped ? accountDeviceIds.has(deviceId) : Boolean(existing);
-  const myOtherDevices = allDevicesSnap.docs.filter((d) => d.data()?.userId === userId && d.id !== deviceId);
+  const existingAccountRow = accountDeviceRows.find((row) => row.id === deviceId);
+  const myOtherDevices = allDevices.filter((row) => String(row.userId || "") === userId && row.id !== deviceId);
 
   // Kicked device: do not auto re-add; show message so user can Switch company / Logout / Rejoin
   if (!existing && options?.wasKicked) {
@@ -235,32 +262,17 @@ export async function registerDeviceAndCheckLimit(
 
   const deviceLabel = await resolveDeviceLabelForFirestoreAsync();
   const slotCap = unlimited || cap < 1 ? Number.MAX_SAFE_INTEGER : cap;
-  /** deviceSlot — multi-company sync list ke liye; pehle khali slot reuse ho sake isliye collectionGroup se resolve. */
-  const doReplaceAndRegister = async () => {
-    for (const d of myOtherDevices) {
-      await deleteDoc(doc(firestore, "companies", companyId, "devices", d.id));
-    }
-    const deviceSlot = await resolveDeviceSlotForCompanyWrite(userId, deviceId, slotCap);
-    await setDoc(doc(firestore, "companies", companyId, "devices", deviceId), {
-      userId,
-      lastActive: serverTimestamp(),
-      deviceType,
-      deviceSlot,
-      ...(deviceLabel ? { deviceLabel } : {}),
-    });
-  };
-
   // Exact 0 devices: keep existing registration; block new devices.
   if (!unlimited && cap < 1) {
     if (existing || existingForQuota) {
-      const prevData = existing?.data() as { deviceSlot?: unknown } | undefined;
+      const prevData = existing || existingAccountRow;
       const prevSlot =
         typeof prevData?.deviceSlot === "number" && Number.isFinite(prevData.deviceSlot)
           ? Math.floor(prevData.deviceSlot)
           : undefined;
       const deviceSlot =
         prevSlot != null && prevSlot >= 1 ? prevSlot : await resolveDeviceSlotForCompanyWrite(userId, deviceId, 1);
-      await setDoc(doc(firestore, "companies", companyId, "devices", deviceId), {
+      await writeDeviceRow(companyId, deviceId, {
         userId,
         lastActive: serverTimestamp(),
         deviceType,
@@ -278,14 +290,14 @@ export async function registerDeviceAndCheckLimit(
   }
 
   if (existing) {
-    const prevData = existing.data() as { deviceSlot?: unknown };
+    const prevData = existing;
     const prevSlot =
       typeof prevData?.deviceSlot === "number" && Number.isFinite(prevData.deviceSlot)
         ? Math.floor(prevData.deviceSlot)
         : undefined;
     const deviceSlot =
       prevSlot != null && prevSlot >= 1 ? prevSlot : await resolveDeviceSlotForCompanyWrite(userId, deviceId, slotCap);
-    await setDoc(doc(firestore, "companies", companyId, "devices", deviceId), {
+    await writeDeviceRow(companyId, deviceId, {
       userId,
       lastActive: serverTimestamp(),
       deviceType,
@@ -306,7 +318,7 @@ export async function registerDeviceAndCheckLimit(
   }
 
   const deviceSlotNew = await resolveDeviceSlotForCompanyWrite(userId, deviceId, slotCap);
-  await setDoc(doc(firestore, "companies", companyId, "devices", deviceId), {
+  await writeDeviceRow(companyId, deviceId, {
     userId,
     lastActive: serverTimestamp(),
     deviceType,
@@ -329,23 +341,22 @@ export async function replaceMyOtherDevicesAndRegister(
   const deviceId = getOrCreateDeviceId();
   if (!deviceId) return;
   const deviceType = typeof navigator !== "undefined" && /Mobile|Android|iPhone|iPad|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? "mobile" : "desktop";
-  const snap = await getDocs(collection(firestore, "companies", companyId, "devices"));
-  const myOther = snap.docs.filter((d) => d.data()?.userId === userId && d.id !== deviceId);
-  for (const d of myOther) {
-    await deleteDoc(doc(firestore, "companies", companyId, "devices", d.id));
-  }
+  const myOther = (await listPbDevices(companyId)).filter((row) => row.userId === userId && row.id !== deviceId);
   const deviceLabel = await resolveDeviceLabelForFirestoreAsync();
   const cap = isUnlimitedEntitlementCap(maxDevices)
     ? Number.MAX_SAFE_INTEGER
     : Math.max(1, Math.floor(Number(maxDevices) || 1));
   const deviceSlotRep = await resolveDeviceSlotForCompanyWrite(userId, deviceId, cap);
-  await setDoc(doc(firestore, "companies", companyId, "devices", deviceId), {
+  await commitPbDeviceOps(companyId, [
+    ...myOther.map((row) => ({ coll: "devices", id: String(row.id), mode: "delete" as const, data: {} })),
+    { coll: "devices", id: deviceId, mode: "set", data: {
     userId,
     lastActive: serverTimestamp(),
     deviceType,
     deviceSlot: deviceSlotRep,
     ...(deviceLabel ? { deviceLabel } : {}),
-  });
+    } },
+  ]);
 }
 
 /** Ek device ko kick/remove karte waqt Firestore payloads — batch API ke liye */
@@ -356,40 +367,38 @@ export type KickOutDeviceInput = {
   deviceLabel?: string;
 };
 
-/** Har device par 2 ops (history set + devices delete); 500 limit se niche chunk — UI hang kam, ek trim */
-const FIRESTORE_BATCH_MAX_OPS = 450;
-
 /**
- * Ek ya zyada devices: history rows + deletes ek hi (ya chunked) writeBatch me; company doc ek baar; trim ek baar.
- * Pehle har kick par alag addDoc + trim tha → jaldi hang; ab bulk kick realistic.
+ * Device history + device tombstones are committed directly to PocketBase in one batch.
  */
 export async function kickOutDevicesBatch(companyId: string, devices: KickOutDeviceInput[]): Promise<void> {
   if (devices.length === 0) return;
-  const companySnap = await getDoc(doc(firestore, "companies", companyId));
-  const maxHistory = companySnap.data()?.deviceHistoryLimit;
+  const currentDeviceId = getOrCreateDeviceId();
+  const removesCurrentDevice = !!currentDeviceId && devices.some((device) => device.id === currentDeviceId);
+  const companySnap = await pbReadCompanyRoot(companyId);
+  const wasAlreadyKicked = removesCurrentDevice && getWasKicked(companyId);
+  if (removesCurrentDevice) setKickedForCompany(companyId);
+  const maxHistory = companySnap.data?.deviceHistoryLimit;
   const maxEntries = typeof maxHistory === "number" && maxHistory >= 1 ? Math.min(1000, maxHistory) : 0;
-  const historyCol = collection(firestore, "companies", companyId, "device_history");
-  const devicesCol = collection(firestore, "companies", companyId, "devices");
-  const perDeviceOps = 2;
-  const chunkSize = Math.max(1, Math.floor(FIRESTORE_BATCH_MAX_OPS / perDeviceOps));
-
-  for (let i = 0; i < devices.length; i += chunkSize) {
-    const slice = devices.slice(i, i + chunkSize);
-    const batch = writeBatch(firestore);
-    for (const device of slice) {
-      const deviceType = device.deviceType ?? "desktop";
-      const histRef = doc(historyCol);
-      batch.set(histRef, {
+  // PB batch API allows at most 500 operations (history insert + delete = 2 per device).
+  for (let offset = 0; offset < devices.length; offset += 250) {
+    const ops: PbBatchOp[] = [];
+    for (const device of devices.slice(offset, offset + 250)) {
+      ops.push({ coll: "device_history", id: newDeviceRecordId(), mode: "set", data: {
         deviceId: device.id,
         userId: device.userId,
         lastActive: serverTimestamp(),
-        deviceType,
+        deviceType: device.deviceType ?? "desktop",
         ...(device.deviceLabel ? { deviceLabel: device.deviceLabel } : {}),
         createdAt: serverTimestamp(),
-      });
-      batch.delete(doc(devicesCol, device.id));
+      } });
+      ops.push({ coll: "devices", id: device.id, mode: "delete", data: {} });
     }
-    await batch.commit();
+    try {
+      await commitPbDeviceOps(companyId, ops);
+    } catch (error) {
+      if (removesCurrentDevice && !wasAlreadyKicked) clearKickedForCompany(companyId);
+      throw error;
+    }
   }
   if (maxEntries > 0) await trimDeviceHistoryToLimit(companyId, maxEntries);
 }
@@ -413,17 +422,22 @@ export async function addDeviceHistoryEntryWhenRemoved(
  */
 export async function trimDeviceHistoryToLimit(companyId: string, maxEntries: number): Promise<void> {
   if (maxEntries < 1) return;
-  const col = collection(firestore, "companies", companyId, "device_history");
-  const snap = await getDocs(query(col, orderBy("createdAt", "asc")));
-  if (snap.size <= maxEntries) return;
-  const toDeleteCount = snap.size - maxEntries;
-  const toDelete = snap.docs.slice(0, toDeleteCount);
-  // Sequential delete bahut dheere; batch se trim bhi responsive
-  for (let i = 0; i < toDelete.length; i += FIRESTORE_BATCH_MAX_OPS) {
-    const batch = writeBatch(firestore);
-    toDelete.slice(i, i + FIRESTORE_BATCH_MAX_OPS).forEach((d) => batch.delete(d.ref));
-    await batch.commit();
-  }
+  const rows = await pbListAppDocs(companyId, "device_history");
+  if (rows.length <= maxEntries) return;
+  const toMillis = (value: unknown): number => {
+    if (typeof value === "number") return value;
+    if (value instanceof Date) return value.getTime();
+    if (value && typeof value === "object") {
+      const date = value as { toMillis?: () => number; seconds?: number };
+      if (typeof date.toMillis === "function") return date.toMillis();
+      if (typeof date.seconds === "number") return date.seconds * 1000;
+    }
+    return 0;
+  };
+  rows.sort((a, b) => toMillis(a.createdAt) - toMillis(b.createdAt));
+  const toDelete = rows.slice(0, rows.length - maxEntries);
+  const ops: PbBatchOp[] = toDelete.map((row) => ({ coll: "device_history", id: String(row.id), mode: "delete", data: {} }));
+  await commitPbDeviceOps(companyId, ops);
 }
 
 /**
@@ -432,17 +446,16 @@ export async function trimDeviceHistoryToLimit(companyId: string, maxEntries: nu
  */
 export async function enforceDeviceLimitByPlan(companyId: string, maxDevices: number): Promise<void> {
   if (isUnlimitedEntitlementCap(maxDevices) || maxDevices < 1) return;
-  const snap = await getDocs(collection(firestore, "companies", companyId, "devices"));
-  if (snap.size <= maxDevices) return;
-  const withTime = snap.docs.map((d) => {
-    const data = d.data();
+  const devices = await listPbDevices(companyId);
+  if (devices.length <= maxDevices) return;
+  const withTime = devices.map((data) => {
     const la = data?.lastActive;
     const lastActiveMs = la && typeof (la as { toMillis?: () => number }).toMillis === "function" ? (la as { toMillis: () => number }).toMillis() : 0;
     return {
-      id: d.id,
-      userId: data?.userId ?? "",
+      id: String(data.id || ""),
+      userId: String(data?.userId ?? ""),
       lastActiveMs,
-      deviceType: data?.deviceType === "mobile" || data?.deviceType === "desktop" ? data.deviceType : undefined,
+      deviceType: (data?.deviceType === "mobile" || data?.deviceType === "desktop" ? data.deviceType : undefined) as KickOutDeviceInput["deviceType"],
       deviceLabel: typeof data?.deviceLabel === "string" ? data.deviceLabel : undefined,
     };
   });
@@ -463,9 +476,15 @@ export async function enforceDeviceLimitByPlan(companyId: string, maxDevices: nu
 export async function removeThisDevice(companyId: string): Promise<void> {
   const deviceId = getOrCreateDeviceId();
   if (!deviceId) return;
-  const devRef = doc(firestore, "companies", companyId, "devices", deviceId);
-  await deleteDoc(devRef);
-  // Do NOT write device_commands and do NOT signOut — user stays logged in on this device
+  // Prevent DeviceLimit's missing-row watcher from immediately registering this PC again.
+  setKickedForCompany(companyId);
+  try {
+    await commitPbDeviceOps(companyId, [{ coll: "devices", id: deviceId, mode: "delete", data: {} }]);
+  } catch (error) {
+    clearKickedForCompany(companyId);
+    throw error;
+  }
+  // PB tombstone frees the slot; this device stays signed in until it explicitly rejoins.
 }
 
 export { getOrCreateDeviceId };
