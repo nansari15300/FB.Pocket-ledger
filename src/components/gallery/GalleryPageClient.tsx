@@ -2647,14 +2647,18 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
       : [whyFailedFile];
     if (!targets.length) return;
     const ids = new Set(targets.map((file) => file.id));
-    const nextStatus = action === "restore" ? "restored" : "queued";
+    // Restore clears the previous scan marker so the file can enter the normal
+    // Unassigned auto-run queue again. Retry remains a separate failed-tab action.
+    const nextStatus = "queued";
     const update = {
       autoOcrStatus: nextStatus,
       autoOcrError: "",
       autoOcrProvider: "",
       autoOcrFinishedAt: null,
-      ...(action === "retry" ? { autoOcrStartedAtMs: 0 } : {}),
-      ...(action === "restore" ? { autoOcrRestoredAt: serverTimestamp() } : {}),
+      autoOcrStartedAtMs: 0,
+      autoOcrDeviceId: "",
+      autoOcrUserId: "",
+      autoOcrRestoredAt: null,
       updatedAt: serverTimestamp(),
     };
     setFailedFileActionBusy(true);
@@ -2662,7 +2666,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
       const deviceOnly = unassignedUseDeviceLocalOnly === true;
       if (deviceOnly) {
         const current = readLocalUnassignedDocs(localKind);
-        const localUpdate = { ...update, updatedAt: new Date(), autoOcrRestoredAt: new Date() };
+        const localUpdate = { ...update, updatedAt: new Date() };
         const next = current.map((file) => ids.has(file.id) ? { ...file, ...localUpdate } as UnassignedFile : file);
         writeLocalUnassignedDocs(next, localKind);
       } else {

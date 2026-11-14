@@ -159,7 +159,7 @@ export function GalleryLocalAutoPostRunner({
       if (!snapshot.exists()) return false;
       const current = snapshot.data() as Record<string, unknown>;
       if (current.isDeleted === true || current.deleted === true || current.status === "ASSIGNED" || current.status === "LOCKED") return false;
-      if (current.autoOcrStatus === "complete" || current.autoOcrStatus === "failed" || current.autoOcrStatus === "restored") return false;
+      if (current.autoOcrStatus === "complete" || current.autoOcrStatus === "failed") return false;
       if (current.autoOcrStatus === "processing" && Date.now() - Number(current.autoOcrStartedAtMs || 0) < CLAIM_STALE_MS) return false;
       tx.update(rowRef, {
         autoOcrStatus: "processing",
@@ -230,7 +230,7 @@ export function GalleryLocalAutoPostRunner({
     if (!drainQueueRef.current || masters.loading) return;
     const next = rowsRef.current.find((row) =>
       row.url && row.status !== "ASSIGNED" && row.status !== "LOCKED" && row.isDeleted !== true && row.deleted !== true &&
-      row.autoOcrStatus !== "complete" && row.autoOcrStatus !== "failed" && row.autoOcrStatus !== "restored" &&
+      row.autoOcrStatus !== "complete" && row.autoOcrStatus !== "failed" &&
       (manualRetryIdsRef.current.size === 0 || manualRetryIdsRef.current.has(row.id)) &&
       !(row.autoOcrStatus === "processing" && Date.now() - Number(row.autoOcrStartedAtMs || 0) < CLAIM_STALE_MS)
     );
