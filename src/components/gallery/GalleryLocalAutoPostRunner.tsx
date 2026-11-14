@@ -8,7 +8,7 @@ import { firestore } from "@/lib/plClientSession";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
 import { useVouchers } from "@/hooks/useVouchers";
-import { getOrCreateClientDeviceId } from "@/lib/security/deviceIdentity";
+import { getOrCreateDeviceId } from "@/lib/writeGateway/legacy/deviceLimitClient";
 import { fetchAttachmentRefBlob } from "@/lib/attachmentRefBlobFetch";
 import { fetchPbAttachmentBlob } from "@/lib/pocketbaseData/pbAttachments";
 import { parseBill } from "@/modules/ocr/parser";
@@ -100,7 +100,7 @@ export function GalleryLocalAutoPostRunner({
   const { company, companyId } = useCompany();
   const { user } = useAuth();
   const masters = useVouchers();
-  const deviceId = useMemo(() => getOrCreateClientDeviceId(), []);
+  const deviceId = useMemo(() => getOrCreateDeviceId(), []);
   const fsId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
   const settingsRef = useMemo(() => fsId ? doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID) : null, [fsId]);
   const canRun = settingsReady && settings.enabled && settings.runLocation === "local-pc" && isCompanyAdmin &&
@@ -112,6 +112,7 @@ export function GalleryLocalAutoPostRunner({
   const activeJobRef = useRef<UnassignedRow | null>(null);
   const busyRef = useRef(false);
   const drainQueueRef = useRef(false);
+  const staleRetryTimerRef = useRef<number | null>(null);
   const processPendingRef = useRef<() => Promise<void>>(async () => {});
   const savedJobRef = useRef(false);
   const rowsRef = useRef<UnassignedRow[]>([]);
@@ -149,7 +150,7 @@ export function GalleryLocalAutoPostRunner({
       const current = snapshot.data() as Record<string, unknown>;
       if (current.isDeleted === true || current.deleted === true || current.status === "ASSIGNED" || current.status === "LOCKED") return false;
       if (current.autoOcrStatus === "complete" || current.autoOcrStatus === "failed") return false;
-      if (current.autoOcrStatus === "processing" && current.autoOcrDeviceId !== deviceId && Date.now() - Number(current.autoOcrStartedAtMs || 0) < CLAIM_STALE_MS) return false;
+      if (current.autoOcrStatus === "processing" && Date.now() - Number(current.autoOcrStartedAtMs || 0) < CLAIM_STALE_MS) return false;
       tx.update(rowRef, {
         autoOcrStatus: "processing",
         autoOcrStartedAtMs: Date.now(),
@@ -208,11 +209,25 @@ export function GalleryLocalAutoPostRunner({
     const next = rowsRef.current.find((row) =>
       row.url && row.status !== "ASSIGNED" && row.status !== "LOCKED" && row.isDeleted !== true && row.deleted !== true &&
       row.autoOcrStatus !== "complete" && row.autoOcrStatus !== "failed" &&
-      !(row.autoOcrStatus === "processing" && row.autoOcrDeviceId !== deviceId && Date.now() - Number(row.autoOcrStartedAtMs || 0) < CLAIM_STALE_MS)
+      !(row.autoOcrStatus === "processing" && Date.now() - Number(row.autoOcrStartedAtMs || 0) < CLAIM_STALE_MS)
     );
     if (!next) {
+      const lockedRow = rowsRef.current.find((row) => row.autoOcrStatus === "processing" && Date.now() - Number(row.autoOcrStartedAtMs || 0) < CLAIM_STALE_MS);
+      if (lockedRow) {
+        if (staleRetryTimerRef.current != null) window.clearTimeout(staleRetryTimerRef.current);
+        const retryIn = Math.max(1_000, CLAIM_STALE_MS - (Date.now() - Number(lockedRow.autoOcrStartedAtMs || 0)) + 250);
+        staleRetryTimerRef.current = window.setTimeout(() => {
+          staleRetryTimerRef.current = null;
+          void processPendingRef.current();
+        }, retryIn);
+        return;
+      }
       drainQueueRef.current = false;
       return;
+    }
+    if (staleRetryTimerRef.current != null) {
+      window.clearTimeout(staleRetryTimerRef.current);
+      staleRetryTimerRef.current = null;
     }
     busyRef.current = true;
     const openedForm = await processOne(next);

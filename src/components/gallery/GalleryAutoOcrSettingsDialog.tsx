@@ -2,26 +2,27 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { AlertCircle, Bot, Clock3, Gauge, Loader2, Monitor, Server } from "lucide-react";
+import { AlertCircle, Bot, Clock3, Gauge, Loader2, Monitor, Server, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { usePlI18nOptional } from "@/contexts/PlI18nContext";
 import { introTabLang } from "@/lib/i18n/introLangTab";
 import BsDatePicker from "@/components/ui/BsDatePicker";
 import { useDate } from "@/hooks/useDate";
 import { useCompany } from "@/hooks/useCompany";
 import { useAuth } from "@/hooks/useAuth";
-import { doc, serverTimestamp } from "@/lib/pbCompat/firestore";
-import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
+import { collection, doc, onSnapshot, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { setDoc } from "@/lib/writeGateway/pbWrites";
+import { kickOutDevicesBatch, removeThisDevice } from "@/lib/deviceLimitClient";
 import { firestore } from "@/lib/plClientSession";
 import { useOcrAiStatus } from "@/modules/ocr/ai/aiClient";
 import { useOcrCloudStatus } from "@/modules/ocr/cloud/ocrCloudClient";
-import { getOrCreateClientDeviceId } from "@/lib/security/deviceIdentity";
+import { getOrCreateDeviceId } from "@/lib/writeGateway/legacy/deviceLimitClient";
 import { GalleryLocalAutoPostRunner } from "@/components/gallery/GalleryLocalAutoPostRunner";
 
 const SETTINGS_DOC_ID = "server_auto_ocr";
@@ -69,10 +70,78 @@ const SCAN_ENGINES = {
 } as const;
 
 const LOCAL_INFO = {
-  en: "Local PC runs OCR on this device. The app and internet must stay available; if this PC is offline, Auto post pauses and pending files wait. Only the company admin account and this saved device can run it.",
-  hi: "Local PC चुनने पर OCR इसी कंप्यूटर पर चलेगा। App और internet चालू रहना चाहिए; PC offline होने पर Auto post रुक जाएगा और files pending रहेंगी। इसे केवल company admin account और यह saved device चला सकते हैं।",
-  ne: "Local PC छान्दा OCR यही कम्प्युटरमा चल्छ। App र internet उपलब्ध हुनुपर्छ; PC offline हुँदा Auto post रोकिन्छ र files pending रहन्छन्। Company admin account र यही saved device ले मात्र चलाउन सक्छ।",
+  en: "Local PC processes documents on the selected computer. The app and internet connection must remain available; while the computer is offline, Auto post pauses and documents remain pending. Only a registered device belonging to an active company admin is eligible.",
+  hi: "Local PC चुने गए कंप्यूटर पर documents process करता है। App और internet चालू रहना चाहिए; कंप्यूटर offline होने पर Auto post रुक जाता है और documents pending रहते हैं। यह सुविधा केवल active company admin के registered device पर चल सकती है।",
+  ne: "Local PC ले छानिएको कम्प्युटरमा documents प्रक्रिया गर्छ। App र internet उपलब्ध हुनुपर्छ; कम्प्युटर offline हुँदा Auto post रोकिन्छ र documents pending रहन्छन्। Active company admin को registered device मा मात्र यो सेवा चल्न सक्छ।",
 } as const;
+
+const LOCAL_DEVICE_COPY = {
+  en: {
+    select: "Select the admin device that will run Auto post",
+    oneOnly: "Only one admin device can be selected for this service at a time. This prevents the same document from being processed on multiple devices and creating duplicate vouchers.",
+    devices: "Registered admin devices",
+    selectedCount: "Selected for Auto post",
+    loading: "Loading registered admin devices…",
+    empty: "No registered admin devices are available. Sign in on an admin device and open this Gallery page first.",
+    owner: "Company owner",
+    admin: "Company admin",
+    required: "Select one registered admin device before saving Local PC mode.",
+    moved: "The selected device is different from this PC. Auto post will run only after the selected admin opens the app.",
+    remove: "Remove",
+    kick: "Kick out",
+    selected: "Selected for Auto post",
+    confirmTitle: "Remove this device from the company?",
+    confirmSelf: "This removes this PC from the company device list and frees its device slot. It also stops Local PC Auto post on this device.",
+    confirmOther: "This signs the selected device out of this company and removes its device slot. If it is selected for Local PC Auto post, the service will stop until another admin device is selected.",
+    cancel: "Cancel",
+    thisDevice: "This device",
+    removing: "Removing…",
+  },
+  hi: {
+    select: "Auto post चलाने के लिए admin device चुनें",
+    oneOnly: "इस सेवा के लिए एक समय में केवल एक admin device चुना जा सकता है। इससे एक ही document कई devices पर process होकर duplicate vouchers बनाने से बचता है।",
+    devices: "Registered admin devices",
+    selectedCount: "Auto post के लिए चुने गए devices",
+    loading: "Registered admin devices लोड हो रहे हैं…",
+    empty: "कोई registered admin device उपलब्ध नहीं है। पहले किसी admin device से sign in करके यह Gallery page खोलें।",
+    owner: "Company owner",
+    admin: "Company admin",
+    required: "Local PC mode save करने से पहले एक registered admin device चुनें।",
+    moved: "चुना गया device यह PC नहीं है। Auto post चुने गए admin के app खोलने पर ही चलेगा।",
+    remove: "हटाएँ",
+    kick: "बाहर करें",
+    selected: "Auto post के लिए चुना गया",
+    confirmTitle: "इस device को company से हटाएँ?",
+    confirmSelf: "इससे यह PC company की device list से हटेगा और इसका device slot खाली होगा। इस device पर Local PC Auto post भी रुक जाएगा।",
+    confirmOther: "चुना गया device इस company से sign out होगा और उसका device slot हट जाएगा। यदि वह Local PC Auto post के लिए चुना है, तो दूसरा admin device चुनने तक सेवा रुकी रहेगी।",
+    cancel: "रद्द करें",
+    thisDevice: "यह device",
+    removing: "हटाया जा रहा है…",
+  },
+  ne: {
+    select: "Auto post चलाउन admin device छान्नुहोस्",
+    oneOnly: "यो सेवाका लागि एक पटकमा एउटा मात्र admin device छान्न सकिन्छ। यसले एउटै document धेरै device मा प्रक्रिया भएर duplicate voucher बन्नबाट रोक्छ।",
+    devices: "Registered admin devices",
+    selectedCount: "Auto post का लागि छानिएका devices",
+    loading: "Registered admin devices लोड हुँदैछन्…",
+    empty: "कुनै registered admin device उपलब्ध छैन। पहिले admin device बाट sign in गरी यो Gallery page खोल्नुहोस्।",
+    owner: "Company owner",
+    admin: "Company admin",
+    required: "Local PC mode save गर्नुअघि एउटा registered admin device छान्नुहोस्।",
+    moved: "छानिएको device यो PC होइन। छानिएको admin ले app खोलेपछि मात्र Auto post चल्छ।",
+    remove: "हटाउनुहोस्",
+    kick: "बाहिर निकाल्नुहोस्",
+    selected: "Auto post का लागि छानिएको",
+    confirmTitle: "यो device लाई company बाट हटाउने?",
+    confirmSelf: "यसले यो PC लाई company को device list बाट हटाएर यसको device slot खाली गर्छ। यो device मा Local PC Auto post पनि रोकिन्छ।",
+    confirmOther: "छानिएको device यस company बाट sign out हुन्छ र यसको device slot हट्छ। यो Local PC Auto post का लागि छानिएको भए अर्को admin device नछानेसम्म सेवा रोकिन्छ।",
+    cancel: "रद्द गर्नुहोस्",
+    thisDevice: "यो device",
+    removing: "हटाउँदै…",
+  },
+} as const;
+
+type AdminDevice = { id: string; userId: string; deviceLabel?: string; deviceType?: "mobile" | "desktop" };
 
 const MISSING_FIELDS_COPY = {
   en: {
@@ -168,9 +237,13 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
   const { dateSystem, formatDate, formatDateBS } = useDate();
   const { company, companyId } = useCompany();
   const { user } = useAuth();
-  const localDeviceId = useMemo(() => getOrCreateClientDeviceId(), []);
+  const localDeviceId = useMemo(() => getOrCreateDeviceId(), []);
   const [settings, setSettings] = useState<AutoOcrSettings>(DEFAULT_SETTINGS);
   const [settingsLoadedFor, setSettingsLoadedFor] = useState("");
+  const [adminDevices, setAdminDevices] = useState<AdminDevice[]>([]);
+  const [adminDevicesLoading, setAdminDevicesLoading] = useState(false);
+  const [deviceActionTarget, setDeviceActionTarget] = useState<AdminDevice | null>(null);
+  const [deviceActionBusy, setDeviceActionBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -205,21 +278,19 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
     let cancelled = false;
     setLoading(true);
     setError(null);
-    void getDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID))
-      .then((snapshot) => {
-        if (cancelled) return;
-        setSettings(normalizeSettings(snapshot.exists() ? snapshot.data() : DEFAULT_SETTINGS));
-        setSettingsLoadedFor(fsId);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setSettings(DEFAULT_SETTINGS);
-          setSettingsLoadedFor(fsId);
-          setError(err instanceof Error ? err.message : "Could not load settings.");
-        }
-      })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    const unsubscribe = onSnapshot(doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID), (snapshot) => {
+      if (cancelled) return;
+      setSettings(normalizeSettings(snapshot.exists() ? snapshot.data() : DEFAULT_SETTINGS));
+      setSettingsLoadedFor(fsId);
+      setLoading(false);
+    }, (err) => {
+      if (cancelled) return;
+      setSettings(DEFAULT_SETTINGS);
+      setSettingsLoadedFor(fsId);
+      setError(err instanceof Error ? err.message : "Could not load settings.");
+      setLoading(false);
+    });
+    return () => { cancelled = true; unsubscribe(); };
   }, [fsId]);
 
   const isCompanyAdmin = useMemo(() => {
@@ -230,10 +301,91 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
     return members.some((member: any) => String(member?.uid || member?.userId || "") === uid && ["admin", "CompanyAdmin", "SuperAdmin"].includes(String(member?.role || "")));
   }, [company, user?.uid]);
 
+  useEffect(() => {
+    if (!fsId || !isCompanyAdmin) {
+      setAdminDevices([]);
+      setAdminDevicesLoading(false);
+      return;
+    }
+    setAdminDevicesLoading(true);
+    return onSnapshot(collection(firestore, `companies/${fsId}/devices`), (snapshot) => {
+      setAdminDevices(snapshot.docs.map((device) => {
+        const row = device.data() as Record<string, unknown>;
+        return {
+          id: device.id,
+          userId: String(row.userId || ""),
+          deviceLabel: typeof row.deviceLabel === "string" ? row.deviceLabel : undefined,
+          deviceType: typeof row.deviceType === "string" ? row.deviceType : undefined,
+        };
+      }).filter((device) => !!device.userId));
+      setAdminDevicesLoading(false);
+    }, () => {
+      setAdminDevices([]);
+      setAdminDevicesLoading(false);
+    });
+  }, [fsId, isCompanyAdmin]);
+
+  const activeAdminIds = useMemo(() => {
+    const ids = new Set<string>();
+    const ownerId = String((company as any)?.ownerId || (company as any)?.owner || "");
+    if (ownerId) ids.add(ownerId);
+    const members = Array.isArray((company as any)?.sharedWith) ? (company as any).sharedWith : [];
+    for (const member of members) {
+      const role = String(member?.role || "");
+      const id = String(member?.uid || member?.userId || "");
+      if (id && ["admin", "CompanyAdmin", "SuperAdmin"].includes(role)) ids.add(id);
+    }
+    return ids;
+  }, [company]);
+  const selectableAdminDevices = useMemo(() => adminDevices.filter((device) => activeAdminIds.has(device.userId)), [activeAdminIds, adminDevices]);
+  const localDeviceIsRegistered = selectableAdminDevices.some((device) => device.id === localDeviceId);
+  const selectedDeviceId = settings.localRunnerDeviceId;
+  const selectedAdminDevice = selectableAdminDevices.find((device) => device.id === selectedDeviceId);
+  const localDeviceCopy = LOCAL_DEVICE_COPY[introLang];
+  const isDeviceActionTargetThisDevice = deviceActionTarget?.id === localDeviceId;
+
+  const handleRemoveAdminDevice = async () => {
+    if (!fsId || !user?.uid || !deviceActionTarget || !isCompanyAdmin) return;
+    const target = deviceActionTarget;
+    setDeviceActionBusy(true);
+    setError(null);
+    try {
+      if (settings.localRunnerDeviceId === target.id) {
+        await setDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID), {
+          localRunnerUid: "",
+          localRunnerDeviceId: "",
+          updatedAt: serverTimestamp(),
+          updatedBy: user.uid,
+        }, { merge: true });
+      }
+      if (target.id === localDeviceId) {
+        await removeThisDevice(fsId);
+      } else {
+        await kickOutDevicesBatch(fsId, [{
+          id: target.id,
+          userId: target.userId,
+          deviceType: target.deviceType,
+          deviceLabel: target.deviceLabel,
+        }]);
+      }
+      setAdminDevices((current) => current.filter((device) => device.id !== target.id));
+      if (settings.localRunnerDeviceId === target.id) patch({ localRunnerUid: "", localRunnerDeviceId: "" });
+      setDeviceActionTarget(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove this device.");
+    } finally {
+      setDeviceActionBusy(false);
+    }
+  };
+
   const patch = (next: Partial<AutoOcrSettings>) => setSettings((current) => ({ ...current, ...next }));
 
   const save = async () => {
     if (!fsId || !user?.uid || !isCompanyAdmin) return;
+    if (settings.enabled && settings.runLocation === "local-pc" && !selectedAdminDevice) {
+      setError(LOCAL_DEVICE_COPY[introLang].required);
+      return;
+    }
     if (settings.enabled && settings.runOnSchedule && settings.scheduleMode === "date-time" && (!settings.scheduleDate || !settings.scheduleTime)) {
       setError("Choose both a date and time for the scheduled scan.");
       return;
@@ -243,8 +395,8 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
     try {
       const settingsToSave = {
         ...settings,
-        localRunnerUid: settings.runLocation === "local-pc" ? user.uid : settings.localRunnerUid,
-        localRunnerDeviceId: settings.runLocation === "local-pc" ? localDeviceId : settings.localRunnerDeviceId,
+        localRunnerUid: settings.runLocation === "local-pc" ? selectedAdminDevice!.userId : settings.localRunnerUid,
+        localRunnerDeviceId: settings.runLocation === "local-pc" ? selectedAdminDevice!.id : settings.localRunnerDeviceId,
         scheduleMinutes: Math.max(1, Math.min(1440, Math.round(Number(settings.scheduleMinutes) || DEFAULT_SETTINGS.scheduleMinutes))),
         scheduleTimeZone: typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC",
         maxCallsPerMinute: Math.max(1, Math.min(15, Math.round(Number(settings.maxCallsPerMinute) || DEFAULT_SETTINGS.maxCallsPerMinute))),
@@ -290,11 +442,73 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
 
             <section className="space-y-3 rounded-xl border bg-background/80 p-3 shadow-sm">
               <div className="text-sm font-semibold">Run Auto post on</div>
-              <RadioGroup value={settings.runLocation} onValueChange={(runLocation) => patch({ runLocation: runLocation as AutoOcrSettings["runLocation"] })} disabled={!settings.enabled} className="grid gap-2 sm:grid-cols-2">
+              <RadioGroup value={settings.runLocation} onValueChange={(runLocation) => {
+                const nextLocation = runLocation as AutoOcrSettings["runLocation"];
+                const currentDeviceRegistered = selectableAdminDevices.some((device) => device.id === localDeviceId);
+                patch({
+                  runLocation: nextLocation,
+                  ...(nextLocation === "local-pc" && !settings.localRunnerDeviceId && currentDeviceRegistered ? { localRunnerDeviceId: localDeviceId } : {}),
+                });
+              }} disabled={!settings.enabled} className="grid gap-2 sm:grid-cols-2">
                 <label htmlFor="auto-ocr-local-pc" className="flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm shadow-sm"><RadioGroupItem id="auto-ocr-local-pc" value="local-pc" /><Monitor className="h-4 w-4" /><span>Local PC</span></label>
                 <label htmlFor="auto-ocr-server" className="flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm shadow-sm"><RadioGroupItem id="auto-ocr-server" value="server" /><Server className="h-4 w-4" /><span>Server</span></label>
               </RadioGroup>
-              {settings.runLocation === "local-pc" ? <div className="rounded-md border border-sky-200 bg-sky-50 p-2.5 text-xs leading-relaxed text-sky-950">{LOCAL_INFO[introLang]}{settings.localRunnerDeviceId && (settings.localRunnerUid !== user?.uid || settings.localRunnerDeviceId !== localDeviceId) ? <div className="mt-2 font-semibold">This setting is bound to a different admin account/device. Save Local PC here to move the runner to this device.</div> : null}</div> : <div className="rounded-md border bg-muted/50 p-2.5 text-xs text-muted-foreground">Server mode needs the Pocket Ledger Server Auto OCR worker enabled; the app does not run scans on this PC in this mode.</div>}
+              {settings.runLocation === "local-pc" ? (
+                <div className="space-y-3 rounded-md border border-sky-200 bg-sky-50 p-2.5 text-xs leading-relaxed text-sky-950">
+                  <p>{LOCAL_INFO[introLang]}</p>
+                  <label className="block space-y-1.5">
+                    <span className="font-semibold">{localDeviceCopy.select}</span>
+                    <Select
+                      value={selectedDeviceId}
+                      onValueChange={(localRunnerDeviceId) => patch({ localRunnerDeviceId })}
+                      disabled={!settings.enabled || adminDevicesLoading || !selectableAdminDevices.length}
+                    >
+                      <SelectTrigger className="h-9 bg-white text-foreground"><SelectValue placeholder={adminDevicesLoading ? localDeviceCopy.loading : localDeviceCopy.select} /></SelectTrigger>
+                      <SelectContent>
+                        {selectableAdminDevices.map((device) => {
+                          const deviceLabel = device.deviceLabel || device.deviceType || "Computer";
+                          const adminLabel = device.userId === String((company as any)?.ownerId || (company as any)?.owner || "") ? localDeviceCopy.owner : localDeviceCopy.admin;
+                          const thisDeviceLabel = device.id === localDeviceId ? ` · ${localDeviceCopy.thisDevice}` : "";
+                          return <SelectItem key={device.id} value={device.id}>{deviceLabel} · {adminLabel} · {device.id.slice(-6)}{thisDeviceLabel}</SelectItem>;
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                  {adminDevicesLoading ? <p>{localDeviceCopy.loading}</p> : !selectableAdminDevices.length ? <p>{localDeviceCopy.empty}</p> : null}
+                  <p className="rounded border border-sky-200 bg-white/80 p-2">{localDeviceCopy.oneOnly}</p>
+                  {selectedAdminDevice && selectedAdminDevice.id !== localDeviceId ? <p className="font-semibold">{localDeviceCopy.moved}</p> : null}
+                  {selectableAdminDevices.length ? (
+                    <div className="space-y-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-1 text-[11px] font-semibold text-sky-950">
+                      <span>{localDeviceCopy.devices}: {selectableAdminDevices.length}</span>
+                      <span>{localDeviceCopy.selectedCount}: {selectedAdminDevice ? 1 : 0} / 1</span>
+                    </div>
+                    <div className="max-h-48 space-y-1 overflow-y-auto rounded border border-sky-200 bg-white/80 p-1.5">
+                      {selectableAdminDevices.map((device) => {
+                        const deviceLabel = device.deviceLabel || device.deviceType || "Computer";
+                        const isThisDevice = device.id === localDeviceId;
+                        const isSelectedRunner = device.id === settings.localRunnerDeviceId;
+                        return (
+                          <div key={device.id} className="flex min-w-0 items-center justify-between gap-2 rounded px-2 py-1.5 text-foreground hover:bg-sky-50">
+                            <div className="min-w-0">
+                              <div className="truncate font-medium" title={deviceLabel}>{deviceLabel} · {device.id.slice(-6)}</div>
+                              <div className="text-[11px] text-muted-foreground">
+                                {device.userId === String((company as any)?.ownerId || (company as any)?.owner || "") ? localDeviceCopy.owner : localDeviceCopy.admin}
+                                {isThisDevice ? <span className="ml-1 font-semibold text-emerald-700">· {localDeviceCopy.thisDevice}</span> : null}
+                                {isSelectedRunner ? <span className="ml-1 font-semibold text-sky-700">· {localDeviceCopy.selected}</span> : null}
+                              </div>
+                            </div>
+                            <Button type="button" variant="ghost" size="sm" className="h-8 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={deviceActionBusy} onClick={() => setDeviceActionTarget(device)}>
+                              <Trash2 className="mr-1 h-3.5 w-3.5" />{isThisDevice ? localDeviceCopy.remove : localDeviceCopy.kick}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : <div className="rounded-md border bg-muted/50 p-2.5 text-xs text-muted-foreground">Server mode needs the Pocket Ledger Server Auto OCR worker enabled; the app does not run scans on this PC in this mode.</div>}
             </section>
 
             <section className="space-y-3 rounded-xl border bg-background/80 p-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
@@ -426,6 +640,28 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <AlertDialog open={!!deviceActionTarget} onOpenChange={(nextOpen) => { if (!nextOpen && !deviceActionBusy) setDeviceActionTarget(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{localDeviceCopy.confirmTitle}</AlertDialogTitle>
+          <AlertDialogDescription>
+            <span className="font-medium text-foreground">{deviceActionTarget?.deviceLabel || deviceActionTarget?.deviceType || "Device"} · {deviceActionTarget?.id.slice(-6)}</span>{" "}
+            {isDeviceActionTargetThisDevice ? localDeviceCopy.confirmSelf : localDeviceCopy.confirmOther}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deviceActionBusy}>{localDeviceCopy.cancel}</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            disabled={deviceActionBusy}
+            onClick={(event) => { event.preventDefault(); void handleRemoveAdminDevice(); }}
+          >
+            {deviceActionBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+            {deviceActionBusy ? localDeviceCopy.removing : isDeviceActionTargetThisDevice ? localDeviceCopy.remove : localDeviceCopy.kick}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     </>
   );
 }
