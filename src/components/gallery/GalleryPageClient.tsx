@@ -52,7 +52,7 @@ import {
   UserCircle,
   MoreVertical,
   Loader2,
-  Settings2,
+  Settings,
   Trash2,
   AlignJustify,
   Search,
@@ -283,10 +283,11 @@ function GalleryPagerInCard({
 }
 
 /** Gallery tab switch pills — PC pe page ke top me, mobile pe footer card ke andar. */
-/* One colour for every tab pill (inactive): light blue. The selected pill is a raised 3D button —
- * lifted up, thick green edge underneath, soft drop shadow, and it presses down on click. */
+/* Inactive pills use the header quick-action colour (same values as globals.css
+ * `theme-pro main button.pl-chrome-btn-drop`), so the gallery ribbon matches the header row.
+ * The selected pill is a raised 3D button — lifted, thick green edge, presses down on click. */
 const GALLERY_TAB_IDLE_CN =
-  "!border !border-blue-300 !bg-blue-100/80 !text-blue-900 hover:!border-blue-400 hover:!bg-blue-200/80";
+  "!border !border-[#93c5fd] !bg-[#dbeafe] !text-[#1e3a8a] hover:!border-[#60a5fa] hover:!bg-[#bfdbfe]";
 const GALLERY_TAB_ACTIVE_CN =
   "-translate-y-[3px] !border-2 !border-green-600 bg-blue-200/90 font-semibold !text-blue-900 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),0_4px_0_0_#15803d,0_6px_10px_-2px_rgba(21,128,61,0.45)] ring-1 ring-green-300 active:translate-y-0 active:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),0_1px_0_0_#15803d] hover:!bg-blue-200 hover:!border-green-600";
 
@@ -336,7 +337,7 @@ function GalleryTabSwitch({
           activeTab === "auto-failed" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
       >
-        Auto failed
+        Auto post failed
       </Button>
       <Button
         onClick={() => onTabChange("company-files")}
@@ -351,18 +352,19 @@ function GalleryTabSwitch({
       </Button>
       <Button
         type="button"
-        size="icon"
+        size="sm"
         variant="outline"
-        title="Auto OCR settings"
-        aria-label="Auto OCR settings"
+        title="Auto post setting"
+        aria-label="Auto post setting"
         onClick={() => typeof window !== "undefined" && window.dispatchEvent(new Event("pl:gallery:auto-ocr-settings"))}
         className={cn(
-          "h-8 w-8 shrink-0 rounded-full",
+          "h-8 w-auto shrink-0 gap-1.5 rounded-full px-3 text-xs",
           GALLERY_TAB_IDLE_CN,
-          inline && "hidden max-sm:inline-flex"
+          inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0 max-sm:px-2"
         )}
       >
-        <Settings2 className="h-4 w-4" aria-hidden />
+        <Settings className="h-4 w-4 shrink-0" aria-hidden />
+        <span className="truncate">Auto post setting</span>
       </Button>
     </>
   );
@@ -3072,7 +3074,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
           {/* Ek hi row: title/subtitle (left) + Showing pill + Per page + chevron (right, never wrap) */}
           <div className="flex w-full min-w-0 flex-nowrap items-start gap-2">
             <div className="min-w-0 flex-1">
-              <CardTitle className="truncate text-sm font-bold leading-tight sm:text-base">{mode === "duplicate" ? "Duplicate Documents" : mode === "auto-failed" ? "Auto failed" : "Unassigned Documents"}</CardTitle>
+              <CardTitle className="truncate text-sm font-bold leading-tight sm:text-base">{mode === "duplicate" ? "Duplicate Documents" : mode === "auto-failed" ? "Auto post failed" : "Unassigned Documents"}</CardTitle>
               <CardDescription className="truncate text-[11px] leading-snug">
                 Attach them to vouchers later.
               </CardDescription>
