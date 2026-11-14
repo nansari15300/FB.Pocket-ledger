@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
-import { collection, doc, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc } from "@/lib/pbCompat/firestore";
+import { collection, deleteDoc, doc, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/plClientSession";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
@@ -32,6 +32,18 @@ type LocalAutoPostSettings = {
   localRunnerUid: string;
   localRunnerDeviceId: string;
   missingFieldAction: "fail-and-continue" | "pause-and-hold";
+  missingFieldRules: {
+    debitMaster: "fail-and-continue" | "pause-and-hold";
+    creditMaster: "fail-and-continue" | "pause-and-hold";
+    item: "fail-and-continue" | "pause-and-hold" | "save-without";
+    date: "fail-and-continue" | "pause-and-hold";
+    tax: "fail-and-continue" | "pause-and-hold";
+    other: "fail-and-continue" | "pause-and-hold";
+  };
+  itemRowMismatchAction: "fail-and-continue" | "pause-and-hold";
+  amountMismatchAction: "fail-and-continue" | "pause-and-hold";
+  checkDuplicateVouchers: boolean;
+  duplicateVoucherAction: "move-to-duplicates" | "save-anyway" | "pause-for-review";
   queueSequence: GalleryQueueSequence;
   gallerySortOrder: GallerySortOrder;
 };
@@ -63,11 +75,30 @@ function mimeFor(row: UnassignedRow): string {
   return "image/jpeg";
 }
 
+function missingRuleKey(value: string, voucherType?: string): keyof LocalAutoPostSettings["missingFieldRules"] {
+  const text = value.toLowerCase();
+  if (/item|line/.test(text)) return "item";
+  if (/date/.test(text)) return "date";
+  if (/tax|vat|tds/.test(text)) return "tax";
+  const partyLike = /party|customer|supplier|payee|staff/.test(text);
+  const accountLike = /bank|cash|ledger|purchase account|sales account|account/.test(text);
+  if (partyLike || accountLike) {
+    const type = String(voucherType || "").toLowerCase();
+    if (partyLike && (type === "sale" || type === "payment_out" || type === "direct_expense")) return "debitMaster";
+    if (partyLike && (type === "purchase" || type === "payment_in" || type === "direct_income")) return "creditMaster";
+    if (accountLike && (type === "sale" || type === "payment_out" || type === "direct_expense")) return "creditMaster";
+    if (accountLike && (type === "purchase" || type === "payment_in" || type === "direct_income")) return "debitMaster";
+    if (/credit|cr\b|supplier|payee/.test(text)) return "creditMaster";
+    return "debitMaster";
+  }
+  return "other";
+}
+
 function billFor(raw: OcrRawResult, kind: "sale" | "purchase", parties: readonly unknown[], items: readonly unknown[], ownName?: string | null, ownPan?: string | null): OcrParsedBill {
   return parseBill(raw, { kind, parties: parties as never, items: items as never, ownName, ownPan });
 }
 
-function safeInvoiceTarget(raw: OcrRawResult, parties: readonly any[], items: readonly any[], ownName?: string | null, ownPan?: string | null): { type: "sale" | "purchase"; bill: OcrParsedBill } | { error: string } {
+function safeInvoiceTarget(raw: OcrRawResult, parties: readonly any[], items: readonly any[], ownName?: string | null, ownPan?: string | null, allowSaveWithoutItems = false): { type: "sale" | "purchase"; bill: OcrParsedBill } | { error: string } {
   if (raw.meanConfidence < 55) return { error: "Image text is unclear; review it manually." };
   const sale = billFor(raw, "sale", parties, items, ownName, ownPan);
   const purchase = billFor(raw, "purchase", parties, items, ownName, ownPan);
@@ -86,7 +117,7 @@ function safeInvoiceTarget(raw: OcrRawResult, parties: readonly any[], items: re
     return { error: "The invoice total could not be verified." };
   }
   if (bill.lineItems?.status !== "fill" || !bill.lineItems.value.length) return { error: "Invoice line items did not pass the totals check." };
-  if (bill.lineItems.value.some((line) => !line.itemId || !items.some((item) => String(item?.id || "") === line.itemId && item?.isDeleted !== true))) {
+  if (bill.lineItems.value.some((line) => (!line.itemId && !allowSaveWithoutItems) || (line.itemId && !items.some((item) => String(item?.id || "") === line.itemId && item?.isDeleted !== true)))) {
     return { error: "One or more invoice items do not match an active item master." };
   }
   if (bill.tds?.status === "fill" && bill.tds.value > 0) return { error: "TDS needs a manual account and verification." };
@@ -137,6 +168,7 @@ export function GalleryLocalAutoPostRunner({
   const processPendingRef = useRef<() => Promise<void>>(async () => {});
   const savedJobRef = useRef(false);
   const handledMissingJobIdRef = useRef("");
+  const handledDuplicateJobIdRef = useRef("");
   const rowsRef = useRef<UnassignedRow[]>([]);
   const settingsRefValue = useRef(settings);
   settingsRefValue.current = settings;
@@ -199,6 +231,7 @@ export function GalleryLocalAutoPostRunner({
     if (!claimed) return false;
     activeJobRef.current = { ...row, autoOcrProvider: scanEngine };
     handledMissingJobIdRef.current = "";
+    handledDuplicateJobIdRef.current = "";
     savedJobRef.current = false;
     setProcessDialogVisible(settingsRefValue.current.processingMode === "semi");
     setActiveProcess({ id: row.id, name: row.name || "Document" });
@@ -215,10 +248,10 @@ export function GalleryLocalAutoPostRunner({
         savedJobRef.current = false;
         setVoucherData({
           defaultTab: "sale",
-          unassignedFile: { id: row.id, url, path: row.path || "", name: row.name || "" },
+        unassignedFile: { id: row.id, url, path: row.path || "", name: row.name || "" },
           fileUrls: [url],
         });
-        queueOcrHandoff("sale", [url], { autoPost: true, enginePref, cloudProvider });
+        queueOcrHandoff("sale", [url], { autoPost: true, allowSaveWithoutItems: settingsRefValue.current.missingFieldRules.item === "save-without", enginePref, cloudProvider });
         setVoucherOpen(true);
         toast.info("Semi automatic scan started", { description: "The file is attached to its voucher. It will save automatically only when all required checks pass; otherwise this dialog stays open for review." });
         return true;
@@ -232,7 +265,7 @@ export function GalleryLocalAutoPostRunner({
       const partyRows = masters.processedParties as any[];
       const itemRows = masters.processedItems as any[];
       if (!partyRows?.length) throw new Error("No active parties are available for this company.");
-      if (!itemRows?.length) throw new Error("No active item masters are available for this company.");
+      if (!itemRows?.length && settingsRefValue.current.missingFieldRules.item !== "save-without") throw new Error("No active item masters are available for this company.");
 
       const raw = await runOcrOnFile(blob, blob.type || mimeFor(row), {
         companyId: fsId,
@@ -242,7 +275,8 @@ export function GalleryLocalAutoPostRunner({
       });
       scannedRaw = raw;
       if (!navigator.onLine) throw new Error("This PC went offline before Auto post could save.");
-      const target = safeInvoiceTarget(raw, partyRows, itemRows, (company as any)?.name, (company as any)?.pan || (company as any)?.panNumber);
+      const allowSaveWithoutItems = settingsRefValue.current.missingFieldRules.item === "save-without";
+      const target = safeInvoiceTarget(raw, partyRows, itemRows, (company as any)?.name, (company as any)?.pan || (company as any)?.panNumber, allowSaveWithoutItems);
       if ("error" in target) {
         throw new Error(target.error);
       }
@@ -254,7 +288,7 @@ export function GalleryLocalAutoPostRunner({
         unassignedFile: { id: row.id, url, path: row.path || "", name: row.name || "" },
         fileUrls: [url],
       });
-      queueOcrHandoff(target.type, [url], { raw, autoPost: true });
+      queueOcrHandoff(target.type, [url], { raw, autoPost: true, allowSaveWithoutItems });
       setVoucherOpen(true);
       // The normal voucher form applies its own field, duplicate, permission, and totals guards,
       // then saves through the regular voucher action path as UNAPPROVED.
@@ -263,7 +297,20 @@ export function GalleryLocalAutoPostRunner({
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const isRequiredDataIssue = /customer or supplier could not be matched|invoice date needs manual review|invoice total could not be verified|(?:invoice )?items do not match|line items did not pass|tds needs a manual|no active parties|no active item masters|could not confidently identify this as a sale or purchase/i.test(message);
-      if (settingsRefValue.current.missingFieldAction === "pause-and-hold" && isRequiredDataIssue && row.url) {
+      const isItemAmountMismatch = /line items did not pass the totals check/i.test(message);
+      const ruleKey = missingRuleKey(message);
+      const missingAction = isItemAmountMismatch
+        ? settingsRefValue.current.amountMismatchAction
+        : settingsRefValue.current.missingFieldRules?.[ruleKey] ?? settingsRefValue.current.missingFieldAction;
+      if (missingAction === "fail-and-continue" && isRequiredDataIssue) {
+        await failJob(row, message, scanEngine);
+        clearManualRetryId(row.id);
+        activeJobRef.current = null;
+        setActiveProcess(null);
+        toast.message("Auto post skipped this file", { description: `${message} The runner will continue with the next file.` });
+        return false;
+      }
+      if (missingAction === "pause-and-hold" && isRequiredDataIssue && row.url) {
         const url = String(row.url).trim();
         runnerHeldRef.current = true;
         runnerStartedRef.current = false;
@@ -395,13 +442,20 @@ export function GalleryLocalAutoPostRunner({
       }
     };
     const onRequiredFieldsMissing = (event: Event) => {
-      const detail = (event as CustomEvent<{ companyId?: string; missing?: string[] }>).detail;
+      const detail = (event as CustomEvent<{ companyId?: string; missing?: string[]; voucherType?: string; itemRowCountMismatch?: boolean; itemAmountMismatch?: boolean }>).detail;
       const job = activeJobRef.current;
       if (String(detail?.companyId || "") !== fsId || !job || handledMissingJobIdRef.current === job.id) return;
       handledMissingJobIdRef.current = job.id;
       const missing = Array.isArray(detail.missing) ? detail.missing.map((field) => String(field || "").trim()).filter(Boolean) : [];
       const message = `Required information is missing: ${missing.join(", ") || "review the highlighted fields"}.`;
-      if (settingsRefValue.current.missingFieldAction === "fail-and-continue") {
+      const actions: Array<"pause-and-hold" | "fail-and-continue" | "save-without"> = [];
+      if (detail.itemRowCountMismatch) actions.push(settingsRefValue.current.itemRowMismatchAction);
+      if (detail.itemAmountMismatch) actions.push(settingsRefValue.current.amountMismatchAction);
+      const genericMissing = missing.filter((field) => !/item row count mismatch|item row amount does not match|line items(?: \(did not reconcile\))?$/i.test(field));
+      actions.push(...genericMissing.map((field) => settingsRefValue.current.missingFieldRules?.[missingRuleKey(field, detail.voucherType)]).filter(Boolean) as Array<"pause-and-hold" | "fail-and-continue" | "save-without">);
+      const shouldPause = actions.includes("pause-and-hold") || (!actions.length && settingsRefValue.current.missingFieldAction === "pause-and-hold");
+      const shouldFail = actions.includes("fail-and-continue") || (!actions.length && settingsRefValue.current.missingFieldAction === "fail-and-continue");
+      if (shouldFail && !shouldPause) {
         void (async () => {
           await failJob(job, message, job.autoOcrProvider);
           clearManualRetryId(job.id);
@@ -423,15 +477,68 @@ export function GalleryLocalAutoPostRunner({
       setProcessDialogVisible(true);
       toast.message("Auto post paused for review", { description: `${message} The voucher is still open; use Start runner after handling it.` });
     };
+    const onDuplicateDetected = (event: Event) => {
+      const detail = (event as CustomEvent<{ matchId?: string; voucherNumber?: string; summary?: string; dateText?: string; amount?: string; reasons?: string[] }>).detail;
+      const job = activeJobRef.current;
+      if (String(detail?.matchId || "") === "" || !job || handledDuplicateJobIdRef.current === job.id || !settingsRefValue.current.checkDuplicateVouchers) return;
+      handledDuplicateJobIdRef.current = job.id;
+      if (settingsRefValue.current.duplicateVoucherAction === "save-anyway") {
+        window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-duplicate-action-completed", { detail: { matchId: detail.matchId } }));
+        toast.message("Possible duplicate: continuing", { description: "The selected rule allows this voucher to save; the runner will continue afterward." });
+        return;
+      }
+      if (settingsRefValue.current.duplicateVoucherAction === "pause-for-review") {
+        runnerHeldRef.current = true;
+        runnerStartedRef.current = false;
+        try { window.localStorage.setItem(runnerHoldStorageKey, "held"); } catch { /* persistence is best-effort */ }
+        setRunnerHeld(true);
+        setProcessDialogVisible(true);
+        toast.message("Possible duplicate: runner paused", { description: "Review this voucher, then use Start runner to continue." });
+        return;
+      }
+      void (async () => {
+        try {
+          const reason = `Possible duplicate of voucher ${String(detail.voucherNumber || "").trim() || String(detail.matchId || "unknown")}: ${String(detail.summary || "matching transaction found")}`;
+          const destination = doc(firestore, `companies/${fsId}/duplicate_documents`, job.id);
+          const source = doc(firestore, `companies/${fsId}/unassigned_documents`, job.id);
+          await setDoc(destination, {
+            ...job,
+            id: job.id,
+            status: "DUPLICATE",
+            autoOcrStatus: "duplicate",
+            duplicateOfVoucherId: String(detail.matchId || ""),
+            duplicateOfVoucherNumber: String(detail.voucherNumber || ""),
+            duplicateReason: reason,
+            duplicateReasons: Array.isArray(detail.reasons) ? detail.reasons : [],
+            movedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }, { merge: true });
+          await deleteDoc(source);
+          clearManualRetryId(job.id);
+          activeJobRef.current = null;
+          setActiveProcess(null);
+          busyRef.current = false;
+          setVoucherOpen(false);
+          setVoucherData(null);
+          toast.success("Moved to Duplicate Documents", { description: "The auto runner is continuing with the next file." });
+          if (!runnerHeldRef.current) window.setTimeout(() => void processPendingRef.current(), 0);
+        } catch (error) {
+          handledDuplicateJobIdRef.current = "";
+          toast.error("Could not move the duplicate document", { description: error instanceof Error ? error.message : String(error) });
+        }
+      })();
+    };
     window.addEventListener("pl:gallery:auto-post-process-visibility", onVisibility);
     window.addEventListener("pl:gallery:auto-post-process-state-request", onStateRequest);
     window.addEventListener("pl:gallery:auto-post-runner-hold", onHold);
     window.addEventListener("pl:gallery:auto-post-required-fields-missing", onRequiredFieldsMissing);
+    window.addEventListener("pl:gallery:auto-post-duplicate-detected", onDuplicateDetected);
     return () => {
       window.removeEventListener("pl:gallery:auto-post-process-visibility", onVisibility);
       window.removeEventListener("pl:gallery:auto-post-process-state-request", onStateRequest);
       window.removeEventListener("pl:gallery:auto-post-runner-hold", onHold);
       window.removeEventListener("pl:gallery:auto-post-required-fields-missing", onRequiredFieldsMissing);
+      window.removeEventListener("pl:gallery:auto-post-duplicate-detected", onDuplicateDetected);
     };
   }, [activeProcess, canControlRunner, clearManualRetryId, failJob, fsId, processDialogVisible, runnerHeld, runnerHoldStorageKey]);
 

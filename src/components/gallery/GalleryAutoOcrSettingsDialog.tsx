@@ -46,10 +46,29 @@ type AutoOcrSettings = {
   maxCallsPerMinute: number;
   failOnMissingFields: boolean;
   missingFieldAction: "fail-and-continue" | "pause-and-hold";
+  missingFieldRules: {
+    debitMaster: "fail-and-continue" | "pause-and-hold";
+    creditMaster: "fail-and-continue" | "pause-and-hold";
+    item: "fail-and-continue" | "pause-and-hold" | "save-without";
+    date: "fail-and-continue" | "pause-and-hold";
+    tax: "fail-and-continue" | "pause-and-hold";
+    other: "fail-and-continue" | "pause-and-hold";
+  };
+  itemRowMismatchAction: "fail-and-continue" | "pause-and-hold";
+  amountMismatchAction: "fail-and-continue" | "pause-and-hold";
   queueSequence: GalleryQueueSequence;
   gallerySortOrder: GallerySortOrder;
   checkDuplicateVouchers: boolean;
-  duplicateVoucherAction: "move-to-duplicates" | "pause-for-review" | "save-anyway";
+  duplicateVoucherAction: "move-to-duplicates" | "save-anyway" | "pause-for-review";
+};
+
+const DEFAULT_MISSING_RULES: AutoOcrSettings["missingFieldRules"] = {
+  debitMaster: "pause-and-hold",
+  creditMaster: "pause-and-hold",
+  item: "save-without",
+  date: "pause-and-hold",
+  tax: "pause-and-hold",
+  other: "pause-and-hold",
 };
 
 const DEFAULT_SETTINGS: AutoOcrSettings = {
@@ -68,10 +87,13 @@ const DEFAULT_SETTINGS: AutoOcrSettings = {
   maxCallsPerMinute: 5,
   failOnMissingFields: true,
   missingFieldAction: "pause-and-hold",
+  missingFieldRules: DEFAULT_MISSING_RULES,
+  itemRowMismatchAction: "pause-and-hold",
+  amountMismatchAction: "pause-and-hold",
   queueSequence: DEFAULT_GALLERY_QUEUE_SEQUENCE,
   gallerySortOrder: DEFAULT_GALLERY_SORT_ORDER,
   checkDuplicateVouchers: true,
-  duplicateVoucherAction: "move-to-duplicates",
+  duplicateVoucherAction: "save-anyway",
 };
 
 const SCAN_ENGINES = {
@@ -175,30 +197,36 @@ const MISSING_FIELD_ACTION_COPY = {
   },
 } as const;
 
+const MISSING_RULE_LABELS = {
+  en: { help: "Choose separate rules for debit-side and credit-side masters (party, bank/cash, staff, ledger/account). If no item matches, the voucher can save without that item when the other fields are complete.", debitMaster: "Debit-side master (party / bank / staff / account)", creditMaster: "Credit-side master (party / bank / staff / account)", item: "Item master", rowMismatch: "If bill row count and voucher row count do not match", amountMismatch: "If bill amount and item-row total do not match", date: "Date", tax: "Tax / VAT / TDS", other: "Other required fields", pause: "Pause and review", fail: "Move to Auto post failed and continue", saveWithout: "Save without the item" },
+  hi: { help: "Debit और Credit side के masters (party, bank/cash, staff, ledger/account) के लिए अलग नियम चुनें। Item master न मिले तो बाकी fields पूरी होने पर item के बिना save किया जा सकता है।", debitMaster: "Debit-side master (party / bank / staff / account)", creditMaster: "Credit-side master (party / bank / staff / account)", item: "Item master", rowMismatch: "Bill और voucher की item row count match न हो", amountMismatch: "Bill amount और item rows का total match न हो", date: "Date", tax: "Tax / VAT / TDS", other: "अन्य ज़रूरी जानकारी", pause: "रोकें और review करें", fail: "Auto post failed में भेजें और आगे बढ़ें", saveWithout: "Item के बिना save करें" },
+  ne: { help: "Debit र Credit side का master (party, bank/cash, staff, ledger/account) का लागि छुट्टाछुट्टै नियम छान्नुहोस्। Item master भेटिएन भने अरू fields पूरा भएको अवस्थामा item बिना voucher save गर्न सकिन्छ।", debitMaster: "Debit-side master (party / bank / staff / account)", creditMaster: "Credit-side master (party / bank / staff / account)", item: "Item master", rowMismatch: "Bill र voucher को item row count नमिलेमा", amountMismatch: "Bill amount र item rows को total नमिलेमा", date: "Date", tax: "Tax / VAT / TDS", other: "अन्य आवश्यक विवरण", pause: "रोक्नुहोस् र review गर्नुहोस्", fail: "Auto post failed मा पठाएर अगाडि बढ्नुहोस्", saveWithout: "Item बिना save गर्नुहोस्" },
+} as const;
+
 const DUPLICATE_COPY = {
   en: {
     title: "Check for duplicate vouchers",
     description: "Before creating a voucher, compare its transaction reference, date, amount, and party or account with existing vouchers. Choose what should happen when a possible duplicate is found.",
     actionLabel: "When a duplicate is found",
-    move: "Move document to Duplicate Documents",
-    pause: "Pause auto-scan and ask me to review",
-    save: "Show warning, then create unapproved voucher",
+    move: "Move to Duplicate",
+    pause: "Pause and open for review",
+    save: "Save anyway",
   },
   hi: {
     title: "Duplicate voucher की जाँच करें",
     description: "Voucher बनाने से पहले transaction reference, date, amount और party या account का मौजूदा vouchers से मिलान करें। संभावित duplicate मिलने पर आगे क्या करना है, चुनें।",
     actionLabel: "Duplicate मिलने पर",
-    move: "Document को Duplicate Documents में भेजें",
-    pause: "Auto-scan रोकें और मुझसे review माँगें",
-    save: "Warning दिखाकर unapproved voucher बनाएँ",
+    move: "Duplicate में भेजें",
+    pause: "रोकें और review के लिए खोलें",
+    save: "फिर भी save करें",
   },
   ne: {
     title: "Duplicate voucher जाँच गर्नुहोस्",
     description: "Voucher बनाउनुअघि transaction reference, date, amount र party वा account लाई पहिलेका vouchers सँग मिलाउनुहोस्। सम्भावित duplicate भेटिएपछि के गर्ने हो छान्नुहोस्।",
     actionLabel: "Duplicate भेटिएमा",
-    move: "Document लाई Duplicate Documents मा पठाउनुहोस्",
-    pause: "Auto-scan रोकेर मलाई review गर्न सोध्नुहोस्",
-    save: "Warning देखाएर unapproved voucher बनाउनुहोस्",
+    move: "Duplicate मा पठाउनुहोस्",
+    pause: "रोक्नुहोस् र review का लागि खोल्नुहोस्",
+    save: "तैपनि save गर्नुहोस्",
   },
 } as const;
 
@@ -224,12 +252,24 @@ function normalizeSettings(raw: unknown): AutoOcrSettings {
     maxCallsPerMinute: bounded(value.maxCallsPerMinute, DEFAULT_SETTINGS.maxCallsPerMinute, 1, 15),
     failOnMissingFields: true,
     missingFieldAction: value.missingFieldAction === "fail-and-continue" ? "fail-and-continue" : "pause-and-hold",
+    missingFieldRules: (() => {
+      const rawRules = value.missingFieldRules && typeof value.missingFieldRules === "object" ? value.missingFieldRules as Record<string, unknown> : {};
+      const action = (key: string, fallback: string): string => rawRules[key] === "fail-and-continue" || rawRules[key] === "pause-and-hold" || (key === "item" && rawRules[key] === "save-without") ? String(rawRules[key]) : fallback;
+      return {
+        debitMaster: action("debitMaster", action("party", value.missingFieldAction === "fail-and-continue" ? "fail-and-continue" : "pause-and-hold")) as AutoOcrSettings["missingFieldRules"]["debitMaster"],
+        creditMaster: action("creditMaster", action("party", value.missingFieldAction === "fail-and-continue" ? "fail-and-continue" : "pause-and-hold")) as AutoOcrSettings["missingFieldRules"]["creditMaster"],
+        item: action("item", "save-without") as AutoOcrSettings["missingFieldRules"]["item"],
+        date: action("date", value.missingFieldAction === "fail-and-continue" ? "fail-and-continue" : "pause-and-hold") as AutoOcrSettings["missingFieldRules"]["date"],
+        tax: action("tax", value.missingFieldAction === "fail-and-continue" ? "fail-and-continue" : "pause-and-hold") as AutoOcrSettings["missingFieldRules"]["tax"],
+        other: action("other", value.missingFieldAction === "fail-and-continue" ? "fail-and-continue" : "pause-and-hold") as AutoOcrSettings["missingFieldRules"]["other"],
+      };
+    })(),
+    itemRowMismatchAction: value.itemRowMismatchAction === "fail-and-continue" ? "fail-and-continue" : "pause-and-hold",
+    amountMismatchAction: value.amountMismatchAction === "fail-and-continue" ? "fail-and-continue" : "pause-and-hold",
     queueSequence: normalizeGalleryQueueSequence(value.queueSequence),
     gallerySortOrder: normalizeGallerySortOrder(value.gallerySortOrder),
     checkDuplicateVouchers: value.checkDuplicateVouchers !== false,
-    duplicateVoucherAction: value.duplicateVoucherAction === "pause-for-review" || value.duplicateVoucherAction === "save-anyway"
-      ? value.duplicateVoucherAction
-      : "move-to-duplicates",
+    duplicateVoucherAction: value.duplicateVoucherAction === "pause-for-review" ? "pause-for-review" : value.duplicateVoucherAction === "fail-and-continue" || value.duplicateVoucherAction === "move-to-duplicates" ? "move-to-duplicates" : "save-anyway",
   };
 }
 
@@ -260,6 +300,7 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
   const { user } = useAuth();
   const localDeviceId = useMemo(() => getOrCreateDeviceId(), []);
   const [settings, setSettings] = useState<AutoOcrSettings>(DEFAULT_SETTINGS);
+  const [settingsSection, setSettingsSection] = useState<"rules" | "device" | "schedule" | "usage">("rules");
   const [settingsLoadedFor, setSettingsLoadedFor] = useState("");
   const [adminDevices, setAdminDevices] = useState<AdminDevice[]>([]);
   const [adminDevicesLoading, setAdminDevicesLoading] = useState(false);
@@ -503,23 +544,58 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
     <>
     <GalleryLocalAutoPostRunner settings={settings} settingsDialogOpen={open} isCompanyAdmin={isCompanyAdmin} settingsReady={settingsLoadedFor === fsId && !!fsId} />
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[88dvh] flex-col overflow-hidden sm:max-w-lg">
+      <DialogContent className="flex max-h-[88dvh] flex-col overflow-hidden sm:max-w-4xl">
         <DialogHeader className="shrink-0">
           <DialogTitle>Auto post settings</DialogTitle>
           <DialogDescription>Choose where Auto post scans Unassigned documents and creates vouchers.</DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-1">
+        <div className="min-h-0 flex-1 overflow-hidden">
         {!isCompanyAdmin ? (
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Only a company owner or admin can change these settings.</div>
         ) : loading ? (
           <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading settings…</div>
         ) : (
-          <div className="space-y-4">
-            <section className="rounded-xl border bg-background/80 p-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
+          <div className="grid h-full min-h-0 grid-cols-1 gap-3 md:grid-cols-[190px_minmax(0,1fr)]">
+            <div className="md:hidden">
+              <Select value={settingsSection} onValueChange={(value) => setSettingsSection(value as typeof settingsSection)}>
+                <SelectTrigger className="h-10 bg-background"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rules">Auto post &amp; rules</SelectItem>
+                  <SelectItem value="device">Run location</SelectItem>
+                  <SelectItem value="schedule">When to scan</SelectItem>
+                  <SelectItem value="usage">Usage &amp; saving</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <nav aria-label="Auto post settings sections" className="hidden min-h-0 flex-col gap-1 border-r pr-3 md:flex">
+              <div className="mb-1 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Settings</div>
+              {([
+                ["rules", "Auto post & rules", Bot],
+                ["device", "Run location", Monitor],
+                ["schedule", "When to scan", Clock3],
+                ["usage", "Usage & saving", Gauge],
+              ] as const).map(([key, label, Icon]) => (
+                <button
+                  key={key}
+                  type="button"
+                  aria-current={settingsSection === key ? "page" : undefined}
+                  onClick={() => setSettingsSection(key)}
+                  className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-sm font-medium transition-all duration-150 hover:-translate-y-0.5 hover:shadow-sm ${settingsSection === key ? "border-emerald-400 bg-emerald-50 text-emerald-900 shadow-sm" : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/70 hover:text-foreground"}`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </nav>
+
+            <div className="min-h-0 overflow-y-auto overflow-x-hidden pr-1">
+            <div className="space-y-4">
+            {settingsSection === "rules" && <section className="rounded-xl border bg-background/80 p-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
+              <h3 className="mb-3 flex items-center gap-2 border-b pb-2 text-base font-semibold"><Bot className="h-4 w-4" />Auto post &amp; rules</h3>
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium"><Bot className="h-4 w-4" />Enable Auto post vouchers</div>
-                <div className="ml-6">
+                <div className="flex items-center justify-center gap-2 text-center text-sm font-medium"><Bot className="h-4 w-4" />Enable Auto post vouchers</div>
+                <div className="flex justify-center">
                   <AutoPostModeSwitch
                     mode={selectedAutoMode}
                     onModeChange={(mode) => void applyAutoMode(mode)}
@@ -527,33 +603,80 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
                   />
                 </div>
               </div>
-              <p className="mt-1 pl-8 text-xs text-muted-foreground">
+              <p className="mt-1 text-center text-sm text-muted-foreground">
                 {selectedAutoMode === "manual"
                   ? "Manual mode: Auto post will not scan Unassigned documents."
                   : selectedAutoMode === "semi"
                     ? "Semi automatic opens each voucher for OCR; complete scans save automatically and issues stay open for review."
                     : "Full automatic scans in the background, saves vouchers that pass checks, and continues past failed files."}
               </p>
-              <div className="ml-6 rounded-lg border border-amber-200 bg-amber-50/70 p-2.5">
-                <label className="mb-1.5 block text-xs font-semibold" htmlFor="auto-ocr-missing-field-action">{MISSING_FIELD_ACTION_COPY[introLang].label}</label>
-                <p className="mb-2 text-[11px] leading-relaxed text-muted-foreground">{MISSING_FIELD_ACTION_COPY[introLang].description}</p>
-                <Select
-                  value={settings.missingFieldAction}
-                  onValueChange={(missingFieldAction) => patch({ missingFieldAction: missingFieldAction as AutoOcrSettings["missingFieldAction"] })}
-                  disabled={!isCompanyAdmin || loading || saving}
-                >
-                  <SelectTrigger id="auto-ocr-missing-field-action" className="h-auto min-h-9 whitespace-normal bg-white text-left text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pause-and-hold">{MISSING_FIELD_ACTION_COPY[introLang].pause}</SelectItem>
-                    <SelectItem value="fail-and-continue">{MISSING_FIELD_ACTION_COPY[introLang].fail}</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/70 p-2.5 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
+                <div className="text-sm font-semibold">{MISSING_FIELD_ACTION_COPY[introLang].label}</div>
+                <p className="text-xs leading-relaxed text-muted-foreground">{MISSING_RULE_LABELS[introLang].help}</p>
+                <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+                  {(["debitMaster", "creditMaster", "item", "date", "tax", "other"] as const).map((ruleKey) => {
+                    const options = ruleKey === "item"
+                      ? ["pause-and-hold", "fail-and-continue", "save-without"] as const
+                      : ["pause-and-hold", "fail-and-continue"] as const;
+                    return (
+                      <div key={ruleKey} className="rounded-md border bg-white p-2 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="mb-1.5 text-sm font-semibold">{MISSING_RULE_LABELS[introLang][ruleKey]}</div>
+                        <RadioGroup
+                          value={settings.missingFieldRules[ruleKey]}
+                          onValueChange={(action) => patch({ missingFieldRules: { ...settings.missingFieldRules, [ruleKey]: action } as AutoOcrSettings["missingFieldRules"] })}
+                          disabled={!isCompanyAdmin || loading || saving}
+                          className="space-y-1.5"
+                        >
+                          {options.map((action) => {
+                            const label = action === "pause-and-hold" ? MISSING_RULE_LABELS[introLang].pause : action === "fail-and-continue" ? MISSING_RULE_LABELS[introLang].fail : MISSING_RULE_LABELS[introLang].saveWithout;
+                            const id = `auto-ocr-${ruleKey}-${action}`;
+                            return <label key={action} htmlFor={id} className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs transition-all duration-150 hover:-translate-y-0.5 hover:shadow-sm"><RadioGroupItem id={id} value={action} className="mt-0.5" /><span>{label}</span></label>;
+                          })}
+                        </RadioGroup>
+                        {ruleKey === "item" && <div className="mt-2 space-y-2 border-t pt-2">
+                          <div>
+                            <div className="mb-1 text-xs font-semibold">{MISSING_RULE_LABELS[introLang].rowMismatch}</div>
+                            <RadioGroup value={settings.itemRowMismatchAction} onValueChange={(action) => patch({ itemRowMismatchAction: action as AutoOcrSettings["itemRowMismatchAction"] })} disabled={!isCompanyAdmin || loading || saving} className="space-y-1">
+                              <label htmlFor="auto-ocr-item-row-count-pause" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-row-count-pause" value="pause-and-hold" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].pause}</span></label>
+                              <label htmlFor="auto-ocr-item-row-count-fail" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-row-count-fail" value="fail-and-continue" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].fail}</span></label>
+                            </RadioGroup>
+                          </div>
+                          <div>
+                            <div className="mb-1 text-xs font-semibold">{MISSING_RULE_LABELS[introLang].amountMismatch}</div>
+                            <RadioGroup value={settings.amountMismatchAction} onValueChange={(action) => patch({ amountMismatchAction: action as AutoOcrSettings["amountMismatchAction"] })} disabled={!isCompanyAdmin || loading || saving} className="space-y-1">
+                              <label htmlFor="auto-ocr-item-amount-pause" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-amount-pause" value="pause-and-hold" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].pause}</span></label>
+                              <label htmlFor="auto-ocr-item-amount-fail" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-amount-fail" value="fail-and-continue" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].fail}</span></label>
+                            </RadioGroup>
+                          </div>
+                        </div>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="rounded-lg border border-amber-200 bg-white/70 p-2.5 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
+                  <SettingToggle
+                    title={DUPLICATE_COPY[introLang].title}
+                    checked={settings.checkDuplicateVouchers}
+                    onChange={(checkDuplicateVouchers) => patch({ checkDuplicateVouchers })}
+                    disabled={!isCompanyAdmin || loading || saving}
+                  />
+                  <p className="mb-2 mt-1 text-xs leading-relaxed text-muted-foreground">{DUPLICATE_COPY[introLang].description}</p>
+                  <RadioGroup
+                    value={settings.duplicateVoucherAction}
+                    onValueChange={(duplicateVoucherAction) => patch({ duplicateVoucherAction: duplicateVoucherAction as AutoOcrSettings["duplicateVoucherAction"] })}
+                    disabled={!isCompanyAdmin || loading || saving || !settings.checkDuplicateVouchers}
+                    className="grid grid-cols-1 gap-2 lg:grid-cols-2"
+                  >
+                    <label htmlFor="auto-ocr-duplicate-save" className="flex cursor-pointer items-start gap-2 rounded-md border bg-white p-2 text-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-sm"><RadioGroupItem id="auto-ocr-duplicate-save" value="save-anyway" className="mt-0.5" /><span>{DUPLICATE_COPY[introLang].save}</span></label>
+                    <label htmlFor="auto-ocr-duplicate-move" className="flex cursor-pointer items-start gap-2 rounded-md border bg-white p-2 text-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-sm"><RadioGroupItem id="auto-ocr-duplicate-move" value="move-to-duplicates" className="mt-0.5" /><span>{DUPLICATE_COPY[introLang].move}</span></label>
+                    <label htmlFor="auto-ocr-duplicate-pause" className="flex cursor-pointer items-start gap-2 rounded-md border bg-white p-2 text-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-sm"><RadioGroupItem id="auto-ocr-duplicate-pause" value="pause-for-review" className="mt-0.5" /><span>{DUPLICATE_COPY[introLang].pause}</span></label>
+                  </RadioGroup>
+                </div>
               </div>
-            </section>
+            </section>}
 
-            <section className="space-y-3 rounded-xl border bg-background/80 p-3 shadow-sm">
+            {settingsSection === "device" && <section className="space-y-3 rounded-xl border bg-background/80 p-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
+              <h3 className="flex items-center gap-2 border-b pb-2 text-base font-semibold"><Monitor className="h-4 w-4" />Run location</h3>
               <div className="text-sm font-semibold">Run Auto post on</div>
               <RadioGroup value={settings.runLocation} onValueChange={(runLocation) => {
                 const nextLocation = runLocation as AutoOcrSettings["runLocation"];
@@ -602,7 +725,7 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
                         const isThisDevice = device.id === localDeviceId;
                         const isSelectedRunner = device.id === settings.localRunnerDeviceId;
                         return (
-                          <div key={device.id} className="flex min-w-0 items-center justify-between gap-2 rounded px-2 py-1.5 text-foreground hover:bg-sky-50">
+                          <div key={device.id} className="flex min-w-0 items-center justify-between gap-2 rounded px-2 py-1.5 text-foreground transition-all duration-150 hover:-translate-y-0.5 hover:bg-sky-50 hover:shadow-sm">
                             <div className="min-w-0">
                               <div className="truncate font-medium" title={deviceLabel}>{deviceLabel} · {device.id.slice(-6)}</div>
                               <div className="text-[11px] text-muted-foreground">
@@ -622,10 +745,10 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
                   ) : null}
                 </div>
               ) : <div className="rounded-md border bg-muted/50 p-2.5 text-xs text-muted-foreground">Server mode needs the Pocket Ledger Server Auto OCR worker enabled; the app does not run scans on this PC in this mode.</div>}
-            </section>
+            </section>}
 
-            <section className="space-y-3 rounded-xl border bg-background/80 p-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
-              <div className="flex items-center gap-2 text-sm font-semibold"><Clock3 className="h-4 w-4" />When to scan</div>
+            {settingsSection === "schedule" && <section className="space-y-3 rounded-xl border bg-background/80 p-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
+              <h3 className="flex items-center gap-2 border-b pb-2 text-base font-semibold"><Clock3 className="h-4 w-4" />When to scan</h3>
               <SettingToggle title="As soon as a file arrives" checked={settings.runOnUpload} onChange={(runOnUpload) => patch({ runOnUpload })} disabled={!settings.enabled} />
               <SettingToggle title="Scan on a schedule" checked={settings.runOnSchedule} onChange={(runOnSchedule) => patch({ runOnSchedule })} disabled={!settings.enabled} />
               {settings.runOnSchedule && <div className="space-y-3 rounded-lg border bg-background/80 p-3 shadow-sm">
@@ -669,10 +792,10 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
                   </div>
                 )}
               </div>}
-            </section>
+            </section>}
 
-            <section className="space-y-3 rounded-xl border border-indigo-300 bg-gradient-to-br from-indigo-100 via-sky-50 to-violet-100 p-3 shadow-[0_5px_14px_rgba(49,46,129,0.18)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_10px_22px_rgba(49,46,129,0.24)]">
-              <div className="flex items-center gap-2 text-sm font-semibold"><Gauge className="h-4 w-4" />Usage and voucher saving</div>
+            {settingsSection === "usage" && <section className="space-y-3 rounded-xl border border-indigo-300 bg-gradient-to-br from-indigo-100 via-sky-50 to-violet-100 p-3 shadow-[0_5px_14px_rgba(49,46,129,0.18)] transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
+              <h3 className="flex items-center gap-2 border-b border-indigo-200 pb-2 text-base font-semibold"><Gauge className="h-4 w-4" />Usage and voucher saving</h3>
               <div className="rounded-lg border border-indigo-200 bg-white/90 p-2.5 shadow-[0_2px_6px_rgba(30,41,59,0.12)]">
                 <div className="mb-2 text-xs font-medium text-foreground">Scan Engine</div>
                 <Select value={settings.scanEngine} onValueChange={(scanEngine) => {
@@ -699,36 +822,11 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
                   : "Limit applies to this company. The server’s engine safety limit may be lower."}</p>
               </div>
               <p className="rounded-lg border border-indigo-200 bg-white/80 p-2.5 text-xs text-muted-foreground shadow-[0_2px_6px_rgba(30,41,59,0.1)]">Automatically created vouchers remain unapproved. Use the required-information rule in the Auto post mode card above to handle incomplete scans.</p>
-            </section>
+            </section>}
 
-            <section className="rounded-xl border border-rose-300 bg-gradient-to-br from-rose-100 via-pink-50 to-orange-100 p-3 shadow-[0_5px_14px_rgba(159,18,57,0.17)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_10px_22px_rgba(159,18,57,0.23)]">
-              <div className="rounded-lg border border-rose-200 bg-white/90 p-2.5 shadow-[0_2px_6px_rgba(30,41,59,0.12)]">
-                <SettingToggle
-                  title={DUPLICATE_COPY[introLang].title}
-                  checked={settings.checkDuplicateVouchers}
-                  onChange={(checkDuplicateVouchers) => patch({ checkDuplicateVouchers })}
-                  disabled={!settings.enabled}
-                />
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{DUPLICATE_COPY[introLang].description}</p>
-                <div className="mt-3 space-y-1.5">
-                  <label className="text-xs font-medium" htmlFor="auto-ocr-duplicate-action">{DUPLICATE_COPY[introLang].actionLabel}</label>
-                  <Select
-                    value={settings.duplicateVoucherAction}
-                    onValueChange={(action) => patch({ duplicateVoucherAction: action as AutoOcrSettings["duplicateVoucherAction"] })}
-                    disabled={!settings.enabled || !settings.checkDuplicateVouchers}
-                  >
-                    <SelectTrigger id="auto-ocr-duplicate-action" className="h-9 bg-white"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="move-to-duplicates">{DUPLICATE_COPY[introLang].move}</SelectItem>
-                      <SelectItem value="pause-for-review">{DUPLICATE_COPY[introLang].pause}</SelectItem>
-                      <SelectItem value="save-anyway">{DUPLICATE_COPY[introLang].save}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </section>
-
-            <div className="flex items-start gap-2 rounded-lg border bg-muted/60 p-3 text-xs text-muted-foreground shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />Files must be uploaded to the Pocket Ledger Server so the selected runner can access them.</div>
+            {settingsSection === "device" && <div className="flex items-start gap-2 rounded-lg border bg-muted/60 p-3 text-xs text-muted-foreground shadow-sm"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />Files must be uploaded to the Pocket Ledger Server so the selected runner can access them.</div>}
+            </div>
+            </div>
           </div>
         )}
 

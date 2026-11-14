@@ -14,6 +14,8 @@ export type OcrHandoff = {
   selectedIds?: string[];
   /** Gallery local Auto post: use the voucher form's normal guarded save after OCR autofill. */
   autoPost?: boolean;
+  /** Allow the regular voucher form to save free-form line rows when OCR cannot match item masters. */
+  allowSaveWithoutItems?: boolean;
   /** Local Gallery Auto post can keep the company-selected OCR engine in the voucher review form. */
   enginePref?: OcrEnginePref;
   cloudProvider?: "google" | "azure";

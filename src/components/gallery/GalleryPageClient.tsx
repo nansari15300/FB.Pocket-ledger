@@ -295,7 +295,7 @@ function GalleryPagerInCard({
 const GALLERY_TAB_IDLE_CN =
   "!border !border-blue-300 !bg-blue-100/80 !text-blue-900 hover:!bg-blue-200/80";
 const GALLERY_TAB_ACTIVE_CN =
-  "-translate-y-[3px] !border-2 !border-green-600 bg-blue-200/90 font-semibold !text-blue-900 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),0_4px_0_0_#15803d,0_6px_10px_-2px_rgba(21,128,61,0.45)] ring-1 ring-green-300 active:translate-y-0 active:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),0_1px_0_0_#15803d] hover:!bg-blue-200 hover:!border-green-600";
+  "-translate-y-[3px] !border-2 !border-green-600 bg-blue-200/90 font-semibold !text-blue-900 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),0_4px_0_0_#64748b,0_6px_10px_-2px_rgba(15,23,42,0.35)] ring-1 ring-green-300 active:translate-y-0 active:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),0_1px_0_0_#64748b] hover:!bg-blue-200 hover:!border-green-600";
 
 function GalleryRunnerControls() {
   const { company, companyId } = useCompany();
@@ -312,7 +312,7 @@ function GalleryRunnerControls() {
     window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-state-request", { detail: { companyId: fsId } }));
     return () => window.removeEventListener("pl:gallery:auto-post-process-state", onState);
   }, [fsId]);
-  if (!state.active && !state.held) return null;
+  if (!state.active) return null;
   const dispatchVisibility = (visible: boolean) => {
     setState((current) => ({ ...current, visible }));
     window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-visibility", { detail: { companyId: fsId, visible } }));
@@ -465,7 +465,6 @@ function GalleryQueueSequenceRibbon({ inline = false }: { inline?: boolean }) {
   const sortLabel = sortOrder === "newest-first" ? "Newest first" : "Oldest first";
   return (
     <div className={cn("flex shrink-0 items-center gap-1.5", inline && "hidden max-sm:col-span-2 max-sm:flex max-sm:w-full")}>
-      <span className="shrink-0 text-[11px] font-medium text-muted-foreground">Queue</span>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -474,9 +473,9 @@ function GalleryQueueSequenceRibbon({ inline = false }: { inline?: boolean }) {
             disabled={!isCompanyAdmin || saving || !fsId}
             aria-label="Post queue and sorting settings"
             title="Choose the Post queue direction and Gallery sorting order"
-            className="pl-chrome-btn-drop h-8 w-[250px] min-w-0 shrink-0 justify-between rounded-full border border-blue-300 bg-blue-100/80 px-3 text-[11px] text-blue-900 hover:border-blue-400 hover:bg-blue-200/80 max-sm:w-full"
+            className="pl-chrome-btn-drop h-8 w-fit min-w-0 shrink-0 justify-between rounded-full border border-blue-300 bg-blue-100/80 px-3 text-[11px] text-blue-900 hover:border-blue-400 hover:bg-blue-200/80 max-sm:w-full"
           >
-            <span className="truncate">{sequenceLabel} · {sortLabel}</span>
+            <span className="min-w-0 truncate">{sequenceLabel} · {sortLabel}</span>
             <ChevronDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden />
           </Button>
         </DropdownMenuTrigger>
@@ -585,7 +584,7 @@ function GalleryTabSwitch({
   if (inline) return buttons;
 
   return (
-    <div className={cn("min-w-0 flex flex-nowrap items-center gap-[10px]", className)}>{buttons}</div>
+    <div className={cn("min-w-0 flex flex-wrap items-center gap-[10px]", className)}>{buttons}</div>
   );
 }
 
@@ -3943,6 +3942,7 @@ export function GalleryPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<GalleryTab>(() => getTabFromSearchParams(searchParams));
   /** Selection state of the Unassigned tab, mirrored here for the tab-bar Select All button. */
   const [gallerySelection, setGallerySelection] = useState({ total: 0, selected: 0, allSelected: false });
@@ -3959,6 +3959,8 @@ export function GalleryPageContent() {
     return () => window.removeEventListener("pl:gallery:selection", onSel);
   }, []);
   const [previewColumns, setPreviewColumns] = useState<string | number>(GALLERY_DEFAULT_COLUMNS);
+  const [galleryColumnsPreferenceLoadedFor, setGalleryColumnsPreferenceLoadedFor] = useState("");
+  const [galleryTopRibbonExpanded, setGalleryTopRibbonExpanded] = useState(true);
   const [isVoucherOpen, setIsVoucherOpen] = useState(false);
   const [defaultVoucherData, setDefaultVoucherData] = useState<any>(null);
 
@@ -3984,23 +3986,58 @@ export function GalleryPageContent() {
   );
 
   useEffect(() => {
-    // Naya "Column" logic: agar sirf purane px-size ka save mila ho to column count nikaal lete hain
-    const savedCols = localStorage.getItem('galleryPreviewColumns');
-    if (savedCols && !isNaN(Number(savedCols))) {
-      setPreviewColumns(clampGalleryColumns(savedCols));
-      return;
-    }
-    const savedSize = Number(localStorage.getItem('galleryPreviewSize'));
-    if (savedSize > 0) {
-      const width = typeof window !== "undefined" ? window.innerWidth : 400;
-      const count = Math.floor((width - 2 * GALLERY_FIT_SIDE_PADDING + GALLERY_FIT_GAP) / (savedSize + GALLERY_FIT_GAP));
-      setPreviewColumns(clampGalleryColumns(count));
-    }
-  }, []);
+    const uid = String(user?.uid || "").trim();
+    setGalleryColumnsPreferenceLoadedFor("");
+    if (!uid) return;
+    const fallbackColumns = () => {
+      const savedCols = localStorage.getItem("galleryPreviewColumns");
+      if (savedCols && !isNaN(Number(savedCols))) return clampGalleryColumns(savedCols);
+      const savedSize = Number(localStorage.getItem("galleryPreviewSize"));
+      if (savedSize > 0) {
+        const width = typeof window !== "undefined" ? window.innerWidth : 400;
+        const count = Math.floor((width - 2 * GALLERY_FIT_SIDE_PADDING + GALLERY_FIT_GAP) / (savedSize + GALLERY_FIT_GAP));
+        return clampGalleryColumns(count);
+      }
+      return GALLERY_DEFAULT_COLUMNS;
+    };
+    let initialized = false;
+    const userRef = doc(firestore, "users", uid);
+    return onSnapshot(userRef, (snapshot) => {
+      const saved = snapshot.exists() ? Number(snapshot.data()?.galleryPreviewColumns) : NaN;
+      if (Number.isFinite(saved) && saved >= GALLERY_MIN_COLUMNS && saved <= GALLERY_MAX_COLUMNS) {
+        initialized = true;
+        setPreviewColumns(clampGalleryColumns(saved));
+        setGalleryColumnsPreferenceLoadedFor(uid);
+      } else if (!initialized) {
+        initialized = true;
+        setPreviewColumns(fallbackColumns());
+        setGalleryColumnsPreferenceLoadedFor(uid);
+      }
+    }, (error) => {
+      console.warn("[Gallery] Could not read the user's saved column count", error);
+      if (!initialized) {
+        initialized = true;
+        setPreviewColumns(fallbackColumns());
+        setGalleryColumnsPreferenceLoadedFor(uid);
+      }
+    });
+  }, [user?.uid]);
 
   useEffect(() => {
-    localStorage.setItem('galleryPreviewColumns', String(previewColumns));
-  }, [previewColumns]);
+    const uid = String(user?.uid || "").trim();
+    const columns = Number(previewColumns);
+    if (!uid || galleryColumnsPreferenceLoadedFor !== uid || !Number.isFinite(columns)) return;
+    localStorage.setItem("galleryPreviewColumns", String(columns));
+    const timer = window.setTimeout(() => {
+      void setDoc(doc(firestore, "users", uid), {
+        galleryPreviewColumns: clampGalleryColumns(columns),
+        galleryPreviewColumnsUpdatedAt: serverTimestamp(),
+      }, { merge: true }).catch((error) => {
+        console.warn("[Gallery] Could not save the user's column count", error);
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [galleryColumnsPreferenceLoadedFor, previewColumns, user?.uid]);
 
   // PDF hover: pehli load thodi jaldi — sirf `@/lib/pdfToImage` → `importPdfJsDist` se pdf.js load karo.
   // Alag `import("pdfjs-dist/build/pdf.mjs")` mat lagao: Webpack do chunk banata hai aur `__webpack_require__.r` par `Object.defineProperty` crash ho sakta hai.
@@ -4073,22 +4110,55 @@ export function GalleryPageContent() {
     <div data-pl-gallery-grey-shell className="box-border flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-neutral-800 px-0 pt-2 pb-0 dark:bg-zinc-900 sm:px-2 sm:pt-3 sm:pb-4 md:px-3 md:pt-4 md:pb-5">
        {/* Mobile: tab buttons footer card ke andar. PC: yahan top me.
            PC: "Add File" tab pills ke baayein (mobile me ye footer card ke andar hi rehta hai). */}
-       <div className="hidden shrink-0 sm:flex sm:w-full">
-        <div className="flex min-w-0 w-full flex-nowrap items-center gap-[10px] overflow-x-auto rounded-xl border border-slate-300/80 bg-background/95 p-2 shadow-md">
-         {activeTab === "unassigned" && (
-           <Button
-             type="button"
-             variant="outline"
-             onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:add-file"))}
-             className={cn("h-8 shrink-0 gap-1.5 rounded-full px-3 text-xs", GALLERY_TAB_IDLE_CN)}
-           >
-             <Plus className="h-3.5 w-3.5" aria-hidden />
-             Add File
-           </Button>
-         )}
-         <GalleryTabSwitch activeTab={activeTab} onTabChange={setGalleryTab} className="flex-1 !w-auto justify-start" />
-         <GalleryRunnerControls />
-        </div>
+       <div className="hidden shrink-0 sm:block sm:w-full">
+        {galleryTopRibbonExpanded ? (
+          <div className="relative min-w-0 w-full rounded-xl border border-slate-300/80 bg-background/95 p-2 shadow-md">
+            <div className={cn("flex min-w-0 flex-wrap items-center gap-[10px]", activeTab === "unassigned" ? "pr-[145px]" : "pr-10")}>
+              <GalleryTabSwitch activeTab={activeTab} onTabChange={setGalleryTab} className="min-w-0 flex-1 !w-auto justify-start" />
+              <GalleryRunnerControls />
+            </div>
+            <div className="absolute right-2 top-2 z-[2] flex shrink-0 items-center gap-1.5">
+              {activeTab === "unassigned" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:add-file"))}
+                  className={cn("h-8 shrink-0 gap-1.5 rounded-full px-3 text-xs", GALLERY_TAB_IDLE_CN)}
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden />
+                  Add File
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 shrink-0 rounded-full border-blue-400/70 bg-background/90"
+                aria-expanded
+                aria-label="Hide gallery top panel"
+                title="Hide gallery top panel"
+                onClick={() => setGalleryTopRibbonExpanded(false)}
+              >
+                <ChevronUp className="h-4 w-4" aria-hidden />
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="relative h-8 w-full">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="absolute right-0 top-0 h-8 w-8 shrink-0 rounded-full border-blue-400/70 bg-background/90"
+              aria-expanded={false}
+              aria-label="Show gallery top panel"
+              title="Show gallery top panel"
+              onClick={() => setGalleryTopRibbonExpanded(true)}
+            >
+              <ChevronDown className="h-4 w-4" aria-hidden />
+            </Button>
+          </div>
+        )}
        </div>
 
         {/* min-h-0: dashboard main ke andar sirf yahan grid scroll, tab row + footer card fixed */}

@@ -90,7 +90,7 @@ export function SalePurchaseDiscountAdjustmentRow({
   const signTriggerClass = isMobile ? "h-[27px] w-12 text-xs px-1" : "h-[27px] w-14 px-2";
 
   return (
-    <div className="[&>*]:py-[3px]" data-ocr-field="discount">
+    <div className={cn("[&>*]:py-[3px]", !isMobile && "[&>*]:px-[10px]")} data-ocr-field="discount">
       <FormField
         control={control}
         name="discountExpenseAccountId"

@@ -186,6 +186,7 @@ export function buildSalePurchaseDesktopLineGridTemplateColumns(
   withDeleteColumn: boolean
 ): string {
   const tracks = [
+    "minmax(2.5rem,3rem)",
     salePurchaseDesktopLineItemColTrack(),
     salePurchaseIntrinsicNumberColTrack(),
     salePurchaseIntrinsicLabelColTrack("Unit", 4),

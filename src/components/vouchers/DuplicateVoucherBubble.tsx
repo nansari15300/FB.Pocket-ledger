@@ -104,6 +104,26 @@ export function DuplicateVoucherBubble({
     return () => window.removeEventListener("keydown", onKey);
   }, [onDismiss]);
 
+  useEffect(() => {
+    if (mode !== "live") return;
+    const onHandled = (event: Event) => {
+      const detail = (event as CustomEvent<{ matchId?: string }>).detail;
+      if (String(detail?.matchId || "") === String(match.id)) onDismiss();
+    };
+    window.addEventListener("pl:gallery:auto-post-duplicate-action-completed", onHandled);
+    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-duplicate-detected", {
+      detail: {
+        matchId: match.id,
+        voucherNumber: match.voucherNumber,
+        summary: match.summary,
+        dateText: match.dateText,
+        amount: String(match.amount ?? ""),
+        reasons: match.reasons,
+      },
+    }));
+    return () => window.removeEventListener("pl:gallery:auto-post-duplicate-action-completed", onHandled);
+  }, [match, mode, onDismiss]);
+
   if (typeof document === "undefined") return null;
 
   const reasonText = match.reasons

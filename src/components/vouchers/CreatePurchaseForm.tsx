@@ -2543,7 +2543,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
 
               {/* Line Items Grid (same green section treatment as Sale form). */}
                 <div className={cn(
-                  "border border-emerald-300/80 rounded-lg relative bg-emerald-50 p-1",
+                  "border border-emerald-300/80 rounded-lg relative bg-emerald-50 p-1 [&_input:not([readonly]):not(:disabled)]:!bg-white",
                   isMobile ? "w-[calc(100%-4px)] mx-auto px-[2px] overflow-hidden min-w-0" : "w-full px-[2px] overflow-visible"
                 )}>
                 <div className={cn("mb-2", isMobile && "flex justify-start")}>
@@ -2587,6 +2587,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
 
                       return (
                         <div key={line.id} className="border-t px-[2px] py-2 space-y-2">
+                        <div className="flex justify-end"><span className="rounded-full border bg-background px-2 py-0.5 text-xs font-medium tabular-nums">S/N {index + 1}</span></div>
                         {/* Row 1: Item + Copy (cross-company master chip item ke right) */}
                         <div className="w-full px-[2px]">
                           <div className="flex items-start gap-1 w-full min-w-0">
@@ -2910,7 +2911,8 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     );
                     })}
                     {/* Add Line Button */}
-                    <div className="border-t px-[2px] py-2">
+                    <div className="flex items-center border-t py-2 pr-[2px]">
+                      <span className="w-10 shrink-0 text-center font-medium tabular-nums text-muted-foreground">{fields.length}</span>
                       <Button
                         type="button"
                         variant="outline"
@@ -2924,7 +2926,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                   </div>
                 ) : (
                   // PC: wide layout ka horizontal scroll form ke scroll wale parent div me (footer fixed).
-                  <div className={SALE_PURCHASE_DESKTOP_LINE_TABLE_INNER}>
+                  <div className={cn(SALE_PURCHASE_DESKTOP_LINE_TABLE_INNER, "mx-[10px] !w-auto")}>
                     <div
                       className={cn(
                         SALE_PURCHASE_DESKTOP_LINE_GRID_CLASS,
@@ -2934,6 +2936,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                       style={desktopLineGridStyle}
                     >
                     <div className="contents">
+                        <div className={cn(TH_BASE, "text-center")}>S/N</div>
                         <div className={cn(TH_BASE, SALE_PURCHASE_DESKTOP_LINE_ITEM_CELL, "flex items-center justify-between gap-1 whitespace-nowrap")}>
                           {/* Desktop: Item Copy visible ho to Item header red highlight. */}
                           <span className={cn(desktopHeaderCopyItem && "text-red-600 font-semibold")}>Item</span>
@@ -3010,6 +3013,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
 
                         return (
                           <div className="contents" key={line.id}>
+                            <div className={cn(TD_BASE, "flex items-center justify-center", SALE_PURCHASE_DESKTOP_LINE_BODY_CELL, "font-medium tabular-nums text-muted-foreground")}>{index + 1}</div>
                             <div className={cn(TD_BASE, "flex", SALE_PURCHASE_DESKTOP_LINE_BODY_CELL, SALE_PURCHASE_DESKTOP_LINE_ITEM_CELL)}>
                           <FormField
                               control={form.control}
@@ -3305,7 +3309,8 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                       })}
                     </div>
                       {/* Add Line Button */}
-                      <div className="border-t border-black px-2 py-2">
+                      <div className="flex items-center border-t border-black py-2 pr-2">
+                        <span className="w-10 shrink-0 text-center font-medium tabular-nums text-muted-foreground">{fields.length}</span>
                         <Button
                           type="button"
                           variant="outline"
@@ -3934,7 +3939,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                   <div className="flex flex-col gap-[15px] w-full">
                     {/* Container 1: Sub total se total tak */}
                     <div className={SALE_PURCHASE_TOTALS_SUMMARY_BOX_DESKTOP}>
-                      <div className={cn(SALE_PURCHASE_TOTALS_SUMMARY_ROW, "font-medium py-[3px] border-b")}>
+                      <div className={cn(SALE_PURCHASE_TOTALS_SUMMARY_ROW, "font-medium py-[3px] px-[10px] border-b")}>
                         <span className="shrink-0">Sub Total:</span>
                         <SalePurchaseTotalsSummaryAmount value={subTotal || 0} />
                       </div>
@@ -3946,7 +3951,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                         expenseAccountOptions={discountExpenseAccountOptions}
                         variant="desktop"
                       />
-                      <div className={cn(SALE_PURCHASE_TOTALS_SUMMARY_ROW, "border-t py-[3px]")}>
+                      <div className={cn(SALE_PURCHASE_TOTALS_SUMMARY_ROW, "border-t py-[3px] px-[10px]")}>
                         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
                           <FormLabel className="shrink-0">Tax:</FormLabel>
                           {selectedTax && (
@@ -3958,7 +3963,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                         <SalePurchaseTotalsSummaryAmount value={tax || 0} />
                       </div>
                       {(tds || 0) > 0 && (
-                        <div className={cn(SALE_PURCHASE_TOTALS_SUMMARY_ROW, "border-t py-[3px]")}>
+                        <div className={cn(SALE_PURCHASE_TOTALS_SUMMARY_ROW, "border-t py-[3px] px-[10px]")}>
                           <div className="flex min-w-0 flex-1 items-center gap-2">
                             <FormLabel className="shrink-0">TDS:</FormLabel>
                             <SalePurchaseTdsVerifyTick control={form.control} disabled={editingDisabled} showLabel />
@@ -3966,7 +3971,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                           <SalePurchaseTotalsSummaryAmount value={tds || 0} />
                         </div>
                       )}
-                      <div className={cn(SALE_PURCHASE_TOTALS_SUMMARY_ROW, "text-lg font-bold border-t py-[3px]")} data-ocr-field="total">
+                      <div className={cn(SALE_PURCHASE_TOTALS_SUMMARY_ROW, "text-lg font-bold border-t py-[3px] px-[10px]")} data-ocr-field="total">
                         <span className="shrink-0">{(tds || 0) > 0 ? "Invoice Total:" : "Total:"}</span>
                         <SalePurchaseTotalsSummaryAmount value={total || 0} className="text-red-600 font-bold" />
                       </div>

@@ -1330,12 +1330,30 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           const unresolvedItems = A.lineItems && bill.lineItems?.status === "fill"
             ? bill.lineItems.value.map((line, index) => !line.itemId ? `Item on line ${index + 1}` : "").filter(Boolean)
             : [];
+          const billItemRowCount = bill.lineItems?.value.length;
+          const voucherItemRowCount = A.lineItems ? ((F.getValues(A.lineItems.path) as unknown[] | undefined) ?? []).length : undefined;
+          const itemRowCountMismatch = typeof billItemRowCount === "number" && typeof voucherItemRowCount === "number" && billItemRowCount !== voucherItemRowCount;
+          const billItemAmount = bill.lineItems?.value.reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
+          const voucherRowsForCheck = A.lineItems ? ((F.getValues(A.lineItems.path) as Array<Record<string, unknown>> | undefined) ?? []) : [];
+          const voucherItemAmount = voucherRowsForCheck.reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
+          const expectedItemAmount = bill.subTotal?.value != null
+            ? Number(bill.subTotal.value) + (Number(bill.discount?.value) || 0)
+            : bill.total?.value != null
+              ? Number(bill.total.value) - (Number(bill.vat?.value) || 0) + (Number(bill.discount?.value) || 0)
+              : undefined;
+          const itemAmountMismatch = typeof expectedItemAmount === "number" && (bill.lineItems?.value.length ?? 0) > 0 && (
+            Math.abs((billItemAmount ?? 0) - expectedItemAmount) > 1 ||
+            Math.abs(voucherItemAmount - expectedItemAmount) > 1
+          );
           const missingRequiredPaths = (A.requiredPaths ?? [])
             .filter((path) => isEmptyVal(F.getValues(path)))
             .map((path) => `Required ${path.split(".").pop()?.replace(/Id$/, "").replace(/([A-Z])/g, " $1").trim() || "field"}`);
+          const allowSaveWithoutItems = reason === "handoff" && handoffAllowSaveWithoutItemsRef.current;
           const requiredMissing = [
             ...missing.filter((field) => field !== "Bill No"),
-            ...unresolvedItems,
+            ...(allowSaveWithoutItems ? [] : unresolvedItems),
+            ...(itemRowCountMismatch ? [`Item row count mismatch (bill: ${billItemRowCount}, voucher: ${voucherItemRowCount})`] : []),
+            ...(itemAmountMismatch ? [`Item row amount does not match bill amount (rows: ${billItemAmount}, bill: ${expectedItemAmount})`] : []),
             ...missingRequiredPaths,
             ...(ledgerMissing ? ["Purchase account"] : []),
             ...(A.accountPath && isEmptyVal(F.getValues(A.accountPath)) ? ["Bank/cash account"] : []),
@@ -1346,7 +1364,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             partyOk &&
             (!A.date || filledKeys.has("date")) &&
             (!A.lineItems || filledKeys.has("lines")) &&
-            unresolvedItems.length === 0 &&
+            !itemRowCountMismatch &&
+            !itemAmountMismatch &&
+            (unresolvedItems.length === 0 || allowSaveWithoutItems) &&
             !ledgerMissing &&
             !hasMissingVatAccount &&
             (!A.amount || filledKeys.has("amount")) &&
@@ -1365,7 +1385,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             if (A.autoPost && reason === "handoff" && handoffAutoPostRef.current) {
               const fieldNames = [...new Set(requiredMissing.length ? requiredMissing : ["Required voucher fields"] )];
               window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-required-fields-missing", {
-                detail: { companyId: opt.companyId, missing: fieldNames },
+                detail: { companyId: opt.companyId, missing: fieldNames, voucherType: A.voucherType, itemRowCountMismatch, itemAmountMismatch },
               }));
             }
           }
@@ -1394,7 +1414,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           toast.dismiss(tId);
         }
       } finally {
-        if (reason === "handoff") handoffAutoPostRef.current = false;
+        if (reason === "handoff") {
+          handoffAutoPostRef.current = false;
+          handoffAllowSaveWithoutItemsRef.current = false;
+        }
         if (ocrAbortRef.current === ac) ocrAbortRef.current = null;
         setRunning(false);
       }
@@ -1403,7 +1426,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   );
 
   // Voucher-type switch hand-off: receive the attachment, then OCR it here.
-  const handoffRunRef = useRef<{ raw?: OcrRawResult; selectedIds?: string[]; autoPost?: boolean; enginePref?: import("./prefs").OcrEnginePref; cloudProvider?: "google" | "azure" } | null>(null);
+  const handoffRunRef = useRef<{ raw?: OcrRawResult; selectedIds?: string[]; autoPost?: boolean; allowSaveWithoutItems?: boolean; enginePref?: import("./prefs").OcrEnginePref; cloudProvider?: "google" | "azure" } | null>(null);
+  const handoffAllowSaveWithoutItemsRef = useRef(false);
   // Files handed over by a voucher switch; kept briefly so a form's own "new voucher" hydration (setFiles([]) in an effect
   // that runs AFTER this hook's effect) cannot wipe them.
   const handoffFilesRef = useRef<{ files: (File | string)[]; until: number } | null>(null);
@@ -1413,8 +1437,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     const formType = o.currentVoucherType ?? o.adapter.voucherType;
     const h = takeOcrHandoff(formType) ?? resumeOcrSession(formType);
     if (h?.files.length) {
-      handoffRunRef.current = { raw: h.raw, selectedIds: h.selectedIds, autoPost: h.autoPost, enginePref: h.enginePref, cloudProvider: h.cloudProvider };
+      handoffRunRef.current = { raw: h.raw, selectedIds: h.selectedIds, autoPost: h.autoPost, allowSaveWithoutItems: h.allowSaveWithoutItems, enginePref: h.enginePref, cloudProvider: h.cloudProvider };
       handoffAutoPostRef.current = h.autoPost === true;
+      handoffAllowSaveWithoutItemsRef.current = h.allowSaveWithoutItems === true;
       handoffFilesRef.current = { files: h.files, until: Date.now() + 2500 };
       linkOcrOriginal(h.files[0], h.original ?? null);
       o.setFiles(h.files);
