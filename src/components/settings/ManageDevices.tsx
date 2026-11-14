@@ -1,7 +1,7 @@
 "use client";
 
 import { deleteDoc, updateDoc, writeBatch } from "@/lib/writeGateway/pbWrites";
-import { useEffect, useState, useMemo } from "react";
+import { Fragment, useEffect, useState, useMemo } from "react";
 import { collection, doc, query, where, orderBy } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { pbListAppDocs } from "@/lib/pocketbaseData/pbSync";
@@ -272,6 +272,9 @@ export function ManageDevices() {
   /** Cross-company device snapshots (one full-width card per company, same columns as “Synced devices”). */
   const [companyDevicesOverview, setCompanyDevicesOverview] = useState<CompanyDevicesOverviewRow[]>([]);
   const [companyDevicesOverviewLoading, setCompanyDevicesOverviewLoading] = useState(false);
+  const [deviceView, setDeviceView] = useState<"company" | "device" | "user">("company");
+  const [expandedDeviceRows, setExpandedDeviceRows] = useState<Set<string>>(() => new Set());
+  const [expandedUserRows, setExpandedUserRows] = useState<Set<string>>(() => new Set());
   /** Bump after kicks/removes so the multi-company list refetches (device rows change). */
   const [adminOverviewTick, setAdminOverviewTick] = useState(0);
 
@@ -846,6 +849,82 @@ export function ManageDevices() {
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
   }, [companyDevicesOverview, companyId, selectedFirestoreCompanyId]);
 
+  const canViewAllUsers = useMemo(() => {
+    if (isCompanyOwner) return true;
+    const members = Array.isArray((company as { sharedWith?: unknown[] } | null)?.sharedWith)
+      ? (company as { sharedWith: Array<{ uid?: string; userId?: string; role?: string }> }).sharedWith
+      : [];
+    return members.some((member) =>
+      String(member.uid || member.userId || "") === String(user?.uid || "") &&
+      ["admin", "CompanyAdmin", "SuperAdmin"].includes(String(member.role || ""))
+    );
+  }, [company, isCompanyOwner, user?.uid]);
+
+  const deviceWiseRows = useMemo(() => {
+    const sources = companyDevicesOverview.map((row) => ({
+      id: row.firestoreCompanyId,
+      name: row.name,
+      devices: row.firestoreCompanyId === selectedFirestoreCompanyId ? devices : row.devices,
+    }));
+    if (selectedFirestoreCompanyId && !sources.some((row) => row.id === selectedFirestoreCompanyId)) {
+      sources.push({ id: selectedFirestoreCompanyId, name: String(company?.name || companyId), devices });
+    }
+    const groups = new Map<string, { id: string; label: string; deviceType?: DeviceRow["deviceType"]; userId: string; companies: Array<{ id: string; name: string }> }>();
+    for (const source of sources) {
+      for (const device of source.devices) {
+        const id = String(device.id || "");
+        if (!id) continue;
+        const group = groups.get(id) || {
+          id,
+          label: shortDeviceLabelForList(device.deviceLabel, device.deviceType),
+          deviceType: device.deviceType,
+          userId: device.userId,
+          companies: [],
+        };
+        if (!group.companies.some((entry) => entry.id === source.id)) group.companies.push({ id: source.id, name: source.name });
+        if (!group.userId && device.userId) group.userId = device.userId;
+        groups.set(id, group);
+      }
+    }
+    return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [companyDevicesOverview, selectedFirestoreCompanyId, devices, company?.name, companyId]);
+
+  const userWiseRows = useMemo(() => {
+    const groups = new Map<string, { id: string; name: string; devices: Map<string, { id: string; label: string; companies: Set<string> }> }>();
+    const addUser = (uidValue: unknown, nameValue?: unknown) => {
+      const uid = String(uidValue || "").trim();
+      if (!uid) return;
+      const name = String(nameValue || userNames[uid] || (uid === ownerId ? "Admin" : "—")).trim();
+      const existing = groups.get(uid);
+      if (existing) {
+        if (existing.name === "—" && name !== "—") existing.name = name;
+        return;
+      }
+      groups.set(uid, { id: uid, name, devices: new Map() });
+    };
+    for (const registryCompany of allCompanies) {
+      addUser(registryCompany.ownerId, "Admin");
+      const members = Array.isArray((registryCompany as { sharedWith?: unknown[] }).sharedWith)
+        ? (registryCompany as { sharedWith: Array<{ uid?: string; userId?: string; name?: string; email?: string }> }).sharedWith
+        : [];
+      for (const member of members) addUser(member.uid || member.userId, member.name || member.email);
+    }
+    addUser(company?.ownerId, "Admin");
+    const selectedMembers = Array.isArray((company as { sharedWith?: unknown[] } | null)?.sharedWith)
+      ? (company as { sharedWith: Array<{ uid?: string; userId?: string; name?: string; email?: string }> }).sharedWith
+      : [];
+    for (const member of selectedMembers) addUser(member.uid || member.userId, member.name || member.email);
+    for (const row of deviceWiseRows) {
+      const uid = row.userId || "unknown";
+      addUser(uid);
+      const userGroup = groups.get(uid)!;
+      const device = userGroup.devices.get(row.id) || { id: row.id, label: row.label, companies: new Set<string>() };
+      row.companies.forEach((entry) => device.companies.add(entry.name));
+      userGroup.devices.set(row.id, device);
+    }
+    return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [deviceWiseRows, ownerId, userNames, allCompanies, company]);
+
   if (!companyId || !company) {
     return (
       <Card className={cn(dashboardDeviceCardClass(0), "w-full min-w-0 max-w-full")}>
@@ -869,6 +948,13 @@ export function ManageDevices() {
 
   return (
     <div className="w-full min-w-0 max-w-full space-y-3 rounded-xl border border-border/50 bg-slate-50/85 px-[2px] py-3 dark:bg-slate-950/35 sm:space-y-4 md:px-3 md:py-3">
+      <div role="tablist" aria-label="Device views" className="flex flex-wrap gap-2">
+        <Button type="button" role="tab" aria-selected={deviceView === "company"} variant={deviceView === "company" ? "default" : "outline"} size="sm" onClick={() => setDeviceView("company")}>Company wise devices</Button>
+        <Button type="button" role="tab" aria-selected={deviceView === "device"} variant={deviceView === "device" ? "default" : "outline"} size="sm" onClick={() => setDeviceView("device")}>Device wise companies</Button>
+        {canViewAllUsers ? <Button type="button" role="tab" aria-selected={deviceView === "user"} variant={deviceView === "user" ? "default" : "outline"} size="sm" onClick={() => setDeviceView("user")}>User wise devices</Button> : null}
+      </div>
+
+      {deviceView === "company" ? <>
       <Card className={cn(dashboardDeviceCardClass(0), "w-full min-w-0 max-w-full")}>
         <DeviceCardHeaderBar
           titleName={(company?.name || "").trim() || companyId}
@@ -1294,6 +1380,63 @@ export function ManageDevices() {
           })
         )}
       </div>
+
+      </> : null}
+
+      {deviceView === "device" ? (
+        <Card className={cn(dashboardDeviceCardClass(0), "w-full min-w-0 max-w-full")}>
+          <CardHeader className={DEVICE_RULE_H_BLACK}>
+            <CardTitle>Device wise companies</CardTitle>
+            <CardDescription>Total devices: {deviceWiseRows.length}. Select a device to see the companies using it.</CardDescription>
+          </CardHeader>
+          <CardContent className={cn("min-w-0", MANAGE_DEVICES_MOBILE_CARD_PX)}>
+            {companyDevicesOverviewLoading ? <div className="flex items-center gap-2 py-6 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading devices…</div> : deviceWiseRows.length === 0 ? <p className="py-4 text-sm text-muted-foreground">No devices registered yet.</p> : (
+              <div className={DEVICE_SYNC_TABLE_SCROLL_SHELL}>
+                <Table scrollContainer={false} className={DEVICE_SYNC_TABLE_CLASS}>
+                  <TableHeader><TableRow className={DEVICE_RULE_H_BLACK}><TableHead>Device</TableHead><TableHead>User name</TableHead><TableHead className="text-right">Companies</TableHead></TableRow></TableHeader>
+                  <TableBody>{deviceWiseRows.map((row) => {
+                    const expanded = expandedDeviceRows.has(row.id);
+                    const displayName = row.userId === ownerId ? "Admin" : (userNames[row.userId] || "—");
+                    return <Fragment key={row.id}>
+                      <TableRow className={cn(DEVICE_RULE_H_BLACK, "cursor-pointer")} onClick={() => setExpandedDeviceRows((prev) => { const next = new Set(prev); expanded ? next.delete(row.id) : next.add(row.id); return next; })}>
+                        <TableCell className="whitespace-nowrap font-medium">{row.label}</TableCell><TableCell className="whitespace-nowrap">{displayName}</TableCell><TableCell className="text-right tabular-nums">{row.companies.length}</TableCell>
+                      </TableRow>
+                      {expanded ? row.companies.map((entry) => <TableRow key={`${row.id}-${entry.id}`} className="bg-muted/30"><TableCell colSpan={3} className="pl-8 text-sm">↳ {entry.name}</TableCell></TableRow>) : null}
+                    </Fragment>;
+                  })}</TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {deviceView === "user" && canViewAllUsers ? (
+        <Card className={cn(dashboardDeviceCardClass(0), "w-full min-w-0 max-w-full")}>
+          <CardHeader className={DEVICE_RULE_H_BLACK}>
+            <CardTitle>User wise devices</CardTitle>
+            <CardDescription>All users and their registered device counts. Select a user to see their devices.</CardDescription>
+          </CardHeader>
+          <CardContent className={cn("min-w-0", MANAGE_DEVICES_MOBILE_CARD_PX)}>
+            {companyDevicesOverviewLoading ? <div className="flex items-center gap-2 py-6 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading users…</div> : userWiseRows.length === 0 ? <p className="py-4 text-sm text-muted-foreground">No users with registered devices.</p> : (
+              <div className={DEVICE_SYNC_TABLE_SCROLL_SHELL}>
+                <Table scrollContainer={false} className={DEVICE_SYNC_TABLE_CLASS}>
+                  <TableHeader><TableRow className={DEVICE_RULE_H_BLACK}><TableHead>User name</TableHead><TableHead className="text-right">Devices</TableHead></TableRow></TableHeader>
+                  <TableBody>{userWiseRows.map((row) => {
+                    const expanded = expandedUserRows.has(row.id);
+                    return <Fragment key={row.id}>
+                      <TableRow className={cn(DEVICE_RULE_H_BLACK, "cursor-pointer")} onClick={() => setExpandedUserRows((prev) => { const next = new Set(prev); expanded ? next.delete(row.id) : next.add(row.id); return next; })}>
+                        <TableCell className="whitespace-nowrap font-medium">{row.name}</TableCell><TableCell className="text-right tabular-nums">{row.devices.size}</TableCell>
+                      </TableRow>
+                      {expanded ? [...row.devices.values()].map((device) => <TableRow key={`${row.id}-${device.id}`} className="bg-muted/30"><TableCell colSpan={2} className="pl-8 text-sm">↳ {device.label} <span className="text-muted-foreground">· {device.companies.size} companies</span></TableCell></TableRow>) : null}
+                    </Fragment>;
+                  })}</TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="h-px w-full bg-black" aria-hidden />
 
