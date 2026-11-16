@@ -44,7 +44,7 @@ export type CandidateVoucher = Record<string, unknown> & { id?: string };
 
 const REASON_LABEL: Record<DuplicateReason, string> = {
   file: "same attachment file",
-  ref: "same transaction reference",
+  ref: "same transaction reference or cheque number",
   fields: "same date, amount and accounts",
   narration: "same OCR narration",
 };
@@ -68,7 +68,9 @@ function voucherRef(v: CandidateVoucher): string {
   const explicit = str(v.txnId || v.referenceId || v.transactionId || v.reference);
   if (explicit) return explicit;
   // OCR often stores the bank's Ref/Txn ID only in the voucher narration.
-  return /(?:Ref|Txn\s*ID)\s*:\s*([A-Za-z0-9._-]+)/i.exec(str(v.narration))?.[1] || "";
+  const narration = str(v.narration);
+  const match = /(?:Cheque|Check)\s*(?:No\.?|Number|#)\s*:?\s*([A-Za-z0-9./_-]+)|(?:Ref|Txn\s*ID)\s*:\s*([A-Za-z0-9._-]+)/i.exec(narration);
+  return match?.[1] || match?.[2] || "";
 }
 
 /** Ek hi din — local calendar pe compare (UTC shift se off-by-one na ho). */

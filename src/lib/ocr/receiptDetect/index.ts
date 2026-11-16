@@ -139,7 +139,7 @@ export function classifyReceipt(p: ParsedReceipt, o: ClassifyOptions): Classifie
   const outName = p.beneficiary.accountName?.trim() || null;
   const inName = p.sender.accountName?.trim() || null;
   const narration = (to?: string | null) =>
-    [mediator && `connectIPS Account: ${mediator}`, to && `To: ${to}`, p.particulars, p.remarks, p.txnId && `Txn ID: ${p.txnId}`, p.referenceId && !p.txnId && `Ref: ${p.referenceId}`, p.initiatorPhone && `Initiator: ${p.initiatorPhone}`, p.voucherNo && `Voucher No: ${p.voucherNo}`]
+    [mediator && `connectIPS Account: ${mediator}`, to && `To: ${to}`, p.particulars, p.remarks, p.chequeNumber && `Cheque No: ${p.chequeNumber}`, p.txnId && `Txn ID: ${p.txnId}`, p.referenceId && !p.txnId && `Ref: ${p.referenceId}`, p.initiatorPhone && `Initiator: ${p.initiatorPhone}`, p.voucherNo && `Voucher No: ${p.voucherNo}`]
       .filter(Boolean).join(" | ");
   const warn = statusWarning(p);
 

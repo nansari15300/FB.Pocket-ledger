@@ -452,6 +452,7 @@ function samePendingOutboxIdSet(a: ReadonlySet<string>, b: ReadonlySet<string>):
 
 /** Outbox drain background me hota hai — badge live rakhne ke liye pending rows tak halka poll. */
 const PENDING_OUTBOX_POLL_MS = 10_000;
+const DAYBOOK_ROW_MENU_COL_PX = 40;
 
 export function TransactionsTable({
   transactions,
@@ -2986,10 +2987,11 @@ export function TransactionsTable({
     if (showCol("cr") && !hideCreditColumn) w.push(statementCheckedCols.hasCr ? Math.max(185, LEDGER_TDS_DR_CR_COL_PX) : 100);
     if (showCol("status") && !hideStatusColumn) w.push(95);
     if (showCol("runningBalance") && !hideBalanceColumn) w.push(115);
-    w.push(LEDGER_TXN_ROW_MENU_COL_PX);
+    w.push(daybookPartyTableGate ? DAYBOOK_ROW_MENU_COL_PX : LEDGER_TXN_ROW_MENU_COL_PX);
     return w;
   }, [
     useLedgerGroupCardLayout,
+    daybookPartyTableGate,
     dateSystem,
     context,
     groupEntityType,
@@ -3083,11 +3085,12 @@ export function TransactionsTable({
     }
     if (showCol("status") && !hideStatusColumn) w.push(95);
     if (showCol("runningBalance") && !hideBalanceColumn) w.push(LEDGER_ENTITY_BALANCE_COL_PX);
-    w.push(LEDGER_TXN_ROW_MENU_COL_PX);
+    w.push(daybookPartyTableGate ? DAYBOOK_ROW_MENU_COL_PX : LEDGER_TXN_ROW_MENU_COL_PX);
     return w;
   }, [
     ledgerDesktopSplitScrollGate,
     dashboardRecentFyAttachmentGate,
+    daybookPartyTableGate,
     dateSystem,
     context,
     hasSpendWiseGroups,
@@ -3274,7 +3277,10 @@ export function TransactionsTable({
         let ledgerVScrollGutterPx = 0;
         if (bodyEl) {
           const { headerPadPx, bodyPadPx } = measureLedgerTxnVerticalScrollPads(bodyEl);
-          if (!isDaybookUnifiedHost) ledgerVScrollGutterPx = headerPadPx;
+          // Reserve the full visible body-scrollbar gutter in the outer H-scroll width,
+          // matching Party/detail ledgers. On overlay scrollbars bodyPadPx carries this
+          // inset; on classic scrollbars the browser consumes it from clientWidth directly.
+          ledgerVScrollGutterPx = headerPadPx;
           const headerPadVar = `${headerPadPx}px`;
           const bodyPadVar = `${bodyPadPx}px`;
           if (isDaybookUnifiedHost) {

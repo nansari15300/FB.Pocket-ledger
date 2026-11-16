@@ -10,6 +10,7 @@ export type OcrNarrationInput = {
   /** purchase / sale / payment_out / payment_in / contra / direct_expense / direct_income / ... */
   voucherType?: string | null;
   billNo?: string | null;
+  chequeNo?: string | null;
   partyName?: string | null;
   /** Already formatted in the form's current date mode (BS or AD as shown on the voucher). */
   dateText?: string | null;
@@ -61,6 +62,7 @@ function shortPartyPhrase(voucherType: string | undefined | null, partyName: str
 export function buildOcrNarration(input: OcrNarrationInput): string {
   const style: OcrNarrationStyle = input.style === "short" ? "short" : "full";
   const billNo = clean(input.billNo);
+  const chequeNo = clean(input.chequeNo);
   const party = clean(input.partyName);
   const dateText = clean(input.dateText);
   const itemsText = clean(input.itemsText);
@@ -71,6 +73,7 @@ export function buildOcrNarration(input: OcrNarrationInput): string {
   if (style === "short") {
     const parts: string[] = [];
     if (billNo) parts.push(`Bill No ${billNo}`);
+    if (chequeNo) parts.push(`Cheque No ${chequeNo}`);
     const mid = shortPartyPhrase(input.voucherType, party, fromName, toName);
     if (mid) parts.push(mid);
     if (dateText) parts.push(`on ${dateText}`);

@@ -340,6 +340,13 @@ function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
       String(member?.uid || member?.userId || "") === uid && ["admin", "CompanyAdmin", "SuperAdmin"].includes(String(member?.role || ""))))
   );
   const [held, setHeld] = useState(false);
+  const [autoPostEnabled, setAutoPostEnabled] = useState(false);
+  useEffect(() => {
+    if (!fsId) { setAutoPostEnabled(false); return; }
+    return onSnapshot(doc(firestore, `companies/${fsId}/auto_ocr_settings`, "server_auto_ocr"), (snapshot) => {
+      setAutoPostEnabled(snapshot.exists() && snapshot.data()?.enabled === true);
+    }, () => setAutoPostEnabled(false));
+  }, [fsId]);
   useEffect(() => {
     if (!fsId) return;
     const onState = (event: Event) => {
@@ -356,12 +363,12 @@ function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
       size="sm"
       variant="outline"
       aria-pressed={!held}
-      disabled={!isCompanyAdmin || !fsId}
-      title={held ? "Start the selected Auto post mode and keep watching for documents" : "Stop the Auto post runner"}
+      disabled={!isCompanyAdmin || !fsId || !autoPostEnabled}
+      title={!autoPostEnabled ? "Enable Auto post vouchers in Auto post settings to start the runner" : held ? "Start the selected Auto post mode and keep watching for documents" : "Stop the Auto post runner"}
       onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId: fsId, held: !held } }))}
       className={cn("h-8 shrink-0 rounded-full border px-3 text-xs", held ? "!border-green-600 !bg-green-100 !text-green-950" : "!border-amber-500 !bg-amber-100 !text-amber-950", inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0 max-sm:px-2")}
     >
-      {held ? "Start runner" : "Stop runner"}
+      {held || !autoPostEnabled ? "Start runner" : "Stop runner"}
     </Button>
   );
 }
@@ -2017,6 +2024,10 @@ type UnassignedFile = {
     autoOcrError?: string;
     autoOcrProvider?: string;
     autoOcrVoucherId?: string;
+    autoOcrFinishedAt?: unknown;
+    updatedAt?: unknown;
+    autoPostIgnoreDuplicateOnce?: boolean;
+    restoredFromDuplicateAtMs?: number;
 }
 
 type UploadingFile = {
@@ -2166,6 +2177,8 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const { company, companyId } = useCompany();
+  const { vouchers } = useVouchers();
+  const [autoPostEnabled, setAutoPostEnabled] = useState<boolean | null>(null);
   const [queueSequence, setQueueSequence] = useState<GalleryQueueSequence>(DEFAULT_GALLERY_QUEUE_SEQUENCE);
   const [gallerySortOrder, setGallerySortOrder] = useState<GallerySortOrder>(DEFAULT_GALLERY_SORT_ORDER);
   const queueSettingsCompanyId = firestoreCompanyIdForGallery(companyId, company);
@@ -2173,6 +2186,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
     if (!queueSettingsCompanyId) return;
     return onSnapshot(doc(firestore, `companies/${queueSettingsCompanyId}/auto_ocr_settings`, "server_auto_ocr"), (snapshot) => {
       const value = snapshot.exists() ? snapshot.data() : {};
+      setAutoPostEnabled(value?.enabled === true);
       setQueueSequence(normalizeGalleryQueueSequence(value?.queueSequence));
       setGallerySortOrder(normalizeGallerySortOrder(value?.gallerySortOrder));
     });
@@ -2207,6 +2221,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
   const [fileToRename, setFileToRename] = useState<UnassignedFile | null>(null);
   /** Duplicate tab: "Why Duplicate" panel — kis file ka reason dikha rahe hain. */
   const [whyDuplicateFile, setWhyDuplicateFile] = useState<UnassignedFile | null>(null);
+  const [postAnywayBusy, setPostAnywayBusy] = useState(false);
   /** Auto post failed tab: saved scan/validation reason for the selected file. */
   const [whyFailedFile, setWhyFailedFile] = useState<UnassignedFile | null>(null);
   const [restoreAllFailedFiles, setRestoreAllFailedFiles] = useState(false);
@@ -2842,10 +2857,22 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
     return mode === "unassigned" ? sortGalleryFiles(filtered, gallerySortOrder) : filtered;
   }, [unassignedFiles, selectedUploaderId, dateRange, mode, gallerySortOrder]);
 
-  const queuePositionByFileId = useMemo(() => {
-    const queued = orderGalleryQueue(filteredFiles, queueSequence, Number(previewColumns) || 2, gallerySortOrder);
-    return new Map(queued.map((file, index) => [file.id, index + 1]));
-  }, [filteredFiles, queueSequence, previewColumns, gallerySortOrder]);
+  const orderedQueueFiles = useMemo(
+    () => orderGalleryQueue(filteredFiles, queueSequence, Number(previewColumns) || 2, gallerySortOrder),
+    [filteredFiles, queueSequence, previewColumns, gallerySortOrder]
+  );
+  const queuePositionByFileId = useMemo(
+    () => new Map(orderedQueueFiles.map((file, index) => [file.id, index + 1])),
+    [orderedQueueFiles]
+  );
+
+  // Keep the local Auto post runner on the exact same order used for the visible card numbers.
+  useEffect(() => {
+    if (mode !== "unassigned" || !queueSettingsCompanyId || typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-queue-order", {
+      detail: { companyId: queueSettingsCompanyId, fileIds: orderedQueueFiles.map((file) => file.id) },
+    }));
+  }, [mode, orderedQueueFiles, queueSettingsCompanyId]);
 
   const handleFailedFileAction = async (action: "restore" | "retry") => {
     if (!whyFailedFile || !companyId || failedFileActionBusy) return;
@@ -2902,6 +2929,79 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
       });
     } finally {
       setFailedFileActionBusy(false);
+    }
+  };
+
+  const handlePostAnyway = async () => {
+    const file = whyDuplicateFile;
+    if (!file || mode !== "duplicate" || !companyId || postAnywayBusy) return;
+    setPostAnywayBusy(true);
+    try {
+      const localOnly = unassignedUseDeviceLocalOnly === true;
+      const actionTime = new Date();
+      const restored: UnassignedFile = {
+        ...file,
+        status: "FREE",
+        isDeleted: false,
+        deleted: false,
+        // Requeue this document through the runner; the user's explicit override applies once.
+        autoOcrStatus: autoPostEnabled ? "queued" : "restored",
+        autoPostIgnoreDuplicateOnce: autoPostEnabled,
+        restoredFromDuplicateAtMs: Date.now(),
+        autoOcrError: "",
+        autoOcrFinishedAt: localOnly ? actionTime : serverTimestamp() as any,
+        duplicateOfVoucherId: "",
+        duplicateOfVoucherNumber: "",
+        duplicateReasons: [],
+        duplicateOcrNarration: "",
+        duplicateMatchedNarration: "",
+        duplicateMatchedRef: "",
+        duplicateMatchedAmount: 0,
+        duplicateMatchedDateText: "",
+        duplicateIncomingRef: "",
+        movedAtMs: 0,
+        updatedAt: localOnly ? actionTime : serverTimestamp() as any,
+      };
+      if (localOnly) {
+        const duplicateDocs = readLocalUnassignedDocs("duplicate").filter((item) => item.id !== file.id);
+        const unassignedDocs = readLocalUnassignedDocs("unassigned").filter((item) => item.id !== file.id);
+        writeLocalUnassignedDocs(duplicateDocs, "duplicate");
+        writeLocalUnassignedDocs([restored, ...unassignedDocs], "unassigned");
+      } else {
+        const fsId = firestoreCompanyIdForGallery(companyId, company);
+        const unassignedRef = doc(firestore, `companies/${fsId}/unassigned_documents`, file.id);
+        const duplicateRef = doc(firestore, `companies/${fsId}/duplicate_documents`, file.id);
+        await setDoc(unassignedRef, restored, { merge: true });
+        try {
+          await deleteDoc(duplicateRef);
+        } catch (error) {
+          // Keep the duplicate row intact if it could not be moved out of that collection.
+          await deleteDoc(unassignedRef).catch(() => {});
+          throw error;
+        }
+      }
+      setUnassignedFiles((current) => current.filter((item) => item.id !== file.id));
+      setSelectedFileIds((current) => {
+        const next = new Set(current);
+        next.delete(file.id);
+        return next;
+      });
+      setWhyDuplicateFile(null);
+      if (autoPostEnabled) {
+        const fsId = firestoreCompanyIdForGallery(companyId, company);
+        window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-retry", { detail: { companyId: fsId, fileIds: [file.id] } }));
+        toast.success("Auto runner started", { description: "This document is queued to scan and post. Its duplicate warning will be skipped once." });
+      } else {
+        const matchedVoucher = vouchers.find((voucher) => String(voucher?.id || "") === String(file.duplicateOfVoucherId || ""));
+        window.setTimeout(() => handleAttachToVoucher(String(matchedVoucher?.type || "sale"), restored), 0);
+        toast.success("Opening voucher", { description: "Auto post is off, so the document is opening for manual review." });
+      }
+    } catch (error) {
+      toast.error("Could not post this duplicate document", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setPostAnywayBusy(false);
     }
   };
 
@@ -3846,7 +3946,13 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
               );
             })()}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setWhyDuplicateFile(null)}>
+              {mode === "duplicate" ? (
+                <Button type="button" onClick={() => void handlePostAnyway()} disabled={postAnywayBusy || autoPostEnabled === null}>
+                  {postAnywayBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+                  Post anyway
+                </Button>
+              ) : null}
+              <Button variant="outline" onClick={() => setWhyDuplicateFile(null)} disabled={postAnywayBusy}>
                 Close
               </Button>
             </DialogFooter>
@@ -3896,7 +4002,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
 /** Duplicate tab: "Why Duplicate" panel ke liye human labels (duplicate guard ke codes → sentences). */
 const WHY_DUPLICATE_REASON_LABEL: Record<string, string> = {
   file: "Same attachment file (SHA-256 match)",
-  ref: "Same bank transaction / slip reference number",
+  ref: "Same bank transaction / slip reference / cheque number",
   fields: "Same date, amount, accounts and bank charge",
   narration: "Same OCR narration text",
 };

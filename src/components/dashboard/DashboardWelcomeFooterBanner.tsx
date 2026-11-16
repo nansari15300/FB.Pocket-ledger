@@ -2,7 +2,9 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { DashboardWelcomeClockLine } from "@/components/dashboard/DashboardWelcomeClockLine";
 import { proDashboardRibbonClass } from "@/lib/proTheme";
 import { cn } from "@/lib/utils";
@@ -79,6 +81,34 @@ export function DashboardWelcomeFooterBanner({
               {newYearInfo.event}
             </motion.div>
             <p className="text-xs font-semibold">{displayName}</p>
+          </div>
+        ) : showDaybookDateNav ? (
+          <div className="flex min-w-0 items-center justify-center gap-2 py-0.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-8 w-9 shrink-0 rounded-full shadow-sm"
+              aria-label="Previous day"
+              title="Previous day"
+              onClick={() => dispatchDaybookDateShift(-1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <CardTitle className="min-w-0 truncate text-center text-sm font-bold leading-snug text-green-600 dark:text-green-400 sm:text-base">
+              {greeting}, {displayName}! Welcome To Pocket Ledger
+            </CardTitle>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-8 w-9 shrink-0 rounded-full shadow-sm"
+              aria-label="Next day"
+              title="Next day"
+              onClick={() => dispatchDaybookDateShift(1)}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
         ) : (
           <CardTitle className="text-sm font-bold leading-snug text-green-600 dark:text-green-400 sm:text-base">

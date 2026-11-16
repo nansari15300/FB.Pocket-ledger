@@ -1,7 +1,8 @@
 
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ArrowLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Button } from "../ui/button";
 import { Sheet, SheetContent } from "../ui/sheet";
 import { cn } from "@/lib/utils";
@@ -77,12 +78,67 @@ export function ResponsiveMasterDetail({
   });
 
   const [mobileListSheetOpen, setMobileListSheetOpen] = useState(false);
+  const [desktopListCollapsed, setDesktopListCollapsed] = useState(false);
+  const [listPreview, setListPreview] = useState<{
+    target: HTMLElement;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const listPreviewCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pageExpanded, setPageExpanded] = useState(false);
   const openMobileListSheet = useCallback(() => setMobileListSheetOpen(true), []);
   const closeMobileListSheet = useCallback(() => setMobileListSheetOpen(false), []);
   const prevSelectionKeyRef = useRef<string | null | undefined>(undefined);
 
   const showMobileDetailWithSheet =
     Boolean(isMobile && mobileListOnly && hasSelectedItem);
+
+  useEffect(() => {
+    const main = desktopGridRef.current?.closest("main");
+    if (!main) return;
+    const syncExpandedState = () => setPageExpanded(main.hasAttribute("data-page-expanded"));
+    syncExpandedState();
+    const observer = new MutationObserver(syncExpandedState);
+    observer.observe(main, { attributes: true, attributeFilter: ["data-page-expanded"] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => () => {
+    if (listPreviewCloseTimerRef.current) clearTimeout(listPreviewCloseTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    setDesktopListCollapsed(pageExpanded);
+    setListPreview(null);
+  }, [pageExpanded]);
+
+  const openListPreview = useCallback(() => {
+    const grid = desktopGridRef.current;
+    const target = grid?.closest<HTMLElement>("main");
+    const rect = grid?.getBoundingClientRect();
+    if (!grid || !target || !rect) return;
+    if (listPreviewCloseTimerRef.current) clearTimeout(listPreviewCloseTimerRef.current);
+    listPreviewCloseTimerRef.current = null;
+    setListPreview({
+      target,
+      left: rect.left,
+      top: rect.top,
+      width: Math.max(240, rect.width * desktopListWidthPercent / 100),
+      height: rect.height,
+    });
+  }, [desktopListWidthPercent]);
+
+  const scheduleListPreviewClose = useCallback(() => {
+    if (listPreviewCloseTimerRef.current) clearTimeout(listPreviewCloseTimerRef.current);
+    listPreviewCloseTimerRef.current = setTimeout(() => setListPreview(null), 180);
+  }, []);
+
+  const keepListPreviewOpen = useCallback(() => {
+    if (listPreviewCloseTimerRef.current) clearTimeout(listPreviewCloseTimerRef.current);
+    listPreviewCloseTimerRef.current = null;
+  }, []);
 
   useEdgeSwipeDocumentCapture(
     showMobileDetailWithSheet && !mobileListSheetOpen,
@@ -168,7 +224,7 @@ export function ResponsiveMasterDetail({
                 data-pl-mobile-back-row=""
                 data-pl-mobile-detail-merged-header=""
               >
-                <Button
+                {pageExpanded ? <Button
                   variant="ghost"
                   size="icon"
                   className={cn(mdc.backBtn, "self-center shrink-0")}
@@ -176,7 +232,7 @@ export function ResponsiveMasterDetail({
                   aria-label="Back to list"
                 >
                   <ArrowLeft className={mdc.backIcon} />
-                </Button>
+                </Button> : null}
                 <div className="flex min-w-0 flex-1 flex-col justify-center py-0.5">
                   <div className="flex min-w-0 items-center gap-1 pb-[3px]">
                     <h1 className={mdc.masterTitle}>{title}</h1>
@@ -315,7 +371,7 @@ export function ResponsiveMasterDetail({
     <div
       ref={desktopGridRef}
       className="grid h-full min-h-0 grid-cols-1 overflow-hidden md:grid-cols-none"
-      style={{ gridTemplateColumns: `minmax(0, ${desktopListWidthPercent}%) minmax(0, 1fr)` }}
+      style={{ gridTemplateColumns: desktopListCollapsed ? "2.5rem minmax(0, 1fr)" : `minmax(0, ${desktopListWidthPercent}%) minmax(0, 1fr)` }}
       data-master-detail-layout="25-75"
     >
       <div
@@ -323,22 +379,94 @@ export function ResponsiveMasterDetail({
         data-pl-master-list-chrome=""
         {...listChromeRouteData}
       >
-        <div className={cn(mlc.pageHeader, "flex justify-between items-center gap-2 min-w-0")}>
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            {listHeaderLeading}
-            <h1 className={cn(mlc.pageTitle, "truncate")}>{title}</h1>
+        {desktopListCollapsed ? (
+          <div className="flex justify-center pt-2">
+            {pageExpanded ? <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-7 w-7 shrink-0 p-0"
+              onClick={() => setDesktopListCollapsed(false)}
+              onMouseEnter={openListPreview}
+              onMouseLeave={scheduleListPreviewClose}
+              onFocus={openListPreview}
+              onBlur={scheduleListPreviewClose}
+              aria-label="Show list"
+            >
+              <PanelLeftOpen className="h-3.5 w-3.5" />
+            </Button> : null}
           </div>
-          {balance != null && balance !== "" ? (
-            <span className={cn(mlc.pageBalance, "whitespace-nowrap", isNegative ? "text-red-600" : "text-green-600")}>
-              {balance}
-            </span>
-          ) : null}
+        ) : (
+          <div className={cn(mlc.pageHeader, "flex justify-between items-center gap-2 min-w-0")}>
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              {listHeaderLeading}
+              <h1 className={cn(mlc.pageTitle, "truncate")}>{title}</h1>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              {balance != null && balance !== "" ? (
+                <span className={cn(mlc.pageBalance, "whitespace-nowrap", isNegative ? "text-red-600" : "text-green-600")}>
+                  {balance}
+                </span>
+              ) : null}
+              {pageExpanded ? <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-7 w-7 shrink-0 p-0"
+                onClick={() => setDesktopListCollapsed(true)}
+                onMouseEnter={openListPreview}
+                onMouseLeave={scheduleListPreviewClose}
+                onFocus={openListPreview}
+                onBlur={scheduleListPreviewClose}
+                aria-label="Hide list"
+                title="Hide list"
+              >
+                <PanelLeftClose className="h-3.5 w-3.5" />
+              </Button> : null}
+            </div>
+          </div>
+        )}
+        {!desktopListCollapsed && tabs ? <div className={cn(mlc.tabsRow, tabsRowClassName)}>{tabs}</div> : null}
+        <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", desktopListCollapsed && "hidden")}>
+          {!desktopListCollapsed ? listView : null}
         </div>
-        {tabs && <div className={cn(mlc.tabsRow, tabsRowClassName)}>{tabs}</div>}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{listView}</div>
-        <ResizeWidthHandle onPointerDown={beginDesktopListResize} title="Resize list panel" />
+        {!desktopListCollapsed ? <ResizeWidthHandle onPointerDown={beginDesktopListResize} title="Resize list panel" /> : null}
       </div>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{detailView}</div>
+      {desktopListCollapsed && listPreview
+        ? createPortal(
+            <div
+              data-pl-master-list-hover-preview=""
+              data-pl-master-list-chrome=""
+              {...listChromeRouteData}
+              className="fixed z-[500] flex min-h-0 flex-col overflow-hidden border border-blue-300 bg-background shadow-xl"
+              style={{
+                position: "fixed",
+                left: listPreview.left,
+                top: listPreview.top,
+                width: listPreview.width,
+                height: listPreview.height,
+              }}
+              onMouseEnter={keepListPreviewOpen}
+              onMouseLeave={scheduleListPreviewClose}
+            >
+              <div className={cn(mlc.pageHeader, "flex justify-between items-center gap-2 min-w-0 shrink-0")}>
+                <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                  {listHeaderLeading}
+                  <h1 className={cn(mlc.pageTitle, "truncate")}>{title}</h1>
+                </div>
+                {balance != null && balance !== "" ? (
+                  <span className={cn(mlc.pageBalance, "whitespace-nowrap", isNegative ? "text-red-600" : "text-green-600")}>
+                    {balance}
+                  </span>
+                ) : null}
+              </div>
+              {tabs ? <div className={cn(mlc.tabsRow, tabsRowClassName, "shrink-0")}>{tabs}</div> : null}
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{listView}</div>
+            </div>,
+            listPreview.target
+          )
+        : null}
     </div>
   );
 }

@@ -1147,7 +1147,8 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
         return;
       }
       const narration = String(values.narration ?? "");
-      const ref = /(?:Ref|Txn\s*ID)\s*:\s*([A-Za-z0-9._-]+)/i.exec(narration)?.[1] ?? "";
+      const refMatch = /(?:Cheque|Check)\s*(?:No\.?|Number|#)\s*:?\s*([A-Za-z0-9./_-]+)|(?:Ref|Txn\s*ID)\s*:\s*([A-Za-z0-9._-]+)/i.exec(narration);
+      const ref = refMatch?.[1] || refMatch?.[2] || "";
       const hit = findDuplicateVoucher((allVouchersUnfiltered ?? allVouchers) as CandidateVoucher[], {
         excludeVoucherId: savedVoucherId ?? voucher?.id,
         type: "contra",
@@ -1463,7 +1464,8 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       /* Ref form fields me nahi hota (contra save me `referenceId` persist nahi hota) — narration
        * ke `Ref:xxxxx` / `Txn ID:xxxxx` se nikaalo, warna ref-based match kabhi chalta hi nahi. */
       const narrationForDup = String((data as any).narration ?? "");
-      const refFromNarration = /(?:Ref|Txn\s*ID)\s*:\s*([A-Za-z0-9._-]+)/i.exec(narrationForDup)?.[1] ?? "";
+      const refMatch = /(?:Cheque|Check)\s*(?:No\.?|Number|#)\s*:?\s*([A-Za-z0-9./_-]+)|(?:Ref|Txn\s*ID)\s*:\s*([A-Za-z0-9._-]+)/i.exec(narrationForDup);
+      const refFromNarration = refMatch?.[1] || refMatch?.[2] || "";
       const duplicate = findDuplicateVoucher((allVouchersUnfiltered ?? allVouchers) as CandidateVoucher[], {
         excludeVoucherId: savedVoucherId ?? voucher?.id,
         type: "contra",

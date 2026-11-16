@@ -1573,12 +1573,17 @@ function readStoredDialogBounds(storageKey: string, vw: number, vh: number): Dia
     ) {
       return null;
     }
-    const w = Math.max(MIN_DIALOG_W, Math.min(saved.w, vw));
+    // Keep old saved sizes from stretching the voucher across almost the whole screen.
+    // The 80vw default is also the desktop restore ceiling; sale/purchase may then grow
+    // to their 940px form minimum in the existing voucherFormActiveTab effect.
+    const maxW = Math.max(MIN_DIALOG_W, Math.min(vw * DIALOG_VIEWPORT_W_RATIO, vw));
+    const widthWasClamped = saved.w > maxW;
+    const w = Math.max(MIN_DIALOG_W, Math.min(saved.w, maxW));
     const h = Math.max(MIN_DIALOG_H, Math.min(saved.h, vh));
     return {
       w,
       h,
-      x: Math.max(0, Math.min(saved.x, vw - w)),
+      x: widthWasClamped ? Math.max(0, (vw - w) / 2) : Math.max(0, Math.min(saved.x, vw - w)),
       y: Math.max(0, Math.min(saved.y, vh - h)),
     };
   } catch {
@@ -1702,13 +1707,13 @@ export function AddVoucherDialog(props: any) {
   /** Offline + Firestore-mode company (non-embedded APK cloud): view-only — Save / Copy / Approve band. */
   const apkOfflineViewOnly = useMemo(() => apkCloudCompanyOfflineViewOnly(company, navigatorOnline), [company, navigatorOnline]);
   const { user, customUser } = useAuth();
-  const [galleryRunnerControl, setGalleryRunnerControl] = useState<{ available: boolean; held: boolean }>({ available: false, held: false });
+  const [galleryRunnerControl, setGalleryRunnerControl] = useState<{ available: boolean; held: boolean; enabled: boolean }>({ available: false, held: true, enabled: false });
   useEffect(() => {
     if (!dialogOpen || !companyId) return;
     const onRunnerState = (event: Event) => {
-      const detail = (event as CustomEvent<{ companyId?: string; held?: boolean; controlAvailable?: boolean }>).detail;
+      const detail = (event as CustomEvent<{ companyId?: string; held?: boolean; enabled?: boolean; controlAvailable?: boolean }>).detail;
       if (String(detail?.companyId || "") !== companyId) return;
-      setGalleryRunnerControl({ available: detail.controlAvailable === true, held: detail.held === true });
+      setGalleryRunnerControl({ available: detail.controlAvailable === true, held: detail.held === true || detail.enabled !== true, enabled: detail.enabled === true });
     };
     window.addEventListener("pl:gallery:auto-post-process-state", onRunnerState);
     window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-state-request", { detail: { companyId } }));
@@ -1717,13 +1722,15 @@ export function AddVoucherDialog(props: any) {
   const autoPostRunnerToggleNode = useMemo(() => galleryRunnerControl.available ? (
     <Button
       type="button"
-      className="h-8 shrink-0 rounded-full border border-green-600 bg-white px-3 text-[11px] font-medium text-green-900 shadow-sm hover:bg-green-50"
-      aria-pressed={!galleryRunnerControl.held}
+      className="h-8 shrink-0 rounded-full border border-green-600 bg-white px-3 text-[11px] font-medium text-green-900 shadow-sm hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-50"
+      aria-pressed={galleryRunnerControl.enabled && !galleryRunnerControl.held}
+      disabled={!galleryRunnerControl.enabled}
+      title={!galleryRunnerControl.enabled ? "Enable Auto post vouchers in Auto post settings to start the runner" : undefined}
       onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId, held: !galleryRunnerControl.held } }))}
     >
       {galleryRunnerControl.held ? "Start runner" : "Stop runner"}
     </Button>
-  ) : null, [companyId, galleryRunnerControl.available, galleryRunnerControl.held]);
+  ) : null, [companyId, galleryRunnerControl.available, galleryRunnerControl.enabled, galleryRunnerControl.held]);
   /** Company Display settings se AD/BS/Both — recurring dialog labels + apply-from picker. */
   const { dateSystem, formatDate, formatDateBS, formatCurrencyForPrint } = useDate();
   const calLab = useMemo(() => recurringAutoVoucherLabels(dateSystem), [dateSystem]);

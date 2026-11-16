@@ -74,7 +74,7 @@ import { AdLockedScreenBanner } from "@/components/ads/AdLockedScreenBanner";
 import { collection, doc, serverTimestamp, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs, getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/plClientSession"; // device-limit overlay: companies/{id}/devices + users lookup
-import { Settings, Monitor, Trash2, Loader2 } from "lucide-react";
+import { Settings, Monitor, Trash2, Loader2, Expand, Shrink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { isPbOnlySession } from "@/lib/pocketbaseData/userDisplayNameSession";
 import {
@@ -838,8 +838,49 @@ const DashboardMainShell = forwardRef<
   { children: React.ReactNode; className?: string }
 >(function DashboardMainShell({ children, className }, ref) {
   const isMobile = useIsMobile();
+  const pathname = usePathname();
+  const [pageExpanded, setPageExpanded] = useState(false);
+  const previousPathnameRef = useRef(pathname);
+  useEffect(() => {
+    if (!pageExpanded) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPageExpanded(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [pageExpanded]);
+  useEffect(() => {
+    if (previousPathnameRef.current !== pathname) setPageExpanded(false);
+    previousPathnameRef.current = pathname;
+  }, [pathname]);
+  const showPageExpandControl = Boolean(pathname && pathname !== "/" && pathname !== "/dashboard");
   return (
-    <main ref={ref} className={cn("relative", isMobile && "touch-pan-y overscroll-y-contain", className)}>
+    <main
+      ref={ref}
+      data-page-expanded={pageExpanded ? "" : undefined}
+      className={cn(
+        "relative",
+        isMobile && "touch-pan-y overscroll-y-contain",
+        className,
+        pageExpanded && "fixed inset-0 z-[250] h-dvh max-h-dvh w-screen overflow-y-auto bg-background",
+      )}
+    >
+      {showPageExpandControl ? (
+        <div className="pointer-events-none sticky top-0 z-[260] flex h-0 justify-end pr-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="pointer-events-auto relative top-3 h-7 w-7 shrink-0 bg-background p-0 shadow-sm"
+            aria-label={pageExpanded ? "Exit expanded page view" : "Expand page"}
+            aria-expanded={pageExpanded}
+            title={pageExpanded ? "Exit expanded view" : "Expand page"}
+            onClick={() => setPageExpanded((expanded) => !expanded)}
+          >
+            {pageExpanded ? <Shrink className="h-3.5 w-3.5" /> : <Expand className="h-3.5 w-3.5" />}
+          </Button>
+        </div>
+      ) : null}
       {children}
     </main>
   );

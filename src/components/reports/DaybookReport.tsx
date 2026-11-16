@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { useCompany } from "@/hooks/useCompany";
 import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Info, X, Calendar as CalendarIcon, Expand, Filter, RotateCw, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Search } from "lucide-react";
+import { Info, X, Calendar as CalendarIcon, Expand, Shrink, Filter, RotateCw, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DaybookTxnScrollColumn } from "@/components/reports/DaybookTxnScrollColumn";
 import { DAYBOOK_SHIFT_DATE_EVENT } from "@/components/dashboard/DashboardWelcomeFooterBanner";
@@ -71,6 +71,7 @@ const daybookToolbarSelectTriggerCn = cn(
 
 interface DaybookReportProps {
   onFullScreenToggle?: () => void;
+  isFullScreen?: boolean;
   /** Dashboard keep-alive: intro/swipe jab panel visible ho tab hi (default: always visible). */
   isPanelVisible?: boolean;
   /** Dashboard footer ribbon: desktop ←/→ yahan; toolbar/bottom strip hide. */
@@ -96,6 +97,7 @@ function voucherToJsDate(raw: unknown): Date | null {
 
 export function DaybookReport({
   onFullScreenToggle,
+  isFullScreen: isFullScreenProp = false,
   isPanelVisible = true,
   welcomeRibbonDateNav = false,
   dashboardEmbedded = false,
@@ -117,6 +119,7 @@ export function DaybookReport({
     const { can } = usePermissions();
     const router = useRouter();
     const [daybookDate, setDaybookDate] = useState<Date | undefined>(undefined);
+    const [daybookPageFooterSlot, setDaybookPageFooterSlot] = useState<HTMLDivElement | null>(null);
     const [daybookRowsPerPage, setDaybookRowsPerPage] = useState('all');
     const [daybookVoucherTypes, setDaybookVoucherTypes] = useState<string[]>(['all']);
     const [showDaybookNarration, setShowDaybookNarration] = useState(true);
@@ -186,18 +189,21 @@ export function DaybookReport({
     }, []);
 
     const shiftDaybookDateBy = useCallback((deltaDays: number) => {
-        setDaybookDate((prev) => startOfDay(addDays(prev ?? new Date(), deltaDays)));
+        setDaybookDate((prev) => {
+          const next = startOfDay(addDays(prev ?? new Date(), deltaDays));
+          const today = startOfDay(new Date());
+          return next > today ? today : next;
+        });
     }, []);
 
     useEffect(() => {
-      if (isMobile) return;
       const onShift = (event: Event) => {
         const delta = (event as CustomEvent<number>).detail;
         if (delta === -1 || delta === 1) shiftDaybookDateBy(delta);
       };
       window.addEventListener(DAYBOOK_SHIFT_DATE_EVENT, onShift);
       return () => window.removeEventListener(DAYBOOK_SHIFT_DATE_EVENT, onShift);
-    }, [isMobile, shiftDaybookDateBy]);
+    }, [shiftDaybookDateBy]);
 
     useEffect(() => {
         if (!isMobile || !isPanelVisible) {
@@ -237,6 +243,8 @@ export function DaybookReport({
     useEffect(() => {
         if (isMobile) return;
         const onKeyDown = (e: KeyboardEvent) => {
+            // Leave browser zoom shortcuts (Ctrl/Cmd + or -) untouched.
+            if (e.ctrlKey || e.metaKey) return;
             const isMinus = e.key === "-" || e.code === "Minus" || e.code === "NumpadSubtract";
             const isEqual = e.key === "=" || e.code === "Equal";
             if (!isMinus && !isEqual) return;
@@ -585,12 +593,17 @@ export function DaybookReport({
             data-pl-daybook-blue-border="" data-pl-daybook-outer-card=""
             className={cn(
             "relative flex-1 flex flex-col min-h-0 overflow-hidden border-2 border-blue-300 transition-all duration-300",
+            dashboardEmbedded && "rounded-none border-0 shadow-none",
             isFullScreen && "h-full",
             isMobile && "w-full min-w-0 max-w-full px-0",
             isMobile && daybookRotated && "max-w-[90vh] w-[90vh] h-[100vw] fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rotate-90 z-50"
         )}
         >
-            <CardHeader className={cn("print:hidden flex-shrink-0", isMobile && "w-full min-w-0 max-w-full px-0.5")}>
+            <CardHeader className={cn(
+              "print:hidden flex-shrink-0",
+              dashboardEmbedded && "space-y-2 border-b border-blue-300 bg-blue-100 px-2 py-2 dark:border-blue-800 dark:bg-blue-950",
+              isMobile && "w-full min-w-0 max-w-full px-0.5",
+            )}>
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className={cn(hideDaybookTop && "hidden")}>
                         <CardTitle>Daybook</CardTitle>
@@ -609,8 +622,16 @@ export function DaybookReport({
                             </Button>
                         )}
                         {onFullScreenToggle && (
-                            <Button variant="ghost" size="icon" onClick={onFullScreenToggle}>
-                               <Expand className="h-5 w-5" />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-7 w-7 shrink-0 p-0"
+                              aria-label={isFullScreenProp ? "Exit Daybook expanded view" : "Expand Daybook"}
+                              title={isFullScreenProp ? "Exit expanded view" : "Expand Daybook"}
+                              onClick={onFullScreenToggle}
+                            >
+                              {isFullScreenProp ? <Shrink className="h-3.5 w-3.5" /> : <Expand className="h-3.5 w-3.5" />}
                             </Button>
                         )}
                     </div>
@@ -691,13 +712,13 @@ export function DaybookReport({
                             </div>
                         </CardHeader>
                         <CardContent className={cn("pb-4", isMobile ? "px-2" : "px-4")}>
-                          {/* Summary borders: Bank/Cash/Total dono side moti; child account rows ~50% patli */}
+                          {/* Keep every horizontal Daybook summary rule at 1px. */}
                           <div
                             onClick={() => setSelectedDaybookSummaryRowId(null)}
                             className={cn(
                               isMobile
-                                ? "min-w-0 max-w-full [&_thead_tr]:!border-b [&_tbody_tr]:!border-b-[1.2px] [&_tbody_tr.daybook-summary-group-row]:!border-t [&_tbody_tr.daybook-summary-group-row]:!border-b"
-                                : "[&_thead_tr]:!border-b [&_tbody_tr]:!border-b-[1.5px] [&_tbody_tr.daybook-summary-group-row]:!border-t [&_tbody_tr.daybook-summary-group-row]:!border-b",
+                                ? "min-w-0 max-w-full [&_thead_tr]:!border-b-[1px] [&_tbody_tr]:!border-b-[1px] [&_tbody_tr.daybook-summary-group-row]:!border-t-[1px]"
+                                : "[&_thead_tr]:!border-b-[1px] [&_tbody_tr]:!border-b-[1px] [&_tbody_tr.daybook-summary-group-row]:!border-t-[1px]",
                               "[&_thead_tr]:!border-foreground [&_tbody_tr]:!border-foreground/85 [&_tbody_tr.daybook-summary-group-row]:cursor-pointer [&_tbody_tr.daybook-summary-group-row]:transition-colors [&_tbody_tr.daybook-summary-group-row:hover]:bg-blue-100/40"
                             )}
                           >
@@ -1011,6 +1032,7 @@ export function DaybookReport({
             <CardContent className={cn(
                 "flex-1 min-h-0 overflow-hidden flex flex-col relative px-0",
                 isMobile ? "w-full min-w-0 max-w-full" : "min-w-full",
+                dashboardEmbedded && "p-0",
                 (!daybookTransactions || daybookTransactions.length === 0) && "min-h-[420px]"
             )}>
                  {daybookTransactions && daybookTransactions.length > 0 ? (
@@ -1088,13 +1110,13 @@ export function DaybookReport({
                 </div>
               )}
               {/* Floating day stepper (same as the account day popup) - PC dashboard Daybook (list ke bottom); mobile dashboard: footer ribbon ke upar center (portal). */}
-              {dashboardEmbedded && (!isMobile || footerPortalTarget) ? (
+              {dashboardEmbedded && daybookPageFooterSlot ? (
                 (() => {
-                /* Mobile dashboard: same stepper portaled into fixed footer, footer chevron ki row me (welcome ke 2px upar), center. */
+                /* Keep the stepper anchored to the Daybook transaction page, not the app-wide footer. */
                 const daybookDayStepper = (
                 <div
                   data-pl-day-stepper-float=""
-                  className={cn("pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center print:hidden", isMobile ? "bottom-[calc(100%+2px)] z-[45] gap-[40px]" : "bottom-3 z-30 gap-2")}
+                  className="pointer-events-none flex items-center justify-center gap-2 print:hidden"
                 >
                   <button
                     type="button"
@@ -1117,7 +1139,7 @@ export function DaybookReport({
                   </button>
                 </div>
                 );
-                return isMobile && footerPortalTarget ? createPortal(daybookDayStepper, footerPortalTarget) : daybookDayStepper;
+                return daybookPageFooterSlot ? createPortal(daybookDayStepper, daybookPageFooterSlot) : daybookDayStepper;
                 })()
               ) : null}
               {dashboardEmbedded ? (
@@ -1222,6 +1244,13 @@ export function DaybookReport({
                 ) : null
               ) : null}
             </CardContent>
+            {dashboardEmbedded ? (
+              <div
+                ref={setDaybookPageFooterSlot}
+                data-pl-daybook-page-footer-slot=""
+                className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex justify-center print:hidden"
+              />
+            ) : null}
         </Card>
         {isMobile && showSwipeDateIntro && isPanelVisible ? (
             <div className="pointer-events-none fixed left-1/2 bottom-20 z-[120] w-[min(92vw,20rem)] -translate-x-1/2 print:hidden">

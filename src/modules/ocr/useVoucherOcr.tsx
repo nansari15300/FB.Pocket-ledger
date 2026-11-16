@@ -136,8 +136,8 @@ export const OCR_BUILD = "2026-11-14.1";
 const MONEY_TYPES = ["payment_out", "payment_in", "direct_expense", "direct_income", "contra"] as const;
 const ALL_TYPE_CHOICES = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"] as const;
 
-function findDuplicateByRef(vouchers: readonly any[] | undefined, txnId?: string, referenceId?: string): { id: string; voucherNumber?: string; type?: string } | null {
-  const needles = [txnId, referenceId].map((s) => String(s ?? "").trim()).filter((s) => s.length >= 6);
+function findDuplicateByRef(vouchers: readonly any[] | undefined, txnId?: string, referenceId?: string, chequeNumber?: string): { id: string; voucherNumber?: string; type?: string } | null {
+  const needles = [txnId, referenceId, chequeNumber].map((s) => String(s ?? "").trim()).filter((s) => s.length >= 6);
   if (!needles.length) return null;
   for (const v of vouchers ?? []) {
     const hay = `${v?.narration ?? ""} ${v?.reference ?? ""} ${v?.referenceId ?? ""} ${v?.txnId ?? ""} ${v?.billNo ?? ""}`;
@@ -255,6 +255,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const [vatPct, setVatPct] = useState(13);
   const filledRef = useRef(new Map<string, unknown>());
   const handoffAutoPostRef = useRef(false);
+  const handoffAllowSaveWithoutItemsRef = useRef(false);
+  const handoffEnginePrefRef = useRef<import("./prefs").OcrEnginePref | undefined>(undefined);
+  const handoffCloudProviderRef = useRef<"google" | "azure" | undefined>(undefined);
   const localAutoPostPendingRef = useRef(false);
   /* Auto Post countdown: after OCR, wait the configured seconds (header gear, default 10) then save; bubble above Save can cancel. */
   const [apCount, setApCount] = useState<number | null>(null);
@@ -322,7 +325,18 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const switchVoucher = useCallback((typ: string, raw: OcrRawResult, selectedIds: string[]) => {
     const files = optsRef.current.files;
     const original = takeOcrOriginal(files[0]);
-    const token = requestOcrVoucherSwitch(typ, files, { raw, original, selectedIds });
+    // Keep Gallery Auto post's rules when OCR changes the dialog from its initial Sale
+    // form to the detected voucher type (often Purchase). Without this, the target form
+    // loses both Auto post and Save without the item, then pauses on an unmatched item.
+    const token = requestOcrVoucherSwitch(typ, files, {
+      raw,
+      original,
+      selectedIds,
+      autoPost: handoffAutoPostRef.current,
+      allowSaveWithoutItems: handoffAllowSaveWithoutItemsRef.current,
+      enginePref: handoffEnginePrefRef.current,
+      cloudProvider: handoffCloudProviderRef.current,
+    });
     window.setTimeout(() => {
       if (!mountedRef.current) return;
       cancelOcrHandoff(token);
@@ -514,6 +528,11 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           });
         }
         lastRawRef.current = raw;
+        if (reason === "handoff" || reason === "refresh") {
+          window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-scan-succeeded", {
+            detail: { companyId: String((profileCompany as any)?.authoritativeCompanyId || opt.companyId || "") },
+          }));
+        }
         setReadBy({ engine: raw.engine === "google" || raw.engine === "azure" || raw.engine === "gemini" ? raw.engine : "tesseract", note: raw.engineNote });
         const lowConf = raw.meanConfidence < 55;
         if (lowConf) {
@@ -726,6 +745,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                     style: "short",
                     voucherType: direction,
                     billNo: rc.parsed!.voucherNo || rc.parsed!.txnId || undefined,
+                    chequeNo: rc.parsed!.chequeNumber || undefined,
                     partyName: pf.payee?.name ?? pf.payeeName ?? undefined,
                     dateText: pf.date ? formatOcrNarrationDate(pf.date, readDateDisplayPrefs()) : "",
                     fromName: fromLabel || undefined,
@@ -831,13 +851,13 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               }
               void preferEng;
             }
-            const dup = findDuplicateByRef(M.vouchers, rc.parsed?.txnId, rc.parsed?.referenceId);
+            const dup = findDuplicateByRef(M.vouchers, rc.parsed?.txnId, rc.parsed?.referenceId, rc.parsed?.chequeNumber);
             if (dup) {
               rExtra.push({
                 id: "duplicate-ref",
                 label: "Possible duplicate",
-                value: `Txn/Ref already appears on voucher ${dup.voucherNumber || dup.id}${dup.type ? ` (${niceType(String(dup.type))})` : ""}`,
-                blocked: "This reference/transaction number is already on a saved voucher",
+                value: `Txn/Ref/Cheque number already appears on voucher ${dup.voucherNumber || dup.id}${dup.type ? ` (${niceType(String(dup.type))})` : ""}`,
+                blocked: "This reference, transaction, or cheque number is already on a saved voucher",
                 apply: () => undefined,
               });
             }
@@ -1404,6 +1424,13 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             ? (e instanceof Error ? e.message : String(e))
             : ocrAiErrorText(e);
           const retryAfter = e instanceof OcrAiError ? e.retryAfter : 0;
+          if (reason === "handoff" && handoffAutoPostRef.current) {
+            const companyId = String((profileCompany as any)?.authoritativeCompanyId || optsRef.current.companyId || "");
+            const failureMessage = friendly === rawMsg ? friendly : `${friendly}\nServer detail: ${rawMsg}`;
+            window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-scan-failed", {
+              detail: { companyId, message: failureMessage },
+            }));
+          }
           setOcrFail({
             engine: seen.length ? seen[seen.length - 1] : "OCR",
             message: friendly,
@@ -1417,6 +1444,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         if (reason === "handoff") {
           handoffAutoPostRef.current = false;
           handoffAllowSaveWithoutItemsRef.current = false;
+          handoffEnginePrefRef.current = undefined;
+          handoffCloudProviderRef.current = undefined;
         }
         if (ocrAbortRef.current === ac) ocrAbortRef.current = null;
         setRunning(false);
@@ -1427,7 +1456,6 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
 
   // Voucher-type switch hand-off: receive the attachment, then OCR it here.
   const handoffRunRef = useRef<{ raw?: OcrRawResult; selectedIds?: string[]; autoPost?: boolean; allowSaveWithoutItems?: boolean; enginePref?: import("./prefs").OcrEnginePref; cloudProvider?: "google" | "azure" } | null>(null);
-  const handoffAllowSaveWithoutItemsRef = useRef(false);
   // Files handed over by a voucher switch; kept briefly so a form's own "new voucher" hydration (setFiles([]) in an effect
   // that runs AFTER this hook's effect) cannot wipe them.
   const handoffFilesRef = useRef<{ files: (File | string)[]; until: number } | null>(null);
@@ -1440,6 +1468,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       handoffRunRef.current = { raw: h.raw, selectedIds: h.selectedIds, autoPost: h.autoPost, allowSaveWithoutItems: h.allowSaveWithoutItems, enginePref: h.enginePref, cloudProvider: h.cloudProvider };
       handoffAutoPostRef.current = h.autoPost === true;
       handoffAllowSaveWithoutItemsRef.current = h.allowSaveWithoutItems === true;
+      handoffEnginePrefRef.current = h.enginePref;
+      handoffCloudProviderRef.current = h.cloudProvider;
       handoffFilesRef.current = { files: h.files, until: Date.now() + 2500 };
       linkOcrOriginal(h.files[0], h.original ?? null);
       o.setFiles(h.files);

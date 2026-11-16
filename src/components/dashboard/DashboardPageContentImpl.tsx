@@ -45,6 +45,8 @@ import {
   BarChart3,
   LineChart,
   Search,
+  Expand,
+  Shrink,
 } from 'lucide-react';
 import { MasterListChromeChevronToggle } from "@/components/layout/MasterListChromeChevronToggle";
 import { cn } from '@/lib/utils';
@@ -813,7 +815,7 @@ export function DashboardPageContentImpl() {
   const { user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { vouchers, loading: vouchersLoading, processedItems, processedParties, processedStaff, processedTaxes, processedAccounts, expenseAccounts, journalAccountNames: voucherJournalAccountNames } = useFyScopedVouchers();
+  const { vouchers, loading: vouchersLoading, processedItems, processedParties, processedStaff, processedTaxes, processedAccounts, expenseAccounts, journalAccountNames: voucherJournalAccountNames, userNames: voucherUserNames } = useFyScopedVouchers();
   const fy = useFyVoucherScope();
   const pendingEditVoucherRef = useRef<{ companyId: string; voucherId: string } | null>(null);
   const showFabState = useState(true);
@@ -872,6 +874,19 @@ export function DashboardPageContentImpl() {
     const [showRecentNarration, setShowRecentNarration] = useState(true);
     /** Desktop Daybook tab: slot under the Welcome row for the Daybook pagination footer (portal target). */
     const [daybookFooterSlot, setDaybookFooterSlot] = useState<HTMLElement | null>(null);
+    const [daybookWindowExpanded, setDaybookWindowExpanded] = useState(false);
+  const [recentWindowExpanded, setRecentWindowExpanded] = useState(false);
+    useEffect(() => {
+      if (!daybookWindowExpanded && !recentWindowExpanded) return;
+      const closeOnEscape = (event: KeyboardEvent) => {
+        if (event.key === "Escape") {
+          setDaybookWindowExpanded(false);
+          setRecentWindowExpanded(false);
+        }
+      };
+      window.addEventListener("keydown", closeOnEscape);
+      return () => window.removeEventListener("keydown", closeOnEscape);
+    }, [daybookWindowExpanded, recentWindowExpanded]);
   const { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuNoTdsFilter } = useTransactionVisibleColumns();
   const { setShowNotes, includeNotesInTable, notesPreferenceLockedOnMobile } = useShowNotes();
   
@@ -1157,6 +1172,7 @@ export function DashboardPageContentImpl() {
   }, []);
 
   const journalAccountNames = voucherJournalAccountNames;
+  const recentUserNames = voucherUserNames;
 
   const userNamesRef = useRef(userNames);
   userNamesRef.current = userNames;
@@ -1604,7 +1620,7 @@ export function DashboardPageContentImpl() {
     effectiveRecentFilters,
     undefined,
     journalAccountNames,
-    userNames,
+    recentUserNames,
     undefined,
     undefined,
     true,
@@ -2363,6 +2379,19 @@ export function DashboardPageContentImpl() {
 
   const recentTabActive = visibleCard === "recent-transactions";
   const recentFooterRibbonAligned = recentTabActive && !recentTransactionsCompact;
+  const recentExpandButton = (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon"
+      className="h-7 w-7 shrink-0 p-0"
+      aria-label={recentWindowExpanded ? "Exit Recent expanded view" : "Expand Recent"}
+      title={recentWindowExpanded ? "Exit expanded view" : "Expand Recent"}
+      onClick={() => setRecentWindowExpanded((expanded) => !expanded)}
+    >
+      {recentWindowExpanded ? <Shrink className="h-3.5 w-3.5" /> : <Expand className="h-3.5 w-3.5" />}
+    </Button>
+  );
 
   const renderRecentTransactions = () => (
     <Card
@@ -2370,6 +2399,7 @@ export function DashboardPageContentImpl() {
       data-pl-dashboard-recent-line-sections={recentFooterRibbonAligned ? "" : undefined}
       className={cn(
         "box-border w-full max-w-none",
+        recentWindowExpanded && "flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden rounded-none border-0 bg-background shadow-none",
         recentFooterRibbonAligned ? "min-w-full" : "min-w-0",
         recentTabActive
           ? cn(
@@ -2404,14 +2434,17 @@ export function DashboardPageContentImpl() {
         <div className={cn("flex flex-col", recentTransactionsCompact ? "gap-1" : "gap-0")}>
           {recentTransactionsCompact ? (
             <>
-              <CardTitle
-                className={cn(
-                  "w-full text-left",
-                  recentDateRange?.from ? "text-sm font-semibold leading-none" : "text-base font-semibold leading-none"
-                )}
-              >
-                Recent Transactions
-              </CardTitle>
+              <div className="flex w-full items-center justify-between gap-2">
+                <CardTitle
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-left",
+                    recentDateRange?.from ? "text-sm font-semibold leading-none" : "text-base font-semibold leading-none"
+                  )}
+                >
+                  Recent Transactions
+                </CardTitle>
+                {recentExpandButton}
+              </div>
               <p
                 className="w-full max-w-full truncate px-0 text-left text-[11px] font-bold leading-tight text-foreground"
                 title={recentTransactionsMobileRangeLine ?? "Date range"}
@@ -2562,6 +2595,7 @@ export function DashboardPageContentImpl() {
                     </PopoverContent>
                 </Popover>
             )}
+            {!recentTransactionsCompact ? recentExpandButton : null}
             </div>
           </div>
           </div>
@@ -2607,7 +2641,7 @@ export function DashboardPageContentImpl() {
             else setLinkAdvancesVoucher(v);
           }}
           journalAccountNames={journalAccountNames}
-          userNames={userNames}
+          userNames={recentUserNames}
           isDateChange={isDateChange}
           filters={recentFilters}
           setFilters={setRecentFilters}
@@ -2686,9 +2720,11 @@ export function DashboardPageContentImpl() {
           aria-hidden={visibleCard !== "daybook"}
           style={{ display: visibleCard === "daybook" ? "flex" : "none" }}
           className={cn(
-            !recentTransactionsCompact
-              ? "min-h-0 flex-1 flex-col overflow-hidden"
-              : "w-full min-w-0 max-w-full flex-col px-0.5",
+            daybookWindowExpanded
+              ? "fixed inset-0 z-[250] flex h-[100dvh] w-screen min-h-0 flex-col overflow-hidden bg-background p-0"
+              : !recentTransactionsCompact
+                ? "min-h-0 flex-1 flex-col overflow-hidden"
+                : "w-full min-w-0 max-w-full flex-col px-0.5",
           )}
         >
           <DaybookReport
@@ -2696,13 +2732,17 @@ export function DashboardPageContentImpl() {
             welcomeRibbonDateNav={!isMobile}
             dashboardEmbedded
             footerPortalTarget={daybookFooterSlot}
+            onFullScreenToggle={() => setDaybookWindowExpanded((expanded) => !expanded)}
+            isFullScreen={daybookWindowExpanded}
           />
         </div>
       )}
       {visibleCard === "recent-transactions" && can("view_recent_transactions") && (
         <div
           className={cn(
-            recentFooterRibbonAligned && "flex h-full min-h-0 w-full flex-1 flex-col",
+            recentWindowExpanded
+              ? "fixed inset-0 z-[250] flex h-[100dvh] w-screen min-h-0 min-w-0 flex-col overflow-hidden bg-background p-0"
+              : recentFooterRibbonAligned && "flex h-full min-h-0 w-full flex-1 flex-col",
           )}
         >
           {renderRecentTransactions()}
@@ -2933,7 +2973,7 @@ export function DashboardPageContentImpl() {
           <DashboardWelcomeFooterBanner
             embedded
             lineSections
-            showDaybookDateNav={!isMobile && visibleCard === "daybook"}
+            showDaybookDateNav={visibleCard === "daybook"}
             greeting={greeting}
             displayName={welcomeDisplayName}
             newYearInfo={newYearInfo}

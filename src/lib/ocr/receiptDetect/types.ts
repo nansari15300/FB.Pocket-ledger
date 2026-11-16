@@ -9,6 +9,7 @@ export type ParsedReceipt = {
   charge?: number;
   date?: string;
   referenceId?: string;
+  chequeNumber?: string;
   remarks?: string;
   particulars?: string;
   initiatorPhone?: string;

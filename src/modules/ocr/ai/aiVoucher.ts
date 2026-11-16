@@ -371,14 +371,17 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
    * A missing or unsure AD date never blocks a clear BS Miti (many Nepali bills print only the Miti). ---- */
   if (d.date_ad || d.date_bs) {
     const bs = toDmy(d.date_bs);
-    const bsUnsure = isUnsure("date_bs", "date", "miti");
-    const adUnsure = isUnsure("date_ad");
+    // Gemini often reports a generic "date" uncertainty when the AD format is ambiguous.
+    // Treat that as uncertainty about AD, not the separately extracted Nepali Miti. A clear
+    // Miti can disambiguate DD/MM vs MM/DD and should still populate the voucher date.
+    const bsUnsure = isUnsure("date_bs", "miti");
+    const adUnsure = isUnsure("date_ad", "date");
     const adDropped = !!d.date_ad && adUnsure && !!bs && !bsUnsure;
     const ad = adDropped ? null : toDmy(d.date_ad);
     const text = [ad ? `INVOICE DATE : ${ad}` : "", bs ? `INVOICE MITI : ${bs}` : ""].filter(Boolean).join("\n");
     const res = text ? resolveBillDate(text, defaultVoucherDateWindow()) : null;
     if (res) {
-      const unsureHit = (bsUnsure && !!bs) || (adUnsure && !!ad);
+      const unsureHit = (bsUnsure && !!bs) || (adUnsure && !!ad && !bs);
       const st = unsureHit && res.status === "fill" ? "flag" : res.status;
       bill.date = f(res.date, st, res.confidence, st !== res.status ? unsureNote : res.note);
       dbg(`AI Date: ${bill.date.status} ${ymd(res.date)} (AD ${d.date_ad ?? "-"}${adDropped ? " (unsure - BS Miti used)" : ""} / BS ${d.date_bs ?? "-"}${res.note ? `; ${res.note}` : ""})`);

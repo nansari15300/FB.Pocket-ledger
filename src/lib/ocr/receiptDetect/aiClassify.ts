@@ -51,7 +51,9 @@ export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptD
   const narration = [
     d.account_holder_name && `connectIPS Account: ${d.account_holder_name}`,
     d.party_name && flow !== "in" ? `To: ${d.party_name}` : d.party_name ? `From: ${d.party_name}` : null,
-    d.transfer_mode, d.transfer_reference && `Ref: ${d.transfer_reference}`,
+    d.transfer_mode,
+    d.doc_kind === "cheque" && d.transfer_reference && `Cheque No: ${d.transfer_reference}`,
+    d.doc_kind !== "cheque" && d.transfer_reference && `Ref: ${d.transfer_reference}`,
   ].filter(Boolean).join(" | ");
 
   /* No local rule may override Gemini's explicit type. Flow is a fallback only when it returned none. */
@@ -71,6 +73,7 @@ export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptD
     amount: d.grand_total ?? undefined,
     charge: d.transfer_charges ?? undefined,
     referenceId: d.transfer_reference ?? undefined,
+    chequeNumber: d.doc_kind === "cheque" ? d.transfer_reference ?? undefined : undefined,
     particulars: d.party_name ?? undefined,
   };
 

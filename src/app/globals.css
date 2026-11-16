@@ -9673,6 +9673,32 @@ main:has([data-pl-dashboard-page-root]) {
   padding-right: var(--pl-dashboard-recent-txn-header-vscroll-pad, 0px);
   box-sizing: border-box;
 }
+/* Daybook unified H-scroll: keep the row menu well inside the body viewport so its vertical
+   scrollbar cannot paint over the 3-dot trigger at narrow widths. */
+[data-pl-daybook-unified-scroll][data-pl-dashboard-recent-shell] [data-pl-txn-row-menu] {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  padding-left: 4px !important;
+  padding-right: 16px !important;
+  box-sizing: border-box;
+  text-align: left !important;
+}
+[data-pl-daybook-unified-scroll][data-pl-dashboard-recent-shell] thead th:last-child,
+[data-pl-daybook-unified-scroll][data-pl-dashboard-recent-shell] col:last-child {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  box-sizing: border-box;
+}
+[data-pl-daybook-unified-scroll][data-pl-dashboard-recent-shell] thead th:last-child {
+  padding-left: 4px !important;
+  padding-right: 16px !important;
+}
+[data-pl-daybook-unified-scroll][data-pl-dashboard-recent-shell] [data-pl-txn-row-menu-trigger] {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
 
 body[class*="theme-"] [data-theme-table="transactions"] tbody tr.transaction-main-row[data-pl-txn-selected]:not([data-pl-check-marked]):has(+ .narration-row[data-pl-txn-selected]) > td:first-child::before,
 body[class*="theme-"] [data-theme-table="transactions"] tbody tr.transaction-main-row:not([data-pl-txn-selected]):not([data-pl-check-marked]):not([data-pl-spend-wise-group]):not([data-pl-spend-wise-inflow]):not([data-pl-spend-wise-outflow]):not([data-pl-spend-wise-opening])[data-pl-txn-hovered]:has(+ .narration-row[data-pl-txn-hovered]) > td:first-child::before {
@@ -10669,8 +10695,34 @@ tr.pl-daybook-summary-row:hover > td:last-child {
 tr.pl-daybook-summary-row.pl-daybook-summary-row-selected > td,
 tr.pl-daybook-summary-row[data-pl-daybook-summary-selected] > td {
   background-color: rgb(255 237 213 / 0.92) !important;
+  border-color: transparent !important;
   box-shadow: inset 0 2px 0 0 #fb923c, inset 0 -2px 0 0 #fb923c !important;
   font-weight: 700;
+}
+
+tr.pl-daybook-summary-row.pl-daybook-summary-row-selected,
+tr.pl-daybook-summary-row[data-pl-daybook-summary-selected] {
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: none !important;
+  border-top-color: transparent !important;
+  border-bottom-color: transparent !important;
+  border-top-width: 0 !important;
+  border-bottom-width: 0 !important;
+}
+
+tr.pl-daybook-summary-row.pl-daybook-summary-row-selected > td,
+tr.pl-daybook-summary-row[data-pl-daybook-summary-selected] > td {
+  border-left-width: 0 !important;
+  border-right-width: 0 !important;
+  border-top-width: 0 !important;
+  border-bottom-width: 0 !important;
+}
+
+tr.pl-daybook-summary-row:has(+ tr.pl-daybook-summary-row-selected) > td,
+tr.pl-daybook-summary-row:has(+ tr[data-pl-daybook-summary-selected]) > td {
+  border-bottom-color: transparent !important;
+  border-bottom-width: 0 !important;
 }
 
 tr.pl-daybook-summary-row.pl-daybook-summary-row-selected > td:first-child,

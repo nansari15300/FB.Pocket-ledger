@@ -685,7 +685,8 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
   const duplicateType = defaultTab === "direct_expense" ? "direct_expense" : "payment_out";
   const duplicateNarration = String(form.watch("narration") || "");
   const duplicateDate = form.watch("date");
-  const duplicateRef = /(?:Ref|Txn\s*ID)\s*:\s*([A-Za-z0-9._-]+)/i.exec(duplicateNarration)?.[1] ?? "";
+  const duplicateRefMatch = /(?:Cheque|Check)\s*(?:No\.?|Number|#)\s*:?\s*([A-Za-z0-9./_-]+)|(?:Ref|Txn\s*ID)\s*:\s*([A-Za-z0-9._-]+)/i.exec(duplicateNarration);
+  const duplicateRef = duplicateRefMatch?.[1] || duplicateRefMatch?.[2] || "";
   const { match: liveDuplicate, dismiss: dismissLiveDuplicate } = useLiveVoucherDuplicate(
     allVouchers as CandidateVoucher[],
     {

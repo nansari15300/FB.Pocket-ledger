@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { CheckCheck, FileText, ListChecks, Loader2, RefreshCw, UserSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 /* Same stacking as Add New master from a voucher: above AddVoucherDialog (overlay z-80 / content z-81). */
 import { NESTED_VOUCHER_OCR_DEBUG_CONTENT_CN, NESTED_VOUCHER_OCR_DEBUG_OVERLAY_CN } from "@/lib/dialogShellChrome";
@@ -10,11 +11,10 @@ import type { VoucherOcrApi } from "./useVoucherOcr";
 import { AiChatButton, AiPanelToggle } from "./ai/AiChatDialog";
 import { CopilotMissingBar, type AiCopilotLayout } from "./ai/AiCopilotSplit";
 
-/** One pill style for every OCR bar button (same as Refresh OCR).
- *  The bar is full-width and wraps; pills keep their natural width so two buttons do not stretch. */
+/** Shared pill style for OCR actions across every voucher form. */
 const OCR_BAR_PILL_CN = "h-7 shrink-0 gap-1 text-xs";
 
-export function VoucherOcrRefreshBar({ ocr, copilot }: { ocr: VoucherOcrApi; copilot?: AiCopilotLayout }) {
+export function VoucherOcrRefreshBar({ ocr, copilot, fitContent = false }: { ocr: VoucherOcrApi; copilot?: AiCopilotLayout; fitContent?: boolean }) {
   const [dbgOpen, setDbgOpen] = useState(false);
   if (!ocr.visible) return null;
   const d = ocr.debugInfo;
@@ -23,14 +23,17 @@ export function VoucherOcrRefreshBar({ ocr, copilot }: { ocr: VoucherOcrApi; cop
   // Tooltip: why the engine fell back (e.g. "AI failed (...) -> Azure"), or AI model + tokens used
   const readByNote = rb && rb.note ? rb.note : undefined;
   return (
-    /* Full width of the attachments column (it ends where the Narration field starts on desktop).
-       Buttons wrap onto a second row when many of them are shown. */
-    <div className="mt-2 flex w-full flex-wrap items-center gap-2" data-pl-ocr-refresh-bar="">
+    <div className={cn("mt-2", fitContent ? "w-fit max-w-full" : "flex w-full flex-wrap items-center gap-2")} data-pl-ocr-refresh-bar="">
       {ocr.preReading ? (
         <span className="inline-flex h-7 items-center gap-1.5 rounded-md border border-dashed border-teal-400 bg-teal-50 px-2 text-xs text-teal-800" data-ocr-pre-reading="" title="OCR reads the original first; the file is compressed and attached right after">
           <Loader2 className="h-3.5 w-3.5 animate-spin" /> Reading… <span className="max-w-[160px] truncate font-medium">{ocr.preReading}</span> (attaches after OCR)
         </span>
       ) : null}
+      {/* In fit-content mode, the four max-content tracks determine the Attach card width. */}
+      <div
+        className={cn(fitContent && "grid w-fit max-w-none grid-cols-2 items-center gap-2", !fitContent && "contents")}
+        style={fitContent ? { gridTemplateColumns: "repeat(4, max-content)" } : undefined}
+      >
       <Button type="button" size="sm" variant="outline" className={OCR_BAR_PILL_CN} disabled={!ocr.hasFile || ocr.running} onClick={ocr.refresh} title="Re-run OCR on the first attached file">
         {ocr.running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
         Refresh OCR
@@ -70,6 +73,7 @@ export function VoucherOcrRefreshBar({ ocr, copilot }: { ocr: VoucherOcrApi; cop
           <FileText className="h-3.5 w-3.5" /> Show OCR text
         </Button>
       ) : null}
+      </div>
       {ocr.panel}
       {d ? (
         <Dialog open={dbgOpen} onOpenChange={setDbgOpen}>

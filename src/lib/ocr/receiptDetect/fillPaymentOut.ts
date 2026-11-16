@@ -118,6 +118,7 @@ export function receiptNarration(p: ParsedReceipt, fromLabel?: string | null, to
     to,
     p.particulars,
     p.remarks,
+    p.chequeNumber && `Cheque No: ${p.chequeNumber}`,
     p.txnId && `Txn ID: ${p.txnId}`,
     p.referenceId && p.referenceId !== p.txnId && !mediator && `Ref: ${p.referenceId}`,
     p.initiatorPhone && `Initiator: ${p.initiatorPhone}`,

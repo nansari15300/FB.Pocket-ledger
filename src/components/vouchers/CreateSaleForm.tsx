@@ -4348,11 +4348,11 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+                <div className="flex w-full flex-col items-stretch gap-6 xl:grid xl:w-max xl:min-w-full xl:grid-cols-[minmax(0,1fr)_minmax(min(32vw,600px),max-content)] xl:items-stretch xl:gap-x-6 xl:gap-y-4">
                   {/* Desktop: Left: Narration + Due Date + Files */}
-                  <div className="space-y-4 w-full">
+                  <div className="flex w-full min-w-0 flex-col gap-4 xl:contents">
                     {/* Desktop grouping: narration + due date in one colored container for same section identity. */}
-                    <div className="rounded-lg border border-amber-300/80 bg-amber-50 p-3">
+                    <div className="rounded-lg border border-amber-300/80 bg-amber-50 p-3 xl:[contain:inline-size] xl:col-start-1 xl:row-start-1 xl:h-full">
                     <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 items-start">
                       <FormField
                         control={form.control}
@@ -4464,7 +4464,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     </div>
                     </div>
                     {/* Desktop: Attach files gets a dedicated new color container (same grouping intent as mobile). */}
-                    <div className="rounded-lg border border-indigo-300/80 bg-indigo-50 p-3">
+                    <div className="rounded-lg border border-indigo-300/80 bg-indigo-50 p-3 xl:col-start-1 xl:row-start-2 xl:h-full">
                       <FormItem>
                         <FormLabel>Attach Files (Optional)</FormLabel>
                         {showPdfAsImageToggle && (
@@ -4567,15 +4567,15 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                             )}
                           </VoucherAttachmentPcDropRow>
                         </RestrictedFileUploader>
-                        <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
+                        <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} fitContent />
                       </FormItem>
                     </div>
                   </div>
 
                   {/* Desktop: two containers — (1) Sub total to Total, (2) Link for bill wise — 15px gap, same as mobile */}
-                  <div className="flex flex-col gap-[15px] w-full">
+                  <div className="flex w-full min-w-0 flex-col gap-[15px] xl:contents">
                     {/* Container 1: Sub total se total tak */}
-                    <div className={SALE_PURCHASE_TOTALS_SUMMARY_BOX_DESKTOP}>
+                    <div className={cn(SALE_PURCHASE_TOTALS_SUMMARY_BOX_DESKTOP, "xl:col-start-2 xl:row-start-1 xl:h-full")}>
                       <div className={cn(SALE_PURCHASE_TOTALS_SUMMARY_ROW, "font-medium py-[3px] px-[10px] border-b")}>
                         <span className="shrink-0">Sub Total:</span>
                         <SalePurchaseTotalsSummaryAmount value={subTotal || 0} />
@@ -4615,13 +4615,13 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                     </div>
                     {/* Container 2: Link for bill wise — same table/style as Payment (header bold black, table alignment, Amount green). Shown for both new and edit so user can link before/after save. */}
                     {shouldShowLinkButton && (
-                      <div className="pb-1">
+                      <div className="pb-1 xl:col-start-2 xl:row-start-2">
                         {/* Edit (without links) and add mode: expose links on demand only. */}
                         <Button type="button" variant="outline" size="sm" onClick={() => setShowLinkSections(true)}>Show Link</Button>
                       </div>
                     )}
                     {shouldShowBillWiseSection && (
-                      <div className="space-y-4 border-2 border-rose-300/80 rounded-lg px-[2px] py-4 pb-[45px] bg-rose-50 w-full">
+                      <div className="space-y-4 border-2 border-rose-300/80 rounded-lg px-[2px] py-4 pb-[45px] bg-rose-50 w-full xl:col-start-2 xl:row-start-2 xl:h-full">
                         <div className="border-b border-border/60 pb-2">
                           <span className="text-sm font-semibold">{activeLinkSectionTitle}</span>
                           {billWiseLegs.length > 1 && (
@@ -4656,8 +4656,8 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                           </p>
                         </div>
                         {linkedAmountRows.length > 0 && (
-                          <div className="overflow-x-auto min-w-0 rounded-md border">
-                            <table className="w-full text-sm border-collapse min-w-0">
+                          <div className="w-fit min-w-full max-w-none rounded-md border">
+                            <table className="w-max min-w-full text-sm border-collapse">
                               <thead>
                                 <tr className="border-b bg-muted/50">
                                   <th className="text-left p-2 font-semibold text-black whitespace-nowrap">Date</th>
