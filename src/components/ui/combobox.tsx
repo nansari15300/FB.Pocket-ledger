@@ -581,7 +581,12 @@ export function Combobox({
                         aria-label="Edit"
                         title="Edit"
                         data-combobox-edit-option=""
-                        className="ml-1 shrink-0 rounded p-1 text-muted-foreground opacity-100 hover:bg-muted hover:text-foreground md:opacity-0 md:group-hover/cbopt:opacity-100"
+                        className={cn(
+                          "pointer-events-auto ml-1 shrink-0 rounded p-1 text-muted-foreground opacity-100 hover:bg-muted hover:text-foreground",
+                          // Disabled rows block pointer events for selection, but their master can still be edited.
+                          // Keep the pencil visible/clickable because the parent row itself cannot receive hover.
+                          option.disabled ? "opacity-100" : "md:opacity-0 md:group-hover/cbopt:opacity-100"
+                        )}
                         onPointerDown={stop}
                         onMouseDown={stop}
                         onTouchStart={(e) => e.stopPropagation()}

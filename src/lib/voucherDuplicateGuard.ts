@@ -60,7 +60,17 @@ function str(v: unknown): string {
 
 /** Total ya payee leg — dono shapes cross-check. */
 function voucherAmount(v: CandidateVoucher): number {
-  return num(v.amount ?? v.total ?? v.totalCost ?? v.totalOutput ?? 0);
+  // Purchase/sale vouchers commonly carry `amount: 0` as a legacy/form field while
+  // the actual posted total is stored in `total`. Nullish coalescing treats 0 as a
+  // value and used to hide otherwise exact duplicates from the guard.
+  const keys = ["sale", "purchase"].includes(str(v.type))
+    ? ["total", "totalCost", "totalOutput", "amount"]
+    : ["amount", "total", "totalCost", "totalOutput"];
+  for (const key of keys) {
+    const value = num(v[key]);
+    if (value !== 0) return value;
+  }
+  return 0;
 }
 
 /** Slip reference — OCR / bank txn id. */
@@ -69,8 +79,8 @@ function voucherRef(v: CandidateVoucher): string {
   if (explicit) return explicit;
   // OCR often stores the bank's Ref/Txn ID only in the voucher narration.
   const narration = str(v.narration);
-  const match = /(?:Cheque|Check)\s*(?:No\.?|Number|#)\s*:?\s*([A-Za-z0-9./_-]+)|(?:Ref|Txn\s*ID)\s*:\s*([A-Za-z0-9._-]+)/i.exec(narration);
-  return match?.[1] || match?.[2] || "";
+  const match = /(?:Cheque|Check)\s*(?:No\.?|Number|#)\s*:?\s*([A-Za-z0-9./_-]+)|(?:Ref|Txn\s*ID)\s*:\s*([A-Za-z0-9._-]+)|(?:Bill|Invoice)\s*(?:No\.?|Number|#)\s*:?\s*([A-Za-z0-9._/-]+)/i.exec(narration);
+  return match?.[1] || match?.[2] || match?.[3] || "";
 }
 
 /** Ek hi din — local calendar pe compare (UTC shift se off-by-one na ho). */
@@ -168,7 +178,7 @@ export function findDuplicateVoucher(
   const myType = str(input.type);
   const myAmount = Math.abs(num(input.amount));
   const myHashes = new Set((input.attachmentHashes ?? []).map((h) => str(h).toLowerCase()).filter(Boolean));
-  const myRef = str(input.ref).toLowerCase();
+  const myRef = (str(input.ref) || voucherRef({ narration: input.narration })).toLowerCase();
   const myNarration = str(input.narration).toLowerCase();
   const myFrom = str(input.fromAccountId);
   const myTo = str(input.toAccountId || input.accountId);
@@ -190,11 +200,6 @@ export function findDuplicateVoucher(
     if (input.subType && str(v.subType) !== input.subType) continue;
     if (!input.subType && myType === "journal" && ["add_salary", "pay_emi"].includes(str(v.subType))) continue;
     if (!input.subType && myType === "payment_out" && str(v.subType) === "pay_salary") continue;
-    if ((myType === "sale" || myType === "purchase") && input.lineItemType) {
-      const existingLineType = ((v.lineItems as Array<{ type?: string }> | undefined)?.[0]?.type || "item");
-      if (existingLineType !== input.lineItemType) continue;
-    }
-
     const reasons: DuplicateReason[] = [];
 
     // 1. Same attachment bytes — sabse strong; type same hona zaroori (already checked).
@@ -246,9 +251,12 @@ export function findDuplicateVoucher(
 
     reasons.sort((a, b) => rank(a) - rank(b));
     const primary = reasons[0];
-    const voucherNumber = str(
-      myType === "contra" ? v.voucherNumberOut ?? v.voucherNumber : v.voucherNumber
-    ) || str(v.id);
+    const metadata = [v.metadata, v.metaData, v.meta].find((value) => value && typeof value === "object") as Record<string, unknown> | undefined;
+    const voucherNumber = (
+      myType === "contra"
+        ? [v.voucherNumberOut, v.voucherNumberIn, v.voucherNumber, v.voucherNo, v.voucher_no, v.number, metadata?.voucherNumber, metadata?.voucherNo, metadata?.voucher_no, metadata?.number]
+        : [v.voucherNumber, v.voucherNo, v.voucher_no, v.number, metadata?.voucherNumber, metadata?.voucherNo, metadata?.voucher_no, metadata?.number]
+    ).map(str).find(Boolean) || "";
 
     found.push({
       id: str(v.id),
@@ -297,7 +305,7 @@ function displayDate(d: unknown): string {
 
 function buildSummary(primary: DuplicateReason, voucherNumber: string, reasons: readonly DuplicateReason[]): string {
   const extra = reasons.length > 1 ? ` (+${reasons.length - 1} more)` : "";
-  return `Duplicate of voucher ${voucherNumber} — ${REASON_LABEL[primary]}${extra}.`;
+  return `Duplicate of ${voucherNumber ? `voucher ${voucherNumber}` : "an existing voucher"} — ${REASON_LABEL[primary]}${extra}.`;
 }
 
 export { REASON_LABEL };

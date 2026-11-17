@@ -1568,12 +1568,14 @@ function getTransactionAmounts(t: any, context: Context, entityOrId?: any, stock
             }
           });
         } else if (t.type === 'payment_out' && t.staffId) {
-          debit = amount;
+          // Staff ledger gets only the payee leg; bank/other charges belong to their own ledger.
+          debit = getOutflowBillWiseLinkAmount(t);
         } else if (t.type === 'payment_in' && t.staffId) {
           credit = amount;
         }
       } else if (isIdMatch(t.staffId, entityId)) {
-        if (t.type === "payment_out") debit = amount;
+        // Match the on-screen staff ledger: exclude voucher-level other charge from payee amount.
+        if (t.type === "payment_out") debit = getOutflowBillWiseLinkAmount(t);
         if (t.type === "payment_in")  credit = amount;
       }
       if (t.type === 'journal' && t.entries) {
@@ -1589,7 +1591,8 @@ function getTransactionAmounts(t: any, context: Context, entityOrId?: any, stock
     case "tax":
          if (isIdMatch(t.taxAccountId, entityId)) {
             if (t.type === 'payment_in') credit += amount;
-            else if (t.type === 'payment_out') debit += amount;
+            // The tax ledger follows the payee leg; an unrelated bank charge stays on its own ledger.
+            else if (t.type === 'payment_out') debit += getOutflowBillWiseLinkAmount(t);
         }
         if (t.lineItems) {
             t.lineItems.forEach((line: any) => {

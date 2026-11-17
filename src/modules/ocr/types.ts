@@ -39,6 +39,13 @@ export type OcrParsedBill = {
   docType?: { type: OcrDocType; confidence: number; reason: string };
   /** Counter-party identifiers from the counter-party block only (never our own block). */
   identifiers?: import("./identifiers").OcrIdentifiers;
+  /** Printed due date / credit days (AI). resolveOcrDueDate turns them (+ party / Common Setting days) into dueDate. */
+  dueTerms?: { printedDue?: string | null; creditDays?: number | null };
+  /**
+   * Amount cross-check (AI): Dr = Cr, Grand Total vs item sum vs amount in words. ok=false is the
+   * "amount mismatch" signal the Gallery runner applies its rule to (same as itemAmountMismatch).
+   */
+  amountCheck?: { ok: boolean; reasons: string[] };
   /** Payment mode printed on the bill (e.g. Cash / Cheque). */
   paymentMode?: string;
   /** Why fields were rejected (debug panel). */
@@ -58,14 +65,14 @@ export type OcrRawResult = {
   altText?: string;
   /** Which preprocessing produced `lines` ("standard" | "enhanced (deskew x deg)"), for the debug dump. */
   preprocess?: string;
-  /** Slip ka text Devanagari-heavy nikla (auto-detect). Language-mismatch bubble isi par trigger hota hai. */
-  detectedLocalScript?: boolean;
   /** Standard vs enhanced retry pass summary (only when the retry ran). */
   passNote?: string;
-  /** Which OCR engine produced the text (debug dump "OCR engine: google|azure|tesseract|gemini"). */
-  engine?: "google" | "azure" | "tesseract" | "gemini";
-  /** Why the online engine was skipped / failed (tesseract fallback), or other engine detail. */
+  /** Which OCR engine produced the text. */
+  engine?: "google" | "azure" | "gemini";
+  /** Provider detail or diagnostic note. */
   engineNote?: string;
+  /** AI (Gemini) only: the document transcribed as printed (raw_text). Shown in "Show OCR text"; parseBill reads it to fill fields the JSON missed. */
+  printedText?: string;
   /** AI (Gemini) structured answer for this document; `parseBill` maps it onto the bill and validates it. */
   ai?: import("./ai/aiVoucher").OcrAiResult;
 };
@@ -87,7 +94,9 @@ export type OcrPartyLike = {
 
 export type OcrItemLike = { id: string; name: string; aliasName?: string; isDeleted?: boolean };
 
-export type OcrDocType = "sale" | "purchase" | "payment_in" | "payment_out" | "contra" | "credit_note" | "debit_note";
+export type OcrDocType =
+  | "sale" | "purchase" | "payment_in" | "payment_out" | "contra" | "credit_note" | "debit_note"
+  | "direct_expense" | "direct_income" | "journal";
 
 /** System ledgers that ride along in the party list but are never selectable as a bill party (not in the Supplier/Customer combobox). */
 export const OCR_NON_PARTY_IDS: readonly string[] = ["sales_account", "purchase_account", "owners_capital", "opening_balance_ledger"];

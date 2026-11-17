@@ -474,6 +474,29 @@ export function CreatePaymentOutForm({
     // Seed form from gallery/default payload so unassigned attachments and defaults hydrate for new voucher.
     defaultValues: getInitialFormValues(voucher || defaultVoucherData),
   });
+  useEffect(() => {
+    const handleOcrCreateExpense = (event: Event) => {
+      const name = String((event as CustomEvent<{ name?: string }>).detail?.name ?? "").trim();
+      if (!name) return;
+      form.setValue("payeeType", "expense", { shouldDirty: true });
+      setIsCreateExpenseAccountOpen(true);
+      window.setTimeout(() => document.dispatchEvent(new CustomEvent("prefill-create-expense-account-name", { detail: name })), 100);
+    };
+    window.addEventListener("pl:ocr:create-expense-account", handleOcrCreateExpense);
+    const handleOcrOpenExpensePicker = () => {
+      const trigger = Array.from(document.querySelectorAll<HTMLElement>('[data-ocr-anchor="expense-account"] [role="combobox"]'))
+        .find((element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        });
+      trigger?.click();
+    };
+    window.addEventListener("pl:ocr:open-expense-account-picker", handleOcrOpenExpensePicker);
+    return () => {
+      window.removeEventListener("pl:ocr:create-expense-account", handleOcrCreateExpense);
+      window.removeEventListener("pl:ocr:open-expense-account-picker", handleOcrOpenExpensePicker);
+    };
+  }, [form]);
 
   /* OCR (local, generic adapter): first attachment -> validated autofill; Auto Post saves UNAPPROVED. */
   const ocr = useVoucherOcr({
@@ -2808,7 +2831,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                         control={form.control}
                         name="expenseAccountId"
                         render={({ field }: any) => (
-                          <FormItem className="min-w-0">
+                          <FormItem className="min-w-0" data-ocr-field="party" data-ocr-anchor="expense-account">
                             <div className="flex justify-between items-baseline mb-1 min-w-0">
                               <FormLabel className="text-xs truncate">To (Expense)</FormLabel>
                               <div className="flex items-center gap-1 shrink-0">
@@ -3256,7 +3279,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                       control={form.control}
                       name="expenseAccountId"
                       render={({ field }: any) => (
-                        <FormItem>
+                        <FormItem data-ocr-anchor="expense-account">
                           <div className="flex justify-between items-baseline">
                             <FormLabel>To (Expense)</FormLabel>
                             <div className="flex items-center gap-2">

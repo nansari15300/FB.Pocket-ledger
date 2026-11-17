@@ -14,7 +14,6 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } fro
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { OcrSuggestion } from "./OcrSuggestionsDialog";
 import { OCR_LAYER_Z, useOcrPrefs } from "./prefs";
 import { translateToEnglishStrings } from "@/lib/i18n/gtxTranslate";
@@ -43,6 +42,7 @@ const HAS_NON_ENGLISH_SCRIPT = /[\u0370-\u052F\u0530-\u058F\u0590-\u08FF\u0900-\
 export function ocrFieldForSuggestion(id: string): string {
   if (id === "switch" || id.startsWith("switch-")) return "voucher-type";
   if (id === "create-party" || id === "find-party" || id === "use-party") return "party";
+  if (id === "create-expense-account" || id === "open-expense-account-picker" || id.startsWith("use-expense-account-")) return "party";
   if (id === "date") return "date";
   if (id === "due") return "due-date";
   if (id === "create-vat" || id === "vat") return "tax";
@@ -732,22 +732,17 @@ function CreateItemChoiceButton({
   onApply: (s: OcrSuggestion, mode?: "auto" | "manual", language?: "original" | "english", englishValue?: string) => void;
   className?: string;
 }) {
-  const [open, setOpen] = useState(false);
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button type="button" size="sm" className={className}>Create</Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="z-[2147483646] w-44 p-1" onOpenAutoFocus={(e) => e.preventDefault()}>
-        <button type="button" className="block w-full rounded-md px-2.5 py-1.5 text-left text-xs hover:bg-slate-100" onClick={() => { setOpen(false); onApply(s, "auto"); }}>Auto Create</button>
-        <button type="button" className="block w-full rounded-md px-2.5 py-1.5 text-left text-xs hover:bg-slate-100" onClick={() => { setOpen(false); onApply(s, "manual"); }}>Manual Create</button>
-      </PopoverContent>
-    </Popover>
+    <Button type="button" size="sm" className={className} onClick={() => onApply(s, "manual")}>
+      Create
+    </Button>
   );
 }
 
 function suggestionActionLabel(s: OcrSuggestion, countdown?: number): string {
   if (s.id === "switch" || s.id.startsWith("switch-")) return s.id === "switch" && countdown != null ? `Switch (${countdown})` : "Switch";
+  if (s.id === "open-expense-account-picker") return "Open";
+  if (s.id === "create-expense-account") return "Create";
   // Deferred = opens a master form (create account / party) or a picker: name the action, not "Open".
   if (s.id.startsWith("create-account")) return "Create new";
   if (s.deferred) return "Open";
@@ -873,6 +868,9 @@ function BubbleView({
   const missing = b.kind === "missing";
   const party = b.items.find((s) => s.id === "create-party");
   const pick = b.items.find((s) => s.id === "find-party");
+  const createExpense = b.items.find((s) => s.id === "create-expense-account");
+  const openExpensePicker = b.items.find((s) => s.id === "open-expense-account-picker");
+  const matchedExpense = b.items.find((s) => s.id.startsWith("use-expense-account-"));
   /** Reading-language options (English / Local / Set as default) — apna block, baaki suggestions se alag. */
   const langHead = b.items.find((s) => s.id === "ocr-language");
   const langOpts = b.items.filter((s) => s.id.startsWith("ocr-lang-"));
@@ -963,6 +961,17 @@ function BubbleView({
             ) : null}
             <div className="mt-2 flex justify-end">
               <Button type="button" size="sm" className={pill} onClick={onDismiss}>OK</Button>
+            </div>
+          </div>
+        ) : createExpense && openExpensePicker ? (
+          <div className="mt-1.5">
+            <p className="break-words text-xs text-slate-500">{displaySuggestionValue(createExpense)}</p>
+            {createExpense.reason ? <p className="text-[11px] text-slate-500">{createExpense.reason}</p> : null}
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {matchedExpense ? <Button type="button" size="sm" variant="outline" className={pill} onClick={() => apply(matchedExpense)}>Use existing</Button> : null}
+              <Button type="button" size="sm" className={pill} onClick={() => apply(createExpense)}>Create</Button>
+              <Button type="button" size="sm" variant="outline" className={pill} onClick={() => apply(openExpensePicker)}>Open</Button>
+              <Button type="button" size="sm" variant="ghost" className={pill} onClick={onDismiss}>Dismiss</Button>
             </div>
           </div>
         ) : party ? (

@@ -76,6 +76,10 @@ export type OcrCloudStatus = {
   companyEnabled: boolean;
   /** Current user may run cloud OCR for this company right now. */
   canUse: boolean;
+  /** Company-selected credential source; keys themselves are never returned. */
+  keySource?: "my" | "server";
+  allowedKeySources?: ("my" | "server")[];
+  serverKeyProviders?: ("gemini" | "google" | "azure")[];
   /** Admin only: shared users of the company and whether each may use cloud OCR. */
   sharedUsers?: OcrCloudSharedUser[];
   /** Admin only: saved provider ("google" | "azure"). Omitted when no key. */
@@ -92,6 +96,8 @@ export type OcrCloudKeyInfo = { last4?: string; endpointHost?: string };
 
 export type OcrCloudCompanyOptions = {
   company: string;
+  /** Select the plan-authorized company key or server-managed OCR key. */
+  keySource?: "my" | "server";
   /** Turn cloud OCR on/off for the company. */
   enabled?: boolean;
   /** With `allowed`: grant or revoke one shared user's access. */
@@ -173,6 +179,9 @@ function normalizeStatus(raw: unknown): OcrCloudStatus {
     companyEnabled: asBool(o.companyEnabled),
     canUse: asBool(o.canUse),
   };
+  if (o.keySource === "my" || o.keySource === "server") out.keySource = o.keySource;
+  if (Array.isArray(o.allowedKeySources)) out.allowedKeySources = o.allowedKeySources.filter((x): x is "my" | "server" => x === "my" || x === "server");
+  if (Array.isArray(o.serverKeyProviders)) out.serverKeyProviders = o.serverKeyProviders.filter((x): x is "gemini" | "google" | "azure" => x === "gemini" || x === "google" || x === "azure");
   if (typeof o.keyLast4 === "string" && o.keyLast4) out.keyLast4 = o.keyLast4;
   if (o.provider === "azure" || o.provider === "google") out.provider = o.provider;
   if (typeof o.endpointHost === "string" && o.endpointHost) out.endpointHost = o.endpointHost;
@@ -239,6 +248,7 @@ export async function deleteOcrCloudKey(companyId?: string, provider?: "google" 
 export async function setOcrCloudCompany(opts: OcrCloudCompanyOptions): Promise<void> {
   const body: Record<string, unknown> = { company: opts.company };
   if (typeof opts.enabled === "boolean") body.enabled = opts.enabled;
+  if (opts.keySource === "my" || opts.keySource === "server") body.keySource = opts.keySource;
   if (opts.sharedUserId) {
     body.sharedUserId = opts.sharedUserId;
     if (typeof opts.allowed === "boolean") body.allowed = opts.allowed;

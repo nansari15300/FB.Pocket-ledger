@@ -335,6 +335,10 @@ export function AttachmentHoldPasteSurface({
       onPointerLeave={hold.onPointerLeave}
       onClick={(e) => {
         if (!slotEnabled) return;
+        // Nested master forms render in a Radix portal but still bubble clicks
+        // through the voucher's React tree. Do not treat their inputs (for
+        // example the Item Margin field) as clicks on this file-picker tile.
+        if ((e.target as HTMLElement).closest("[data-pl-item-form-dialog]")) return;
         // Reuse dialog open — portal clicks React tree se yahan aa sakte hain; browse mat kholo.
         if (reuseDialogOpenRef.current) return;
         if ((e.target as HTMLElement).closest("[data-attachment-paste-chip]")) return;

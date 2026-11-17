@@ -12,6 +12,7 @@ import { isNonClearingVoucherBankAccount } from "@/lib/voucherBankCashAccounts";
 import {
   specialAccountAllowsPaymentIn,
   specialAccountAllowsPaymentOut,
+  userCanViewSpecialAccountBalance,
   userIsSpecialAccountOwner,
 } from "@/lib/specialAccountUsage";
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from "react";
@@ -394,6 +395,40 @@ export function CreateContraForm({
     parties: (processedParties || []) as never,
     items: [],
     taxes: (processedTaxes || []) as never,
+    validateAutoPost: () => {
+      const values = form.getValues();
+      const sourceId = String(values.fromAccountId || "");
+      const destinationId = String(values.toAccountId || "");
+      const issues: string[] = [];
+      const source = allProcessedAccounts.find((account) => account.id === sourceId);
+      const destination = allProcessedAccounts.find((account) => account.id === destinationId);
+      const isOwner = userIsSpecialAccountOwner(String(user?.email || user?.uid || ""), company);
+
+      if (sourceId && !source) issues.push("Source bank / cash account");
+      if (destinationId && !destination) issues.push("Destination bank / cash account");
+      if (sourceId && destinationId && sourceId === destinationId) {
+        issues.push("Source and destination accounts must be different");
+      }
+      if (source && !specialAccountAllowsPaymentOut(source, user?.email, isOwner)) {
+        issues.push("Source account is not available for this user");
+      }
+      if (destination && !specialAccountAllowsPaymentIn(destination, user?.email, isOwner)) {
+        issues.push("Destination account is not available for this user");
+      }
+      if (source && sourceId !== destinationId) {
+        const balance = userCanViewSpecialAccountBalance(source, user?.email, isOwner)
+          ? Number(source.balance)
+          : null;
+        const gate = checkLedgerAmountGate({
+          accountId: sourceId,
+          balance,
+          minusAllowed: bankAccountAllowsVoucherMinusBalance(source),
+          outflow: (Number(values.payeeAmount) || 0) + (Number(values.otherChargeAmount) || 0),
+        });
+        if (gate.blocked) issues.push(gate.message || "Source account balance is insufficient");
+      }
+      return issues;
+    },
     autoPost: () => void handleFormSubmit({ preventDefault() {}, stopPropagation() {} } as unknown as React.FormEvent, { ocrAutoPost: true }),
     isEditing: !!(voucher as { id?: string } | null | undefined)?.id,
     disabled: !!editingDisabled,

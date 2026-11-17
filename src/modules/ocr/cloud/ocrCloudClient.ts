@@ -33,7 +33,7 @@ export function invalidateOcrCloudStatus(companyId?: string) {
   subs.forEach((f) => f());
 }
 
-/** Cached status (60 s). Never throws: any error = cloud OCR off (tesseract is used). */
+/** Cached status (60 s). Never throws: callers receive a status reason when cloud OCR is unavailable. */
 export function getOcrCloudStatusCached(companyId: string, opts: { fresh?: boolean; timeoutMs?: number } = {}): Promise<OcrCloudStatus> {
   const hit = cache.get(companyId);
   if (!opts.fresh && hit && Date.now() - hit.at < STATUS_TTL_MS) return hit.p;

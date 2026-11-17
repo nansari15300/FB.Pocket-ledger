@@ -1,6 +1,6 @@
-# OCR Voucher Autofill — Spec (पूर्ण रूप से LOCAL)
+# OCR Voucher Autofill — Archived Local OCR Proposal
 
-> Status: Draft spec (कोई code नहीं लिखा गया)। Project: Pocket-ledger (Next.js 16 + Tailwind + Firebase + Capacitor Android + Electron)।
+> Status: Obsolete historical proposal. The local Tesseract engine described here has been removed. Current OCR runs through Gemini or configured online providers. This document is retained as an archive only; do not use it as implementation guidance. Project: Pocket-ledger (Next.js 16 + Tailwind + Firebase + Capacitor Android + Electron).
 > Context: नेपाल — BS dates (जैसे `2083-06-25`), `Rs.`, PAN (9 अंक), VAT 13%, TDS।
 
 ---

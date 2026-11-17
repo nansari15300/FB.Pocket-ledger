@@ -242,7 +242,7 @@ console.log("\n== aiCounterParty");
   ok(cp.name === "PRATIK TRADE CENTER PVT.LTD." && cp.pan === "619727215" && cp.phones.join(",") === "025-581953,025-586624", `phones ${cp.phones.join(",")}`);
   const own = aiCounterParty(normalizeAiVoucher({ party_name: "New Parsa Engineering Workshop", party_pan: "303687786", party_phone: "9812345678" }), PROFILE.pan, PROFILE.name);
   ok(own.name === null && own.pan === null && own.ownPan && own.ownName && own.phones.length === 0, "own company never returned as party");
-  ok(!("raw_text" in normalizeAiVoucher({ raw_text: "x" })), "normalizer drops raw_text");
+  ok(normalizeAiVoucher({ raw_text: "x" }).raw_text === "x", "normalizer keeps raw_text (printed transcription, item 15)");
 }
 
 console.log(fail ? `\n${fail} FAILED` : "\nALL PASS");

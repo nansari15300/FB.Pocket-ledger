@@ -9,10 +9,10 @@
  *             bank + branch). 0 when the master has none of them.
  *
  * Decision:
- *   name >= AUTO_NAME (0.5) AND proof > 0        -> auto   (name + something that proves it)
+ *   name >= AUTO_NAME (0.5) AND hard proof        -> auto   (name + matching PAN/phone/address)
  *   name >= AUTO_NAME (0.5) AND proof == 0       -> suggest (shown, never silently filled)
  *   2+ candidates in the same band               -> pick   (user chooses)
- *   strong family match (alias/PAN/phone exact)  -> auto, even above the name band
+ *   a strong alias/name match can auto-fill; a weak alias similarity is only a suggestion
  */
 import { nameScore, namesOf } from "./fuzzy";
 import { normalizeName } from "./normalize";
@@ -153,8 +153,8 @@ export function matchMasters<T>(
       if (s > name) { name = s; aliasHit = i > 0; }
     });
     const proof = proofOf(item);
-    if (aliasHit && proof.reasons.indexOf("alias") === -1) proof.reasons.push("alias");
-    if (aliasHit && proof.score === 0) proof.score = 0.3;
+    // An alias is another spelling of the name, not independent identity evidence. A weak
+    // 50% alias similarity must never turn a suggestion into an automatic account selection.
     // Ordering: a 0.55 name with a PAN beats a 0.8 name with nothing.
     const total = name + Math.min(0.45, proof.score) * 0.75;
     return { item, name, proof: { ...proof, score: Math.min(1, proof.score) }, total };

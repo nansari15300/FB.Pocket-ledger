@@ -80,6 +80,8 @@ const entitlementLabels: Partial<Record<EntitlementKey, string>> = {
     shareForReconciliationEnabled: "Share for Reconciling (cross-user ledger match)",
     masterAccountFreezeEnabled: "Freeze master account (party / bank / staff / tax / expense)",
     ocrVoucherAutofillEnabled: "OCR (bill scan autofill in Add Voucher)",
+    ocrServerKeyAllowed: "Allow server OCR key",
+    ocrUserKeyAllowed: "Allow client’s own OCR key",
     maxReconciliationLedgers: "Max reconciliation ledgers per user",
     savedAccountSwitchEnabled: "Saved account switch (APK/EXE quick login)",
     attachmentBackupRestoreEnabled: "Attachment backup & restore (embed files in .plbp)",
@@ -948,7 +950,8 @@ export function PlanDetails({ plan, onSave }: PlanDetailsProps) {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/30 col-span-1 md:col-span-2 flex-wrap">
+                    <div className="flex flex-wrap items-center gap-3 p-3 border rounded-lg bg-muted/30 col-span-1 md:col-span-2">
+                        <span className="w-full text-sm font-semibold">OCR</span>
                         <div className="flex items-center gap-2 flex-1 min-w-[12rem]">
                             <Switch
                                 id={`${plan.id}-masterAccountFreezeEnabled`}
@@ -975,7 +978,25 @@ export function PlanDetails({ plan, onSave }: PlanDetailsProps) {
                             <Label htmlFor={`${plan.id}-ocrVoucherAutofillEnabled`} className="text-sm">
                                 {entitlementLabels.ocrVoucherAutofillEnabled}
                             </Label>
-                            <PlanRuleInfo tip="Default ON for all plans. Off = OCR toggles, Refresh OCR and Find account are completely hidden for companies on this plan." />
+                            <PlanRuleInfo tip="Master OCR access for this plan. Turning it off blocks OCR regardless of the selected key source." />
+                        </div>
+                        <div className="flex items-center gap-2 flex-1 min-w-[12rem]">
+                            <Switch
+                                id={`${plan.id}-ocrServerKeyAllowed`}
+                                checked={!!editablePlan.entitlements.ocrServerKeyAllowed}
+                                disabled={editablePlan.entitlements.ocrVoucherAutofillEnabled === false}
+                                onCheckedChange={(checked) => handleEntitlementChange("ocrServerKeyAllowed", checked)}
+                            />
+                            <Label htmlFor={`${plan.id}-ocrServerKeyAllowed`} className="text-sm">{entitlementLabels.ocrServerKeyAllowed}</Label>
+                        </div>
+                        <div className="flex items-center gap-2 flex-1 min-w-[12rem]">
+                            <Switch
+                                id={`${plan.id}-ocrUserKeyAllowed`}
+                                checked={editablePlan.entitlements.ocrUserKeyAllowed !== false}
+                                disabled={editablePlan.entitlements.ocrVoucherAutofillEnabled === false}
+                                onCheckedChange={(checked) => handleEntitlementChange("ocrUserKeyAllowed", checked)}
+                            />
+                            <Label htmlFor={`${plan.id}-ocrUserKeyAllowed`} className="text-sm">{entitlementLabels.ocrUserKeyAllowed}</Label>
                         </div>
                     </div>
 

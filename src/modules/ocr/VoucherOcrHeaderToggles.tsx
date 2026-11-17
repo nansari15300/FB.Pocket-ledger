@@ -1,18 +1,17 @@
 "use client";
-/** Add Voucher header: OCR / Auto Post / Overwrite pills + one OCR-settings gear (dialog, when OCR is on). */
+/** Add Voucher header: OCR / Overwrite pills + one OCR-settings gear (dialog, when OCR is on). */
 import React, { useEffect, useState } from "react";
-import { Pencil, Plus, RotateCcw, Settings, Trash2 } from "lucide-react";
+import { Pencil, Plus, Settings, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppFreshInfoButton } from "@/components/ui/AppFreshInfoButton";
 import { useCompany } from "@/hooks/useCompany";
 import { cn } from "@/lib/utils";
-import { OCR_SETTINGS_DIALOG_CONTENT_CN, OCR_SETTINGS_DIALOG_OVERLAY_CN } from "@/lib/dialogShellChrome";
-import { AUTO_POST_SECONDS_MAX, AUTO_POST_SECONDS_MIN, clampAutoPostSeconds, getOcrPrefs, isOcrLanguageCustomized, resetOcrLanguagePref, setOcrPrefs, useOcrPrefs, type OcrConnectorStyle, type OcrEnginePref, type OcrNarrationStyle, type OcrScriptPref } from "./prefs";
+import { AUTO_POST_SECONDS_MAX, AUTO_POST_SECONDS_MIN, clampAutoPostSeconds, setOcrPrefs, useOcrPrefs, type OcrConnectorStyle, type OcrNarrationStyle } from "./prefs";
 import { useOcrPlanAllowed } from "./gate";
 import { ocrCloud, ocrCloudErrorText, useOcrCloudStatus } from "./cloud/ocrCloudClient";
+import { invalidateOcrOwnAliases } from "./ownAliases";
 import { deleteOcrAiKey, invalidateOcrAiStatus, listOcrAiAliases, looksLikeGeminiKeyInput, ocrAiErrorText, removeOcrAiAlias, saveOcrAiAliases, saveOcrAiKey, useOcrAiStatus, type OcrAiAliasKind, type OcrAiAliasesList } from "./ai/aiClient";
 import { AiChatButton } from "./ai/AiChatDialog";
 import { useAiChatStrings } from "./ai/aiChatStrings";
@@ -242,7 +241,7 @@ function AiOcrCard({ companyId, open, embedded }: { companyId: string | null; op
     );
   }
   if (!status.aiReady) {
-    return <AiCard companyId={companyId} hint={hint} embedded={embedded}><p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">AI OCR is not installed on the server yet. The AI engine falls back to online / offline OCR.</p></AiCard>;
+    return <AiCard companyId={companyId} hint={hint} embedded={embedded}><p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">AI OCR is not installed on the server yet. Configure an online OCR provider or review the scan manually.</p></AiCard>;
   }
   if (!status.isAdmin) {
     return (
@@ -307,7 +306,6 @@ function AiOcrCard({ companyId, open, embedded }: { companyId: string | null; op
         </p>
       </div>
       {msg ? <p className={cn("rounded-md px-3 py-2 text-xs", msg.ok ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" : "bg-red-50 text-red-900 dark:bg-red-950/40 dark:text-red-200")}>{msg.text}</p> : null}
-      <BankAliasesSection companyId={companyId} open={open} />
     </AiCard>
   );
 }
@@ -338,6 +336,7 @@ function BankAliasesSection({ companyId, open }: { companyId: string; open: bool
     setBusy(true); setMsg(null);
     try {
       const r = await saveOcrAiAliases(companyId, { kind, texts });
+      invalidateOcrOwnAliases(companyId);
       setList(r);
       setDraft("");
       setMsg({ ok: true, text: `${texts.length} name(s) added.` });
@@ -348,7 +347,7 @@ function BankAliasesSection({ companyId, open }: { companyId: string; open: bool
 
   const remove = async (id: string) => {
     setBusy(true); setMsg(null);
-    try { setList(await removeOcrAiAlias(companyId, id)); }
+    try { setList(await removeOcrAiAlias(companyId, id)); invalidateOcrOwnAliases(companyId); }
     catch (e) { setMsg({ ok: false, text: ocrAiErrorText(e) }); }
     finally { setBusy(false); }
   };
@@ -358,12 +357,13 @@ function BankAliasesSection({ companyId, open }: { companyId: string; open: bool
 
   return (
     <div className="space-y-1.5 border-t border-slate-200 pt-2 dark:border-slate-700" data-pl-ocr-bank-aliases="">
-      <p className="text-xs font-medium">Our own names on bank slips</p>
-      <p className="text-[11px] text-muted-foreground">
-        Bank slips often print our name only as the sender (e.g. <span className="font-mono">ACCOUNTFT:Nabiullah Ansari</span>). Add it here so a
-        bank-to-bank transfer is read as <span className="font-medium">Contra</span> instead of &quot;other&quot;. Small OCR spelling differences are
-        matched automatically (5-10 letters off still works). Names are used only for this company.
-      </p>
+      <div className="flex items-center gap-1.5 text-xs font-medium">
+        <span>Our own names on bank slips</span>
+        <OcrInfo label="Our own names on bank slips">
+          <p>Bank slips often print our name only as the sender (e.g. <span className="font-mono">ACCOUNTFT:Nabiullah Ansari</span>). Add it here so a bank-to-bank transfer is read as <span className="font-medium">Contra</span> instead of &quot;other&quot;.</p>
+          <p>Small OCR spelling differences are matched automatically (5-10 letters off still works). Names are used only for this company.</p>
+        </OcrInfo>
+      </div>
       <div className="flex flex-col gap-1.5 sm:flex-row">
         <select
           value={kind}
@@ -412,24 +412,33 @@ function BankAliasesSection({ companyId, open }: { companyId: string; open: bool
     </div>
   );
 }
+
+/** Company-wide own-name matching is shared by every OCR runner, so expose it with common rules. */
+export function VoucherOcrBankAliasesPanel() {
+  const { companyId } = useCompany();
+  const allowed = useOcrPlanAllowed();
+  if (!allowed) return <p className="text-xs text-muted-foreground">OCR rules are unavailable for this plan.</p>;
+  if (!companyId) return <p className="text-xs text-muted-foreground">Select a company first.</p>;
+  return <BankAliasesSection companyId={companyId} open />;
+}
 const GOOGLE_VISION_URL = "https://console.cloud.google.com/apis/library/vision.googleapis.com";
 
-function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string | null; open: boolean; enginePref: OcrEnginePref }) {
+function GoogleOcrSection({ companyId, open }: { companyId: string | null; open: boolean }) {
   const { status, error, loading, reload } = useOcrCloudStatus(companyId, open);
   const aiKey = useOcrAiStatus(companyId, open).status;
-  const anyKey = !!(status?.hasKey || aiKey?.hasKey || aiKey?.companyHasKey);
+  const hasMyKey = !!(status?.hasKey || aiKey?.hasKey || aiKey?.companyHasKey);
+  const hasAllowedServerKey = !!(status?.allowedKeySources?.includes("server") && status?.serverKeyProviders?.length);
+  const anyKey = hasMyKey || hasAllowedServerKey;
   const [keyDraft, setKeyDraft] = useState("");
   const [provider, setProvider] = useState<"google" | "azure">("google");
   const [endpointDraft, setEndpointDraft] = useState("");
   // Picker tab "AI (Gemini)" is a VIEW only: it never changes the saved vision provider (google / azure).
-  // Opens on Gemini when the OCR engine is AI (the dialog content remounts on every open).
-  const [aiView, setAiView] = useState(enginePref === "ai");
+  const [aiView, setAiView] = useState(false);
   const tAi = useAiChatStrings();
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   // Saved keys card: which row's delete confirmation is open
   const [confirmDelete, setConfirmDelete] = useState<"ai" | "google" | "azure" | null>(null);
-  const onlinePref = useOcrPrefs().onlineProvider;
   const addKeyRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     if (status?.provider === "azure" || status?.provider === "google") setProvider(status.provider);
@@ -449,57 +458,17 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
       setBusy(null);
     }
   };
-  // Engine card (per device): AI (Gemini) | Google | Azure | Offline | Auto.
-  // Google and Azure each have their own key slot on the server. Google / Azure = engine "online" + onlineProvider
-  // (sent with every vision read; Auto and the AI fallback reuse it). Old "online" prefs without a provider keep working.
   const visionProvider: "google" | "azure" | null = status?.provider === "azure" ? "azure" : status?.provider === "google" ? "google" : null;
   // Masked key per provider; older servers only report the latest key (provider + keyLast4)
   const keyOf = (p: "google" | "azure") => status?.keys
     ? status.keys[p]
     : status?.hasKey && visionProvider === p ? { last4: status.keyLast4, endpointHost: status.endpointHost } : undefined;
-  const visionReady = (p: "google" | "azure") => !!status && (status.isAdmin
-    ? !!keyOf(p)
-    : !!status.canUse && (status.providers ? status.providers.includes(p) : (visionProvider ?? p) === p));
-  const engineSwitchOff = !!status && !status.companyEnabled;
-  type EngineChoice = "ai" | "google" | "azure" | "offline" | "auto";
-  const engineValue: EngineChoice = enginePref === "online" ? (onlinePref || visionProvider || "google") : enginePref;
-  const engineOff: EngineChoice[] = [
-    ...(engineSwitchOff ? (["ai", "google", "azure"] as const) : []),
-    ...(!visionReady("google") ? (["google"] as const) : []),
-    ...(!visionReady("azure") ? (["azure"] as const) : []),
-  ];
-  const noVisionSub = status?.isAdmin ? tAi.addKeyAbove : tAi.askAdmin;
-  const engineRadio = (
-    <RadioRow<EngineChoice>
-      name="pl-ocr-engine"
-      value={engineValue}
-      onChange={(v) => setOcrPrefs(v === "google" || v === "azure" ? { engine: "online", onlineProvider: v } : { engine: v })}
-      // Offline / Auto always usable; AI / Google / Azure need the company switch (greyed while it is off) and Google / Azure their key
-      disabledValues={engineOff}
-      compact
-      // name only in the box; what it does / why it is disabled goes in the hover tooltip
-      titles={{
-        ai: engineSwitchOff ? tAi.switchOffReason : tAi.engAiSub,
-        google: !visionReady("google") ? noVisionSub : engineSwitchOff ? tAi.switchOffReason : tAi.engGoogleSub,
-        azure: !visionReady("azure") ? noVisionSub : engineSwitchOff ? tAi.switchOffReason : tAi.engAzureSub,
-        offline: tAi.engOfflineSub,
-        auto: tAi.engAutoSub,
-      }}
-      options={[
-        ["ai", tAi.engAi],
-        ["google", "Google"],
-        ["azure", "Azure"],
-        ["offline", tAi.engOffline],
-        ["auto", tAi.engAuto],
-      ]}
-    />
-  );
-  const hint = "Online OCR (Google Cloud Vision or Azure Image Analysis) and AI (Gemini) read handwriting and Nepali much better. Needs internet. Save the keys here; pick the engine (AI, Google, Azure, Offline, Auto) in \"OCR engine on this device\" below.";
+  const hint = "Add and manage this company’s OCR provider keys here. Choose the engine separately in each runner profile.";
   const title = "Online OCR";
-  if (!companyId) return <Section title={title} hint={hint}><p className="text-xs text-muted-foreground">Select a company first.</p>{engineRadio}</Section>;
-  if (loading && !status) return <Section title={title} hint={hint}><p className="text-xs text-muted-foreground">Checking online OCR status…</p>{engineRadio}</Section>;
+  if (!companyId) return <Section title={title} hint={hint}><p className="text-xs text-muted-foreground">Select a company first.</p></Section>;
+  if (loading && !status) return <Section title={title} hint={hint}><p className="text-xs text-muted-foreground">Checking online OCR status…</p></Section>;
   if (!status) {
-    const msg = `Online OCR status unavailable${error ? `: ${error}` : ""}. Auto will use offline OCR; Online only will fail.`;
+    const msg = `Online OCR status unavailable${error ? `: ${error}` : ""}. Auto and Online require an available provider.`;
     return (
       <Section title={title} hint={hint}>
         <div className="flex items-start gap-2 rounded-md bg-slate-100 px-2 py-2 text-xs dark:bg-slate-800">
@@ -507,15 +476,13 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
           <span className="min-w-0 flex-1 break-words whitespace-normal text-[11px] leading-snug">{msg}</span>
           <button type="button" onClick={reload} className="shrink-0 rounded-md border px-1.5 py-1 text-[10px] font-medium leading-none hover:bg-white dark:hover:bg-slate-700">Retry</button>
         </div>
-        {engineRadio}
       </Section>
     );
   }
   if (!status.serverOcrEnabled) {
     return (
       <Section title={title} hint={hint}>
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Online OCR is disabled by the server. Auto and Offline only still use this device; Online only will fail.</p>
-        {engineRadio}
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Online OCR is disabled by the server. Auto and Online require an available provider.</p>
       </Section>
     );
   }
@@ -524,10 +491,9 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
     return (
       <Section title={title} hint={hint}>
         <p className={cn("rounded-md px-3 py-2 text-xs", status.canUse ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300")}>
-          {status.canUse ? "Enabled for you in this company." : "Not enabled for you in this company. Ask the company admin. Auto will use offline OCR; Online only will fail."}
+          {status.canUse ? "Enabled for you in this company." : "Not enabled for you in this company. Ask the company admin. Auto and Online require an available provider."}
         </p>
         <AiOcrCard companyId={companyId} open={open} />
-        {engineRadio}
       </Section>
     );
   }
@@ -554,6 +520,18 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
   const iconBtn = "inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-500 hover:bg-slate-200/70 hover:text-slate-900 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100";
   const canSave = !!keyDraft.trim() && (provider === "google" || !!endpointDraft.trim()) && !busy;
   const providerLabel = provider === "azure" ? "Azure" : "Google";
+  const selectedKeySource = status.keySource ?? "my";
+  const keySources = status.allowedKeySources ?? ["my"];
+  const serverProviders = status.serverKeyProviders ?? [];
+  const canSelectMyKey = keySources.includes("my");
+  const canSelectServerKey = keySources.includes("server") && serverProviders.length > 0;
+  const selectKeySource = (source: "my" | "server") => {
+    if (source === selectedKeySource || !!busy) return;
+    void act("source", async () => {
+      await ocrCloud.setCompany({ company: companyId, keySource: source });
+      return `${source === "my" ? "My Key" : "Server Key"} selected for this company.`;
+    });
+  };
   return (
     <Section
       flat
@@ -574,8 +552,27 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
       }
       hint={<>{hint} Only you (admin) can see or change the key. {aiView ? null : provider === "google" ? <><a href={GOOGLE_VISION_URL} target="_blank" rel="noreferrer" className="font-medium text-emerald-700 underline dark:text-emerald-400">Enable Vision API</a> · <a href={GOOGLE_KEY_URL} target="_blank" rel="noreferrer" className="font-medium text-emerald-700 underline dark:text-emerald-400">Create API key</a></> : <span>Paste the Azure Computer Vision key and endpoint (https://&lt;name&gt;.cognitiveservices.azure.com/).</span>}</>}
     >
-      {/* Switch off (and a key exists): every online OCR card below is disabled. With no key yet they stay usable so the first key can be saved. */}
-      <fieldset disabled={cardsOff} aria-disabled={cardsOff} className={cn("pl-ocr-stack", cardsOff && "pl-ocr-off")} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+      <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1.5 dark:border-slate-700 dark:bg-slate-900/50" role="tablist" aria-label="OCR key source">
+        <button type="button" role="tab" aria-selected={selectedKeySource === "my"} disabled={!canSelectMyKey || !!busy} onClick={() => selectKeySource("my")} className={cn("rounded-lg px-3 py-2 text-xs font-semibold transition", selectedKeySource === "my" ? "bg-white text-slate-900 shadow dark:bg-slate-800 dark:text-white" : "text-slate-600 hover:bg-white/70 dark:text-slate-300", (!canSelectMyKey || !!busy) && "cursor-not-allowed opacity-50")}>My Key</button>
+        <button type="button" role="tab" aria-selected={selectedKeySource === "server"} disabled={!canSelectServerKey || !!busy} onClick={() => selectKeySource("server")} className={cn("rounded-lg px-3 py-2 text-xs font-semibold transition", selectedKeySource === "server" ? "bg-white text-slate-900 shadow dark:bg-slate-800 dark:text-white" : "text-slate-600 hover:bg-white/70 dark:text-slate-300", (!canSelectServerKey || !!busy) && "cursor-not-allowed opacity-50")}>Server Key</button>
+      </div>
+      {!canSelectMyKey && selectedKeySource === "my" ? <p className="text-[11px] text-amber-700 dark:text-amber-300">This plan does not allow company-provided OCR keys. Enable that option in the plan settings or select Server Key if available.</p> : null}
+      {selectedKeySource === "server" ? (
+        <div className="pl-ocr-card space-y-2 p-3">
+          <p className="text-xs font-medium">Server-managed OCR keys</p>
+          <p className="text-[11px] text-muted-foreground">Scans use the OCR credentials configured on Pocket Ledger Server. Your company’s saved keys are not used while this option is selected.</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(["Gemini AI", "Google OCR", "Azure OCR"] as const).map((label, i) => {
+              const providerId = (["gemini", "google", "azure"] as const)[i];
+              const ready = serverProviders.includes(providerId);
+              return <span key={providerId} className={cn("rounded-full border px-2 py-1 text-[11px]", ready ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200" : "border-slate-200 text-slate-400 dark:border-slate-700")}>{label}{ready ? " · ready" : " · not configured"}</span>;
+            })}
+          </div>
+          {!canSelectServerKey ? <p className="text-[11px] text-amber-700 dark:text-amber-300">Server Key is unavailable. The plan must allow server OCR and the server must have at least one OCR provider configured.</p> : null}
+        </div>
+      ) : (
+      // Switch off (and a key exists): the key-management controls are disabled; with no key yet admins can add the first key.
+      <fieldset disabled={cardsOff || !canSelectMyKey} aria-disabled={cardsOff || !canSelectMyKey} className={cn("pl-ocr-stack", (cardsOff || !canSelectMyKey) && "pl-ocr-off")} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
       <div className="pl-ocr-card space-y-1 p-3" data-pl-ocr-saved-keys="">
         <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">{tAi.savedKeys}</p>
         <ul>
@@ -743,87 +740,33 @@ function GoogleOcrSection({ companyId, open, enginePref }: { companyId: string |
         <p className="text-[11px] text-muted-foreground">Allowed users use your key for this company only. They never see the key.</p>
       </div>
       </fieldset>
+      )}
       {msg ? <p className={cn("rounded-md px-3 py-2 text-xs", msg.ok ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200" : "bg-red-50 text-red-900 dark:bg-red-950/40 dark:text-red-200")}>{msg.text}</p> : null}
-      <div className="pl-ocr-card space-y-1.5 p-3">
-        <p className="text-xs font-medium">{tAi.switchEngine}</p>
-        {engineRadio}
-      </div>
     </Section>
   );
 }
 
 function OcrSettingsGear({
-  connectorStyle, narrationStyle, autoPost, overwriteEdited, seconds, switchOn, switchSeconds, enginePref, companyId, scriptPref, translateToEnglish, langCustomized, aiCopilot,
+  connectorStyle, narrationStyle, switchOn, switchSeconds, translateToEnglish, aiCopilot, embedded = false,
 }: {
+  embedded?: boolean;
   connectorStyle: OcrConnectorStyle;
   narrationStyle: OcrNarrationStyle;
-  autoPost: boolean;
-  overwriteEdited: boolean;
-  seconds: number;
   switchOn: boolean;
   switchSeconds: number;
-  enginePref: OcrEnginePref;
-  companyId: string | null;
-  /** Reading-language lock (auto / eng / local) — Reset button isi ko auto par le jata hai. */
-  scriptPref: OcrScriptPref;
   /** Gemini/AI output ko English me translate karwao. */
   translateToEnglish: boolean;
   /** aiCopilot pref — "Live chat for voucher fill" switch. */
   aiCopilot: boolean;
-  /** scriptPref != auto ya translateToEnglish on — Reset button enabled. */
-  langCustomized: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(String(seconds));
   const [swDraft, setSwDraft] = useState(String(switchSeconds));
-  const commit = () => { const v = clampAutoPostSeconds(draft); setOcrPrefs({ autoPostSeconds: v }); setDraft(String(v)); };
   const commitSw = () => { const v = clampAutoPostSeconds(swDraft); setOcrPrefs({ autoSwitchSeconds: v }); setSwDraft(String(v)); };
-  const t = useAiChatStrings();
-  // Device prefs edited in the dialog apply live (preview); Cancel / X / Esc puts back the values from when it opened.
-  // "enabled" (the OCR header pill) is never touched here. Server actions (keys, company switch, shared users) stay immediate.
-  const openPrefsRef = React.useRef<ReturnType<typeof getOcrPrefs> | null>(null);
-  const closeSettings = (save: boolean) => {
-    if (save) { commit(); commitSw(); }
-    else if (openPrefsRef.current) setOcrPrefs({ ...openPrefsRef.current, enabled: getOcrPrefs().enabled });
-    openPrefsRef.current = null;
-    setOpen(false);
-  };
-  return (
-    <Dialog open={open} onOpenChange={(v) => { if (v) { openPrefsRef.current = getOcrPrefs(); setDraft(String(seconds)); setSwDraft(String(switchSeconds)); setOpen(true); } else closeSettings(false); }}>
-      <DialogTrigger asChild>
-        <button
-          type="button"
-          title="OCR settings"
-          aria-label="OCR settings"
-          onClick={(e) => e.stopPropagation()}
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-400/50 bg-white/70 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-700"
-        >
-          <Settings className="h-3.5 w-3.5" />
-        </button>
-      </DialogTrigger>
-      <DialogContent
-        className={cn(
-          // Exactly 30% of the screen wide, 80% of the screen tall (small screens keep a safe inset).
-          "flex h-[80vh] max-h-[80vh] w-[30vw] max-w-[30vw] flex-col gap-0 overflow-hidden p-0",
-          "max-sm:h-[calc(100vh-1.5rem)] max-sm:max-h-[calc(100vh-1.5rem)] max-sm:w-[calc(100vw-1.5rem)] max-sm:max-w-[calc(100vw-1.5rem)]",
-          OCR_SETTINGS_DIALOG_CONTENT_CN
-        )}
-        overlayClassName={OCR_SETTINGS_DIALOG_OVERLAY_CN}
-        data-pl-ocr-settings-wide=""
-        data-ocr-settings-open="1"
-        onClick={(e) => e.stopPropagation()}
-        aria-describedby={undefined}
-      >
-        <DialogHeader className="shrink-0 border-b border-slate-200 px-5 py-4 text-left dark:border-slate-700">
-          <DialogTitle className="text-base">OCR settings</DialogTitle>
-          <p className="text-xs text-muted-foreground">{t.settingsNote}</p>
-        </DialogHeader>
-        <div className="pl-ocr-body pl-ocr-stack min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
+  const settingsBody = (
+        <div className={cn("pl-ocr-body pl-ocr-stack px-3 py-3", !embedded && "min-h-0 flex-1 overflow-y-auto overscroll-contain")}>
           <style>{OCR_CARD_CSS}</style>
-          <GoogleOcrSection companyId={companyId} open={open} enginePref={enginePref} />
-          {/* PC: 2 columns (Field popups | Narration, Auto save | Voucher type), equal height per row; narrow: 1 column */}
+          {/* PC: 2 columns; narrow: 1 column */}
           <div className="pl-ocr-grid">
-          <Section title="Field popups" hint="How a popup points at its field.">
+          <Section title="Field popups Direction" hint="How a popup points at its field.">
             <RadioRow
               name="pl-ocr-connector"
               value={connectorStyle}
@@ -839,32 +782,11 @@ function OcrSettingsGear({
               options={[["full", "Full", "With item names"], ["short", "Short", "Bill no, party, date"]] as const}
             />
           </Section>
-          <Section title="Auto save" hint={`${AUTO_POST_SECONDS_MIN}-${AUTO_POST_SECONDS_MAX}s. Saves after OCR unless cancelled (always UNAPPROVED).`}>
-            <SwitchRow id="pl-ocr-settings-autopost" label="Auto Post" checked={autoPost} onChange={(v) => setOcrPrefs({ autoPost: v })} />
-            <SwitchRow id="pl-ocr-settings-overwrite" label="Overwrite edited" sub="Refresh re-fills fields you edited by hand too" checked={overwriteEdited} onChange={(v) => setOcrPrefs({ overwriteEdited: v })} />
-            <SecondsRow id="pl-ocr-autopost-secs" label="Auto save countdown (seconds)" draft={draft} setDraft={setDraft} onCommit={commit} onOk={commit} />
-          </Section>
           <Section title="Voucher type" hint={switchOn ? "Wrong voucher type: switches automatically after the countdown." : "Off: shows a plain Switch button, no auto change."}>
             <SwitchRow id="pl-ocr-autoswitch" label="Auto voucher change" checked={switchOn} onChange={(v) => setOcrPrefs({ autoSwitchVoucher: v })} />
             <SecondsRow id="pl-ocr-autoswitch-secs" label="Switch countdown (seconds)" draft={swDraft} setDraft={setSwDraft} onCommit={commitSw} onOk={commitSw} disabled={!switchOn} />
           </Section>
-          {/* Reading language: bubble ke "Set as default" se jo language lock hui thi — yahan se auto par wapas. */}
-          <Section
-            title="Reading language"
-            hint={
-              scriptPref === "eng"
-                ? "Locked to English — Devanagari pass is skipped on every slip."
-                : scriptPref === "local"
-                  ? "Locked to Local (नेपाली) — Devanagari pass runs on every slip."
-                  : "Auto: each slip is read in its own script."
-            }
-          >
-            <RadioRow
-              name="pl-ocr-script"
-              value={scriptPref}
-              onChange={(v) => setOcrPrefs({ scriptPref: v })}
-              options={[["auto", "Auto (detect)"], ["eng", "English"], ["local", "Local (नेपाली)"]] as const}
-            />
+          <Section title="Translation" hint="Gemini can translate local-language text in voucher fields.">
             <SwitchRow
               id="pl-ocr-translate"
               label="Translate to English"
@@ -872,26 +794,7 @@ function OcrSettingsGear({
               checked={translateToEnglish}
               onChange={(v) => setOcrPrefs({ translateToEnglish: v })}
             />
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <p className="text-[11px] text-muted-foreground">
-                {langCustomized ? "Reset brings reading back to auto-detect, no translation." : "Nothing to reset."}
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  resetOcrLanguagePref();
-                  toast.success("Reading language reset to defaults", { id: "pl-ocr-script-reset" });
-                }}
-                disabled={!langCustomized}
-                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-slate-300 px-3 text-xs font-semibold hover:bg-slate-50 disabled:opacity-40 dark:border-slate-600 dark:hover:bg-slate-800"
-                title="Reset reading language and translation to defaults"
-              >
-                <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-                Reset
-              </button>
-            </div>
-          </Section>
-          {/* Pocket AI: turns the OCR panel into a split view — live form on the left, Gemini chat on
+          </Section>          {/* Pocket AI: turns the OCR panel into a split view — live form on the left, Gemini chat on
               the right. OFF = the classic flow (fill + bubbles + popup AI chat), untouched. */}
           <Section
             title="Pocket AI"
@@ -907,21 +810,55 @@ function OcrSettingsGear({
           </Section>
           </div>
         </div>
-        <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 px-5 py-3 dark:border-slate-700">
-          <button type="button" onClick={() => closeSettings(false)} className="h-9 rounded-md border border-slate-300 px-4 text-sm font-semibold hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800">{t.settingsCancel}</button>
-          <button type="button" onClick={() => closeSettings(true)} className="h-9 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700">{t.settingsSave}</button>
-        </div>
-      </DialogContent>
-    </Dialog>
+  );
+  if (embedded) return settingsBody;
+  return (
+        <button
+          type="button"
+          title="Voucher Post Setting"
+          aria-label="Voucher Post Setting"
+          onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new Event("pl:voucher-post-setting-open")); }}
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-400/50 bg-white/70 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-700"
+        >
+          <Settings className="h-3.5 w-3.5" />
+        </button>
+  );
+}
+
+/** Reuse the voucher OCR preferences inside Voucher Post Setting → Manual Runner. */
+export function VoucherOcrSettingsPanel() {
+  const allowed = useOcrPlanAllowed();
+  const p = useOcrPrefs();
+  if (!allowed) return <p className="text-xs text-muted-foreground">OCR settings are unavailable for this plan.</p>;
+  return (
+    <OcrSettingsGear
+      embedded
+      connectorStyle={p.connectorStyle === "line" ? "line" : "tail"}
+      narrationStyle={p.narrationStyle === "short" ? "short" : "full"}
+      switchOn={p.autoSwitchVoucher !== false}
+      switchSeconds={clampAutoPostSeconds(p.autoSwitchSeconds)}
+      translateToEnglish={p.translateToEnglish === true}
+      aiCopilot={p.aiCopilot === true}
+    />
+  );
+}
+
+/** Company OCR providers, saved API keys, sharing and engine choices live in their own sidebar page. */
+export function VoucherOcrKeySettingsPanel() {
+  const allowed = useOcrPlanAllowed();
+  const p = useOcrPrefs();
+  const { companyId } = useCompany();
+  if (!allowed) return <p className="text-xs text-muted-foreground">OCR key settings are unavailable for this plan.</p>;
+  return (
+    <div className="pl-ocr-body pl-ocr-stack px-3 py-3">
+      <style>{OCR_CARD_CSS}</style>
+      <GoogleOcrSection companyId={companyId ?? null} open={true} />
+    </div>
   );
 }
 
 /**
- * Desktop header narrows as the voucher dialog shrinks. Pills drop out in a fixed priority order instead
- * of piling on top of each other (that overlap is what the "Both" date pill was covering):
- *   1st → "Overwrite edited"     (least used)
- *   2nd → "Auto Post"
- *   never → the OCR switch, the settings gear and the date-system pill (always visible)
+ * Desktop header narrows as the voucher dialog shrinks. The overwrite pill hides first when space is tight.
  *
  * Measured, not guessed: the row compares its own clientWidth with the width its pills actually need
  * (scrollWidth). If they fit → nothing hides. That works at any zoom, font and pill wording, where a
@@ -958,15 +895,13 @@ function useHeaderCrowding() {
   return {
     rowRef,
     hideOverwrite: tightness >= 1,
-    hideAutoPost: tightness >= 2,
   };
 }
 
 export function VoucherOcrHeaderToggles({ className }: { className?: string }) {
   const allowed = useOcrPlanAllowed();
   const p = useOcrPrefs();
-  const { companyId } = useCompany();
-  const { rowRef: crowdRef, hideOverwrite, hideAutoPost } = useHeaderCrowding();
+  const { rowRef: crowdRef, hideOverwrite } = useHeaderCrowding();
   if (!allowed) return null;
   const style: OcrConnectorStyle = p.connectorStyle === "line" ? "line" : "tail";
   const narrationStyle: OcrNarrationStyle = p.narrationStyle === "short" ? "short" : "full";
@@ -984,27 +919,11 @@ export function VoucherOcrHeaderToggles({ className }: { className?: string }) {
           <OcrSettingsGear
             connectorStyle={style}
             narrationStyle={narrationStyle}
-            autoPost={p.autoPost}
-            overwriteEdited={p.overwriteEdited}
-            seconds={clampAutoPostSeconds(p.autoPostSeconds)}
             switchOn={p.autoSwitchVoucher !== false}
             switchSeconds={clampAutoPostSeconds(p.autoSwitchSeconds)}
-            enginePref={p.engine === "offline" || p.engine === "online" || p.engine === "ai" ? p.engine : "auto"}
-            companyId={companyId ?? null}
-            scriptPref={p.scriptPref}
             translateToEnglish={p.translateToEnglish === true}
             aiCopilot={p.aiCopilot === true}
-            langCustomized={isOcrLanguageCustomized(p)}
           />
-          {hideAutoPost ? null : (
-            <Pill
-              id="pl-ocr-autopost"
-              label="Auto Post"
-              checked={p.autoPost}
-              onChange={(v) => setOcrPrefs({ autoPost: v })}
-              title="Save automatically after OCR (always UNAPPROVED)"
-            />
-          )}
           {hideOverwrite ? null : (
             <Pill id="pl-ocr-overwrite" label="Overwrite edited" checked={p.overwriteEdited} onChange={(v) => setOcrPrefs({ overwriteEdited: v })} title="Refresh re-fills fields you edited by hand too" />
           )}

@@ -50,6 +50,42 @@ export function PocketSerwistProvider({ children }: { children: ReactNode }) {
   /** EXE: navigation par history patch + SW message kam — real bug reports page duplicate `replace` tha, yeh extra guard. */
   const cacheOnNavigation = !isElectronDesktopApp();
 
+  // Remove artifacts cached by older builds that shipped the deleted local Tesseract engine.
+  // Limit deletion to OCR runtime URLs and its obsolete per-engine usage rows.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+    const cleanupLegacyOcrData = async () => {
+      if ("caches" in window) {
+        const names = await window.caches.keys();
+        await Promise.all(names.map(async (name) => {
+          const cache = await window.caches.open(name);
+          const requests = await cache.keys();
+          const stale = requests.filter((request) => {
+            try {
+              const path = new URL(request.url).pathname.toLowerCase();
+              return path.includes("/ocr/worker.") || path.includes("/ocr/tesseract-core-") || path.includes("/ocr/tessdata/") || path.endsWith(".traineddata");
+            } catch { return false; }
+          });
+          await Promise.all(stale.map((request) => cache.delete(request)));
+        }));
+      }
+      if (cancelled) return;
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (!key?.startsWith("pl.ocrUsage.v1.")) continue;
+        try {
+          const value = JSON.parse(window.localStorage.getItem(key) || "[]");
+          if (!Array.isArray(value)) continue;
+          const clean = value.filter((row) => row?.engine !== "offline");
+          if (clean.length !== value.length) window.localStorage.setItem(key, JSON.stringify(clean));
+        } catch { /* leave unreadable app data untouched */ }
+      }
+    };
+    void cleanupLegacyOcrData().catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   // Pehle install SW localhost / Electron par bhi intercept karta — disable=true par hata do.
   useEffect(() => {
     if (!disable || typeof window === "undefined") return;

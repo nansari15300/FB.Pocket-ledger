@@ -485,7 +485,7 @@ export default function PlansPage() {
     }
 
     return (
-        <div className="h-full p-6 space-y-4">
+        <div data-pl-admin-plans-page className="h-full p-6 space-y-4">
             <BillingRegionalSettings />
             <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-6 h-full min-h-0">
                 <div className="flex flex-col h-full min-h-0 gap-4">

@@ -12,7 +12,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { PocketBaseNotSignedInError, PocketBaseRequestError, pbRequest } from "@/lib/pocketbaseData/pbClient";
-import { normalizeAiVoucher, type OcrAiResult } from "./aiVoucher";
+import { normalizeAiVoucher, type OcrAiResult, type OcrAiTypeCheck } from "./aiVoucher";
 import { normalizeProposedRule, normalizeRulesList, type OcrAiDocTypeKey, type OcrAiProposedRule, type OcrAiRulesList } from "./aiChatModel";
 
 export type OcrAiProvider = "gemini";
@@ -282,7 +282,16 @@ export async function ocrAiRead(input: OcrAiReadInput): Promise<OcrAiResult> {
     data: normalizeAiVoucher(raw.data),
     usage: { promptTokens: n(u.promptTokens), outputTokens: n(u.outputTokens), thoughtsTokens: n(u.thoughtsTokens), totalTokens: n(u.totalTokens) },
     rulesUsed: n(raw.rulesUsed),
+    typeCheck: normalizeTypeCheck(raw.typeCheck),
   };
+}
+
+/** Server per-type check (ocr_cloud.js validateVoucherByType); null when an older server sent none. */
+function normalizeTypeCheck(v: unknown): OcrAiTypeCheck | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const list = (x: unknown) => (Array.isArray(x) ? x.map((s) => String(s ?? "").trim()).filter(Boolean).slice(0, 40) : []);
+  return { voucher_type: typeof o.voucher_type === "string" ? o.voucher_type : null, missing: list(o.missing), unexpected: list(o.unexpected) };
 }
 
 /** Seconds → "45s" / "3 min" (user-facing retry hint). */

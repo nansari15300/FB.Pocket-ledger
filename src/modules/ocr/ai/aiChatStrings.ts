@@ -30,17 +30,8 @@ export type AiChatStrings = {
   settingsSave: string;
   settingsCancel: string;
   settingsNote: string;
-  switchOffReason: string;
   keyTabGoogle: string;
   keyTabAzure: string;
-  engAi: string;
-  engAiSub: string;
-  engGoogleSub: string;
-  engAzureSub: string;
-  engOffline: string;
-  engOfflineSub: string;
-  engAuto: string;
-  engAutoSub: string;
   addKeyAbove: string;
   askAdmin: string;
   openChatTeaching: string;
@@ -118,17 +109,8 @@ const EN: AiChatStrings = {
   settingsSave: "Save",
   settingsCancel: "Cancel",
   settingsNote: "How bills are read and filled on this device. Save keeps the device settings, Cancel restores them. Keys, the company switch and shared users are saved at once.",
-  switchOffReason: "Turn on \"Enable for this company\" above",
   keyTabGoogle: "Google key",
   keyTabAzure: "Azure key",
-  engAi: "AI (Gemini)",
-  engAiSub: "Reads the whole document; if it fails: online, then offline",
-  engGoogleSub: "Online only (Cloud Vision)",
-  engAzureSub: "Online only (Image Analysis)",
-  engOffline: "Offline",
-  engOfflineSub: "This device only (tesseract)",
-  engAuto: "Auto",
-  engAutoSub: "Online when available, else offline",
   addKeyAbove: "Add the key above",
   askAdmin: "Not set up: ask the admin",
   openChatTeaching: "Teach me",
@@ -217,17 +199,8 @@ const HI: AiChatStrings = {
   settingsSave: "सेव",
   settingsCancel: "रद्द करें",
   settingsNote: "इस डिवाइस पर बिल कैसे पढ़े और भरे जाएँ। «सेव» डिवाइस की सेटिंग रखता है, «रद्द करें» उन्हें पहले जैसा कर देता है। Keys, company switch और shared users तुरंत सेव होते हैं।",
-  switchOffReason: "ऊपर «Enable for this company» चालू करें",
   keyTabGoogle: "Google key",
   keyTabAzure: "Azure key",
-  engAi: "AI (Gemini)",
-  engAiSub: "पूरा डॉक्यूमेंट पढ़ता है; न चले तो online, फिर offline",
-  engGoogleSub: "सिर्फ़ online (Cloud Vision)",
-  engAzureSub: "सिर्फ़ online (Image Analysis)",
-  engOffline: "Offline",
-  engOfflineSub: "सिर्फ़ यह डिवाइस (tesseract)",
-  engAuto: "Auto",
-  engAutoSub: "online मिले तो online, वरना offline",
   addKeyAbove: "ऊपर key जोड़ें",
   askAdmin: "सेट नहीं है: एडमिन से पूछें",
   openChatTeaching: "Teach me",
@@ -316,17 +289,8 @@ const NE: AiChatStrings = {
   settingsSave: "सेभ",
   settingsCancel: "रद्द गर्नुहोस्",
   settingsNote: "यो डिभाइसमा बिल कसरी पढ्ने र भर्ने। «सेभ» ले डिभाइस सेटिङ राख्छ, «रद्द गर्नुहोस्» ले पहिलेजस्तै बनाउँछ। Keys, company switch र shared users तुरुन्तै सेभ हुन्छन्।",
-  switchOffReason: "माथि «Enable for this company» खोल्नुहोस्",
   keyTabGoogle: "Google key",
   keyTabAzure: "Azure key",
-  engAi: "AI (Gemini)",
-  engAiSub: "पूरा कागजात पढ्छ; नचले online, त्यसपछि offline",
-  engGoogleSub: "online मात्र (Cloud Vision)",
-  engAzureSub: "online मात्र (Image Analysis)",
-  engOffline: "Offline",
-  engOfflineSub: "यो डिभाइस मात्र (tesseract)",
-  engAuto: "Auto",
-  engAutoSub: "online भए online, नभए offline",
   addKeyAbove: "माथि key थप्नुहोस्",
   askAdmin: "सेट छैन: एडमिनलाई सोध्नुहोस्",
   openChatTeaching: "Teach me",

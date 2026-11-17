@@ -134,27 +134,29 @@ export function PlanList({
               <p className="text-sm font-medium">{formatPrice(plan, "yearly")}</p>
             </div>
             <div
-              className="flex items-center gap-2 mt-2 pt-2 border-t"
+              className="flex items-center justify-end mt-2 pt-2 border-t"
               onClick={(e) => e.stopPropagation()}
             >
-              <Checkbox
-                id={`plan-show-billing-${plan.id}`}
-                checked={plan.hiddenFromBilling !== true}
-                disabled={visibilityBusyId === plan.id || !onTogglePlanBillingVisibility}
-                onCheckedChange={(checked) => {
-                  if (!onTogglePlanBillingVisibility) return;
-                  setVisibilityBusyId(plan.id);
-                  void onTogglePlanBillingVisibility(plan, checked === true).finally(() =>
-                    setVisibilityBusyId(null)
-                  );
-                }}
-              />
-              <Label
-                htmlFor={`plan-show-billing-${plan.id}`}
-                className="text-xs font-normal leading-snug cursor-pointer"
-              >
-                Show on billing page
-              </Label>
+              <div className="flex flex-col items-center gap-1">
+                <Label
+                  htmlFor={`plan-show-billing-${plan.id}`}
+                  className="text-xs font-normal leading-snug cursor-pointer"
+                >
+                  Show on billing page
+                </Label>
+                <Checkbox
+                  id={`plan-show-billing-${plan.id}`}
+                  checked={plan.hiddenFromBilling !== true}
+                  disabled={visibilityBusyId === plan.id || !onTogglePlanBillingVisibility}
+                  onCheckedChange={(checked) => {
+                    if (!onTogglePlanBillingVisibility) return;
+                    setVisibilityBusyId(plan.id);
+                    void onTogglePlanBillingVisibility(plan, checked === true).finally(() =>
+                      setVisibilityBusyId(null)
+                    );
+                  }}
+                />
+              </div>
             </div>
           </Card>
         ))}
@@ -299,8 +301,8 @@ export function PlanList({
                 <p className="text-sm font-semibold">Online add-ons</p>
                 <p className="text-[11px] text-muted-foreground">Device · user · company (online)</p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Label htmlFor="addon-online-billing-visible" className="text-xs font-normal">
+              <div className="flex shrink-0 flex-col items-center gap-1">
+                <Label htmlFor="addon-online-billing-visible" className="text-xs font-normal text-center">
                   Show on billing
                 </Label>
                 <Switch
@@ -369,8 +371,8 @@ export function PlanList({
                 <p className="text-sm font-semibold">Offline / Local add-ons</p>
                 <p className="text-[11px] text-muted-foreground">Device · user · company (local)</p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Label htmlFor="addon-local-billing-visible" className="text-xs font-normal">
+              <div className="flex shrink-0 flex-col items-center gap-1">
+                <Label htmlFor="addon-local-billing-visible" className="text-xs font-normal text-center">
                   Show on billing
                 </Label>
                 <Switch

@@ -125,6 +125,10 @@ export type EntitlementKey =
   | "masterAccountFreezeEnabled"
   /** Plan-wise: local OCR voucher autofill (Add Voucher). Missing/undefined = enabled. */
   | "ocrVoucherAutofillEnabled"
+  /** Plan-wise: allow scans to use the platform/server-owned OCR credentials. */
+  | "ocrServerKeyAllowed"
+  /** Plan-wise: allow a company to use its own saved OCR credentials. */
+  | "ocrUserKeyAllowed"
   /** Plan-wise: HR module (employees / attendance / leaves / payroll). Missing/undefined = disabled. */
   | "hrModuleEnabled";
 
@@ -307,6 +311,8 @@ export const DEFAULT_PLANS: Record<PlanId, Plan> = {
       allowLocalAppServer: false,
       masterAccountFreezeEnabled: false,
       ocrVoucherAutofillEnabled: true,
+      ocrServerKeyAllowed: false,
+      ocrUserKeyAllowed: true,
       hrModuleEnabled: false,
     },
     features: [
@@ -374,6 +380,8 @@ export const DEFAULT_PLANS: Record<PlanId, Plan> = {
       allowLocalAppServer: true,
       masterAccountFreezeEnabled: true,
       ocrVoucherAutofillEnabled: true,
+      ocrServerKeyAllowed: false,
+      ocrUserKeyAllowed: true,
       hrModuleEnabled: true,
     },
     features: [
@@ -442,6 +450,8 @@ export const DEFAULT_PLANS: Record<PlanId, Plan> = {
       allowLocalAppServer: true,
       masterAccountFreezeEnabled: true,
       ocrVoucherAutofillEnabled: true,
+      ocrServerKeyAllowed: false,
+      ocrUserKeyAllowed: true,
       hrModuleEnabled: true,
     },
     features: [
@@ -509,6 +519,8 @@ export const DEFAULT_PLANS: Record<PlanId, Plan> = {
       allowLocalAppServer: true,
       masterAccountFreezeEnabled: true,
       ocrVoucherAutofillEnabled: true,
+      ocrServerKeyAllowed: false,
+      ocrUserKeyAllowed: true,
       hrModuleEnabled: true,
     },
     features: [

@@ -41,7 +41,30 @@ export type ClassifyOptions = {
   companyName?: string;
   parties?: readonly NamedMaster[];
   staff?: readonly NamedMaster[];
+  /**
+   * "Our own names on bank slips" (company bank aliases: account holder / beneficiary names + account last digits).
+   * Gemini gets them in its prompt; the text detectors (Google Vision / Azure) apply them here, so a slip whose
+   * sender or beneficiary is one of these names / numbers counts as OUR side (both ours -> contra).
+   */
+  ownAliases?: OwnAliases;
 };
+
+export type OwnAliases = { names: readonly string[]; last4: readonly string[] };
+
+/** Printed side matches one of our own alias names or account last digits (no ledger id: the fill step picks the ledger). */
+export function sideMatchesOwnAlias(side: { accountName?: string; accountMasked?: string } | undefined, al: OwnAliases | undefined): boolean {
+  if (!side || !al) return false;
+  const name = String(side.accountName ?? "").replace(/^\s*(?:accountft|account\s*name)\s*:\s*/i, "").trim();
+  if (name && !isMaskedName(name) && al.names.some((n) => !!n.trim() && (companyNameMatches(name, n) || masterNameScore(name, n) >= 0.97))) return true;
+  const tail = String(side.accountMasked ?? "").trim().match(/(\d+)$/)?.[1] ?? "";
+  if (tail.length >= 3) {
+    for (const d of al.last4) {
+      const x = String(d ?? "").replace(/\D/g, "");
+      if (x.length >= 3 && (tail.endsWith(x) || x.endsWith(tail))) return true;
+    }
+  }
+  return false;
+}
 
 export function detectReceiptFormat(text: string): { det: ReceiptFormatDetector; confidence: number } | null {
   let best: { det: ReceiptFormatDetector; confidence: number } | null = null;
@@ -105,6 +128,7 @@ export function identifyBeneficiaryMaster(p: ParsedReceipt, o: ClassifyOptions):
   const acc = sideOwn(p.beneficiary, o);
   if (acc.ok) return { kind: "own_bank", id: acc.acc.id, name: acc.acc.accountName ?? name, score: Math.min(0.99, 0.7 + acc.score * 0.3) };
   if (name && o.companyName && companyNameMatches(name, o.companyName)) return { kind: "own_bank", name, score: 0.99 };
+  if (sideMatchesOwnAlias(p.beneficiary, o.ownAliases)) return { kind: "own_bank", name: name || undefined, score: 0.95 };
   if (!name || isMaskedName(name)) return { kind: null, name: name || undefined, score: 0 };
   const own = bestMaster(name, o.ownAccounts.map((a) => ({ id: a.id, name: a.accountName ?? "" })));
   if (own && own.score >= 0.97) return { kind: "own_bank", id: own.m.id, name: own.m.name, score: own.score };
@@ -133,6 +157,11 @@ export function classifyReceipt(p: ParsedReceipt, o: ClassifyOptions): Classifie
   const b = sideOwn(p.beneficiary, o);
   const master = identifyBeneficiaryMaster(p, o);
   const bOwn = master.kind === "own_bank" || b.ok;
+  /* Sender is ours by ledger, or by an own alias name / account digits (also "ACCOUNTFT:<name>" in the Reference Id). */
+  const refHolder = p.referenceId?.includes(":") ? p.referenceId.split(":").slice(1).join(":").trim() : "";
+  const sAlias = !s.ok && (sideMatchesOwnAlias(p.sender, o.ownAliases) || (!!refHolder && sideMatchesOwnAlias({ accountName: refHolder }, o.ownAliases)));
+  const sOwn = s.ok || sAlias;
+  const sScore = s.ok ? s.score : sAlias ? 0.9 : 0;
   const ids = { senderAccountId: s.ok ? s.acc.id : undefined, beneficiaryAccountId: bOwn ? (b.ok ? b.acc.id : master.id) : undefined };
   const charge = p.charge && p.charge > 0 ? { amount: p.charge } : undefined;
   const mediator = p.referenceId?.includes(":") ? p.referenceId.split(":").slice(1).join(":").trim() : undefined;
@@ -143,10 +172,10 @@ export function classifyReceipt(p: ParsedReceipt, o: ClassifyOptions): Classifie
       .filter(Boolean).join(" | ");
   const warn = statusWarning(p);
 
-  if (s.ok && bOwn)
-    return { voucherType: "contra", candidates: ["contra"], typeConfidence: Math.min(0.99, Math.min(s.score, (b.ok ? b.score : master.score) || 0.9)), master, ...ids, counterParty: null, otherCharge: charge, narration: narration(), reason: "Sender own account and beneficiary own bank/company -> contra", statusWarning: warn };
+  if (sOwn && bOwn)
+    return { voucherType: "contra", candidates: ["contra"], typeConfidence: Math.min(0.99, Math.min(sScore, (b.ok ? b.score : master.score) || 0.9)), master, ...ids, counterParty: null, otherCharge: charge, narration: narration(), reason: `Sender own account${sAlias ? " (own alias)" : ""} and beneficiary own bank/company -> contra`, statusWarning: warn };
 
-  if (s.ok) {
+  if (sOwn) {
     const cpName = outName;
     const base = { master, ...ids, counterParty: cpName, otherCharge: charge, narration: narration(cpName), statusWarning: warn };
     if (master.kind === "party") return { ...base, voucherType: "payment_out", payeeType: "party", candidates: ["payment_out"], typeConfidence: Math.max(0.85, master.score), reason: `Sender own; beneficiary matches party "${master.name}"` };

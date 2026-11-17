@@ -1,11 +1,11 @@
-/** Online (Google Vision / Azure Read) OCR text -> the same `OcrRawResult` shape the tesseract path returns. Pure (no DOM).
+/** Online (Google Vision / Azure Read) OCR text -> the shared `OcrRawResult` shape. Pure (no DOM).
  * When `pages` carries Google-like blocks/paragraphs/words with bounding boxes (or Azure polygons mapped to that shape),
  * words are grouped into visual rows so table cells that arrived as separate lines can be parsed as one item row.
  */
 import { joinSpacedOcrText } from "@/lib/ocr/devanagariJoin";
 import type { OcrRawLine, OcrRawResult, OcrWord } from "../types";
 
-export type OcrEngineName = "google" | "azure" | "tesseract" | "gemini";
+export type OcrEngineName = "google" | "azure" | "gemini";
 
 export type RawFromCloudOpts = {
   engine: OcrEngineName;

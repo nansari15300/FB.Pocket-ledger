@@ -4,83 +4,24 @@
  * Online (optional): Google Cloud Vision or Azure Image Analysis Read through the Pocket Ledger Server (`./cloud/ocrCloudClient`), only when the
  *   user's engine pref is "auto" or "online", the device is online, the file is an image/PDF page, and the server status says
  *   `canUse` (server OCR on + company enabled + user allowed + key saved). "online" runs ONLY the picked Google/Azure and reports its
- *   failure. Only "auto" falls back (online -> tesseract).
+ *   failure. Auto also requires a configured online provider.
  * - AI (engine pref "ai"): Gemini reads the bill into our voucher JSON through the server (`./ai/aiClient`). It runs ALONE: on a miss
  *   (not allowed / no key / error / timeout) the reason is thrown to the UI so the user sees why (no silent engine switch).
- * - Offline (default fallback): tesseract.js (own Web Worker) + locally bundled assets under `public/ocr/`
- *   (worker, wasm core, eng+nep traineddata). No CDN calls.
  */
 import type { OcrRawResult } from "./types";
-import { fileToOcrCanvasInfo, type OcrPreprocessVariant } from "./preprocess";
-import { betterPass, needsEnhancedPass, ocrKeyFieldScore } from "./ocrQuality";
-import { linesFromTesseractData } from "./layout";
-import { publicAssetUrl } from "@/lib/webAppBasePath";
-import { resolvePdfJsWorkerHref } from "@/lib/pdfjsWorkerSrc";
+import { fileToOcrCanvasInfo } from "./preprocess";
 import { getOcrCloudStatusCached, ocrCloud, ocrCloudErrorCode } from "./cloud/ocrCloudClient";
 import { rawFromCloudText } from "./cloud/cloudRaw";
 import { getOcrPrefs, type OcrEnginePref } from "./prefs";
-import { getOcrAiStatusCached, ocrAiErrorCode, ocrAiErrorText, ocrAiRead, type OcrAiReadInput } from "./ai/aiClient";
+import { getOcrAiStatusCached, OcrAiError, ocrAiErrorCode, ocrAiErrorText, ocrAiRead, type OcrAiReadInput } from "./ai/aiClient";
+import { isOcrCloudError } from "@/lib/ocrCloudApi";
 import { aiFallbackText } from "./ai/aiVoucher";
-
-type TWorker = {
-  recognize: (img: unknown, opts?: unknown, output?: unknown) => Promise<{ data: any }>;
-  setParameters: (p: Record<string, unknown>) => Promise<unknown>;
-  terminate: () => Promise<unknown>;
-};
-
-const workers = new Map<string, Promise<TWorker>>();
-
-/**
- * Public asset base for OCR files. Web app runs under a basePath (dev gateway / prod: `/app`), so
- * `/ocr/` must go through `publicAssetUrl` (same as pdf.worker). file:// (packaged Electron): next to
- * the export root, found the same way as the pdf.js worker.
- */
-export function ocrAssetBase(): string {
-  if (typeof window === "undefined") return publicAssetUrl("/ocr/");
-  if (window.location.protocol === "file:") {
-    const pdfWorker = resolvePdfJsWorkerHref();
-    return new URL("ocr/", pdfWorker).href;
-  }
-  return new URL(publicAssetUrl("/ocr/"), window.location.origin).href;
-}
-
-/** One worker per language set. English first: mixed eng+nep on English bills hurt accuracy (PAN read as Devanagari). */
-function getWorker(langs: "eng" | "nep" = "eng"): Promise<TWorker> {
-  let p = workers.get(langs);
-  if (!p) {
-    p = (async () => {
-      const { createWorker } = await import("tesseract.js");
-      const base = ocrAssetBase();
-      const w = await createWorker(langs === "nep" ? ["nep", "eng"] : ["eng"], 1, {
-        workerPath: `${base}worker.min.js`,
-        corePath: base,
-        langPath: `${base}tessdata`,
-        gzip: true,
-      } as never);
-      return w as unknown as TWorker;
-    })().catch((e) => {
-      workers.delete(langs);
-      throw e;
-    });
-    workers.set(langs, p);
-  }
-  return p;
-}
-
-export async function terminateOcrWorker() {
-  const all = [...workers.values()];
-  workers.clear();
-  for (const p of all) (await p.catch(() => null))?.terminate();
-}
-
-function isAndroidWebView() {
-  return typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
-}
+import { recordOcrUsage, type OcrUsageEngine } from "./ocrUsage";
 
 export type RunOcrOptions = {
   /** Active company (server checks the user's online OCR permission for it). */
   companyId?: string | null;
-  /** "auto" (default) tries the saved online provider first when allowed; "offline" = tesseract only; "online" = cloud only, no tesseract fallback. */
+  /** "auto" uses the configured online provider; "online" uses the selected cloud provider only. */
   enginePref?: OcrEnginePref;
   /** Auto post can pin Google vs Azure without changing this device's interactive OCR preference. */
   cloudProvider?: "google" | "azure";
@@ -88,7 +29,7 @@ export type RunOcrOptions = {
   ownCompany?: { name?: string | null; pan?: string | null };
   /** Our own Bank/Cash ledgers — the server matches full account numbers to prove a contra transfer. */
   ownAccounts?: OcrAiReadInput["ownAccounts"];
-  /** Called as each engine starts (Gemini / Google / Azure / Offline) so the "reading…" toast can name the real engine. */
+  /** Called as each engine starts (Gemini / Google / Azure) so the "reading…" toast can name the real engine. */
   onEngine?: (name: string) => void;
   /** Abort the in-flight AI/cloud request (voucher closed, or the user pressed Stop on the toast). */
   signal?: AbortSignal;
@@ -123,23 +64,69 @@ export async function aiChatJpeg(file: Blob, mime: string): Promise<{ b64: strin
 
 async function cloudJpeg(file: Blob, mime: string): Promise<{ b64: string; w: number; h: number; kb: number }> {
   for (const [side, q] of [[2400, 0.85], [2000, 0.8], [1600, 0.72], [1280, 0.65]] as const) {
-    const { canvas } = await fileToOcrCanvasInfo(file, mime, side, "standard");
+    const { canvas } = await fileToOcrCanvasInfo(file, mime, side);
     const jpg = await canvasToJpeg(canvas, q);
     if (jpg && jpg.size <= CLOUD_MAX_BYTES) return { b64: await blobToBase64(jpg), w: canvas.width, h: canvas.height, kb: Math.round(jpg.size / 1024) };
   }
   throw new Error("image too large for online OCR");
 }
 
-/** Online OCR attempt (Google or Azure). Returns null (with the reason) when not allowed / failed, so the caller runs tesseract. */
-async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<{ raw: OcrRawResult | null; note: string }> {
-  if ((opts.enginePref ?? "auto") === "offline") return { raw: null, note: "offline only (OCR settings)" };
+/** Online OCR attempt (Google or Azure). Returns null with a reason when unavailable or failed. */
+type EngineTry = { raw: OcrRawResult | null; note: string; /** The provider / server error behind a failed read. */ cause?: unknown };
+
+/**
+ * Single-engine failure with machine-readable detail for the Gallery runner (pl:gallery:auto-post-scan-failed):
+ *  code   - provider / server code: quota | network | timeout | no_key | forbidden | disabled | not_signed_in |
+ *           region_unsupported | unknown, or "unreadable" (engine answered but found nothing usable: a file problem)
+ *           or "unavailable" (engine not set up / not allowed for this company or user).
+ *  status - HTTP status from Pocket Ledger Server (429 = rate limit / quota, 403 = forbidden ...; 0 = none).
+ *  retryAfter - server retry hint in seconds (0 = none).
+ * The message stays the user-facing reason the dialog already shows.
+ */
+export class OcrRunError extends Error {
+  code: string;
+  status: number;
+  retryAfter: number;
+  engine: "gemini" | "google" | "azure" | "online";
+  constructor(message: string, code: string, status: number, retryAfter: number, engine: OcrRunError["engine"]) {
+    super(message);
+    this.name = "OcrRunError";
+    this.code = code;
+    this.status = status;
+    this.retryAfter = retryAfter;
+    this.engine = engine;
+  }
+}
+
+const UNREADABLE_RX = /returned no text|returned nothing readable|could not read/i;
+function runErrorOf(t: EngineTry, fallback: string, engine: OcrRunError["engine"]): OcrRunError {
+  const msg = t.note || fallback;
+  const c = t.cause;
+  if (c instanceof OcrAiError) return new OcrRunError(msg, c.code, c.status, c.retryAfter, engine);
+  if (isOcrCloudError(c)) {
+    const retry = Number((c as { retryAfter?: unknown }).retryAfter);
+    return new OcrRunError(msg, c.code, c.status, Number.isFinite(retry) && retry > 0 ? Math.round(retry) : 0, engine);
+  }
+  if (c instanceof Error && /timed? ?out|timeout/i.test(c.message)) return new OcrRunError(msg, "timeout", 0, 0, engine);
+  if (c) return new OcrRunError(msg, ocrAiErrorCode(c), 0, 0, engine);
+  const n = t.note;
+  const code = !n || UNREADABLE_RX.test(n) ? "unreadable"
+    : /offline/i.test(n) ? "network"
+    : /no .*key|no gemini key/i.test(n) ? "no_key"
+    : /not allowed/i.test(n) ? "forbidden"
+    : /\boff\b/i.test(n) ? "disabled"
+    : "unavailable";
+  return new OcrRunError(msg, code, 0, 0, engine);
+}
+
+async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<EngineTry> {
   if (!opts.companyId) return { raw: null, note: "no company" };
   if (typeof navigator !== "undefined" && navigator.onLine === false) return { raw: null, note: "device offline" };
   let status;
   try {
     status = await getOcrCloudStatusCached(opts.companyId);
   } catch (e) {
-    return { raw: null, note: `Online OCR status unavailable (${ocrCloudErrorCode(e)})` };
+    return { raw: null, note: `Online OCR status unavailable (${ocrCloudErrorCode(e)})`, cause: e };
   }
   if (!status.serverOcrEnabled) return { raw: null, note: "Online OCR off on server" };
   const requestedProvider = opts.cloudProvider || getOcrPrefs().onlineProvider || status.provider || "google";
@@ -156,7 +143,19 @@ async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promi
     const img = await cloudJpeg(file, mime);
     const res = await Promise.race([
       // Provider may be pinned by Auto post; interactive OCR keeps its normal device preference.
-      ocrCloud.vision(opts.companyId, img.b64, { signal: ac.signal, languageHints: ["ne", "hi", "en"], provider: requestedProvider }),
+      (async () => {
+        recordOcrUsage(opts.companyId, requestedProvider, "call");
+        try {
+          const result = await ocrCloud.vision(opts.companyId!, img.b64, { signal: ac.signal, languageHints: ["ne", "hi", "en"], provider: requestedProvider });
+          if (String(result?.text ?? "").replace(/\s+/g, "").length < 8) {
+            recordOcrUsage(opts.companyId, requestedProvider, "failed");
+          } else recordOcrUsage(opts.companyId, requestedProvider, "reply");
+          return result;
+        } catch (error) {
+          recordOcrUsage(opts.companyId, requestedProvider, "failed");
+          throw error;
+        }
+      })(),
       new Promise<never>((_, rej) => { t = setTimeout(() => { ac.abort(); rej(new Error("Online OCR timed out")); }, CLOUD_TIMEOUT_MS); }),
     ]);
     const text = String(res?.text ?? "");
@@ -166,23 +165,23 @@ async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promi
     return { raw: rawFromCloudText(text, { engine: provider, note: `JPEG ${img.w}x${img.h} ${img.kb} KB`, pageWidth: img.w, pageHeight: img.h, pages: res?.pages }), note: "" };
   } catch (e) {
     const code = ocrCloudErrorCode(e);
-    if (process.env.NODE_ENV !== "production") console.warn("[OCR] Online OCR failed, using offline OCR", code, e);
-    return { raw: null, note: `Online OCR failed (${code})` };
+    if (process.env.NODE_ENV !== "production") console.warn("[OCR] Online OCR failed", code, e);
+    return { raw: null, note: `Online OCR failed (${code})`, cause: e };
   } finally {
     if (t) clearTimeout(t);
     opts.signal?.removeEventListener("abort", onOuterAbort);
   }
 }
 
-/** AI OCR attempt (Gemini via server). Returns null (with the reason) when not allowed / failed, so the caller falls back. */
-async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<{ raw: OcrRawResult | null; note: string }> {
+/** AI OCR attempt (Gemini via server). Returns null with a reason when unavailable or failed. */
+async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<EngineTry> {
   if (!opts.companyId) return { raw: null, note: "AI: no company" };
   if (typeof navigator !== "undefined" && navigator.onLine === false) return { raw: null, note: "AI: device offline" };
   let status;
   try {
     status = await getOcrAiStatusCached(opts.companyId);
   } catch (e) {
-    return { raw: null, note: `AI status unavailable (${ocrAiErrorText(e)})` };
+    return { raw: null, note: `AI status unavailable (${ocrAiErrorText(e)})`, cause: e };
   }
   if (!status.aiReady) return { raw: null, note: "AI OCR not installed on the server yet" };
   if (!status.serverOcrEnabled) return { raw: null, note: "AI OCR off on server" };
@@ -197,11 +196,22 @@ async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<
     const img = await cloudJpeg(file, mime);
     if (ac.signal.aborted) return { raw: null, note: "AI: cancelled" };
     const res = await Promise.race([
-      ocrAiRead({ companyId: opts.companyId, imageBase64: img.b64, mimeType: "image/jpeg", ownCompany: opts.ownCompany, ownAccounts: opts.ownAccounts, docType: opts.aiDocType, translateToEnglish: getOcrPrefs().translateToEnglish || undefined, signal: ac.signal }),
+      (async () => {
+        recordOcrUsage(opts.companyId, "gemini", "call");
+        try {
+          const result = await ocrAiRead({ companyId: opts.companyId, imageBase64: img.b64, mimeType: "image/jpeg", ownCompany: opts.ownCompany, ownAccounts: opts.ownAccounts, docType: opts.aiDocType, translateToEnglish: getOcrPrefs().translateToEnglish || undefined, signal: ac.signal });
+          recordOcrUsage(opts.companyId, "gemini", "reply", { prompt: result.usage.promptTokens, output: result.usage.outputTokens });
+          return result;
+        } catch (error) {
+          recordOcrUsage(opts.companyId, "gemini", "failed");
+          throw error;
+        }
+      })(),
       new Promise<never>((_, rej) => { t = setTimeout(() => { ac.abort(); rej(new Error("AI OCR timed out")); }, AI_TIMEOUT_MS); }),
     ]);
     const d = res.data;
-    // Gemini returns only the voucher JSON (no transcription); parser + "Show OCR text" get a compact summary of it
+    // Parser fills from a compact summary of the validated JSON; the printed transcription (raw_text) rides along
+    // as printedText for "Show OCR text" and for the parser's gap fill.
     const text = aiFallbackText(d);
     if (!text.trim() && !d.items.length && d.grand_total == null) return { raw: null, note: "AI returned nothing readable" };
     const u = res.usage;
@@ -215,13 +225,14 @@ async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<
         meanConfidence: d.uncertain_fields.length ? 80 : 95,
         engineNote: `${res.model || "Gemini"}${res.rulesUsed ? ` | taught rules ${res.rulesUsed}` : ""} | tokens ${u.totalTokens} (in ${u.promptTokens}, out ${u.outputTokens}) | JPEG ${img.w}x${img.h} ${img.kb} KB`,
         ai: res,
+        ...(d.raw_text ? { printedText: d.raw_text } : {}),
       },
       note: "",
     };
   } catch (e) {
     const code = e instanceof Error && /timed out/i.test(e.message) ? "timeout" : ocrAiErrorCode(e);
-    if (process.env.NODE_ENV !== "production") console.warn("[OCR] AI OCR failed, falling back", code);
-    return { raw: null, note: `AI failed (${code === "timeout" ? "timed out" : ocrAiErrorText(e)})` };
+    if (process.env.NODE_ENV !== "production") console.warn("[OCR] AI OCR failed", code);
+    return { raw: null, note: `AI failed (${code === "timeout" ? "timed out" : ocrAiErrorText(e)})`, cause: e };
   } finally {
     if (t) clearTimeout(t);
     opts.signal?.removeEventListener("abort", onOuterAbort);
@@ -229,142 +240,54 @@ async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<
 }
 
 /**
- * Online OCR when allowed (see `tryCloudOcr`). "auto" falls back to tesseract on any miss; "online" never calls tesseract and throws instead.
- * "ai": Gemini first; on a miss online OCR (as "auto"), then tesseract, with the AI reason kept in `engineNote`.
- * `onEngine` reports which engine is actually used, in order, so the UI can show "reading… by Gemini/Azure/Offline".
+ * Runs the selected online provider or Gemini. Failures are surfaced for review; there is no local OCR fallback.
  */
 export async function runOcrOnFile(file: Blob, mime: string, opts: RunOcrOptions = {}): Promise<OcrRawResult> {
   const pref = opts.enginePref ?? "auto";
+  const selectedEngine: OcrUsageEngine = pref === "ai" ? "gemini" : pref === "online" ? (opts.cloudProvider || getOcrPrefs().onlineProvider || "google") : "auto";
+  if (selectedEngine === "auto") recordOcrUsage(opts.companyId, selectedEngine, "call");
+  try {
+    const result = await runOcrOnFileInternal(file, mime, opts);
+    if (selectedEngine === "auto") recordOcrUsage(opts.companyId, selectedEngine, "reply");
+    return result;
+  } catch (error) {
+    if (selectedEngine === "auto") recordOcrUsage(opts.companyId, selectedEngine, "failed");
+    throw error;
+  }
+}
+
+async function runOcrOnFileInternal(file: Blob, mime: string, opts: RunOcrOptions = {}): Promise<OcrRawResult> {
+  const pref = opts.enginePref ?? "auto";
   /** Stop means stop: no fallback engine should start after an abort. */
   const aborted = () => !!opts.signal?.aborted;
-  const engineName = (e: string) => (e === "gemini" ? "Gemini" : e === "azure" ? "Azure" : e === "google" ? "Google" : "Offline");
+  const engineName = (e: string) => (e === "gemini" ? "Gemini" : e === "azure" ? "Azure" : e === "google" ? "Google" : "Online OCR");
   const stage = (e: string) => { try { opts.onEngine?.(engineName(e)); } catch { /* UI only */ } };
   /** Single engine picked by the user: it runs alone, and its failure is reported (no silent fallback). */
-  const onlyOne = (reason: string) => new Error(reason);
+  const onlyOne = (t: EngineTry, fallback: string, engine: OcrRunError["engine"]) => runErrorOf(t, fallback, engine);
 
-  // ---- AI (Gemini): the only engine the user picked — no cloud / tesseract fallback ----
+  // ---- AI (Gemini): the only engine the user picked ----
   if (pref === "ai") {
     stage("gemini");
-    const ai = await tryAiOcr(file, mime, opts).catch((e) => ({ raw: null, note: `AI failed (${ocrAiErrorText(e)})` }));
+    const ai: EngineTry = await tryAiOcr(file, mime, opts).catch((e) => ({ raw: null, note: `AI failed (${ocrAiErrorText(e)})`, cause: e }));
     if (ai.raw) return ai.raw;
     if (aborted()) throw new DOMException("OCR cancelled", "AbortError");
-    throw onlyOne(ai.note || "Gemini could not read this document");
+    throw onlyOne(ai, "Gemini could not read this document", "gemini");
   }
 
-  // ---- Google / Azure picked: only that cloud engine, no tesseract ----
+  // ---- Google / Azure picked: only that cloud engine ----
   if (pref === "online") {
     const provider = opts.cloudProvider || getOcrPrefs().onlineProvider || "";
     stage(provider || "cloud");
-    const cloud = await tryCloudOcr(file, mime, opts).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})` }));
+    const cloud: EngineTry = await tryCloudOcr(file, mime, opts).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})`, cause: e }));
     if (cloud.raw) return cloud.raw;
     if (aborted()) throw new DOMException("OCR cancelled", "AbortError");
-    throw onlyOne(cloud.note || `${provider === "google" ? "Google" : provider === "azure" ? "Azure" : "Online"} OCR could not read this document`);
+    throw onlyOne(cloud, `${provider === "google" ? "Google" : provider === "azure" ? "Azure" : "Online"} OCR could not read this document`, provider === "google" || provider === "azure" ? provider : "online");
   }
 
-  // ---- Offline (tesseract) only ----
-  if (pref === "offline") {
-    stage("tesseract");
-    return runTesseractOnFile(file, mime);
-  }
-
-  // ---- auto: try online first, fall back to tesseract ----
+  // ---- auto: use configured online OCR; keep an unavailable provider visible as an error ----
   stage("cloud");
-  const cloud = await tryCloudOcr(file, mime, opts).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})` }));
+  const cloud: EngineTry = await tryCloudOcr(file, mime, opts).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})`, cause: e }));
   if (cloud.raw) return cloud.raw;
   if (aborted()) throw new DOMException("OCR cancelled", "AbortError");
-  stage("tesseract");
-  const raw = await runTesseractOnFile(file, mime);
-  return { ...raw, engine: "tesseract", engineNote: cloud.note || undefined };
-}
-
-/** Offline tesseract multi-pass (unchanged behaviour). */
-export async function runTesseractOnFile(file: Blob, mime: string): Promise<OcrRawResult> {
-  // standard pass + (only when key fields are missing / low confidence) one enhanced retry pass
-  const timeoutMs = isAndroidWebView() ? 75000 : 50000;
-  const maxSide = isAndroidWebView() ? 2500 : 3500;
-  const isPdf = /pdf/i.test(mime || file.type);
-  const job = (async () => {
-    const recognizePass = async (variant: OcrPreprocessVariant) => {
-      const { canvas, skewDeg } = await fileToOcrCanvasInfo(file, mime, maxSide, variant);
-      if (process.env.NODE_ENV !== "production") {
-        console.info(`[OCR] engine input ${mime} ${(file.size / 1024).toFixed(0)} KB -> canvas ${canvas.width}x${canvas.height}px (${variant}${skewDeg ? `, deskew ${skewDeg} deg` : ""})`);
-      }
-      const worker = await getWorker("eng");
-      // Pass A (layout + words): PSM 6 single block - PSM 3 split the bill table into column blocks (no header/lines/VAT)
-      await worker.setParameters({ tessedit_pageseg_mode: "6" });
-      let { data } = await worker.recognize(canvas, {}, { blocks: true, text: true });
-      // Devanagari bill? (few Latin letters) -> nep+eng pass replaces A
-      const txt = String(data?.text ?? "");
-      const latin = (txt.match(/[A-Za-z]/g) ?? []).length;
-      const deva = (txt.match(/[\u0900-\u097F]/g) ?? []).length;
-      /* User's script preference wins over auto-detect:
-       *   eng   = never switch to the Devanagari pass (English bills read cleaner)
-       *   local = always use the Devanagari/Nepali pass
-       *   auto  = detect per slip (default)                                        */
-      const scriptPref = getOcrPrefs().scriptPref;
-      const detectedLocal = latin < 40 || deva > latin;
-      const useLocal = scriptPref === "local" ? true : scriptPref === "eng" ? false : detectedLocal;
-      if (useLocal) {
-        const nep = await getWorker("nep");
-        data = (await nep.recognize(canvas, {}, { blocks: true, text: true })).data;
-      }
-      // Pass B (sparse text): only used to CONFIRM numbers pass A missed (e.g. bold boxed grand total)
-      await worker.setParameters({ tessedit_pageseg_mode: "11" });
-      const alt = (await worker.recognize(canvas, {}, { text: true })).data;
-      await worker.setParameters({ tessedit_pageseg_mode: "6" });
-      const text = String(data?.text ?? "");
-      const meanConfidence = Number(data?.confidence ?? 0);
-      return {
-        nepali: useLocal,
-        /** Slip ki script hi Devanagari nikli — bubble is mismatch par language options dikhata hai. */
-        detectedLocalScript: detectedLocal,
-        quality: ocrKeyFieldScore(text),
-        meanConfidence,
-        result: {
-          text,
-          lines: linesFromTesseractData(data),
-          meanConfidence,
-          pageHeight: canvas.height,
-          pageWidth: canvas.width,
-          altText: String(alt?.text ?? ""),
-          /** Devanagari slip mila — language-mismatch bubble isi par trigger hota hai. */
-          detectedLocalScript: detectedLocal,
-          preprocess: variant === "enhanced" ? `enhanced${skewDeg ? ` (deskew ${skewDeg} deg)` : ""}` : "standard",
-        } satisfies OcrRawResult,
-      };
-    };
-    const first = await recognizePass("standard");
-    // Over-lit / glare / tilted photo: key fields missing -> retry with flat-field + deskew, keep the better pass.
-    // Skip on genuinely local slips (detectedLocalScript) — forcing the local pass must not skip the retry.
-    const skipEnhanced = first.detectedLocalScript;
-    if (isPdf || skipEnhanced || !needsEnhancedPass(first.quality, first.meanConfidence, first.result.text)) return first.result;
-    let second: Awaited<ReturnType<typeof recognizePass>> | null = null;
-    try {
-      second = await recognizePass("enhanced");
-    } catch (e) {
-      console.warn("[OCR] enhanced pass failed", e);
-    }
-    if (!second) return first.result;
-    const pick = betterPass(first, second);
-    if (process.env.NODE_ENV !== "production") {
-      console.info(`[OCR] standard ${first.quality.score}/5 (${Math.round(first.meanConfidence)}%) vs enhanced ${second.quality.score}/5 (${Math.round(second.meanConfidence)}%) -> ${pick === second ? "enhanced" : "standard"}`);
-    }
-    return {
-      ...pick.result,
-      // both sparse passes confirm numbers (grand total seen twice etc.)
-      altText: `${pick.result.altText ?? ""}\n${(pick === second ? first : second).result.altText ?? ""}`,
-      /* Script detection: either pass ne Devanagari dekha to slip local hai. */
-      detectedLocalScript: !!(first.detectedLocalScript || second.detectedLocalScript),
-      passNote: `standard ${first.quality.score}/5 ${Math.round(first.meanConfidence)}% (missing: ${first.quality.missing.join(", ") || "-"}); enhanced ${second.quality.score}/5 ${Math.round(second.meanConfidence)}% (missing: ${second.quality.missing.join(", ") || "-"}); used ${pick === second ? "enhanced" : "standard"}`,
-    };
-  })();
-  let t: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, rej) => {
-    t = setTimeout(() => rej(new Error("OCR timed out")), timeoutMs);
-  });
-  try {
-    return await Promise.race([job, timeout]);
-  } finally {
-    if (t) clearTimeout(t);
-  }
+  throw onlyOne(cloud, "Online OCR could not read this document", "online");
 }

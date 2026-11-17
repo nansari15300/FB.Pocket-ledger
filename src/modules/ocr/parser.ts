@@ -1035,8 +1035,40 @@ export function parseBill(rawIn: OcrRawResult, ctx: ParseContext): OcrParsedBill
   if (out.docType) dbg(`Document type: ${out.docType.type} ${Math.round(out.docType.confidence * 100)}% (${out.docType.reason})`);
   else dbg(`Document type: not determined (${ownKnown ? "not an invoice/bill, or a bank slip / receipt without our company" : "no company name/PAN in the company profile"})`);
   // AI (Gemini) answer: its fields override the text parse above (kept where Gemini left a field null), then our checks run on them
-  if (rawIn.ai) applyAiToBill(out, rawIn.ai, { parties: ctx.parties, items: ctx.items, ownPan: ctx.ownPan, ownName: ctx.ownName, normUnit });
+  if (rawIn.ai) {
+    applyAiToBill(out, rawIn.ai, { parties: ctx.parties, items: ctx.items, ownPan: ctx.ownPan, ownName: ctx.ownName, normUnit });
+    const printed = rawIn.printedText ?? rawIn.ai.data.raw_text;
+    if (printed) fillGapsFromPrintedText(out, printed, rawIn, ctx);
+  }
   return out;
+}
+
+/**
+ * AI raw_text -> classic parser, but ONLY for fields the AI JSON left empty (never overrides an AI value).
+ * Identity fields keep the parser's own status; money fields come in as "flag" (shown for confirmation, not written)
+ * because the JSON's validated totals are the ones the voucher should carry.
+ */
+export function fillGapsFromPrintedText(out: OcrParsedBill, printed: string, rawIn: OcrRawResult, ctx: ParseContext): void {
+  const textLines = printed.split(/\r?\n/).map((t) => t.trim()).filter(Boolean);
+  if (!textLines.length) return;
+  const p = parseBill(
+    { text: textLines.join("\n"), lines: textLines.map((t, i) => ({ text: t, confidence: Math.min(90, rawIn.meanConfidence || 90), y: 40 + i * 30 })), meanConfidence: rawIn.meanConfidence || 90, pageHeight: 40 + 30 * Math.max(20, textLines.length), engine: rawIn.engine },
+    ctx,
+  );
+  const note = "Read from the printed text (AI JSON had no value) - confirm";
+  const took: string[] = [];
+  const keep = <K extends "billNo" | "date" | "pan" | "partyName" | "partyId" | "dueDate">(k: K) => {
+    if (!out[k] && p[k] && (p[k] as { status: string }).status !== "none") { (out as Record<string, unknown>)[k] = p[k]; took.push(k); }
+  };
+  const asFlag = <K extends "total" | "amount" | "subTotal" | "vat" | "discount" | "lineItems">(k: K) => {
+    const v = p[k] as { status: string; note?: string } | undefined;
+    if (!out[k] && v && v.status !== "none") { (out as Record<string, unknown>)[k] = { ...v, status: "flag", note }; took.push(k); }
+  };
+  (["billNo", "date", "pan", "partyName", "partyId", "dueDate"] as const).forEach(keep);
+  (["total", "amount", "subTotal", "vat", "discount", "lineItems"] as const).forEach(asFlag);
+  if (!out.paymentMode && p.paymentMode) out.paymentMode = p.paymentMode;
+  if (!out.debug) out.debug = [];
+  out.debug.push(took.length ? `Printed text (AI raw_text) filled: ${took.join(", ")}` : "Printed text (AI raw_text): nothing extra to fill");
 }
 
 /**

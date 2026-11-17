@@ -5,8 +5,11 @@
  *   qty x rate = amount (per item), sum(items) = Sub Total, Sub Total - Discount = Taxable, Taxable x VAT% = VAT,
  *   Taxable + VAT = Grand Total, PAN = 9 digits (never our own PAN), AD date agrees with the BS Miti.
  * A field is "fill" only when its checks pass; otherwise "flag" (shown in the bubbles / "OCR could not find" flow, not written).
- * Gemini returns ONLY the voucher JSON (no transcription: saves output tokens). The text the classic parser and
- * "Show OCR text" see is a compact summary built from that JSON (aiFallbackText); nothing is invented.
+ * Gemini returns the voucher JSON plus `raw_text` (the document transcribed as printed). raw.text stays the compact
+ * summary built from the JSON (aiFallbackText) so the validated values drive the fill; raw_text rides along as
+ * raw.printedText: "Show OCR text" shows it, and parseBill runs the classic parser on it to fill only the fields the
+ * JSON left empty (fillGapsFromPrintedText). Nothing is invented.
+ * Per-type field lists (AI_VOUCHER_TYPE_FIELDS) mirror VOUCHER_TYPE_FIELDS in the server's ocr_cloud.js.
  * Party fields are the counter-party only (aiCounterParty: buyer on our sale, seller on our purchase, never us).
  * Pure (no React / network) so the selftests can run it.
  */
@@ -24,7 +27,8 @@ export type OcrAiBankFlow = "own_to_own" | "out" | "in" | "none" | "unclear";
 /** The app's own voucher tabs. Gemini answers with one of these; the app opens that form as-is. */
 export type OcrAiVoucherType =
   | "sale" | "purchase" | "payment_out" | "payment_in"
-  | "contra" | "direct_expense" | "direct_income" | "journal";
+  | "contra" | "direct_expense" | "direct_income" | "journal"
+  | "credit_note" | "debit_note";
 
 /** What master collection a Dr/Cr line points at. The app looks the ledger up in that collection only. */
 export type OcrAiLineKind =
@@ -62,7 +66,7 @@ export type OcrAiVoucher = {
   voucher_type: OcrAiVoucherType | null;
   /** One short line of printed evidence for the type. */
   voucher_type_reason: string | null;
-  /** Double entry as printed (max 8). Empty for a plain item bill (purchase/sale build lines from items). */
+  /** Double entry as printed (max AI_MAX_LINES = 30). Empty for a plain item bill (purchase/sale build lines from items). */
   lines: OcrAiLine[];
   /** The printed item table's column headers, left to right. */
   item_columns?: string[] | null;
@@ -92,6 +96,14 @@ export type OcrAiVoucher = {
   date_ad: string | null;
   date_bs: string | null;
   payment_mode: string | null;
+  /** Printed due date (YYYY-MM-DD AD) - never computed by the AI. */
+  due_date: string | null;
+  /** Printed credit period in days. */
+  credit_days: number | null;
+  /** Printed amount-in-words line, as printed. */
+  amount_in_words: string | null;
+  /** Whole document transcribed as printed (original script + digits), line by line. */
+  raw_text: string | null;
   items: OcrAiItem[];
   subtotal: number | null;
   discount: number | null;
@@ -105,12 +117,66 @@ export type OcrAiVoucher = {
   english_translations: OcrAiEnglishTranslation[];
 };
 export type OcrAiUsage = { promptTokens: number; outputTokens: number; thoughtsTokens: number; totalTokens: number };
-export type OcrAiResult = { provider: "gemini"; model: string; data: OcrAiVoucher; usage: OcrAiUsage; /** Taught rules the server added to the prompt. */ rulesUsed?: number };
+/** Server-side per-type check (ocr_cloud.js validateVoucherByType): required fields missing / fields the type should leave empty. */
+export type OcrAiTypeCheck = { voucher_type: string | null; missing: string[]; unexpected: string[] };
+export type OcrAiResult = { provider: "gemini"; model: string; data: OcrAiVoucher; usage: OcrAiUsage; /** Taught rules the server added to the prompt. */ rulesUsed?: number; typeCheck?: OcrAiTypeCheck | null };
 
 const DOC_TYPES: readonly OcrAiDocType[] = ["purchase", "sale", "receipt", "payment", "contra", "expense", "other"];
 const DOC_KINDS: readonly OcrAiDocKind[] = ["tax_invoice", "vat_bill", "bank_transfer", "cheque", "deposit_slip", "purchase_order", "receipt", "other"];
 const BANK_FLOWS: readonly OcrAiBankFlow[] = ["own_to_own", "out", "in", "none", "unclear"];
-const VOUCHER_TYPES: readonly OcrAiVoucherType[] = ["sale", "purchase", "payment_out", "payment_in", "contra", "direct_expense", "direct_income", "journal"];
+export const AI_VOUCHER_TYPES: readonly OcrAiVoucherType[] = ["sale", "purchase", "credit_note", "debit_note", "payment_out", "payment_in", "contra", "direct_expense", "direct_income", "journal"];
+const VOUCHER_TYPES = AI_VOUCHER_TYPES;
+/** Same cap as the server schema (lines maxItems). */
+export const AI_MAX_LINES = 30;
+
+/**
+ * Per voucher type: which JSON fields the type needs ("a|b" = one of them), may use, and must leave empty.
+ * MUST stay identical to VOUCHER_TYPE_FIELDS in PocketLedger-Server/sub-server/pb_hooks/lib/ocr_cloud.js
+ * (tests/ocr/aiVoucherSchema.selftest.mts compares them).
+ */
+type TypeFields = { required: readonly string[]; optional: readonly string[]; empty: readonly string[] };
+const BILL_OPT = ["party_pan", "party_address", "party_phone", "due_date", "credit_days", "item_columns", "subtotal", "discount", "taxable", "vat_percent", "vat_amount", "amount_in_words", "payment_mode"] as const;
+const BILL_EMPTY = ["lines", "debit_account", "debit_bank", "credit_account", "credit_bank", "beneficiary_name", "account_holder_name", "transfer_reference", "transfer_charges"] as const;
+const NOTE_OPT = ["party_pan", "party_address", "party_phone", "items", "item_columns", "subtotal", "discount", "taxable", "vat_percent", "vat_amount", "amount_in_words"] as const;
+const NOTE_EMPTY = ["lines", "due_date", "credit_days", "debit_account", "debit_bank", "credit_account", "credit_bank", "beneficiary_name", "account_holder_name", "transfer_reference", "transfer_charges"] as const;
+const PAY_OPT = ["party_name", "party_pan", "party_phone", "debit_account", "debit_bank", "credit_account", "credit_bank", "beneficiary_name", "account_holder_name", "transfer_mode", "transfer_reference", "transfer_charges", "payment_mode", "invoice_no", "amount_in_words", "lines"] as const;
+const PAY_EMPTY = ["items", "item_columns", "subtotal", "discount", "taxable", "vat_percent", "vat_amount", "due_date", "credit_days"] as const;
+const DIRECT_OPT = ["debit_account", "debit_bank", "credit_account", "credit_bank", "beneficiary_name", "account_holder_name", "transfer_mode", "transfer_reference", "transfer_charges", "payment_mode", "invoice_no", "amount_in_words"] as const;
+const DIRECT_EMPTY = ["party_name", "party_pan", "items", "item_columns", "subtotal", "discount", "taxable", "due_date", "credit_days"] as const;
+export const AI_VOUCHER_TYPE_FIELDS: Record<OcrAiVoucherType, TypeFields> = {
+  sale: { required: ["party_name", "invoice_no", "date_ad|date_bs", "grand_total", "items"], optional: BILL_OPT, empty: BILL_EMPTY },
+  purchase: { required: ["party_name", "invoice_no", "date_ad|date_bs", "grand_total", "items"], optional: BILL_OPT, empty: BILL_EMPTY },
+  credit_note: { required: ["party_name", "invoice_no", "date_ad|date_bs", "grand_total"], optional: NOTE_OPT, empty: NOTE_EMPTY },
+  debit_note: { required: ["party_name", "invoice_no", "date_ad|date_bs", "grand_total"], optional: NOTE_OPT, empty: NOTE_EMPTY },
+  payment_out: { required: ["date_ad|date_bs", "grand_total", "bank_flow"], optional: PAY_OPT, empty: PAY_EMPTY },
+  payment_in: { required: ["date_ad|date_bs", "grand_total", "bank_flow"], optional: PAY_OPT, empty: PAY_EMPTY },
+  contra: {
+    required: ["date_ad|date_bs", "grand_total", "debit_account|debit_bank", "credit_account|credit_bank"],
+    optional: ["beneficiary_name", "account_holder_name", "transfer_mode", "transfer_reference", "transfer_charges", "amount_in_words", "lines"],
+    empty: ["party_name", "party_pan", "party_address", "party_phone", "items", "item_columns", "subtotal", "discount", "taxable", "vat_percent", "vat_amount", "due_date", "credit_days"],
+  },
+  direct_expense: { required: ["date_ad|date_bs", "grand_total", "lines"], optional: DIRECT_OPT, empty: DIRECT_EMPTY },
+  direct_income: { required: ["date_ad|date_bs", "grand_total", "lines"], optional: DIRECT_OPT, empty: DIRECT_EMPTY },
+  journal: {
+    required: ["date_ad|date_bs", "grand_total", "lines"],
+    optional: ["invoice_no", "amount_in_words"],
+    empty: ["party_name", "party_pan", "items", "item_columns", "subtotal", "discount", "taxable", "vat_percent", "vat_amount", "due_date", "credit_days", "transfer_charges"],
+  },
+};
+
+const aiFilled = (v: unknown) => v != null && (Array.isArray(v) ? v.length > 0 : typeof v === "string" ? v.trim() !== "" : typeof v === "number" ? Number.isFinite(v) && v !== 0 : true);
+/** Client copy of the server's per-type check (used when an older server sent no typeCheck). Never changes values. */
+export function aiTypeCheck(d: OcrAiVoucher): OcrAiTypeCheck {
+  const t = d.voucher_type;
+  if (!t) return { voucher_type: null, missing: ["voucher_type"], unexpected: [] };
+  const f = AI_VOUCHER_TYPE_FIELDS[t];
+  const rec = d as unknown as Record<string, unknown>;
+  return {
+    voucher_type: t,
+    missing: f.required.filter((k) => !k.split("|").some((x) => aiFilled(rec[x]))),
+    unexpected: f.empty.filter((k) => aiFilled(rec[k])),
+  };
+}
 const LINE_KINDS: readonly OcrAiLineKind[] = ["party", "bank", "cash", "staff", "tax", "expense", "income", "item", "discount", "roundoff"];
 
 function normalizeCells(raw: unknown): Record<string, string> | null {
@@ -145,7 +211,7 @@ function normalizeLines(raw: unknown): OcrAiLine[] {  if (!Array.isArray(raw)) r
       pan: str(l.pan),
       amount: aiNum(l.amount),
     });
-    if (out.length >= 12) break;
+    if (out.length >= AI_MAX_LINES) break;
   }
   return out;
 }
@@ -160,10 +226,29 @@ function str(v: unknown): string | null {
 export function aiNum(v: unknown): number | null {
   if (typeof v === "number") return Number.isFinite(v) ? v : null;
   if (typeof v !== "string") return null;
-  const s = v.replace(/rs\.?|npr|\/-|,|\s/gi, "");
+  const s = devanagariDigitsToLatin(v).replace(/rs\.?|npr|\/-|,|\s/gi, "");
   if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
+}
+
+/** "१०,०००" -> "10,000": Devanagari digits are mapped one by one (१ is 1, never 9). */
+export function devanagariDigitsToLatin(s: string): string {
+  return String(s ?? "").replace(/[\u0966-\u096F]/g, (c) => String(c.charCodeAt(0) - 0x0966));
+}
+
+/** "2026-08-12" / "२०२६-०८-१२" -> "2026-08-12"; anything else -> null. */
+function isoDate(v: unknown): string | null {
+  const t = devanagariDigitsToLatin(String(v ?? "")).trim();
+  const m = t.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}` : null;
+}
+
+/** Keep the transcription as printed (line breaks kept, control chars dropped, capped). */
+function rawText(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f]+/g, " ").split("\n").map((l) => l.replace(/[ \t]+/g, " ").trim()).filter(Boolean).join("\n");
+  return t ? t.slice(0, 20000) : null;
 }
 
 /** Coerce whatever the server returned into OcrAiVoucher (never throws). */
@@ -207,6 +292,10 @@ export function normalizeAiVoucher(raw: unknown): OcrAiVoucher {
     date_ad: str(o.date_ad),
     date_bs: str(o.date_bs),
     payment_mode: str(o.payment_mode),
+    due_date: isoDate(o.due_date),
+    credit_days: (() => { const n = aiNum(o.credit_days); return n != null && n > 0 && n <= 3650 ? Math.round(n) : null; })(),
+    amount_in_words: str(o.amount_in_words),
+    raw_text: rawText(o.raw_text),
     items: items
       .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
       .map((x) => ({
@@ -249,7 +338,7 @@ export function aiFallbackText(d: OcrAiVoucher): string {
   if (d.party_pan) L.push(`PAN NO. : ${d.party_pan}`);
   if (d.invoice_no) L.push(`INVOICE NO. : ${d.invoice_no}`);
   const ad = toDmy(d.date_ad);
-  const bs = toDmy(d.date_bs);
+  const bs = bsDateText(d.date_bs);
   if (ad) L.push(`INVOICE DATE : ${ad}`);
   if (bs) L.push(`INVOICE MITI : ${bs}`);
   if (d.payment_mode) L.push(`MODE OF PAYMENT : ${d.payment_mode}`);
@@ -264,9 +353,9 @@ export function aiFallbackText(d: OcrAiVoucher): string {
   if (d.taxable != null) L.push(`TAXABLE AMOUNT ${d.taxable.toFixed(2)}`);
   if (d.vat_amount != null) L.push(`VAT ${d.vat_percent ?? 13}% ${d.vat_amount.toFixed(2)}`);
   if (d.grand_total != null) L.push(`GRAND TOTAL ${d.grand_total.toFixed(2)}`);
-  /* Debug / "Show OCR text": the type Gemini chose and the entry it wrote, so a wrong classification is
-   * visible without reading the whole JSON. */
-  if (d.voucher_type) L.push(`VOUCHER TYPE : ${d.voucher_type}${d.voucher_type_reason ? ` (${d.voucher_type_reason})` : ""}`);
+  /* Keep the compact text machine-readable: the classification reason is AI metadata, not bill text.
+   * It is shown separately in OCR debug details. */
+  if (d.voucher_type) L.push(`VOUCHER TYPE : ${d.voucher_type}`);
   if (d.lines.length) {
     L.push("DR / CR");
     for (const ln of d.lines) {
@@ -274,7 +363,92 @@ export function aiFallbackText(d: OcrAiVoucher): string {
       L.push(`${ln.side.toUpperCase()} | ${ln.kind} | ${who || "-"} | ${ln.amount ?? "-"}`);
     }
   }
+  if (d.due_date) L.push(`DUE DATE : ${toDmy(d.due_date) ?? d.due_date}`);
+  if (d.credit_days) L.push(`CREDIT DAYS : ${d.credit_days}`);
+  if (d.amount_in_words) L.push(`IN WORDS : ${d.amount_in_words}`);
   return L.join("\n");
+}
+
+/* ---------------- Amount cross-checks (Dr = Cr, Grand Total vs items vs words) ---------------- */
+
+const WORD_UNITS: Record<string, number> = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+  twenty: 20, thirty: 30, forty: 40, fourty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+};
+const WORD_SCALES: Record<string, number> = { hundred: 100, thousand: 1000, lakh: 100000, lakhs: 100000, lac: 100000, lacs: 100000, million: 1000000, crore: 10000000, crores: 10000000, billion: 1000000000 };
+
+/**
+ * "Rupees Ten Thousand Two Hundred Fifty and Paisa Fifty Only" -> 10250.5. Also "Rs. 10,250/- only" style digits
+ * (Devanagari digits allowed). Returns null when the words cannot be read as one number.
+ */
+export function parseAmountInWords(raw: string | null | undefined): number | null {
+  const t0 = devanagariDigitsToLatin(String(raw ?? "")).toLowerCase();
+  if (!t0.trim()) return null;
+  const digits = t0.replace(/,/g, "").match(/\d+(?:\.\d+)?/g);
+  if (digits && digits.length === 1 && !/[a-z]{3,}\s+(?:hundred|thousand|lakh|crore)/.test(t0)) return Number(digits[0]);
+  const [rupeePart, paisaPart] = t0.split(/\b(?:and\s+)?(?:paisa|paise|paisa\.)\b/);
+  const parse = (s: string): number | null => {
+    const words = s.replace(/[^a-z\s-]/g, " ").replace(/-/g, " ").split(/\s+/).filter(Boolean);
+    let total = 0, cur = 0, seen = false;
+    for (const w of words) {
+      if (w in WORD_UNITS) { cur += WORD_UNITS[w]; seen = true; }
+      else if (w === "hundred") { cur = (cur || 1) * 100; seen = true; }
+      else if (w in WORD_SCALES) { total += (cur || 1) * WORD_SCALES[w]; cur = 0; seen = true; }
+      else if (/^(rupees?|rs|npr|nrs|only|and|nepali|indian|in|words?|amount|total|grand|the|of|sum|net)$/.test(w)) continue;
+      else return null;
+    }
+    return seen ? total + cur : null;
+  };
+  const r = parse(rupeePart ?? "");
+  if (r == null) return null;
+  const p = paisaPart != null ? parse(paisaPart) : 0;
+  return r + (p ? p / 100 : 0);
+}
+
+export type AiAmountCheck = { ok: boolean; reasons: string[]; drTotal?: number; crTotal?: number; wordsAmount?: number | null };
+
+/**
+ * Money cross-checks the runner treats as "amount mismatch":
+ *  - Dr total = Cr total when Gemini returned ledger lines (both sides present),
+ *  - printed amount in words = Grand Total,
+ *  - item sum (- discount + VAT) = Grand Total when items and a Grand Total are both present.
+ * Pure; reasons are short English debug text (the UI shows its own localized label).
+ */
+export function aiAmountCheck(d: OcrAiVoucher): AiAmountCheck {
+  const reasons: string[] = [];
+  const out: AiAmountCheck = { ok: true, reasons };
+  const dr = d.lines.filter((l) => l.side === "dr");
+  const cr = d.lines.filter((l) => l.side === "cr");
+  if (dr.length && cr.length) {
+    const sum = (ls: OcrAiLine[]) => r2(ls.reduce((a, l) => a + (l.amount ?? 0), 0));
+    out.drTotal = sum(dr);
+    out.crTotal = sum(cr);
+    if (dr.some((l) => l.amount == null) || cr.some((l) => l.amount == null)) reasons.push("Dr/Cr line amount missing");
+    else if (!near(out.drTotal, out.crTotal)) reasons.push(`Dr ${out.drTotal} does not equal Cr ${out.crTotal}`);
+  }
+  const grand = d.grand_total;
+  if (d.amount_in_words) {
+    const w = parseAmountInWords(d.amount_in_words);
+    out.wordsAmount = w;
+    if (w != null && grand != null && !near(w, grand)) reasons.push(`Amount in words ${w} does not match Grand Total ${grand}`);
+  }
+  const amounts = d.items.map((i) => i.amount).filter((x): x is number => x != null);
+  if (grand != null && amounts.length && amounts.length === d.items.length) {
+    const S = amounts.reduce((a, b) => a + b, 0);
+    const expected = r2(S - (d.discount ?? 0) + (d.vat_amount ?? 0));
+    /* A bill whose items are printed VAT-inclusive also passes (S itself = Grand Total). */
+    if (!near(expected, grand, Math.max(1, grand * 0.002)) && !near(r2(S), grand, Math.max(1, grand * 0.002))) {
+      reasons.push(`Items ${r2(S)} (- discount + VAT = ${expected}) do not match Grand Total ${grand}`);
+    }
+  }
+  out.ok = reasons.length === 0;
+  return out;
+}
+
+/** AI voucher_type -> the app's OcrDocType (all AI types are honoured). */
+export function aiDocTypeOf(t: OcrAiVoucherType | null | undefined): OcrDocType | null {
+  return t && (AI_VOUCHER_TYPES as readonly string[]).includes(t) ? (t as OcrDocType) : null;
 }
 
 export type AiCounterParty = {
@@ -346,6 +520,12 @@ function toDmy(s: string | null): string | null {
   return d ? `${d[1].padStart(2, "0")}/${d[2].padStart(2, "0")}/${d[3]}` : null;
 }
 
+/** Keep Gemini's canonical BS YYYY-MM-DD intact; DD/MM/YYYY makes a BS Miti ambiguous. */
+function bsDateText(s: string | null): string | null {
+  const m = String(s ?? "").match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}` : toDmy(s);
+}
+
 /** Map + validate Gemini's answer onto the bill parsed from its raw_text. Mutates `bill`. */
 export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApplyContext): void {
   const d = ai.data;
@@ -370,7 +550,7 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
   /* ---- Date: AD must agree with the BS Miti (same resolver as printed bills).
    * A missing or unsure AD date never blocks a clear BS Miti (many Nepali bills print only the Miti). ---- */
   if (d.date_ad || d.date_bs) {
-    const bs = toDmy(d.date_bs);
+    const bs = bsDateText(d.date_bs);
     // Gemini often reports a generic "date" uncertainty when the AD format is ambiguous.
     // Treat that as uncertainty about AD, not the separately extracted Nepali Miti. A clear
     // Miti can disambiguate DD/MM vs MM/DD and should still populate the voucher date.
@@ -410,6 +590,26 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
   /* ---- Party match (existing rules: PAN exact, then strict unique name) ---- */
   const pool = ctx.parties.filter(isOcrSelectableParty);
   const panOf = (p: OcrPartyLike) => [p.pan, p.panNo, p.vatNo].map((x) => String(x ?? "").replace(/\D/g, "")).filter(Boolean);
+  // The text parser can match a party using a nearby phone/PAN even when the printed identifier
+  // belongs to the bill's other side (for example, a customer's PAN on a purchase invoice).
+  // When Gemini has read the counter-party name, keep that parser pick only if the same master
+  // is independently supported by the counter-party name/identifiers. Otherwise clear it so
+  // the user gets a create/pick suggestion instead of a silently wrong account.
+  if (cp.name && bill.partyId?.value) {
+    const parsedParty = pool.find((p) => p.id === bill.partyId!.value);
+    const parsedMatch = parsedParty
+      ? matchMasters(cp.name, [parsedParty], (p) => namesOf(p), (p) =>
+          partyProof(
+            { name: cp.name, pan, phone: cp.phones[0] ?? null, address: cp.address ?? null },
+            { name: p.name, aliasName: p.aliasName, pan: p.pan, panNo: p.panNo, vatNo: p.vatNo, phone: p.phone, mobile: p.mobile, address: (p as { address?: string }).address, billingAddress: (p as { billingAddress?: string }).billingAddress },
+          ),
+        )
+      : null;
+    if (!parsedMatch || parsedMatch.decision !== "auto") {
+      dbg(`AI Party: cleared parser pick "${parsedParty?.name ?? bill.partyId.value}"; it is not a confident match for counter-party "${cp.name}"`);
+      delete bill.partyId;
+    }
+  }
   if (pan) {
     const hits = pool.filter((p) => panOf(p).includes(pan!));
     if (hits.length === 1) {
@@ -445,14 +645,22 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
   const bad: string[] = [];
   d.items.forEach((it, i) => {
     let qty = it.qty;
-    const rate = it.rate;
+    let rate = it.rate;
     const amount = it.amount;
     const label = `row ${it.sn ?? i + 1}`;
     if (amount == null || amount <= 0) { bad.push(`${label}: no amount`); return; }
     if (qty == null && rate) { qty = r2(amount / rate); bad.push(`${label}: qty missing (derived ${qty})`); }
+    // A printed dash means the unit rate is omitted. If quantity and row amount are clear,
+    // derive the arithmetic rate so the voucher can retain the verified amount even when
+    // no item master matched (e.g. 1 piece × Rs. 10,000 = Rs. 10,000).
+    const rateDerived = rate == null && qty != null && qty > 0;
+    if (rateDerived) {
+      rate = r2(amount / qty!);
+      dbg(`AI ${label}: rate not printed; derived ${rate} from amount ${amount} / qty ${qty}`);
+    }
     if (qty == null || rate == null) { bad.push(`${label}: qty/rate missing`); rows.push({ description: it.description, quantity: qty ?? 1, unit: unitOf(it.unit, ctx), rate: rate ?? amount, amount }); return; }
     if (!near(qty * rate, amount, Math.max(1, amount * 0.002))) bad.push(`${label}: ${qty} x ${rate} = ${r2(qty * rate)} but amount ${amount}`);
-    else if (isUnsure(`items[${i}]`, `items[${i + 1}]`, `item${i + 1}`)) bad.push(`${label}: AI was not sure`);
+    else if (!rateDerived && isUnsure(`items[${i}]`, `items[${i + 1}]`, `item${i + 1}`, "rate")) bad.push(`${label}: AI was not sure`);
     rows.push({ description: it.description, quantity: qty, unit: unitOf(it.unit, ctx), rate, amount });
   });
   const itemPool = ctx.items.filter((x) => !x.isDeleted);
@@ -516,15 +724,31 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
 
   /* ---- Document type (relative to our company) ----
    * Only Gemini's explicit voucher_type may replace the parser's classification. */
-  const aiType: OcrDocType | null = d.voucher_type === "sale" || d.voucher_type === "purchase" || d.voucher_type === "payment_in" || d.voucher_type === "payment_out" || d.voucher_type === "contra"
-    ? d.voucher_type
-    : null;
+  const aiType: OcrDocType | null = aiDocTypeOf(d.voucher_type);
   if (aiType) {
     // Keep the parsed voucher type aligned with Gemini's final JSON decision.
     const cur = bill.docType;
     const conf = 0.95;
     if (cur && cur.type !== aiType) dbg(`AI document type ${aiType} replaces text rule guess (${cur.type})`);
     bill.docType = { type: aiType, confidence: cur?.type === aiType ? Math.max(cur.confidence, conf) : conf, reason: `Gemini final: ${d.voucher_type}${d.voucher_type_reason ? ` (${d.voucher_type_reason.slice(0, 100)})` : ""}` };
+  }
+  /* ---- Per-type field check (server typeCheck, or the same rules here) ---- */
+  const tc = ai.typeCheck ?? aiTypeCheck(d);
+  if (tc.missing.length) dbg(`AI ${tc.voucher_type ?? "-"}: required field(s) not returned: ${tc.missing.join(", ")}`);
+  if (tc.unexpected.length) dbg(`AI ${tc.voucher_type ?? "-"}: field(s) this type does not use were returned (kept for a type change): ${tc.unexpected.join(", ")}`);
+
+  /* ---- Printed due date / credit days (party master + Common Setting are applied later by resolveOcrDueDate) ---- */
+  if (d.due_date || d.credit_days) {
+    bill.dueTerms = { printedDue: d.due_date, creditDays: d.credit_days };
+    dbg(`AI due terms: due ${d.due_date ?? "-"} / credit days ${d.credit_days ?? "-"}`);
+  }
+
+  /* ---- Amount cross-checks: Dr = Cr, Grand Total vs items vs amount in words ---- */
+  const chk = aiAmountCheck(d);
+  bill.amountCheck = { ok: chk.ok, reasons: chk.reasons };
+  if (!chk.ok) {
+    /* Fields are left as they are: the runner applies the "amount mismatch" rule from bill.amountCheck. */
+    dbg(`AI amount check failed: ${chk.reasons.join("; ")}`);
   }
   if (d.account_holder_name) dbg(`AI account holder: ${d.account_holder_name}`);
   if (d.transfer_reference) dbg(`AI transfer ref: ${d.transfer_reference}${d.transfer_mode ? ` (${d.transfer_mode})` : ""}${d.transfer_charges ? `, charges ${d.transfer_charges}` : ""}`);

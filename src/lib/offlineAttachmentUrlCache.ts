@@ -620,10 +620,16 @@ function emitPrefetchLog(
         event.note === "firebase_object_path_fetch_failed" ||
         event.note === "ineligible_url" ||
         event.note === "device_ref_fetch_failed");
+    // `local:` refs belong to the device that created them. A company-wide
+    // mirror can contain refs from other devices, so a cache warm miss is normal
+    // and should not look like a failed app operation in the browser console.
+    const expectedDeviceLocalMiss = !event.ok && event.note === "device_ref_fetch_failed";
     const level = event.ok
       ? "debug"
       : event.retryable
         ? "warn"
+        : expectedDeviceLocalMiss
+          ? "debug"
         : expectedPrefetchMiss || expectedClientHttp
           ? "warn"
           : "error";

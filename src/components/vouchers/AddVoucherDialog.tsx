@@ -2,6 +2,7 @@
 import { VoucherMasterEditHost } from "@/components/vouchers/VoucherMasterEditHost";
 import { ReconciledPointGuardProvider } from "@/components/vouchers/ReconciledPointGuardContext";
 import { VoucherOcrHeaderToggles, OCR_SWITCH_EVENT, useOcrPrefs } from "@/modules/ocr";
+import { OCR_MANUAL_SWITCH_EVENT } from "@/modules/ocr/handoff";
 import dynamic from "next/dynamic";
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from "react";
@@ -1209,6 +1210,13 @@ function VoucherDialogContent({
     const initial = getVoucherType(voucher, defaultVoucherData, defaultTab);
     return interCompanyDisabled && !voucher?.id && initial === "inter_company" ? "sale" : initial;
   });
+  const changeVoucherTab = useCallback((next: VoucherType) => {
+    if (next === activeTab) return;
+    window.dispatchEvent(new CustomEvent(OCR_MANUAL_SWITCH_EVENT, {
+      detail: { fromType: activeTab, toType: next },
+    }));
+    setActiveTab(next);
+  }, [activeTab]);
   /** Cashflow Quartet tab-switch: mismatch refresh + prefetch cancel — mount par duplicate fire na ho. */
   const prevCashflowQuadTabRef = useRef<VoucherType | null>(null);
   useEffect(() => {
@@ -1373,7 +1381,7 @@ function VoucherDialogContent({
               onValueChange={(v) => {
                 const next = v as VoucherType;
                 // Desktop Tabs jaisa guard — sirf allowed-convert tab pe switch (linked lock par bhi safe).
-                if (restrictedEnabledTabs === null || restrictedEnabledTabs.includes(next)) setActiveTab(next);
+                if (restrictedEnabledTabs === null || restrictedEnabledTabs.includes(next)) changeVoucherTab(next);
               }}
             >
               {/* Mobile voucher-type button: full-width ke bajay text-length fit rakho taaki chip jaisa dikhe. */}
@@ -1434,7 +1442,7 @@ function VoucherDialogContent({
             value={activeTab}
             onValueChange={(v) => {
               const next = v as VoucherType;
-              if (restrictedEnabledTabs === null || restrictedEnabledTabs.includes(next)) setActiveTab(next);
+              if (restrictedEnabledTabs === null || restrictedEnabledTabs.includes(next)) changeVoucherTab(next);
             }}
             className="w-full"
           >
@@ -1707,30 +1715,42 @@ export function AddVoucherDialog(props: any) {
   /** Offline + Firestore-mode company (non-embedded APK cloud): view-only — Save / Copy / Approve band. */
   const apkOfflineViewOnly = useMemo(() => apkCloudCompanyOfflineViewOnly(company, navigatorOnline), [company, navigatorOnline]);
   const { user, customUser } = useAuth();
-  const [galleryRunnerControl, setGalleryRunnerControl] = useState<{ available: boolean; held: boolean; enabled: boolean }>({ available: false, held: true, enabled: false });
+  const [galleryRunnerControl, setGalleryRunnerControl] = useState<{ available: boolean; active: boolean; held: boolean; enabled: boolean }>({ available: false, active: false, held: true, enabled: false });
   useEffect(() => {
     if (!dialogOpen || !companyId) return;
     const onRunnerState = (event: Event) => {
-      const detail = (event as CustomEvent<{ companyId?: string; held?: boolean; enabled?: boolean; controlAvailable?: boolean }>).detail;
+      const detail = (event as CustomEvent<{ companyId?: string; active?: boolean; held?: boolean; enabled?: boolean; controlAvailable?: boolean }>).detail;
       if (String(detail?.companyId || "") !== companyId) return;
-      setGalleryRunnerControl({ available: detail.controlAvailable === true, held: detail.held === true || detail.enabled !== true, enabled: detail.enabled === true });
+      setGalleryRunnerControl({ available: detail.controlAvailable === true, active: detail.active === true, held: detail.held === true || detail.enabled !== true, enabled: detail.enabled === true });
     };
     window.addEventListener("pl:gallery:auto-post-process-state", onRunnerState);
     window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-state-request", { detail: { companyId } }));
     return () => window.removeEventListener("pl:gallery:auto-post-process-state", onRunnerState);
   }, [companyId, dialogOpen]);
   const autoPostRunnerToggleNode = useMemo(() => galleryRunnerControl.available ? (
-    <Button
-      type="button"
-      className="h-8 shrink-0 rounded-full border border-green-600 bg-white px-3 text-[11px] font-medium text-green-900 shadow-sm hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-50"
-      aria-pressed={galleryRunnerControl.enabled && !galleryRunnerControl.held}
-      disabled={!galleryRunnerControl.enabled}
-      title={!galleryRunnerControl.enabled ? "Enable Auto post vouchers in Auto post settings to start the runner" : undefined}
-      onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId, held: !galleryRunnerControl.held } }))}
-    >
-      {galleryRunnerControl.held ? "Start runner" : "Stop runner"}
-    </Button>
-  ) : null, [companyId, galleryRunnerControl.available, galleryRunnerControl.enabled, galleryRunnerControl.held]);
+    <>
+      <Button
+        type="button"
+        className="h-8 shrink-0 rounded-full border border-green-600 bg-white px-3 text-[11px] font-medium text-green-900 shadow-sm hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-50"
+        aria-pressed={galleryRunnerControl.enabled && !galleryRunnerControl.held}
+        disabled={!galleryRunnerControl.enabled}
+        title={!galleryRunnerControl.enabled ? "Enable Auto post vouchers in Auto post settings to start the runner" : undefined}
+        onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId, held: !galleryRunnerControl.held } }))}
+      >
+        {galleryRunnerControl.held ? (galleryRunnerControl.active ? "Resume runner" : "Start runner") : "Stop runner"}
+      </Button>
+      {galleryRunnerControl.active && galleryRunnerControl.held ? (
+        <Button
+          type="button"
+          className="h-8 shrink-0 rounded-full border border-amber-500 bg-white px-3 text-[11px] font-medium text-amber-900 shadow-sm hover:bg-amber-50"
+          title="Skip this document and move it to Auto post failed"
+          onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-skip-current", { detail: { companyId } }))}
+        >
+          Skip &amp; move to Auto failed
+        </Button>
+      ) : null}
+    </>
+  ) : null, [companyId, galleryRunnerControl.active, galleryRunnerControl.available, galleryRunnerControl.enabled, galleryRunnerControl.held]);
   /** Company Display settings se AD/BS/Both — recurring dialog labels + apply-from picker. */
   const { dateSystem, formatDate, formatDateBS, formatCurrencyForPrint } = useDate();
   const calLab = useMemo(() => recurringAutoVoucherLabels(dateSystem), [dateSystem]);
@@ -3996,6 +4016,12 @@ export function AddVoucherDialog(props: any) {
       setCommittedAutoMonthlyEnabled(false);
     }
     if (status === "cancelled") {
+      // Canceling the active auto-post voucher must also stop the runner. This
+      // keeps the document from being reopened or the next one from starting
+      // while the user is taking over manually.
+      if (galleryRunnerControl.available && galleryRunnerControl.active && companyId) {
+        window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId, held: true } }));
+      }
       cancelVoucherInFlightWork();
       setPostCopyNewFormSeed(null);
       setCopyMismatchCategories([]);
@@ -4169,6 +4195,8 @@ export function AddVoucherDialog(props: any) {
     deleteOriginalAfterCopySave,
     copySourceVoucherSnapshot,
     canDeleteVoucher,
+    galleryRunnerControl.active,
+    galleryRunnerControl.available,
   ]);
 
   /**
@@ -5086,7 +5114,7 @@ export function AddVoucherDialog(props: any) {
               </div>
             ) : null}
             {/* Desktop: ONE horizontal scroller around form body + footer; header stays fixed. Inner wrapper min-width per voucher type. */}
-            <div className="flex-1 flex flex-col min-h-0 overflow-x-auto overflow-y-hidden scrollbar-slim-dim">
+            <div className="flex-1 flex flex-col min-h-0 overflow-x-auto overflow-y-auto overscroll-contain scrollbar-slim-dim">
               <div
                 className="relative flex flex-1 flex-col min-h-0 w-full"
                 style={{ minWidth: DESKTOP_VOUCHER_BODY_MIN_W[voucherFormActiveTab] ?? DESKTOP_VOUCHER_BODY_MIN_W_DEFAULT }}

@@ -3,8 +3,8 @@
  *
  * The text detectors only see the compact summary Gemini returns (no full paper text), so the slip's
  * customer/beneficiary sections are missing there. Gemini's JSON already carries them as
- * `bank_flow` + `debit_account` / `credit_account` / `transfer_charges` / `transfer_reference`,
- * Gemini's declared voucher_type is authoritative; account/master matching only links ledgers.
+ * `bank_flow` + `debit_account` / `credit_account` / `transfer_charges` / `transfer_reference`.
+ * A distinct, proven match to our own bank master on both sides can correct a mistaken payment-out.
  */
 import type { OcrAiVoucher } from "../../../modules/ocr/ai/aiVoucher";
 import { nameScore } from "../../../modules/ocr/fuzzy";
@@ -31,7 +31,7 @@ const isMoneyKind = (d: OcrAiVoucher) =>
 
 /** Gemini gave us no usable money-flow answer: let the text detectors decide. */
 export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptDetection | null {
-  /* Gemini's declared voucher_type is final. Bank/account matching below is only for master linking. */
+  /* Gemini's type is respected unless both sides prove this is an own-bank transfer. */
   const declaredType = d.voucher_type ?? null;
   const moneyType = declaredType === "payment_out" || declaredType === "payment_in" || declaredType === "contra" ||
     declaredType === "direct_expense" || declaredType === "direct_income";
@@ -46,7 +46,12 @@ export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptD
   const credit = { accountMasked: d.credit_account ?? undefined, bankName: d.credit_bank ?? undefined, accountName: d.beneficiary_name ?? undefined };
   const senderPick = pickUniqueOwnAccount(debit, o.ownAccounts);
   const creditPick = pickUniqueOwnAccount(credit, o.ownAccounts);
-  const effectiveFlow = flow;
+  const bothSidesMatchDistinctOwnAccounts = d.doc_kind === "bank_transfer" && senderPick.ok && creditPick.ok && senderPick.acc.id !== creditPick.acc.id;
+  /* Gemini chose a bill / journal / note type: honour it (the bill path opens that form), unless both
+   * printed sides are proven distinct own bank masters (then it is a contra). */
+  const billType = declaredType === "sale" || declaredType === "purchase" || declaredType === "journal" || declaredType === "credit_note" || declaredType === "debit_note";
+  if (billType && !bothSidesMatchDistinctOwnAccounts) return null;
+  const effectiveFlow = bothSidesMatchDistinctOwnAccounts ? "own_to_own" : flow;
   const charge = d.transfer_charges != null && d.transfer_charges > 0 ? { amount: d.transfer_charges } : undefined;
   const narration = [
     d.account_holder_name && `connectIPS Account: ${d.account_holder_name}`,
@@ -56,10 +61,10 @@ export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptD
     d.doc_kind !== "cheque" && d.transfer_reference && `Ref: ${d.transfer_reference}`,
   ].filter(Boolean).join(" | ");
 
-  /* No local rule may override Gemini's explicit type. Flow is a fallback only when it returned none. */
+  /* Distinct debit + credit own-account matches are direct ledger evidence of a contra. */
   const declared = d.voucher_type ?? null;
   const flowType = effectiveFlow === "own_to_own" ? "contra" : effectiveFlow === "out" ? "payment_out" : "payment_in";
-  const finalType = declared ?? flowType;
+  const finalType = bothSidesMatchDistinctOwnAccounts ? "contra" : declared ?? flowType;
 
   /* Gemini's JSON is the only place the payer name exists on a connectIPS slip (the compact text summary prints
    * it once as "connectIPS Account: X"). Handing it to the fill step is what lets a ledger named after the
@@ -86,7 +91,7 @@ export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptD
     counterParty: d.party_name ?? null,
     otherCharge: charge,
     narration,
-    reason: `AI: ${d.doc_kind ?? "money document"}; voucher ${finalType}${declared ? " (Gemini final)" : " (flow fallback)"}; flow ${effectiveFlow ?? "unclear"}${d.bank_flow_reason ? ` (${d.bank_flow_reason.slice(0, 120)})` : ""}`,
+    reason: `AI: ${d.doc_kind ?? "money document"}; voucher ${finalType}${bothSidesMatchDistinctOwnAccounts ? " (both sides matched distinct own bank masters)" : declared ? " (Gemini final)" : " (flow fallback)"}; flow ${effectiveFlow ?? "unclear"}${!bothSidesMatchDistinctOwnAccounts && d.bank_flow_reason ? ` (${d.bank_flow_reason.slice(0, 120)})` : ""}`,
   };
 
   if (finalType === "contra") {

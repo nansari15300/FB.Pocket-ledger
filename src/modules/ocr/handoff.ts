@@ -3,6 +3,8 @@ import type { OcrRawResult } from "./types";
 import type { OcrEnginePref } from "./prefs";
 
 export const OCR_SWITCH_EVENT = "pl-ocr-switch-voucher-type";
+/** User manually changed the voucher tab after OCR; the source form offers its cached scan to the target form. */
+export const OCR_MANUAL_SWITCH_EVENT = "pl-ocr-manual-switch-voucher-type";
 
 export type OcrHandoff = {
   files: (File | string)[];
@@ -14,12 +16,78 @@ export type OcrHandoff = {
   selectedIds?: string[];
   /** Gallery local Auto post: use the voucher form's normal guarded save after OCR autofill. */
   autoPost?: boolean;
+  /** Runner-specific save countdown; overrides the device-wide OCR preference for this handoff. */
+  autoPostSeconds?: number;
+  /** Runner-specific overwrite behaviour; overrides the device-wide OCR preference for this handoff. */
+  overwriteEdited?: boolean;
+  /** A manual type change may reuse cached OCR, but must leave the form for review instead of auto-saving. */
+  manualTypeSwitch?: boolean;
   /** Allow the regular voucher form to save free-form line rows when OCR cannot match item masters. */
   allowSaveWithoutItems?: boolean;
   /** Local Gallery Auto post can keep the company-selected OCR engine in the voucher review form. */
   enginePref?: OcrEnginePref;
   cloudProvider?: "google" | "azure";
+  /**
+   * Gallery runner: "Check for duplicate vouchers" switch. false = the opened form does no duplicate detection,
+   * shows no duplicate bubble and never blocks the auto post for a duplicate (manual entry is unaffected).
+   */
+  checkDuplicateVouchers?: boolean;
+  /** Runner copy of the Common Setting default due days (overrides the cached company value for this voucher). */
+  defaultDueDays?: { sale?: number | null; purchase?: number | null };
+  /**
+   * Manual type change: values the user typed in the previous form, by meaning (not by path). The new form writes
+   * them over the OCR re-map, so a type change never wipes what the user entered.
+   */
+  userValues?: OcrCarriedValues;
 };
+
+/** Field meanings that exist on several voucher forms (the new form writes only those it has). */
+export type OcrCarriedValues = Partial<Record<"date" | "dueDate" | "narration" | "amount" | "party" | "account", unknown>>;
+
+export type OcrCarryPaths = Partial<Record<keyof OcrCarriedValues, string | undefined>>;
+const CARRY_KEYS: readonly (keyof OcrCarriedValues)[] = ["date", "dueDate", "narration", "amount", "party", "account"];
+
+/**
+ * Source form -> values the USER entered (not OCR fills), keyed by meaning. `userEdited(path, value)` decides
+ * (dirty and not equal to what OCR wrote); empty values are skipped.
+ */
+export function collectOcrUserValues(paths: OcrCarryPaths, read: (path: string) => unknown, userEdited: (path: string, value: unknown) => boolean, isEmpty: (v: unknown) => boolean): OcrCarriedValues {
+  const out: OcrCarriedValues = {};
+  for (const k of CARRY_KEYS) {
+    const path = paths[k];
+    if (!path) continue;
+    const v = read(path);
+    if (!isEmpty(v) && userEdited(path, v)) out[k] = v;
+  }
+  return out;
+}
+
+/** Target form: [path, value] writes for the carried values whose meaning this form has (others are dropped). */
+export function carriedValueWrites(carried: OcrCarriedValues | undefined, paths: OcrCarryPaths): [keyof OcrCarriedValues, string, unknown][] {
+  if (!carried) return [];
+  const out: [keyof OcrCarriedValues, string, unknown][] = [];
+  for (const k of CARRY_KEYS) {
+    const path = paths[k];
+    if (path && carried[k] !== undefined) out.push([k, path, carried[k]]);
+  }
+  return out;
+}
+
+/* ---- Runner "duplicate check off" (one voucher at a time; read by the live duplicate warning hook) ---- */
+let runnerDupOff = false;
+const dupSubs = new Set<() => void>();
+export function setRunnerDuplicateCheckOff(off: boolean) {
+  if (runnerDupOff === off) return;
+  runnerDupOff = off;
+  dupSubs.forEach((f) => f());
+}
+export function isRunnerDuplicateCheckOff(): boolean {
+  return runnerDupOff;
+}
+export function subscribeRunnerDuplicateCheckOff(cb: () => void): () => void {
+  dupSubs.add(cb);
+  return () => { dupSubs.delete(cb); };
+}
 
 /**
  * How long a switch hand-off waits for the target form. The target forms are lazy chunks (next/dynamic):

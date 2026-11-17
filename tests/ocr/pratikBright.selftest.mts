@@ -11,7 +11,6 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseBill } from "../../src/modules/ocr/parser";
-import { ocrKeyFieldScore, needsEnhancedPass, betterPass } from "../../src/modules/ocr/ocrQuality";
 import { panConfusionDistance, textHasOwnPanLoose } from "../../src/modules/ocr/ownCompany";
 import { normalizeOcrLine, parseStrictAmount } from "../../src/modules/ocr/normalize";
 import { AUTO_SWITCH_MIN_CONF } from "../../src/lib/ocr/receiptDetect/types";
@@ -75,16 +74,6 @@ const bright = fx("pratik-tax-invoice-bright.txt");
   const t = bright.replace("lnvoice N0 : SI-02833", "").replace("PAN No : 303687788", "0 : 303687");
   const b = parse(t);
   ok(b.docType?.type === "purchase", `no Customer label, name below TAX INVOICE -> purchase (not sale): ${b.docType?.type} ${b.docType?.reason}`, b.debug);
-}
-/* ---- engine retry decision ---- */
-{
-  const qBright = ocrKeyFieldScore("PRATIK TRADE CENTER PVT.LTD.\nPAN NO : 6197272158\nTAX INVOICE\nner Nas NEW PARSA\nSub Total 479,694.80");
-  ok(needsEnhancedPass(qBright, 66, "TAX INVOICE"), `bright standard pass (missing ${qBright.missing.join(",")}) -> enhanced retry`);
-  const qGood = ocrKeyFieldScore(fx("pratik-tax-invoice-live.txt"));
-  ok(!needsEnhancedPass(qGood, 89, fx("pratik-tax-invoice-live.txt")), `good photo (score ${qGood.score}/5) -> no retry`);
-  ok(!needsEnhancedPass(ocrKeyFieldScore(fx("connectips-nmb.txt")), 85, fx("connectips-nmb.txt")), "bank slip with good confidence -> no retry");
-  const a = { quality: qBright, meanConfidence: 66 }, e = { quality: ocrKeyFieldScore(bright), meanConfidence: 81 };
-  ok(betterPass(a, e) === e, `better pass = more key fields (${qBright.score} vs ${e.quality.score})`);
 }
 /* ---- good photo (A) unchanged ---- */
 {

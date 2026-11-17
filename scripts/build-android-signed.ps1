@@ -163,8 +163,7 @@ function Invoke-KeySecurityPreCheck([string]$excludeRel) {
             'glpat-[A-Za-z0-9_-]{20,}',
             '"private_key"[[:space:]]*:'
         )
-        # Vendored minified OCR wasm glue (false positives) is excluded from CONTENT scan only.
-        $exclude = @(':(exclude)node_modules/**', ':(exclude)package-lock.json', ':(exclude)public/ocr/**')
+        $exclude = @(':(exclude)node_modules/**', ':(exclude)package-lock.json')
         foreach ($a in $AllowPaths) { if ($a) { $exclude += ":(exclude)$a" } }
         if ($excludeRel) { $exclude += ":(exclude)$excludeRel" }
         foreach ($p in $contentPatterns) {

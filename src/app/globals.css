@@ -16853,3 +16853,75 @@ html body[class*="theme-"] button[data-pl-master-delete-btn][aria-disabled="true
   padding-left: 18px;
   padding-right: 18px;
 }
+
+/* Global info affordance: keep both the shared (i) button and lucide info icons blue. */
+button[data-pl-fresh-info],
+button[data-pl-footer-fresh-info],
+button[data-pl-plan-rule-info],
+button[data-pl-billing-feature-info],
+button[data-pl-header-preview-info],
+button[data-pl-bank-drcr-perspective-info] {
+  border-color: #93c5fd !important;
+  color: #93c5fd !important;
+}
+button[data-pl-fresh-info] svg,
+button[data-pl-footer-fresh-info] svg,
+button[data-pl-plan-rule-info] svg,
+button[data-pl-billing-feature-info] svg,
+button[data-pl-header-preview-info] svg,
+button[data-pl-bank-drcr-perspective-info] svg,
+svg.lucide-info {
+  color: #93c5fd !important;
+  stroke: #93c5fd !important;
+}
+button[data-pl-fresh-info]:hover,
+button[data-pl-footer-fresh-info]:hover,
+button[data-pl-plan-rule-info]:hover,
+button[data-pl-billing-feature-info]:hover,
+button[data-pl-header-preview-info]:hover,
+button[data-pl-bank-drcr-perspective-info]:hover {
+  border-color: #60a5fa !important;
+  color: #60a5fa !important;
+}
+button[data-pl-fresh-info]:hover svg,
+button[data-pl-footer-fresh-info]:hover svg,
+button[data-pl-plan-rule-info]:hover svg,
+button[data-pl-billing-feature-info]:hover svg,
+button[data-pl-header-preview-info]:hover svg,
+button[data-pl-bank-drcr-perspective-info]:hover svg,
+svg.lucide-info:hover {
+  color: #60a5fa !important;
+  stroke: #60a5fa !important;
+}
+
+/* Intro/info popover copy: text-xs → text-base (two Tailwind size steps). */
+[data-pl-intro][data-side],
+[data-pl-intro][data-side] * {
+  font-size: 1rem !important;
+  line-height: 1.5 !important;
+}
+
+/* Admin Plans: cards have a light 3D lift on hover/focus. */
+[data-pl-admin-plans-page] .rounded-lg.border.bg-card {
+  transform: perspective(900px) translateY(0) rotateX(0);
+  transform-style: preserve-3d;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+@media (hover: hover) {
+  [data-pl-admin-plans-page] .rounded-lg.border.bg-card:hover,
+  [data-pl-admin-plans-page] .rounded-lg.border.bg-card:focus-within {
+    position: relative;
+    z-index: 2;
+    transform: perspective(900px) translateY(-3px) rotateX(0.5deg);
+    box-shadow:
+      0 10px 16px -8px rgb(15 23 42 / 0.38),
+      0 3px 6px -3px rgb(15 23 42 / 0.22);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-pl-admin-plans-page] .rounded-lg.border.bg-card {
+    transition: none;
+  }
+}

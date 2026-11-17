@@ -401,14 +401,20 @@ export async function runOfflineFullWarmSync(options: {
             console.debug("[offlineFullWarmSync:item]", { ok: true, attempt: ev.attempt, status: ev.status, note: ev.note, url: ev.url });
           }
         } else {
-          console.warn("[offlineFullWarmSync:item]", {
+          const expectedDeviceLocalMiss = ev.note === "device_ref_fetch_failed";
+          const details = {
             ok: false,
             attempt: ev.attempt,
             status: ev.status,
             retryable: ev.retryable,
             note: ev.note,
             url: ev.url,
-          });
+          };
+          if (expectedDeviceLocalMiss) {
+            if (process.env.NODE_ENV !== "production") console.debug("[offlineFullWarmSync:item]", details);
+          } else {
+            console.warn("[offlineFullWarmSync:item]", details);
+          }
           maybeNotifyAttachmentPrefetchFailure(ev, { mirrorCompanyId: localTrim });
         }
       },
@@ -572,7 +578,14 @@ export async function runEmbeddedAttachmentPrefetchPhase(args: {
           console.debug("[runEmbeddedAttachmentPrefetchPhase:item]", { ok: true, url: ev.url });
         }
       } else {
-        console.warn("[runEmbeddedAttachmentPrefetchPhase:item]", { ok: false, url: ev.url, note: ev.note });
+        const expectedDeviceLocalMiss = ev.note === "device_ref_fetch_failed";
+        if (expectedDeviceLocalMiss) {
+          if (process.env.NODE_ENV !== "production") {
+            console.debug("[runEmbeddedAttachmentPrefetchPhase:item]", { ok: false, url: ev.url, note: ev.note });
+          }
+        } else {
+          console.warn("[runEmbeddedAttachmentPrefetchPhase:item]", { ok: false, url: ev.url, note: ev.note });
+        }
         maybeNotifyAttachmentPrefetchFailure(ev, { mirrorCompanyId: trim });
       }
     },

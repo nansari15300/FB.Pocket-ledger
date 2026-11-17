@@ -1016,7 +1016,7 @@ const capitalizeFirstLetter = (str: string) => {
           ) : (
           <div className={cn(masterEntityDialogFormWrapperClassName, dialogResizable && "px-6 pb-4")}>
           <Form {...form}>
-            <form onSubmit={(e) => handleFormSubmit(e)} className="flex min-h-0 flex-1 flex-col">
+            <form onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); handleFormSubmit(e); }} className="flex min-h-0 flex-1 flex-col">
             <div className="pl-master-form-scroll min-h-0 flex-1 space-y-4 overflow-y-auto py-4 pr-1">
 
               {tabsInRibbon ? null : itemTypeTabs}

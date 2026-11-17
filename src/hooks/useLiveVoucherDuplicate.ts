@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { isRunnerDuplicateCheckOff, subscribeRunnerDuplicateCheckOff } from "@/modules/ocr/handoff";
 import {
   findDuplicateVoucher,
   type CandidateVoucher,
@@ -14,6 +15,9 @@ export function useLiveVoucherDuplicate(
   input: FindDuplicateInput,
   enabled: boolean
 ) {
+  /* Gallery runner opened this voucher with "Check for duplicate vouchers" OFF: no detection, no bubble. */
+  const runnerDupOff = useSyncExternalStore(subscribeRunnerDuplicateCheckOff, isRunnerDuplicateCheckOff, () => false);
+  enabled = enabled && !runnerDupOff;
   const [match, setMatch] = useState<DuplicateMatch | null>(null);
   const dismissedKeyRef = useRef("");
   const inputKey = JSON.stringify(input, (_key, value) =>

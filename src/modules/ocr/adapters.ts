@@ -28,6 +28,8 @@ export type OcrFormAdapter = {
   toAccountPath?: string;
   /** Payment-out / contra may keep the party amount on `payeeAmount`. */
   payeeAmount?: string;
+  /** Journal: Dr/Cr rows array ({ accountId, entityType, type: debit|credit, amount }) filled from the AI lines. */
+  journalLines?: { path: string };
 };
 
 type MkLine = () => Record<string, unknown>;
@@ -69,8 +71,8 @@ export const ocrAdapters = {
   paymentIn: (): OcrFormAdapter => pay("buyer", "payment_in"),
   /** Payment + Direct Expense (same form). Expense payee: party skipped, amount/date/narration still filled. */
   paymentOut: (): OcrFormAdapter => pay("seller", "payment_out"),
-  contra: (): OcrFormAdapter => ({ voucherType: "contra", partySide: "seller", date: "date", amount: "amount", payeeAmount: "payeeAmount", fromAccountPath: "fromAccountId", toAccountPath: "toAccountId", narration: "narration", autoPost: false, requiredPaths: ["fromAccountId", "toAccountId"] }),
-  journal: (): OcrFormAdapter => ({ voucherType: "journal", partySide: "seller", date: "date", narration: "narration", autoPost: false }),
+  contra: (): OcrFormAdapter => ({ voucherType: "contra", partySide: "seller", date: "date", amount: "amount", payeeAmount: "payeeAmount", fromAccountPath: "fromAccountId", toAccountPath: "toAccountId", narration: "narration", autoPost: true, requiredPaths: ["fromAccountId", "toAccountId"] }),
+  journal: (): OcrFormAdapter => ({ voucherType: "journal", partySide: "seller", date: "date", narration: "narration", journalLines: { path: "lines" }, autoPost: false }),
   salary: (): OcrFormAdapter => ({ voucherType: "add_salary", partySide: "seller", date: "date", narration: "narration", autoPost: false }),
   adjustment: (): OcrFormAdapter => ({ voucherType: "adjustment", partySide: "seller", date: "date", amount: "amount", narration: "narration", autoPost: false }),
   production: (): OcrFormAdapter => ({ voucherType: "production", partySide: "seller", date: "date", narration: "narration", autoPost: false }),

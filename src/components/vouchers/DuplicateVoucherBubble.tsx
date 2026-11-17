@@ -44,7 +44,9 @@ function measure(el: HTMLElement | null, width: number, height: number): Pos {
   const gap = 10;
   const above = r.top - height - gap;
   const placement: "top" | "bottom" = above >= 12 ? "top" : "bottom";
-  const top = placement === "top" ? above : r.bottom + gap;
+  const preferredTop = placement === "top" ? above : r.bottom + gap;
+  const maxTop = Math.max(12, window.innerHeight - Math.min(height, window.innerHeight - 24) - 12);
+  const top = Math.min(Math.max(12, preferredTop), maxTop);
   const centerX = r.left + r.width / 2;
   const left = Math.min(Math.max(12, centerX - width / 2), Math.max(12, window.innerWidth - width - 12));
   return { top, left, placement };
@@ -138,7 +140,7 @@ export function DuplicateVoucherBubble({
         }}
         role="alertdialog"
         aria-live="polite"
-        className="pointer-events-auto fixed rounded-xl border-2 border-amber-400 bg-background p-3 shadow-2xl"
+        className="pointer-events-auto fixed max-h-[calc(100dvh-24px)] overflow-y-auto rounded-xl border-2 border-amber-400 bg-background p-3 shadow-2xl"
         style={{ top: pos.top, left: pos.left, width: box.w }}
       >
         {/* Tail — Save button ki taraf */}
@@ -176,8 +178,24 @@ export function DuplicateVoucherBubble({
           <button
             type="button"
             className="rounded-md border border-amber-400 px-2 py-1 text-[11px] text-amber-800 hover:bg-amber-50 disabled:opacity-50 dark:text-amber-200 dark:hover:bg-amber-950/40"
-            disabled={!!moveBusy || !onMoveToDuplicate}
-            onClick={() => onMoveToDuplicate?.()}
+            disabled={!!moveBusy}
+            onClick={() => {
+              if (onMoveToDuplicate) {
+                onMoveToDuplicate();
+                return;
+              }
+              // Auto-post review dialogs handle this request in the gallery runner.
+              window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-duplicate-move-requested", {
+                detail: {
+                  matchId: match.id,
+                  voucherNumber: match.voucherNumber,
+                  summary: match.summary,
+                  dateText: match.dateText,
+                  amount: String(match.amount ?? ""),
+                  reasons: match.reasons,
+                },
+              }));
+            }}
           >
             {moveBusy ? "Moving…" : "Cancel & Move to Duplicate"}
           </button>

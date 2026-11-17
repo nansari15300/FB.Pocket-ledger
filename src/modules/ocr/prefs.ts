@@ -5,11 +5,10 @@ import { useSyncExternalStore } from "react";
 export type OcrConnectorStyle = "tail" | "line";
 export type OcrNarrationStyle = "full" | "short";
 /**
- * auto = online OCR when allowed, else tesseract (the ONLY setting that falls back);
- * offline = tesseract only; online = the picked cloud engine only; ai = Gemini only.
+ * auto = configured online OCR; online = the picked cloud engine only; ai = Gemini only.
  * A single picked engine never silently switches to another one — its failure is shown as a reason dialog.
  */
-export type OcrEnginePref = "auto" | "offline" | "online" | "ai";
+export type OcrEnginePref = "auto" | "online" | "ai";
 export type OcrPrefs = {
   enabled: boolean;
   autoPost: boolean;
@@ -28,11 +27,6 @@ export type OcrPrefs = {
   /** Last online provider picked in Switch Engine (Google / Azure each have their own key). "" = whichever key the server has. */
   onlineProvider: OcrOnlineProvider;
   /**
-   * Bill ka script: auto (jaisa slip hai waisa padho), eng (sirf English — Devanagari pass band),
-   * local (Devanagari/Nepali pass pehle). Language-mismatch bubble ka "Set as default" isi ko set karta hai.
-   */
-  scriptPref: OcrScriptPref;
-  /**
    * Gemini/OCR ne local-language (Nepali/Hindi/Devanagari ya koi bhi non-English) text diya to use
    * English me translate karwao. Bubble ka "Translate to English" + "Set as default" isi ko on karta hai —
    * phir har slip ka item/party/narration English me aata hai.
@@ -49,8 +43,6 @@ export type OcrPrefs = {
   autoOpenCopilot: boolean;
 };
 export type OcrOnlineProvider = "google" | "azure" | "";
-/** auto = detect per slip (default) | eng = force English | local = force Devanagari/Nepali. */
-export type OcrScriptPref = "auto" | "eng" | "local";
 export const AUTO_POST_SECONDS_MIN = 1;
 export const AUTO_POST_SECONDS_MAX = 60;
 export function clampAutoPostSeconds(v: unknown): number {
@@ -65,7 +57,7 @@ export function clampAutoPostSeconds(v: unknown): number {
 export const OCR_LAYER_Z = 100;
 
 const KEY = "pl.ocr.prefs.v1";
-const DEFAULTS: OcrPrefs = { enabled: true, autoPost: false, overwriteEdited: false, autoPostSeconds: 10, autoSwitchVoucher: true, autoSwitchSeconds: 10, connectorStyle: "tail", narrationStyle: "full", engine: "auto", onlineProvider: "", scriptPref: "auto", translateToEnglish: false, aiCopilot: false, autoOpenCopilot: true };
+const DEFAULTS: OcrPrefs = { enabled: true, autoPost: false, overwriteEdited: false, autoPostSeconds: 10, autoSwitchVoucher: true, autoSwitchSeconds: 10, connectorStyle: "tail", narrationStyle: "full", engine: "auto", onlineProvider: "", translateToEnglish: false, aiCopilot: false, autoOpenCopilot: true };
 const subs = new Set<() => void>();
 let cache: OcrPrefs | null = null;
 
@@ -75,9 +67,8 @@ function normalize(raw: Partial<OcrPrefs> | null | undefined): OcrPrefs {
     ...(raw ?? {}),
     connectorStyle: raw?.connectorStyle === "line" ? "line" : "tail",
     narrationStyle: raw?.narrationStyle === "short" ? "short" : "full",
-    engine: raw?.engine === "offline" || raw?.engine === "online" || raw?.engine === "ai" ? raw.engine : "auto",
+    engine: raw?.engine === "online" || raw?.engine === "ai" ? raw.engine : "auto",
     onlineProvider: raw?.onlineProvider === "google" || raw?.onlineProvider === "azure" ? raw.onlineProvider : "",
-    scriptPref: raw?.scriptPref === "eng" || raw?.scriptPref === "local" ? raw.scriptPref : "auto",
     translateToEnglish: raw?.translateToEnglish === true,
     aiCopilot: raw?.aiCopilot === true,
     autoOpenCopilot: raw?.autoOpenCopilot !== false,
@@ -117,24 +108,4 @@ export function useOcrPrefs(): OcrPrefs {
     getOcrPrefs,
     () => DEFAULTS
   );
-}
-
-/**
- * "Reset" in OCR settings: script + translate preference ko default par wapas, baaki device prefs
- * untouched — warna user ka narration style, countdown, auto-post sab ek click me ud jata.
- * Returns the fresh prefs so callers can sync their local drafts.
- */
-export function resetOcrLanguagePref(): OcrPrefs {
-  setOcrPrefs({ scriptPref: "auto", translateToEnglish: false });
-  return getOcrPrefs();
-}
-
-/** True when scriptPref explicitly forces a script (reset button is meaningful only then). */
-export function isOcrScriptForced(prefs: OcrPrefs = getOcrPrefs()): boolean {
-  return prefs.scriptPref === "eng" || prefs.scriptPref === "local";
-}
-
-/** True when the language prefs are anything but their defaults (Reset button enabled). */
-export function isOcrLanguageCustomized(prefs: OcrPrefs = getOcrPrefs()): boolean {
-  return prefs.scriptPref !== "auto" || prefs.translateToEnglish === true;
 }

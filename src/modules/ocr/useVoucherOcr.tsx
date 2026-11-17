@@ -1,6 +1,6 @@
 "use client";
 /**
- * useVoucherOcr — wires local OCR into ANY voucher form via a small per-type adapter (see adapters.ts).
+ * useVoucherOcr — wires online OCR providers and Gemini into ANY voucher form via a per-type adapter (see adapters.ts).
  * - File attachment does not trigger OCR; the user starts a scan with Refresh OCR, or Gallery hands off a runner scan.
  * - Fills only validated ("fill") fields; never touches approval fields.
  * - Refresh: re-runs on the first attachment; keeps user-edited fields unless "Overwrite edited" is on.
@@ -11,19 +11,24 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { UseFormReturn } from "react-hook-form";
 import { toast } from "sonner";
 import { AlertTriangle } from "lucide-react";
-import { runOcrOnFile } from "./engine";
+import { OcrRunError, runOcrOnFile } from "./engine";
 import { aiDocTypeForVoucher } from "./ai/aiChatModel";
 import { parseBill } from "./parser";
 import { extractIdentifiers, type OcrIdentifiers } from "./identifiers";
 import { learnTemplateParty, lookupTemplateParty } from "./templates";
-import { clampAutoPostSeconds, getOcrPrefs, resetOcrLanguagePref, setOcrPrefs, useOcrPrefs } from "./prefs";
+import { clampAutoPostSeconds, getOcrPrefs, setOcrPrefs, useOcrPrefs } from "./prefs";
 import { buildOcrNarration, formatOcrNarrationDate, itemsNarrationTag, readDateDisplayPrefs } from "./narration";
 import { AutoPostCountdownBubble } from "./AutoPostCountdownBubble";
 import { useOcrPlanAllowed } from "./gate";
 import { OcrFindAccountDialog } from "./OcrFindAccountDialog";
 import type { OcrSuggestion } from "./OcrSuggestionsDialog";
 import { OcrFieldBubbles, ocrFieldForMissing, ocrFieldForSuggestion, useOcrTabBadge, type OcrBubble } from "./OcrFieldBubbles";
-import { cancelOcrHandoff, parkOcrSession, requestOcrVoucherSwitch, resumeOcrSession, sameVoucherBucket, takeOcrHandoff } from "./handoff";
+import { cancelOcrHandoff, OCR_MANUAL_SWITCH_EVENT, parkOcrSession, queueOcrHandoff, requestOcrVoucherSwitch, resumeOcrSession, sameVoucherBucket, setRunnerDuplicateCheckOff, takeOcrHandoff, carriedValueWrites, collectOcrUserValues, type OcrCarriedValues } from "./handoff";
+import { aiAmountCheck } from "./ai/aiVoucher";
+import { getOcrOwnAliases } from "./ownAliases";
+import { defaultDueDaysFor, partyCreditDaysOf, resolveOcrDueDate } from "./dueDate";
+import { mapAiJournalLines } from "./journalLines";
+import { fmtOcr, ocrRunStrings } from "./ocrRunStrings";
 import { CreatePartyDialog } from "@/components/party/CreatePartyDialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -34,6 +39,7 @@ import { CreateItemDialog } from "@/components/items/CreateItemDialog";
 import { createItemSilent, findExistingItemByName } from "@/components/items/createItemSilent";
 import { baseUnitConversions, normalizeItemUnitName } from "@/components/items/itemUnitPrices";
 import { CreateTaxDialog } from "@/components/tax/CreateTaxDialog";
+import { Combobox } from "@/components/ui/combobox";
 import { PARTY_FORM_DEFAULT_ACCOUNT_TYPE_ID, PARTY_SYSTEM_CREDITORS_ID } from "@/lib/partySystemGroups";
 import { installOcrOriginalCapture, linkOcrOriginal, takeOcrOriginal } from "./ocrOriginals";
 import type { OcrRawResult } from "./types";
@@ -53,6 +59,7 @@ import { accountDisplayLabel, buildMoneyVoucherFill, pickChargeAccount, receiptN
 import type { ParsedReceipt } from "@/lib/ocr/receiptDetect/types";
 import { paymentAmountFromBill } from "./fillPaymentOut";
 import { normalizeName } from "./normalize";
+import { nameScore } from "./fuzzy";
 import { resolveOcrBubbles, snapshotFromForm } from "./reactiveBubbles";
 import type { OcrFormAdapter } from "./adapters";
 import type { OcrItemLike, OcrParsedBill, OcrPartyLike } from "./types";
@@ -74,6 +81,8 @@ export type UseVoucherOcrOptions = {
   accounts?: readonly { id: string; name: string; isDeleted?: boolean }[];
   /** Lets a voucher-type switch hand the attachment to the new form. */
   setFiles?: (files: (File | string)[]) => void;
+  /** Form-specific business guards that must pass before OCR Auto Post saves. */
+  validateAutoPost?: () => string[];
   disabled?: boolean;
   /** Purchase/Sale ledger options (value/label) for the Dr account lookup. */
   ledgerAccounts?: readonly { value: string; label: string }[];
@@ -82,7 +91,9 @@ export type UseVoucherOcrOptions = {
 };
 
 /** Voucher types the AddVoucherDialog can switch to from an OCR suggestion. */
-const OCR_SWITCHABLE = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"];
+const OCR_SWITCHABLE = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra", "journal"];
+/** AI types that open a bill / journal form: the text money detectors must not re-route them to a payment form. */
+const AI_BILL_TYPES = ["sale", "purchase", "credit_note", "debit_note", "journal"];
 const niceType = (t: string) => voucherTypeDisplayText(t).replace(/\b\w/g, (c) => c.toUpperCase());
 
 const LEDGER_LS = (companyId: string) => `pl.ocr.ledger.${companyId}`;
@@ -102,6 +113,17 @@ function isEmptyVal(v: unknown): boolean {
   if (v instanceof Date) return Number.isNaN(v.getTime());
   if (Array.isArray(v)) return v.every((li: any) => !li?.itemId && !Number(li?.amount));
   return false;
+}
+
+/** Ignore Gemini's generated type explanation; it is metadata, not text printed on the bill. */
+function billShowsVat(text: string | undefined, vatAmount?: number): boolean {
+  if (Number(vatAmount) > 0) return true;
+  const billText = String(text ?? "")
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*(?:VOUCHER|DOCUMENT)\s+TYPE\s*:/i.test(line))
+    .join("\n");
+  return /\bvat\b|\bgst\b|मू\.?\s*अ\.?\s*कर/i.test(billText) ||
+    /(?:^|\n)\s*tax(?:\s+(?:amount|rate))?\s*(?:[:=\-]\s*)?\d[\d,.]*\s*%?/im.test(billText);
 }
 
 async function loadFirstFile(f: File | string, companyId?: string | null): Promise<{ blob: Blob; mime: string } | null> {
@@ -131,7 +153,7 @@ async function loadFirstFile(f: File | string, companyId?: string | null): Promi
 }
 
 /** Bump when parser/engine logic changes: shown in Show OCR text to prove the browser runs the new bundle. */
-export const OCR_BUILD = "2026-11-14.1";
+export const OCR_BUILD = "2026-11-16.1";
 
 const MONEY_TYPES = ["payment_out", "payment_in", "direct_expense", "direct_income", "contra"] as const;
 const ALL_TYPE_CHOICES = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"] as const;
@@ -146,23 +168,12 @@ function findDuplicateByRef(vouchers: readonly any[] | undefined, txnId?: string
   return null;
 }
 
-/** Confirmation toast after a reading-language pref change (bubble ka English / Local / Set as default). */
-function flashLangPref(pref: "eng" | "local" | "auto") {
-  const label = pref === "eng" ? "English" : pref === "local" ? "Local (नेपाली)" : "Auto (detect)";
-  toast.success(`Reading language: ${label}`, {
-    id: "pl-ocr-script-pref",
-    description: pref === "auto" ? "Every slip is read in its own script." : "Reset anytime in OCR settings → Reading language.",
-    duration: 4000,
-    position: "top-right",
-  });
-}
-
 /** Confirmation toast after toggling translate-to-English. */
 function flashTranslatePref(on: boolean) {
   toast.success(on ? "Translate to English: ON" : "Translate to English: OFF", {
     id: "pl-ocr-translate-pref",
     description: on
-      ? "Every OCR slip will be translated to English. Reset in OCR settings → Reading language."
+      ? "Every OCR slip will be translated to English. Reset in OCR settings."
       : "Slips will be read in their original language.",
     duration: 4500,
     position: "top-right",
@@ -196,6 +207,7 @@ function addPrecomputedEnglish(suggestions: OcrSuggestion[], raw: OcrRawResult):
   return suggestions.map((s) => {
     const englishValue = translatedOcrText(s.value, translations);
     const primaryName = s.id === "create-party" ? s.value.split(" · ")[0]
+      : s.id === "create-expense-account" ? s.value
       : s.id.startsWith("create-item-") ? s.value.split(" | ")[0]
       : s.id.startsWith("create-account-") ? s.value
       : "";
@@ -250,14 +262,27 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const [createAccountFor, setCreateAccountFor] = useState<{ side: "from" | "to"; prefill: { accountName?: string; accountType?: "Bank" | "Cash" } } | null>(null);
   /** Single-engine OCR failed: reason dialog (engine name + server/Gemini message + hint). */
   const [ocrFail, setOcrFail] = useState<{ engine: string; message: string; detail?: string; code?: string; retryAfter?: number } | null>(null);
+  const [possibleBankCharge, setPossibleBankCharge] = useState<number | null>(null);
+  const possibleBankChargeResolverRef = useRef<((includeCharge: boolean) => void) | null>(null);
   const [createItemFor, setCreateItemFor] = useState<{ index: number; name: string; unit?: string; rate: number; groupId?: string; ocrGroups?: MasterGroupLike[] } | null>(null);
   const [createTaxOpen, setCreateTaxOpen] = useState(false);
   const [vatPct, setVatPct] = useState(13);
+  const [vatPickerOpen, setVatPickerOpen] = useState(false);
+  const [vatPickerId, setVatPickerId] = useState("");
   const filledRef = useRef(new Map<string, unknown>());
   const handoffAutoPostRef = useRef(false);
+  const handoffAutoPostOverrideRef = useRef<boolean | undefined>(undefined);
+  const handoffAutoPostSecondsRef = useRef<number | undefined>(undefined);
+  const handoffOverwriteEditedRef = useRef<boolean | undefined>(undefined);
   const handoffAllowSaveWithoutItemsRef = useRef(false);
   const handoffEnginePrefRef = useRef<import("./prefs").OcrEnginePref | undefined>(undefined);
   const handoffCloudProviderRef = useRef<"google" | "azure" | undefined>(undefined);
+  /** Runner handoff "Check for duplicate vouchers" = false: no duplicate detect / bubble / save block for this voucher. */
+  const handoffDupCheckOffRef = useRef(false);
+  const handoffDueDaysRef = useRef<{ sale?: number | null; purchase?: number | null } | undefined>(undefined);
+  /** Manual type change: what the user typed in the previous form; written back over the OCR re-map. */
+  const handoffUserValuesRef = useRef<OcrCarriedValues | undefined>(undefined);
+  const runnerHeldForHandoffRef = useRef(false);
   const localAutoPostPendingRef = useRef(false);
   /* Auto Post countdown: after OCR, wait the configured seconds (header gear, default 10) then save; bubble above Save can cancel. */
   const [apCount, setApCount] = useState<number | null>(null);
@@ -272,7 +297,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const startAutoPostCountdown = useCallback(() => {
     if (apTimerRef.current != null) window.clearInterval(apTimerRef.current);
     if (handoffAutoPostRef.current) localAutoPostPendingRef.current = true;
-    let n = clampAutoPostSeconds(getOcrPrefs().autoPostSeconds);
+    let n = clampAutoPostSeconds(handoffAutoPostSecondsRef.current ?? getOcrPrefs().autoPostSeconds);
     setApCount(n);
     apTimerRef.current = window.setInterval(() => {
       n -= 1;
@@ -284,10 +309,28 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         toast.info("Local Auto post paused", { description: "This PC is offline. Auto post will continue when the connection returns." });
         return;
       }
+      if (handoffAutoPostRef.current && runnerHeldForHandoffRef.current) {
+        localAutoPostPendingRef.current = true;
+        return;
+      }
       localAutoPostPendingRef.current = false;
       savedRef.current = true;
       optsRef.current.autoPost();
     }, 1000);
+  }, []);
+  const askPossibleBankCharge = useCallback((amount: number) => new Promise<boolean>((resolve) => {
+    possibleBankChargeResolverRef.current = resolve;
+    setPossibleBankCharge(amount);
+  }), []);
+  const resolvePossibleBankCharge = useCallback((includeCharge: boolean) => {
+    const resolve = possibleBankChargeResolverRef.current;
+    possibleBankChargeResolverRef.current = null;
+    setPossibleBankCharge(null);
+    resolve?.(includeCharge);
+  }, []);
+  useEffect(() => () => {
+    possibleBankChargeResolverRef.current?.(false);
+    possibleBankChargeResolverRef.current = null;
   }, []);
   useEffect(() => {
     const resumeLocalAutoPost = () => {
@@ -298,9 +341,11 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   }, [startAutoPostCountdown]);
   useEffect(() => () => { if (apTimerRef.current != null) window.clearInterval(apTimerRef.current); }, []);
   const apPrefOn = useOcrPrefs().autoPost;
-  useEffect(() => { if (!apPrefOn) cancelAutoPostCountdown(); }, [apPrefOn, cancelAutoPostCountdown]);
+  useEffect(() => { if (!apPrefOn && handoffAutoPostOverrideRef.current !== true) cancelAutoPostCountdown(); }, [apPrefOn, cancelAutoPostCountdown]);
   const lastRawRef = useRef<OcrRawResult | null>(null);
-  const [readBy, setReadBy] = useState<{ engine: "google" | "azure" | "tesseract" | "gemini"; note?: string } | null>(null);
+  /** Manual voucher selection outranks OCR's type suggestion for this reused scan. */
+  const manualTypeSwitchRef = useRef(false);
+  const [readBy, setReadBy] = useState<{ engine: "google" | "azure" | "gemini"; note?: string } | null>(null);
   const inputNoteRef = useRef("handoff (no OCR)");
   const optsRef = useRef(o);
   optsRef.current = o;
@@ -333,9 +378,13 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       original,
       selectedIds,
       autoPost: handoffAutoPostRef.current,
+      autoPostSeconds: handoffAutoPostSecondsRef.current,
+      overwriteEdited: handoffOverwriteEditedRef.current,
       allowSaveWithoutItems: handoffAllowSaveWithoutItemsRef.current,
       enginePref: handoffEnginePrefRef.current,
       cloudProvider: handoffCloudProviderRef.current,
+      checkDuplicateVouchers: handoffDupCheckOffRef.current ? false : undefined,
+      defaultDueDays: handoffDueDaysRef.current,
     });
     window.setTimeout(() => {
       if (!mountedRef.current) return;
@@ -346,9 +395,47 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     }, 1500);
   }, []);
 
+  // A user can change the voucher tab after OCR has already read the attachment.
+  // Carry that cached OCR result to the new form so its adapter can reuse matching
+  // fields and show its normal missing-field suggestions without another OCR call.
+  useEffect(() => {
+    const onManualVoucherSwitch = (event: Event) => {
+      const detail = (event as CustomEvent<{ toType?: string }>).detail;
+      const opt = optsRef.current;
+      const raw = lastRawRef.current;
+      const targetType = detail?.toType;
+      if (!targetType || !raw || !opt.files.length || opt.isEditing) return;
+      const currentType = opt.currentVoucherType ?? opt.adapter.voucherType;
+      if (currentType === targetType) return;
+
+      cancelAutoPostCountdown();
+      const original = takeOcrOriginal(opt.files[0]);
+      /* Values the USER typed here (not OCR fills) travel by meaning, so the new form never loses them. */
+      const A = opt.adapter;
+      const F = opt.form;
+      const userValues: OcrCarriedValues = collectOcrUserValues(
+        { date: A.date, dueDate: A.dueDate, narration: A.narration, amount: A.amount, party: A.party?.path, account: A.accountPath },
+        (path) => F.getValues(path),
+        (path, v) => !(filledRef.current.has(path) && JSON.stringify(filledRef.current.get(path)) === JSON.stringify(v)) && F.getFieldState(path).isDirty,
+        isEmptyVal,
+      );
+      queueOcrHandoff(targetType, opt.files, {
+        raw,
+        original,
+        selectedIds: [],
+        autoPost: false,
+        manualTypeSwitch: true,
+        allowSaveWithoutItems: false,
+        userValues: Object.keys(userValues).length ? userValues : undefined,
+      });
+    };
+    window.addEventListener(OCR_MANUAL_SWITCH_EVENT, onManualVoucherSwitch);
+    return () => window.removeEventListener(OCR_MANUAL_SWITCH_EVENT, onManualVoucherSwitch);
+  }, [cancelAutoPostCountdown]);
+
   const canWrite = useCallback((path: string) => {
     const { form } = optsRef.current;
-    if (getOcrPrefs().overwriteEdited) return true;
+    if (handoffOverwriteEditedRef.current ?? getOcrPrefs().overwriteEdited) return true;
     const cur = form.getValues(path);
     if (isEmptyVal(cur)) return true;
     if (filledRef.current.has(path)) {
@@ -475,16 +562,17 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
 
 
   const run = useCallback(
-    async (reason: "auto" | "refresh" | "handoff", reuse?: { raw?: OcrRawResult; selectedIds?: string[]; enginePref?: import("./prefs").OcrEnginePref; cloudProvider?: "google" | "azure" }) => {
+    async (reason: "auto" | "refresh" | "handoff", reuse?: { raw?: OcrRawResult; selectedIds?: string[]; enginePref?: import("./prefs").OcrEnginePref; cloudProvider?: "google" | "azure"; resumeCurrentForm?: boolean; manualTypeSwitch?: boolean }) => {
       const opt = optsRef.current;
       const first = opt.files[0];
       if (!first || running) return;
+      manualTypeSwitchRef.current = reuse?.manualTypeSwitch === true;
       setRunning(true);
       setOcrFail(null);
       const lead = reason === "refresh" ? "Re-reading bill" : reason === "handoff" ? "Filling from the bill already read" : "Reading bill";
       const ac = new AbortController();
       ocrAbortRef.current = ac;
-      /** Stop button on the toast: cancels the in-flight Gemini/Azure request and stops the fallback chain. */
+      /** Stop button on the toast: cancels the in-flight Gemini/cloud request. */
       const StopButton = () => (
         <button
           type="button"
@@ -495,7 +583,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         </button>
       );
       const tId = toast.loading(<span className="flex items-center gap-1">{lead}…<StopButton /></span>);
-      /** Engine names go into the same toast so a silent Gemini->Azure fallback is visible. */
+      /** The selected engine name is shown in the same toast. */
       const seen: string[] = [];
       const onEngine = (name: string) => {
         if (ac.signal.aborted) return;
@@ -528,12 +616,12 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           });
         }
         lastRawRef.current = raw;
-        if (reason === "handoff" || reason === "refresh") {
+        if ((reason === "handoff" && !reuse?.manualTypeSwitch) || reason === "refresh") {
           window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-scan-succeeded", {
             detail: { companyId: String((profileCompany as any)?.authoritativeCompanyId || opt.companyId || "") },
           }));
         }
-        setReadBy({ engine: raw.engine === "google" || raw.engine === "azure" || raw.engine === "gemini" ? raw.engine : "tesseract", note: raw.engineNote });
+        setReadBy({ engine: raw.engine === "google" || raw.engine === "azure" || raw.engine === "gemini" ? raw.engine : "google", note: raw.engineNote });
         const lowConf = raw.meanConfidence < 55;
         if (lowConf) {
           toast.message("OCR: image is not very clear", { id: tId, description: "Please confirm the highlighted fields. Nothing will be auto-saved.", duration: 5000, position: "top-right" });
@@ -542,12 +630,21 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         /* ---------- Money documents (connectIPS, Prabhu, generic bank, handwritten): detect + classify + fill ---------- */
         {
           const M = mastersRef.current;
-          const textRc: ReceiptDetection = detectReceipt(`${raw.text}\n${raw.altText ?? ""}`, {
+          /* "Our own names on bank slips": Gemini has them in its prompt; the text detectors get them here. */
+          const ownAliases = raw.engine === "gemini" ? undefined : await getOcrOwnAliases(opt.companyId).catch(() => undefined);
+          const aiBillType = !!raw.ai?.data.voucher_type && AI_BILL_TYPES.includes(raw.ai.data.voucher_type);
+          const textRcAll: ReceiptDetection = detectReceipt(`${raw.text}\n${raw.altText ?? ""}`, {
             ownAccounts: (M.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType, branch: (a as { branch?: string }).branch, aliasName: (a as { aliasName?: string }).aliasName })),
             parties: (M.parties ?? []).filter((p) => !(p as { isDeleted?: boolean }).isDeleted).map((p) => ({ id: p.id, name: String((p as { name?: string }).name ?? ""), aliasName: (p as { aliasName?: string }).aliasName })),
             staff: (M.staff ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => ({ id: x.id, name: String((x as { name?: string }).name ?? "") })),
             companyName: own.name ?? undefined,
+            ownAliases,
           });
+          /* Gemini chose a bill / journal / note: honour it; the text money detectors only decide for non-AI engines
+           * or when Gemini itself chose a money type. */
+          const textRc: ReceiptDetection = aiBillType
+            ? { format: null, confidence: 0, parsed: null, voucherType: null, candidates: [], typeConfidence: 0, master: { kind: null, score: 0 }, counterParty: null, reason: `AI chose ${raw.ai?.data.voucher_type}` }
+            : textRcAll;
           /* Gemini already answered the money question (bank_flow + both accounts). Its JSON knows the
            * customer/beneficiary sections the compact summary text lacks, so prefer its type — but keep
            * the text parser's amount/date/charge payload when it has one. */
@@ -594,34 +691,123 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             const rFilled: string[] = [];
             const rMissing: string[] = [];
             const rExtra: OcrSuggestion[] = [];
-            const direction = rc.voucherType === "payment_in" || rc.voucherType === "direct_income" ? "payment_in"
+            const detectedDirection = rc.voucherType === "payment_in" || rc.voucherType === "direct_income" ? "payment_in"
               : rc.voucherType === "contra" ? "contra"
               : "payment_out";
+            // On a manual type change, map the already-read document into the selected form's
+            // fields. The type may intentionally differ from OCR's suggestion, so use the
+            // destination form's flow and let its normal missing-field bubbles flag conflicts.
+            const direction = reuse?.manualTypeSwitch
+              ? cur === "contra" ? "contra" : cur === "payment_in" || cur === "direct_income" ? "payment_in" : "payment_out"
+              : detectedDirection;
             const tabIsMoney = (MONEY_TYPES as readonly string[]).includes(cur);
             const tabMatches = !rc.voucherType || sameVoucherBucket(cur, rc.voucherType) || cur === rc.voucherType;
-            const canFill = !!rc.parsed && tabIsMoney && tabMatches;
+            const canFill = !!rc.parsed && tabIsMoney && (tabMatches || reuse?.manualTypeSwitch === true);
             const fillSafeOnly = !!rc.parsed && tabIsMoney && !rc.voucherType; // date/amount/narration only
 
             const pf = rc.parsed ? buildMoneyVoucherFill(rc.parsed, canFill ? direction : "payment_out", { ownAccounts: ownAcc, parties, staff, taxes }) : null;
             const allowWrite = !lowConf;
+            let includedBankCharge: number | null = null;
+            if (
+              pf && canFill && direction === "contra" && raw.ai?.data.doc_kind === "bank_transfer" &&
+              raw.ai.data.bank_flow === "own_to_own" && pf.charge == null &&
+              rc.parsed?.charge == null && raw.ai.data.transfer_charges == null && allowWrite &&
+              canWrite("otherChargeAmount") &&
+              Number(opt.form.getValues("otherChargeAmount") || 0) === 0
+            ) {
+              const amount = Number(pf.amount);
+              const candidateCharge = Math.round(amount) % 100;
+              // A small non-zero remainder on a confirmed company bank-to-bank transfer is only a
+              // suspicion; ask before treating it as a bank fee (e.g. 15,010 → possible Rs. 10 fee).
+              if (Number.isFinite(amount) && candidateCharge > 0 && candidateCharge < 100) {
+                const includeCharge = await askPossibleBankCharge(candidateCharge);
+                if (includeCharge) {
+                  // The OCR amount is the total debited from the source account. Split the
+                  // suspected fee out of that total instead of adding it on top of the transfer.
+                  includedBankCharge = candidateCharge;
+                  if (canWrite("otherChargeAmount")) {
+                    write("otherChargeAmount", candidateCharge);
+                  }
+                  const chargeCandidates = [
+                    ...(M.expense ?? []).filter((e) => !(e as { isDeleted?: boolean }).isDeleted).map((e) => ({ id: e.id, name: String((e as { name?: string }).name ?? ""), kind: "expense" as const })),
+                    ...(M.parties ?? []).filter((p) => isOcrSelectableParty(p as never)).map((p) => ({ id: p.id, name: String((p as { name?: string }).name ?? ""), kind: "party" as const })),
+                    ...(M.staff ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => ({ id: x.id, name: String((x as { name?: string }).name ?? ""), kind: "staff" as const })),
+                  ];
+                  let defaultId: string | null = null;
+                  try {
+                    defaultId = localStorage.getItem(`pocket-ledger:contra:other-charge-default:${opt.companyId || "global"}`) ||
+                      localStorage.getItem(`pocket-ledger:payment-out:other-charge-default:${opt.companyId || "global"}`);
+                  } catch { /* ignore */ }
+                  const chargeAccount = pickChargeAccount(chargeCandidates, { bankName: rc.parsed?.sender?.bankName, defaultId });
+                  if (chargeAccount && allowWrite && canWrite("otherChargeAccountId")) write("otherChargeAccountId", chargeAccount.id);
+                  if (!chargeAccount) rMissing.push("Other charge account (bank transfer charge)");
+                }
+              }
+            }
 
             if (pf && (canFill || fillSafeOnly)) {
               const F = opt.form;
               const A = opt.adapter;
+              const selectedPayeeType = String(F.getValues("payeeType") ?? "");
+              if (cur === "direct_expense" && selectedPayeeType === "expense" && !String(F.getValues("expenseAccountId") ?? "").trim()) {
+                const expenseName = raw.ai?.data.lines.find((line) => line.side === "dr" && line.kind === "expense" && line.name)?.name?.trim();
+                if (expenseName) {
+                  const normalizedExpenseName = normalizeName(expenseName);
+                  const expenseMatches = (M.expense ?? [])
+                    .filter((expense) => !(expense as { isDeleted?: boolean }).isDeleted)
+                    .map((expense) => ({ expense, score: nameScore(normalizedExpenseName, normalizeName(String((expense as { name?: string }).name ?? ""))) }))
+                    .filter(({ score }) => score >= 0.82)
+                    .sort((a, b) => b.score - a.score);
+                  const bestExpenseMatch = expenseMatches[0];
+                  const bestExpense = bestExpenseMatch?.expense as { id: string; name?: string } | undefined;
+                  if (bestExpense && bestExpenseMatch) {
+                    rExtra.push({
+                      id: `use-expense-account-${bestExpense.id}`,
+                      label: `Use expense account ${bestExpense.name || expenseName}`,
+                      value: expenseName,
+                      confidence: bestExpenseMatch.score,
+                      reason: "This expense ledger looks like the name printed on the voucher; confirm before using it.",
+                      apply: () => {
+                        write("payeeType", "expense");
+                        write("expenseAccountId", bestExpense.id);
+                      },
+                    });
+                  }
+                  rExtra.push({
+                    id: "create-expense-account",
+                    label: `Create expense account ${expenseName}`,
+                    value: expenseName,
+                    confidence: 0.8,
+                    reason: "The voucher names this debit-side expense ledger. Create it or choose an existing expense account.",
+                    deferred: true,
+                    apply: () => { window.dispatchEvent(new CustomEvent("pl:ocr:create-expense-account", { detail: { name: expenseName } })); },
+                  });
+                  rExtra.push({
+                    id: "open-expense-account-picker",
+                    label: "Choose an existing expense account",
+                    value: expenseName,
+                    reason: "Open the expense account list and choose the matching account.",
+                    apply: () => { window.dispatchEvent(new CustomEvent("pl:ocr:open-expense-account-picker")); },
+                  });
+                }
+              }
               if (canFill && direction !== "contra") {
                 const idPath = { party: A.party?.path ?? "partyId", staff: "staffId", tax: "taxAccountId" } as const;
                 if (pf.payee) {
                   const path = idPath[pf.payee.payeeType];
-                  if (allowWrite && canWrite(path) && canWrite("payeeType")) {
-                    if (F.getValues("payeeType") !== pf.payee.payeeType) write("payeeType", pf.payee.payeeType);
+                  // Don't reinterpret a selected Expense payee as a Party just
+                  // because OCR found a receiver name on the bank slip.
+                  if ((!selectedPayeeType || selectedPayeeType === pf.payee.payeeType) && allowWrite && canWrite(path) && canWrite("payeeType")) {
+                    if (selectedPayeeType !== pf.payee.payeeType) write("payeeType", pf.payee.payeeType);
                     write(path, pf.payee.id);
                     rFilled.push(`Payee (${pf.payee.payeeType}: ${pf.payee.name})`);
-                  } else if (!allowWrite) {
+                  } else if ((!selectedPayeeType || selectedPayeeType === pf.payee.payeeType) && !allowWrite) {
                     rExtra.push({ id: "find-party", label: `Use ${pf.payee.payeeType} ${pf.payee.name}`, value: pf.payee.name, confidence: pf.payee.score, reason: "Low OCR confidence — confirm payee", apply: () => { write("payeeType", pf.payee!.payeeType); write(path, pf.payee!.id); } });
                   }
                 } else {
-                  if (pf.payeeName) rMissing.push("Party / payee");
-                  if (pf.payeeName) {
+                  const payeeEntityCanBeParty = !selectedPayeeType || selectedPayeeType === "party";
+                  if (pf.payeeName && payeeEntityCanBeParty) rMissing.push("Party / payee");
+                  if (pf.payeeName && payeeEntityCanBeParty) {
                     const nm = pf.payeeName;
                     const unsure = pf.payeeUnsure ?? suggestMaskedPayees(nm, { parties, staff });
                     for (const u of unsure) {
@@ -701,9 +887,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               const outTab = cur === "payment_out" || cur === "direct_expense" || cur === "contra";
               const amountPath = A.payeeAmount ?? (outTab ? "payeeAmount" : (A.amount ?? "amount"));
               if (pf.amount) {
+                const payeeAmount = Math.max(0, pf.amount - (direction === "contra" ? (includedBankCharge ?? 0) : 0));
                 const topAmount = outTab ? pf.amount + (pf.charge ?? 0) : pf.amount;
-                if (allowWrite && canWrite(amountPath)) { write(amountPath, pf.amount); rFilled.push(`Amount ${pf.amount}`); }
-                else if (!allowWrite) rExtra.push({ id: "amount", label: "Amount", value: String(pf.amount), reason: "Low OCR confidence — confirm amount", apply: () => write(amountPath, pf.amount) });
+                if (allowWrite && canWrite(amountPath)) { write(amountPath, payeeAmount); rFilled.push(`Amount ${payeeAmount}`); }
+                else if (!allowWrite) rExtra.push({ id: "amount", label: "Amount", value: String(payeeAmount), reason: "Low OCR confidence — confirm amount", apply: () => write(amountPath, payeeAmount) });
                 if (allowWrite && A.amount && A.amount !== amountPath && canWrite(A.amount)) write(A.amount, topAmount);
                 if (allowWrite && amountPath !== "amount" && canWrite("amount")) write("amount", topAmount);
               } else rMissing.push("Amount");
@@ -764,16 +951,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             if (rc.statusWarning) {
               rExtra.push({ id: "status-failed", label: "Status warning", value: rc.statusWarning, blocked: rc.statusWarning, apply: () => undefined });
             }
-            /**
-             * Language mismatch: slip Devanagari-heavy nikli (local bill) par OCR English pass se chal raha hai
-             * (ya ulta). Bubble me dono options + "Set as default" — default set hone ke baad agli baar
-             * engine seedha wahi script pass use karta hai (scriptPref).
-             */
             const prefsNow = getOcrPrefs();
-            const detectedLocal = raw.detectedLocalScript === true;
-            const prefNow = prefsNow.scriptPref;
-            const mismatch =
-              (detectedLocal && prefNow === "eng") || (!detectedLocal && prefNow === "local");
             /** Gemini/AI: local-language text (Devanagari ya koi bhi non-English) — translation offer. */
             const aiLocalText = raw.engine === "gemini" && looksNonEnglishOcrText(raw.text);
             if (aiLocalText && !prefsNow.translateToEnglish) {
@@ -804,54 +982,15 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 apply: () => { setOcrPrefs({ translateToEnglish: false }); flashTranslatePref(false); },
               });
             }
-            if (raw.engine === "tesseract" && (detectedLocal || prefNow !== "auto") && (mismatch || prefNow === "auto")) {
-              const preferEng = prefNow !== "local";
-              rExtra.push({
-                id: "ocr-language",
-                label: detectedLocal ? "Local script detected" : "English script detected",
-                value: detectedLocal
-                  ? "Devanagari (नेपाली) text mila — English pass se padha gaya."
-                  : "English text mila — local (Devanagari) pass se padha gaya.",
-                reason: mismatch ? "Reading language is different from the bill." : undefined,
-                apply: () => undefined,
-              });
-              rExtra.push({
-                id: "ocr-lang-eng",
-                label: "English",
-                value: prefNow === "eng" ? "Current default" : "Read English only (no Devanagari pass)",
-                blocked: prefNow === "eng" ? "Already the default" : undefined,
-                apply: () => { setOcrPrefs({ scriptPref: "eng" }); flashLangPref("eng"); },
-              });
-              rExtra.push({
-                id: "ocr-lang-local",
-                label: "Local (नेपाली)",
-                value: prefNow === "local" ? "Current default" : "Read Devanagari/Nepali first",
-                blocked: prefNow === "local" ? "Already the default" : undefined,
-                apply: () => { setOcrPrefs({ scriptPref: "local" }); flashLangPref("local"); },
-              });
-              if (mismatch) {
-                rExtra.push({
-                  id: "ocr-lang-default",
-                  label: `Set as default: ${detectedLocal ? "Local (नेपाली)" : "English"}`,
-                  value: "Every slip will be read in this language until reset",
-                  apply: () => {
-                    const next: "eng" | "local" = detectedLocal ? "local" : "eng";
-                    setOcrPrefs({ scriptPref: next });
-                    flashLangPref(next);
-                  },
-                });
-              }
-              if (prefNow !== "auto") {
-                rExtra.push({
-                  id: "ocr-lang-auto",
-                  label: "Back to auto",
-                  value: "Detect the script on every slip",
-                  apply: () => { resetOcrLanguagePref(); flashLangPref("auto"); },
-                });
-              }
-              void preferEng;
+            const dupCheckOff = reason === "handoff" && handoffDupCheckOffRef.current;
+            const dup = dupCheckOff ? null : findDuplicateByRef(M.vouchers, rc.parsed?.txnId, rc.parsed?.referenceId, rc.parsed?.chequeNumber);
+            /* Dr = Cr and Grand Total vs amount in words (AI): a failure is the runner's "amount mismatch". */
+            const moneyAmountCheck = raw.ai ? aiAmountCheck(raw.ai.data) : null;
+            const moneyAmountMismatch = !!moneyAmountCheck && !moneyAmountCheck.ok;
+            if (moneyAmountMismatch && canFill) {
+              const label = ocrRunStrings().amountMismatch;
+              if (!rMissing.includes(label)) rMissing.push(label);
             }
-            const dup = findDuplicateByRef(M.vouchers, rc.parsed?.txnId, rc.parsed?.referenceId, rc.parsed?.chequeNumber);
             if (dup) {
               rExtra.push({
                 id: "duplicate-ref",
@@ -860,6 +999,12 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 blocked: "This reference, transaction, or cheque number is already on a saved voucher",
                 apply: () => undefined,
               });
+            }
+
+            if (direction === "contra" && canFill && allowWrite && opt.validateAutoPost) {
+              for (const issue of opt.validateAutoPost()) {
+                if (issue && !rMissing.includes(issue)) rMissing.push(issue);
+              }
             }
 
             const sg: OcrSuggestion[] = [...rExtra];
@@ -902,7 +1047,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             if (sg.some((x) => !x.blocked) || rMissing.length) setSugOpen(true);
             setMissingNow(rMissing);
             setDebugInfo({
-              text: [`--- OCR build ${OCR_BUILD} | OCR engine: ${raw.engine ?? "tesseract"}${raw.engineNote ? ` (${raw.engineNote})` : ""} | document: ${rc.format} (${Math.round(rc.confidence * 100)}%)${lowConf ? " | LOW CONFIDENCE" : ""} ---`, `Type: ${rc.voucherType ?? `undecided (${types.join(" / ")})`} (${Math.round(rc.typeConfidence * 100)}%)${raw.ai?.data.voucher_type ? ` | Gemini said: ${raw.ai.data.voucher_type}${raw.ai.data.voucher_type_reason ? ` — ${raw.ai.data.voucher_type_reason}` : ""}` : ""}`, why, rc.narration ? `Narration: ${rc.narration}` : "", rc.otherCharge ? `Charge: ${rc.otherCharge.amount}` : "", rc.statusWarning ?? "", "--- OCR text ---", raw.text].filter(Boolean).join("\n"),
+              text: [`--- OCR build ${OCR_BUILD} | OCR engine: ${raw.engine ?? "online"}${raw.engineNote ? ` (${raw.engineNote})` : ""} | document: ${rc.format} (${Math.round(rc.confidence * 100)}%)${lowConf ? " | LOW CONFIDENCE" : ""} ---`, `Type: ${rc.voucherType ?? `undecided (${types.join(" / ")})`} (${Math.round(rc.typeConfidence * 100)}%)${raw.ai?.data.voucher_type ? ` | Gemini said: ${raw.ai.data.voucher_type}${raw.ai.data.voucher_type_reason ? ` — ${raw.ai.data.voucher_type_reason}` : ""}` : ""}`, why, rc.narration ? `Narration: ${rc.narration}` : "", rc.otherCharge ? `Charge: ${rc.otherCharge.amount}` : "", rc.statusWarning ?? "", moneyAmountCheck && !moneyAmountCheck.ok ? `Amount check: ${moneyAmountCheck.reasons.join("; ")}` : "", "--- OCR text ---", raw.text, raw.printedText ? `--- Printed text (AI raw_text) ---\n${raw.printedText}` : ""].filter(Boolean).join("\n"),
               meanConfidence: raw.meanConfidence, reasons: [why], filled: rFilled, missing: rMissing,
             });
             const here = !!(rc.voucherType && (rc.voucherType === cur || sameVoucherBucket(cur, rc.voucherType)));
@@ -912,7 +1057,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 ? `Filled: ${rFilled.join(", ") || "nothing"}${rMissing.length ? ` | Missing: ${rMissing.map((x) => x.split(" (")[0]).join(", ")}` : ""}`
                 : here && highUnique ? `${niceType(cur)} is the right voucher.` : !highUnique ? "Cannot detect voucher type — stay on the current voucher or pick one." : `Suggested: ${types.map(niceType).join(" / ")}.`,
             });
-            if ((reason === "auto" || reason === "handoff") && (getOcrPrefs().autoPost || (reason === "handoff" && handoffAutoPostRef.current)) && !opt.isEditing && opt.adapter.autoPost && apScheduledForRef.current !== raw) {
+            if (!reuse?.manualTypeSwitch && (reason === "auto" || reason === "handoff") && (reason === "handoff" ? (handoffAutoPostOverrideRef.current ?? handoffAutoPostRef.current) : getOcrPrefs().autoPost) && !opt.isEditing && opt.adapter.autoPost && apScheduledForRef.current !== raw) {
               const F = opt.form;
               const ok =
                 !lowConf &&
@@ -929,13 +1074,37 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 toast.info("OCR Auto Post: saving as UNAPPROVED", { duration: 2500 });
                 startAutoPostCountdown();
               } else {
-                toast.message("OCR Auto Post skipped", { description: "Required fields missing, type is uncertain, or the document needs review.", duration: 5000 });
+                const details = rMissing.length
+                  ? `Needs review: ${rMissing.join(", ")}.`
+                  : "Required fields are missing, type is uncertain, or the document needs review.";
+                toast.message("OCR Auto Post skipped", { description: details, duration: 5000 });
+                if (reason === "handoff" && handoffAutoPostRef.current && rMissing.length) {
+                  window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-required-fields-missing", {
+                    detail: { companyId: opt.companyId, missing: [...new Set(rMissing)], voucherType: opt.adapter.voucherType, itemAmountMismatch: moneyAmountMismatch, amountCheckReasons: moneyAmountCheck?.reasons ?? [] },
+                  }));
+                }
               }
             }
             return;
           }
         }
         const bill = parseBill(raw, { kind: opt.adapter.partySide === "seller" ? "purchase" : "sale", parties: opt.parties, items: opt.items, ownPan: own.pan, ownName: own.name });
+        // The parser and AI matcher use conservative fuzzy thresholds. Before raising a
+        // "create party" suggestion, honor an unambiguous normalized exact-name match
+        // from the same selectable master list used by the Customer/Supplier combobox.
+        if (bill.partyId?.status !== "fill" && bill.partyName?.value) {
+          const normalizedPartyName = normalizeName(bill.partyName.value);
+          const exactPartyMatches = normalizedPartyName
+            ? opt.parties.filter((party) =>
+                isOcrSelectableParty(party) &&
+                [party.name, party.aliasName].some((name) => name && normalizeName(name) === normalizedPartyName),
+              )
+            : [];
+          if (exactPartyMatches.length === 1) {
+            bill.partyId = { value: exactPartyMatches[0].id, status: "fill", confidence: 0.99 };
+            bill.debug?.push(`Party: matched "${exactPartyMatches[0].name}" by exact normalized name`);
+          }
+        }
         if (lowConf) {
           const note = "Image is not clear — please confirm";
           const flag = (f?: { status: string; note?: string }) => { if (f && f.status === "fill") { f.status = "flag"; f.note = f.note ? `${f.note}; ${note}` : note; } };
@@ -985,6 +1154,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         const missing: string[] = [];
         const A = opt.adapter;
         const F = opt.form;
+        const vat = bill.vat?.value ?? 0;
+        const vatMentioned = billShowsVat(raw.text, vat);
+        const vatTax = findVat13(opt.taxes);
         const filledKeys = new Set<string>();
         const markFill = (label: string, key: string) => { filled.push(label); filledKeys.add(key); };
 
@@ -1008,17 +1180,34 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             markFill("Date", "date");
           } else missing.push("Date");
         }
+        /* Due date: printed > bill credit days > party credit days > Common Setting default days (Sale / Purchase).
+         * Never required: when nothing applies the field stays as the form has it. */
+        if (A.dueDate && bill.dueDate?.status !== "fill" && (A.voucherType === "sale" || A.voucherType === "purchase")) {
+          const kind = A.voucherType;
+          const partyRow = bill.partyId?.status === "fill" ? (mastersRef.current.parties ?? []).find((p) => p.id === bill.partyId!.value) ?? opt.parties.find((p) => p.id === bill.partyId!.value) : undefined;
+          const runnerDays = reason === "handoff" ? handoffDueDaysRef.current?.[kind] : undefined;
+          const due = resolveOcrDueDate({
+            printedDue: bill.dueTerms?.printedDue ?? null,
+            billCreditDays: bill.dueTerms?.creditDays ?? null,
+            billDate: bill.date?.status === "fill" ? bill.date.value : null,
+            partyCreditDays: partyCreditDaysOf(partyRow),
+            defaultDays: runnerDays !== undefined ? runnerDays : defaultDueDaysFor(opt.companyId, kind),
+          });
+          if (due) {
+            const S = ocrRunStrings();
+            bill.dueDate = { value: due.date, status: "fill", confidence: due.source === "printed" ? 0.95 : 0.9, note: fmtOcr(S.dueSource[due.source], { days: due.days ?? "" }) };
+            bill.debug?.push(`Due date: ${due.date.toDateString()} (${due.source}${due.days != null ? ` ${due.days} days` : ""})`);
+          }
+        }
         if (A.dueDate && bill.dueDate?.status === "fill" && canWrite(A.dueDate)) {
           write(A.dueDate, bill.dueDate.value);
-          filled.push("Due date");
+          filled.push(bill.dueDate.note ? `${ocrRunStrings().dueDate} (${bill.dueDate.note})` : ocrRunStrings().dueDate);
         }
 
         // Line items (+ discount) only when totals reconciled
         if (A.lineItems) {
           if (bill.lineItems?.status === "fill") {
-            const vat = bill.vat?.value ?? 0;
-            const vatTax = findVat13(opt.taxes);
-            if (vat > 0 && !vatTax) missing.push("VAT 13% tax account (see Suggestions)");
+            if (vatMentioned && !vatTax) missing.push("VAT tax account (see Suggestions)");
             {
               const rows = bill.lineItems.value.map((r) => {
                 const base = A.lineItems!.makeEmpty();
@@ -1032,15 +1221,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                   unit: r.itemId
                     ? resolveOcrItemUnit(opt.items.find((it) => it.id === r.itemId) as never, r.unit, A.partySide === "seller" ? "purchase" : "sale")
                     : r.unit ?? (base.unit as string | undefined) ?? "",
-                  // item's default tax like manual pick - only when the bill HAS VAT but no VAT 13% account was found
-                  // (a bill without VAT must not gain tax: totals must stay the bill's)
-                  ...(r.itemId && vat > 0 && !vatTax ? (() => {
-                    const it = opt.items.find((i) => i.id === r.itemId) as { purchaseTaxId?: string; saleTaxId?: string } | undefined;
-                    const t = A.partySide === "seller" ? it?.purchaseTaxId : it?.saleTaxId;
-                    return t ? { taxAccountId: t } : {};
-                  })() : {}),
                   amount: r.amount,
-                  ...(vat > 0 && vatTax ? { taxAccountId: vatTax.id } : {}),
+                  ...(vatMentioned && vatTax ? { taxAccountId: vatTax.id } : {}),
                   // TDS only with evidence on the bill; never inherit the form's stored TDS default on OCR lines
                   ...(!bill.tds ? { tdsAccountId: "" } : {}),
                 };
@@ -1060,7 +1242,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                   window.setTimeout(clearTds, 0);
                   window.setTimeout(clearTds, 250);
                 }
-                filled.push(`Line items (${rows.length})${vat > 0 && vatTax ? " + VAT 13%" : ""}`);
+                filled.push(`Line items (${rows.length})${vatMentioned && vatTax ? " + VAT 13%" : ""}`);
                 // Item descriptions are added to the narration below (full vs short setting).
               }
               filledKeys.add("lines");
@@ -1144,6 +1326,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         const sg: OcrSuggestion[] = [];
         const pct = (n?: number) => n;
         const curParty = A.party ? F.getValues(A.party.path) : "x";
+        const selectedPayeeType = A.party?.payeeTypePath ? String(F.getValues(A.party.payeeTypePath) ?? "") : "";
+        const partyApplicable = !A.party?.allowedPayeeTypes || !selectedPayeeType || A.party.allowedPayeeTypes.includes(selectedPayeeType);
         if (bill.docType && !sameVoucherBucket(A.voucherType, bill.docType.type)) {
           const dt = bill.docType.type;
           const supported = OCR_SWITCHABLE.includes(dt);
@@ -1157,7 +1341,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         }
         const billIsOwn = isOwnCompany(bill.partyName?.value, identifiers.pan, own);
         if (billIsOwn) bill.debug?.push("Create party skipped: extracted name/PAN is our own company");
-        if (A.party && !curParty && bill.partyId?.status === "flag" && bill.partyId.value) {
+        if (A.party && partyApplicable && !curParty && bill.partyId?.status === "flag" && bill.partyId.value) {
           const flagged = opt.parties.find((p) => p.id === bill.partyId!.value);
           if (flagged) {
             sg.push({
@@ -1170,7 +1354,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             });
           }
         }
-        if (A.party && !curParty && !billIsOwn && (bill.partyName?.value || identifiers.pan)) {
+        if (A.party && partyApplicable && !curParty && !billIsOwn && (bill.partyName?.value || identifiers.pan)) {
           sg.push({
             id: "create-party", label: "Create new party", value: [bill.partyName?.value, identifiers.pan && `PAN ${identifiers.pan}`, identifiers.phones[0]].filter(Boolean).join(" · "),
             confidence: pct(bill.partyName?.confidence), reason: "No existing account matched by PAN / name / phone / email - opens Create Party prefilled; you confirm Save",
@@ -1201,7 +1385,11 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           sg.push({
             id: "lines", label: `Line items (${rows.length})`, value: rows.map((r) => `${r.description} ${r.quantity}×${r.rate}=${r.amount}`).join("; "),
             confidence: bill.lineItems.confidence, reason: bill.lineItems.note,
-            apply: () => write(A.lineItems!.path, rows.map((r) => ({ ...A.lineItems!.makeEmpty(), type: "item", itemId: r.itemId ?? "", quantity: r.quantity, rate: r.rate, unit: r.itemId ? resolveOcrItemUnit(optsRef.current.items.find((it) => it.id === r.itemId) as never, r.unit, A.partySide === "seller" ? "purchase" : "sale") : r.unit ?? "", amount: r.amount }))),
+            apply: () => {
+              const taxId = vatTax?.id ?? pendingRef.current.tax;
+              write(A.lineItems!.path, rows.map((r) => ({ ...A.lineItems!.makeEmpty(), type: "item", itemId: r.itemId ?? "", quantity: r.quantity, rate: r.rate, unit: r.itemId ? resolveOcrItemUnit(optsRef.current.items.find((it) => it.id === r.itemId) as never, r.unit, A.partySide === "seller" ? "purchase" : "sale") : r.unit ?? "", amount: r.amount, ...(vatMentioned && taxId ? { taxAccountId: taxId } : {}) })));
+              if (pendingRef.current.tax === taxId) pendingRef.current.tax = undefined;
+            },
           });
         }
         if (A.lineItems) {
@@ -1214,7 +1402,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               value: [cleanItemName(r.description), r.unit, `rate ${r.rate}`].filter(Boolean).join(" | "),
               englishValue: englishItemName ? [englishItemName, r.unit, `rate ${r.rate}`].filter(Boolean).join(" | ") : undefined,
               englishMasterName: englishItemName,
-              confidence: 0.8, reason: "No existing item matched. Create opens Auto Create (no form) or Manual Create (prefilled form), then the item is set on line " + (index + 1),
+              confidence: 0.8, reason: "Create opens a prefilled item form. After saving, the item is selected on line " + (index + 1),
               deferred: true,
               apply: async (ctx) => {
                 const row = ctx?.language === "english"
@@ -1225,10 +1413,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               },
             });
           });
-          const vat = bill.vat?.value ?? 0;
-          // VAT suggestion whenever the bill shows VAT (even if the amount was not confirmed)
-          if (vat > 0 || /\bvat\b|मू\.?\s*अ\.?\s*कर/i.test(raw.text)) {
-            const vatTax = findVat13(opt.taxes);
+          // Only actual bill evidence can trigger VAT handling; AI type explanations are excluded.
+          if (vatMentioned) {
             const rowsNow = (F.getValues(A.lineItems.path) as Record<string, unknown>[] | undefined) ?? [];
             const applied = !!vatTax && rowsNow.length > 0 && rowsNow.every((r) => r.taxAccountId === vatTax.id);
             if (!vatTax) {
@@ -1238,12 +1424,23 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 deferred: true,
                 apply: () => { setVatPct(billVatPercent(vat, bill.lineItems?.value?.reduce((a, r) => a + r.amount, 0))); setCreateTaxOpen(true); },
               });
-            } else if (!applied) {
+            } else if (!applied && bill.lineItems?.status === "fill") {
               sg.push({
                 id: "vat", label: `Apply ${vatTax.name ?? "VAT 13%"} on all lines`, value: `VAT ${vat}`, confidence: bill.vat?.confidence ?? 0.6, reason: bill.vat?.status === "fill" ? "Reconciled with totals" : "Totals not reconciled",
                 apply: () => {
                   const rows = (F.getValues(A.lineItems!.path) as Record<string, unknown>[] | undefined) ?? [];
                   write(A.lineItems!.path, rows.map((r) => ({ ...r, taxAccountId: vatTax.id })));
+                },
+              });
+            }
+            if (!vatTax && opt.taxes.length) {
+              sg.push({
+                id: "choose-vat", label: "Choose existing tax account", value: `${opt.taxes.length} tax account(s) available`,
+                reason: "Select the tax account printed on the bill; you can also create a new VAT account.",
+                deferred: true,
+                apply: () => {
+                  setVatPickerId(opt.taxes[0]?.id ?? "");
+                  setVatPickerOpen(true);
                 },
               });
             }
@@ -1301,7 +1498,32 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             sg.push({ id: "account", label: "Bank / cash account", value: pick.name, confidence: hits.length === 1 ? 0.85 : 0.7, reason: hits.length === 1 ? "Account name appears on bill" : "Bill mentions cash payment", apply: () => write(A.accountPath!, pick.id) });
           }
         }
-        if (A.voucherType === "journal") sg.push({ id: "drcr", label: "Dr / Cr side", value: "journal lines", blocked: "Journal Dr/Cr lines are never auto-filled (spec) - enter manually", apply: () => undefined });
+        /* Journal: Gemini's Dr/Cr lines -> journal rows (each ledger looked up in the master list its kind names). */
+        if (A.journalLines) {
+          const S = ocrRunStrings();
+          const aiLines = raw.ai?.data.lines ?? [];
+          if (aiLines.length >= 2) {
+            const Mj = mastersRef.current;
+            const named = (xs: readonly unknown[] | undefined) => (xs ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted).map((x) => {
+              const r = x as { id: string; name?: string; accountName?: string; aliasName?: string };
+              return { id: r.id, name: String(r.name ?? r.accountName ?? ""), aliasName: r.aliasName };
+            });
+            const mapped = mapAiJournalLines(aiLines, {
+              accounts: (Mj.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ id: a.id, accountName: a.accountName, bankName: a.bankName, accountNumber: a.accountNumber, accountType: a.accountType, branch: (a as { branch?: string }).branch, aliasName: (a as { aliasName?: string }).aliasName })),
+              parties: named((Mj.parties ?? []).filter((p) => isOcrSelectableParty(p as never))),
+              staff: named(Mj.staff as readonly unknown[]),
+              ledgers: named(Mj.expense as readonly unknown[]),
+              taxes: named(opt.taxes as readonly unknown[]),
+            });
+            if (canWrite(A.journalLines.path)) {
+              write(A.journalLines.path, mapped.rows);
+              filled.push(S.journalLines);
+            }
+            for (const u of mapped.unmatched) missing.push(fmtOcr(S.journalLineAccount, { n: u.index + 1, name: u.name }));
+          } else {
+            missing.push(S.journalNoLines);
+          }
+        }
         setSuggestions(addPrecomputedEnglish(sg, raw));
         if (reason === "refresh") {
           setDoneIds(new Set());
@@ -1320,8 +1542,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         const devDump =
           true
             ? [
-                `--- OCR build ${OCR_BUILD} | ${raw.engine === "gemini" ? "AI (Gemini) voucher JSON" : raw.engine === "azure" ? "online Azure Read" : raw.engine === "google" ? "online Google Vision" : "engine PSM 6 + sparse 11"} | input ${inputNoteRef.current} ---`,
-                `OCR engine: ${raw.engine ?? "tesseract"}${raw.engineNote ? ` (${raw.engineNote})` : ""}`,
+                `--- OCR build ${OCR_BUILD} | ${raw.engine === "gemini" ? "AI (Gemini) voucher JSON" : raw.engine === "azure" ? "online Azure Read" : raw.engine === "google" ? "online Google Vision" : "online provider"} | input ${inputNoteRef.current} ---`,
+                `OCR engine: ${raw.engine ?? "online"}${raw.engineNote ? ` (${raw.engineNote})` : ""}`,
                 `--- dev dump: input ${inputNoteRef.current} | page ${raw.pageWidth ?? "?"}x${raw.pageHeight}px | ${raw.lines.length} lines ---`,
                 ...raw.lines.map((l, i) => `L${i} y=${Math.round(l.y ?? 0)}: ${l.words?.length ? l.words.map((w) => `${w.text}@${Math.round(w.x0)}`).join(" ") : `(no boxes) ${l.text}`}`),
                 `--- 2nd pass (sparse) ---`,
@@ -1329,8 +1551,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               ]
             : [];
         if (process.env.NODE_ENV !== "production") console.debug("[OCR] dump\n" + [...(bill.debug ?? []), ...devDump].join("\n"));
-        setDebugInfo({ text: raw.text, meanConfidence: raw.meanConfidence, reasons: [...(bill.debug ?? []), ...devDump], filled: [...filled], missing: [...new Set(missing)] });
-        toast.success(filled.length ? `OCR filled by ${seen.length ? seen[seen.length - 1] : "Offline"}: ${filled.join(", ")}` : "OCR: nothing could be filled safely", { id: tId, duration: 3000, position: "top-right" });
+        setDebugInfo({ text: raw.printedText ? `${raw.text}\n--- Printed text (AI raw_text) ---\n${raw.printedText}` : raw.text, meanConfidence: raw.meanConfidence, reasons: [...(bill.debug ?? []), ...devDump], filled: [...filled], missing: [...new Set(missing)] });
+        toast.success(filled.length ? `OCR filled by ${seen.length ? seen[seen.length - 1] : "OCR"}: ${filled.join(", ")}` : "OCR: nothing could be filled safely", { id: tId, duration: 3000, position: "top-right" });
         /* Fresh scan: bump the counter so the Pocket AI panel (if open) starts a new chat for THIS bill. */
         setFillSeq((n) => n + 1);
 
@@ -1346,50 +1568,90 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         const partyOk = !A.party || !partyApplies || !!F.getValues(A.party.path);
         void partyApplies;
 
-        if ((reason === "auto" || reason === "handoff") && (getOcrPrefs().autoPost || (reason === "handoff" && handoffAutoPostRef.current)) && !opt.isEditing && apScheduledForRef.current !== raw) {
-          const unresolvedItems = A.lineItems && bill.lineItems?.status === "fill"
-            ? bill.lineItems.value.map((line, index) => !line.itemId ? `Item on line ${index + 1}` : "").filter(Boolean)
+        if (!reuse?.manualTypeSwitch && (reason === "auto" || reason === "handoff") && (reason === "handoff" ? (handoffAutoPostOverrideRef.current ?? handoffAutoPostRef.current) : getOcrPrefs().autoPost) && !opt.isEditing && apScheduledForRef.current !== raw) {
+          const resumeCurrentForm = reuse?.resumeCurrentForm === true;
+          const voucherRowsForCheck = A.lineItems ? ((F.getValues(A.lineItems.path) as Array<Record<string, unknown>> | undefined) ?? []) : [];
+          const unresolvedItems = A.lineItems
+            ? resumeCurrentForm
+              ? voucherRowsForCheck.map((line, index) => !String(line.itemId || line.serviceId || "").trim() ? `Item on line ${index + 1}` : "").filter(Boolean)
+              : bill.lineItems?.status === "fill"
+                ? bill.lineItems.value.map((line, index) => !line.itemId ? `Item on line ${index + 1}` : "").filter(Boolean)
+                : []
             : [];
           const billItemRowCount = bill.lineItems?.value.length;
-          const voucherItemRowCount = A.lineItems ? ((F.getValues(A.lineItems.path) as unknown[] | undefined) ?? []).length : undefined;
+          const voucherItemRowCount = A.lineItems ? voucherRowsForCheck.length : undefined;
           const itemRowCountMismatch = typeof billItemRowCount === "number" && typeof voucherItemRowCount === "number" && billItemRowCount !== voucherItemRowCount;
           const billItemAmount = bill.lineItems?.value.reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
-          const voucherRowsForCheck = A.lineItems ? ((F.getValues(A.lineItems.path) as Array<Record<string, unknown>> | undefined) ?? []) : [];
           const voucherItemAmount = voucherRowsForCheck.reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
           const expectedItemAmount = bill.subTotal?.value != null
             ? Number(bill.subTotal.value) + (Number(bill.discount?.value) || 0)
             : bill.total?.value != null
               ? Number(bill.total.value) - (Number(bill.vat?.value) || 0) + (Number(bill.discount?.value) || 0)
               : undefined;
-          const itemAmountMismatch = typeof expectedItemAmount === "number" && (bill.lineItems?.value.length ?? 0) > 0 && (
-            Math.abs((billItemAmount ?? 0) - expectedItemAmount) > 1 ||
-            Math.abs(voucherItemAmount - expectedItemAmount) > 1
+          const rowAmountMismatch = typeof expectedItemAmount === "number" && (bill.lineItems?.value.length ?? 0) > 0 && (
+            resumeCurrentForm
+              ? Math.abs(voucherItemAmount - expectedItemAmount) > 1
+              : Math.abs((billItemAmount ?? 0) - expectedItemAmount) > 1 || Math.abs(voucherItemAmount - expectedItemAmount) > 1
           );
+          /* AI cross-check (Dr = Cr, Grand Total vs item sum vs amount in words) is the same runner rule. */
+          const aiAmountMismatch = bill.amountCheck?.ok === false;
+          const itemAmountMismatch = rowAmountMismatch || aiAmountMismatch;
+          const amountMismatchLabel = aiAmountMismatch && !rowAmountMismatch ? [ocrRunStrings().amountMismatch] : [];
           const missingRequiredPaths = (A.requiredPaths ?? [])
             .filter((path) => isEmptyVal(F.getValues(path)))
             .map((path) => `Required ${path.split(".").pop()?.replace(/Id$/, "").replace(/([A-Z])/g, " $1").trim() || "field"}`);
           const allowSaveWithoutItems = reason === "handoff" && handoffAllowSaveWithoutItemsRef.current;
-          const requiredMissing = [
-            ...missing.filter((field) => field !== "Bill No"),
-            ...(allowSaveWithoutItems ? [] : unresolvedItems),
-            ...(itemRowCountMismatch ? [`Item row count mismatch (bill: ${billItemRowCount}, voucher: ${voucherItemRowCount})`] : []),
-            ...(itemAmountMismatch ? [`Item row amount does not match bill amount (rows: ${billItemAmount}, bill: ${expectedItemAmount})`] : []),
-            ...missingRequiredPaths,
-            ...(ledgerMissing ? ["Purchase account"] : []),
-            ...(A.accountPath && isEmptyVal(F.getValues(A.accountPath)) ? ["Bank/cash account"] : []),
-          ];
-          const hasMissingVatAccount = missing.some((field) => /tax account/i.test(field));
+          const hasCurrentFieldEdit = (path: string) => {
+            const field = F.getFieldState(path);
+            return field.isDirty || field.isTouched || filledRef.current.has(path);
+          };
+          const missingDateInBill = missing.some((field) => /date/i.test(field));
+          const missingAmountInBill = missing.some((field) => /amount|total/i.test(field));
+          const missingPartyInBill = missing.some((field) => /party|customer|supplier/i.test(field));
+          const currentDateOk = !A.date || (!isEmptyVal(F.getValues(A.date)) && (!resumeCurrentForm || !missingDateInBill || hasCurrentFieldEdit(A.date)));
+          const currentPartyOk = partyOk && (!resumeCurrentForm || !missingPartyInBill || !A.party || hasCurrentFieldEdit(A.party.path));
+          const currentAmountOk = !A.amount || (!isEmptyVal(F.getValues(A.amount)) && (!resumeCurrentForm || !missingAmountInBill || hasCurrentFieldEdit(A.amount)));
+          const currentLineItemsOk = !A.lineItems || (!voucherRowsForCheck.length ? false : (allowSaveWithoutItems || unresolvedItems.length === 0));
+          const currentLedgerOk = !A.ledgerAccount || !isEmptyVal(F.getValues(A.ledgerAccount.path));
+          const rawMissingVatAccount = vatMentioned && !vatTax;
+          const currentVatAccountMissing = rawMissingVatAccount && (!voucherRowsForCheck.length || voucherRowsForCheck.some((line) => !String(line.taxAccountId || "").trim()));
+          const hasMissingVatAccount = resumeCurrentForm ? currentVatAccountMissing : rawMissingVatAccount;
+          const requiredMissing = resumeCurrentForm
+            ? [
+                ...(A.party && !currentPartyOk ? ["Party"] : []),
+                ...(A.date && !currentDateOk ? ["Date"] : []),
+                ...(A.lineItems && !voucherRowsForCheck.length ? ["Line items"] : []),
+                ...(allowSaveWithoutItems ? [] : unresolvedItems),
+                ...(itemRowCountMismatch ? [`Item row count mismatch (bill: ${billItemRowCount}, voucher: ${voucherItemRowCount})`] : []),
+                ...(rowAmountMismatch ? [`Item row amount does not match bill amount (rows: ${voucherItemAmount}, bill: ${expectedItemAmount})`] : []),
+                ...amountMismatchLabel,
+                ...missingRequiredPaths,
+                ...(ledgerMissing && !currentLedgerOk ? ["Purchase account"] : []),
+                ...(hasMissingVatAccount ? ["VAT tax account"] : []),
+                ...(A.amount && !currentAmountOk ? ["Amount"] : []),
+                ...(A.accountPath && isEmptyVal(F.getValues(A.accountPath)) ? ["Bank/cash account"] : []),
+              ]
+            : [
+                ...missing.filter((field) => field !== "Bill No"),
+                ...(allowSaveWithoutItems ? [] : unresolvedItems),
+                ...(itemRowCountMismatch ? [`Item row count mismatch (bill: ${billItemRowCount}, voucher: ${voucherItemRowCount})`] : []),
+                ...(rowAmountMismatch ? [`Item row amount does not match bill amount (rows: ${billItemAmount}, bill: ${expectedItemAmount})`] : []),
+                ...amountMismatchLabel,
+                ...missingRequiredPaths,
+                ...(ledgerMissing ? ["Purchase account"] : []),
+                ...(A.accountPath && isEmptyVal(F.getValues(A.accountPath)) ? ["Bank/cash account"] : []),
+              ];
           const coreOk =
             A.autoPost &&
-            partyOk &&
-            (!A.date || filledKeys.has("date")) &&
-            (!A.lineItems || filledKeys.has("lines")) &&
+            currentPartyOk &&
+            (resumeCurrentForm ? currentDateOk : (!A.date || filledKeys.has("date"))) &&
+            (resumeCurrentForm ? currentLineItemsOk : (!A.lineItems || filledKeys.has("lines"))) &&
             !itemRowCountMismatch &&
             !itemAmountMismatch &&
             (unresolvedItems.length === 0 || allowSaveWithoutItems) &&
-            !ledgerMissing &&
+            (resumeCurrentForm ? currentLedgerOk : !ledgerMissing) &&
             !hasMissingVatAccount &&
-            (!A.amount || filledKeys.has("amount")) &&
+            (resumeCurrentForm ? currentAmountOk : (!A.amount || filledKeys.has("amount"))) &&
             (A.requiredPaths ?? []).every((p) => !isEmptyVal(F.getValues(p)));
           if (coreOk) {
             apScheduledForRef.current = raw;
@@ -1405,7 +1667,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             if (A.autoPost && reason === "handoff" && handoffAutoPostRef.current) {
               const fieldNames = [...new Set(requiredMissing.length ? requiredMissing : ["Required voucher fields"] )];
               window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-required-fields-missing", {
-                detail: { companyId: opt.companyId, missing: fieldNames, voucherType: A.voucherType, itemRowCountMismatch, itemAmountMismatch },
+                detail: { companyId: opt.companyId, missing: fieldNames, voucherType: A.voucherType, itemRowCountMismatch, itemAmountMismatch, amountCheckReasons: bill.amountCheck?.reasons ?? [] },
               }));
             }
           }
@@ -1423,12 +1685,21 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           const friendly = code === "unknown" || code === "network" && !/overloaded|unavailable|503|quota/i.test(rawMsg)
             ? (e instanceof Error ? e.message : String(e))
             : ocrAiErrorText(e);
-          const retryAfter = e instanceof OcrAiError ? e.retryAfter : 0;
+          const retryAfter = e instanceof OcrAiError || e instanceof OcrRunError ? e.retryAfter : 0;
           if (reason === "handoff" && handoffAutoPostRef.current) {
             const companyId = String((profileCompany as any)?.authoritativeCompanyId || optsRef.current.companyId || "");
             const failureMessage = friendly === rawMsg ? friendly : `${friendly}\nServer detail: ${rawMsg}`;
             window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-scan-failed", {
-              detail: { companyId, message: failureMessage },
+              /* code / status / retryAfter let the runner tell a 429 rate limit (retry) from quota / key / forbidden
+               * (stop) and from "unreadable" (file problem -> failed). See OcrRunError in engine.ts. */
+              detail: {
+                companyId,
+                message: failureMessage,
+                code: e instanceof OcrRunError ? e.code : code,
+                status: e instanceof OcrRunError || e instanceof OcrAiError ? e.status : 0,
+                retryAfter,
+                engine: e instanceof OcrRunError ? e.engine : undefined,
+              },
             }));
           }
           setOcrFail({
@@ -1441,21 +1712,83 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           toast.dismiss(tId);
         }
       } finally {
-        if (reason === "handoff") {
-          handoffAutoPostRef.current = false;
-          handoffAllowSaveWithoutItemsRef.current = false;
-          handoffEnginePrefRef.current = undefined;
-          handoffCloudProviderRef.current = undefined;
-        }
         if (ocrAbortRef.current === ac) ocrAbortRef.current = null;
+        /* Manual type change: the user's own values from the previous form win over the OCR re-map. */
+        const carried = reuse?.manualTypeSwitch ? handoffUserValuesRef.current : undefined;
+        if (carried) {
+          handoffUserValuesRef.current = undefined;
+          const A = opt.adapter;
+          const F = opt.form;
+          for (const [key, path, v] of carriedValueWrites(carried, { date: A.date, dueDate: A.dueDate, narration: A.narration, amount: A.amount, party: A.party?.path, account: A.accountPath })) {
+            if (key === "party") {
+              if (!A.party || !opt.parties.some((p) => p.id === v)) continue;
+              if (A.party.payeeTypePath && A.party.payeeTypeValue) F.setValue(A.party.payeeTypePath, A.party.payeeTypeValue as never, { shouldDirty: true });
+            }
+            F.setValue(path, v as never, { shouldDirty: true, shouldValidate: false });
+          }
+        }
         setRunning(false);
       }
     },
     [canWrite, write, running, switchVoucher]
   );
 
+  // Stop holds the active voucher in place. Start reuses the last OCR result
+  // against the form's current values, so corrected fields can continue without
+  // rescanning the document or picking another queue item.
+  useEffect(() => {
+    const companyForEvent = () => String((profileCompany as { authoritativeCompanyId?: string } | null)?.authoritativeCompanyId || optsRef.current.companyId || "");
+    const matchesRunnerVoucher = (detail: { companyId?: string; fileUrl?: string; fileName?: string }) => {
+      const opt = optsRef.current;
+      if (String(detail.companyId || "") !== companyForEvent() || !detail.fileUrl || !opt.files.length) return false;
+      return opt.files.some((file) => typeof file === "string"
+        ? file.trim() === String(detail.fileUrl).trim()
+        : Boolean(detail.fileName && file.name === detail.fileName));
+    };
+    const onRunnerHold = (event: Event) => {
+      const detail = (event as CustomEvent<{ companyId?: string; fileId?: string; fileUrl?: string; fileName?: string; held?: boolean }>).detail;
+      if (!detail || !matchesRunnerVoucher(detail) || typeof detail.held !== "boolean") return;
+      runnerHeldForHandoffRef.current = detail.held;
+      if (detail.held && handoffAutoPostRef.current) {
+        cancelAutoPostCountdown();
+        // A successful validation may have started its countdown just before
+        // Stop was clicked. Reset the guard so Start can validate the edited form.
+        apScheduledForRef.current = null;
+      }
+    };
+    const onDuplicateBlocksSave = (event: Event) => {
+      const detail = (event as CustomEvent<{ companyId?: string; fileUrl?: string; fileName?: string }>).detail;
+      if (!detail || !matchesRunnerVoucher(detail)) return;
+      // Runner turned "Check for duplicate vouchers" off: a duplicate never stops this voucher's save.
+      if (handoffDupCheckOffRef.current) return;
+      // Duplicate action (move or pause) wins over the independent OCR save timer.
+      // Otherwise the form can save while the runner is still moving the file.
+      cancelAutoPostCountdown();
+    };
+    const onResumeCurrentVoucher = (event: Event) => {
+      const detail = (event as CustomEvent<{ companyId?: string; fileId?: string; fileUrl?: string; fileName?: string }>).detail;
+      const opt = optsRef.current;
+      if (!detail?.fileId || !matchesRunnerVoucher(detail)) return;
+      runnerHeldForHandoffRef.current = false;
+      handoffAutoPostRef.current = true;
+      apScheduledForRef.current = null;
+      const raw = lastRawRef.current;
+      void (raw
+          ? run("handoff", { raw, resumeCurrentForm: true })
+        : run("handoff", { enginePref: handoffEnginePrefRef.current, cloudProvider: handoffCloudProviderRef.current }));
+    };
+    window.addEventListener("pl:gallery:auto-post-current-voucher-hold", onRunnerHold);
+    window.addEventListener("pl:gallery:auto-post-duplicate-block-save", onDuplicateBlocksSave);
+    window.addEventListener("pl:gallery:auto-post-resume-current-voucher", onResumeCurrentVoucher);
+    return () => {
+      window.removeEventListener("pl:gallery:auto-post-current-voucher-hold", onRunnerHold);
+      window.removeEventListener("pl:gallery:auto-post-duplicate-block-save", onDuplicateBlocksSave);
+      window.removeEventListener("pl:gallery:auto-post-resume-current-voucher", onResumeCurrentVoucher);
+    };
+  }, [cancelAutoPostCountdown, profileCompany, run]);
+
   // Voucher-type switch hand-off: receive the attachment, then OCR it here.
-  const handoffRunRef = useRef<{ raw?: OcrRawResult; selectedIds?: string[]; autoPost?: boolean; allowSaveWithoutItems?: boolean; enginePref?: import("./prefs").OcrEnginePref; cloudProvider?: "google" | "azure" } | null>(null);
+  const handoffRunRef = useRef<{ raw?: OcrRawResult; selectedIds?: string[]; autoPost?: boolean; autoPostSeconds?: number; overwriteEdited?: boolean; allowSaveWithoutItems?: boolean; manualTypeSwitch?: boolean; enginePref?: import("./prefs").OcrEnginePref; cloudProvider?: "google" | "azure" } | null>(null);
   // Files handed over by a voucher switch; kept briefly so a form's own "new voucher" hydration (setFiles([]) in an effect
   // that runs AFTER this hook's effect) cannot wipe them.
   const handoffFilesRef = useRef<{ files: (File | string)[]; until: number } | null>(null);
@@ -1465,11 +1798,18 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     const formType = o.currentVoucherType ?? o.adapter.voucherType;
     const h = takeOcrHandoff(formType) ?? resumeOcrSession(formType);
     if (h?.files.length) {
-      handoffRunRef.current = { raw: h.raw, selectedIds: h.selectedIds, autoPost: h.autoPost, allowSaveWithoutItems: h.allowSaveWithoutItems, enginePref: h.enginePref, cloudProvider: h.cloudProvider };
+      handoffRunRef.current = { raw: h.raw, selectedIds: h.selectedIds, autoPost: h.autoPost, autoPostSeconds: h.autoPostSeconds, overwriteEdited: h.overwriteEdited, allowSaveWithoutItems: h.allowSaveWithoutItems, manualTypeSwitch: h.manualTypeSwitch, enginePref: h.enginePref, cloudProvider: h.cloudProvider };
       handoffAutoPostRef.current = h.autoPost === true;
+      handoffAutoPostOverrideRef.current = h.autoPost;
+      handoffAutoPostSecondsRef.current = h.autoPostSeconds;
+      handoffOverwriteEditedRef.current = h.overwriteEdited;
       handoffAllowSaveWithoutItemsRef.current = h.allowSaveWithoutItems === true;
       handoffEnginePrefRef.current = h.enginePref;
       handoffCloudProviderRef.current = h.cloudProvider;
+      handoffDupCheckOffRef.current = h.checkDuplicateVouchers === false;
+      setRunnerDuplicateCheckOff(handoffDupCheckOffRef.current);
+      handoffDueDaysRef.current = h.defaultDueDays;
+      handoffUserValuesRef.current = h.userValues;
       handoffFilesRef.current = { files: h.files, until: Date.now() + 2500 };
       linkOcrOriginal(h.files[0], h.original ?? null);
       o.setFiles(h.files);
@@ -1478,6 +1818,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // The runner's "duplicate check off" belongs to this voucher only: clear it when the form closes.
+  useEffect(() => () => { if (handoffDupCheckOffRef.current) setRunnerDuplicateCheckOff(false); }, []);
   // Unmount with a bill + OCR result (not saved): park it so an immediate remount of the same form type keeps it
   useEffect(() => () => {
     const opt = optsRef.current;
@@ -1497,7 +1839,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     if (handoffRunRef.current && o.files.length && visible) {
       const h = handoffRunRef.current;
       handoffRunRef.current = null;
-      void (h.raw ? run("handoff", { raw: h.raw, selectedIds: h.selectedIds }) : run("handoff", { enginePref: h.enginePref, cloudProvider: h.cloudProvider }));
+      void (h.raw ? run("handoff", { raw: h.raw, selectedIds: h.selectedIds, manualTypeSwitch: h.manualTypeSwitch }) : run("handoff", { enginePref: h.enginePref, cloudProvider: h.cloudProvider }));
     }
   }, [o.files, visible, run]);
 
@@ -1670,7 +2012,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     const sw = suggestions.find((x) => x.id === "switch");
     // auto-switch only for a high-confidence type (>= AUTO_SWITCH_MIN_CONF); lower ones stay a manual suggestion
     const swSure = (sw?.confidence ?? 0) >= AUTO_SWITCH_MIN_CONF;
-    if (!autoSwitchOn || !visible || !sugOpen || !switchTarget || !sw || sw.blocked || !swSure || swCancelledFor === suggestions || swFiredForRef.current === suggestions) {
+    if (!autoSwitchOn || manualTypeSwitchRef.current || !visible || !sugOpen || !switchTarget || !sw || sw.blocked || !swSure || swCancelledFor === suggestions || swFiredForRef.current === suggestions) {
       setSwCount(null);
       return;
     }
@@ -1748,6 +2090,12 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               ? `${b.items[0].label}?`
               : `${b.items.length} suggestions for this field`;
         const ci = b.items.find((x) => x.id.startsWith("create-item-"));
+        const createExpense = b.items.find((x) => x.id === "create-expense-account");
+        if (createExpense) {
+          const existingExpense = b.items.find((x) => x.id.startsWith("use-expense-account-"));
+          b.title = `${existingExpense ? "Confirm expense account" : "Expense account not found"} — choose or create “${createExpense.value}”?`;
+          b.anchor = "expense-account";
+        }
         if (b.key === "lines" && ci) b.anchor = `lines#${ci.id.slice("create-item-".length)}`;
         if (b.items.some((x) => x.id === "switch")) {
           b.title = `${b.items.find((x) => x.id === "switch")!.label}? (Added Document looks like a different voucher type)`;
@@ -1784,6 +2132,24 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               else setDismissedKeys((p) => new Set([...p, ...b.items.map((x) => x.id)]));
             }}
           />
+          <Dialog open={possibleBankCharge != null} onOpenChange={(open) => { if (!open && possibleBankChargeResolverRef.current) resolvePossibleBankCharge(false); }}>
+            <DialogContent
+              overlayClassName={NESTED_VOUCHER_MASTER_CREATE_OVERLAY_CN}
+              className="!z-[121] max-w-sm"
+              onFocusOutside={(event) => event.preventDefault()}
+            >
+              <DialogHeader>
+                <DialogTitle>Possible bank transfer charge</DialogTitle>
+                <DialogDescription>
+                  This looks like a transfer between your own bank accounts. Does the Rs. {possibleBankCharge ?? 0} remainder represent a bank charge included in the total? Yes will split it out without increasing the source account total.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => resolvePossibleBankCharge(false)}>No, keep as is</Button>
+                <Button type="button" onClick={() => resolvePossibleBankCharge(true)}>Yes, split out charge</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
           {createPrefill ? (
             <CreatePartyDialog
               isOpen
@@ -1842,7 +2208,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                   ) : null}
                   <p className="text-muted-foreground">
                     {ocrFail.code === "quota"
-                      ? "Gemini free tier allows a limited number of scans per minute; the limit resets shortly. Try again after a minute, or use Auto / Offline engine until it resets."
+                      ? "Gemini free tier allows a limited number of scans per minute; the limit resets shortly. Try again after a minute, or use Auto or Google/Azure OCR until it resets."
                       : "Fix the reason above and press Refresh OCR. If you want an automatic second engine, pick Auto in OCR settings → Switch Engine."}
                   </p>
                 </div>
@@ -1862,9 +2228,22 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 const idx = createItemFor.index;
                 setCreateItemFor(null);
                 if (A && id) {
-                  write(`${A.path}.${idx}.itemId`, id);
-                  pendingRef.current.items.push({ index: idx, id });
+                  applyCreatedItemToLine(idx, id, createItemFor.unit);
+                  setDoneIds((prev) => new Set([...prev, `create-item-${idx}`]));
                   toast.success(`OCR: item set on line ${idx + 1}`);
+                  // A runner handoff pauses when this item is missing. Once the
+                  // user creates it, resume this same voucher and revalidate the
+                  // current form; unrelated/manual voucher dialogs stay manual.
+                  if (handoffAutoPostRef.current && runnerHeldForHandoffRef.current) {
+                    window.setTimeout(() => {
+                      window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", {
+                        detail: {
+                          companyId: String((profileCompany as { authoritativeCompanyId?: string } | null)?.authoritativeCompanyId || optsRef.current.companyId || ""),
+                          held: false,
+                        },
+                      }));
+                    }, 0);
+                  }
                 }
               }}
             />
@@ -1879,10 +2258,57 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               if (!A || !id) return;
               const rows = (optsRef.current.form.getValues(A.path) as Record<string, unknown>[] | undefined) ?? [];
               write(A.path, rows.map((r) => ({ ...r, taxAccountId: id })));
-              pendingRef.current.tax = id;
+              const hasFilledRows = rows.some((r) => String(r.itemId ?? "").trim() || Number(r.amount) > 0 || Number(r.rate) > 0);
+              pendingRef.current.tax = hasFilledRows ? undefined : id;
+              setMissingNow((prev) => prev.filter((field) => field !== "VAT tax account (see Suggestions)"));
+              setDoneIds((prev) => new Set([...prev, "create-vat", "choose-vat", "vat"]));
               toast.success("OCR: VAT applied on all lines");
             }}
           />
+          <Dialog open={vatPickerOpen} onOpenChange={setVatPickerOpen}>
+            <DialogContent
+              overlayClassName={NESTED_VOUCHER_MASTER_CREATE_OVERLAY_CN}
+              className="!z-[121] max-w-md"
+              onFocusOutside={(e) => e.preventDefault()}
+            >
+              <DialogHeader>
+                <DialogTitle>Choose a tax account</DialogTitle>
+                <DialogDescription>Select the tax account shown on this bill. It will be applied to the bill lines.</DialogDescription>
+              </DialogHeader>
+              <Combobox
+                options={o.taxes.map((tax) => ({ value: tax.id, label: `${tax.name || "Tax account"} (${tax.rate ?? 0}%)` }))}
+                value={vatPickerId}
+                onChange={setVatPickerId}
+                placeholder="Select tax account"
+                searchPlaceholder="Search tax accounts..."
+              />
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setVatPickerOpen(false)}>Cancel</Button>
+                <Button
+                  type="button"
+                  disabled={!vatPickerId}
+                  onClick={() => {
+                    const id = vatPickerId;
+                    const LI = optsRef.current.adapter.lineItems;
+                    if (LI && id) {
+                      const rows = (optsRef.current.form.getValues(LI.path) as Record<string, unknown>[] | undefined) ?? [];
+                      const hasFilledRows = rows.some((r) => String(r.itemId ?? "").trim() || Number(r.amount) > 0 || Number(r.rate) > 0);
+                      if (rows.length) {
+                        write(LI.path, rows.map((r) => ({ ...r, taxAccountId: id })));
+                      }
+                      pendingRef.current.tax = hasFilledRows ? undefined : id;
+                    }
+                    setMissingNow((prev) => prev.filter((field) => field !== "VAT tax account (see Suggestions)"));
+                    setDoneIds((prev) => new Set([...prev, "choose-vat", "create-vat", "vat"]));
+                    setVatPickerOpen(false);
+                    toast.success("OCR: tax account applied to bill lines");
+                  }}
+                >
+                  Apply tax
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
           {ids && o.adapter.party ? (
         <OcrFindAccountDialog
           open={findOpen}
@@ -1896,7 +2322,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           ) : null}
         </>
       ) : null,
-    [visible, ids, findOpen, lastBill, o.parties, o.adapter.party, pickParty, bubbles, runApply, createPrefill, createItemFor, createTaxOpen, write]
+    [visible, ids, findOpen, lastBill, o.parties, o.taxes, o.adapter.party, pickParty, bubbles, runApply, possibleBankCharge, resolvePossibleBankCharge, createPrefill, createItemFor, createTaxOpen, vatPickerOpen, vatPickerId, applyCreatedItemToLine, profileCompany, write]
   );
 
   // AI chat (OCR bar): current bill / last AI JSON / own company, read on demand (refs, no re-render)
@@ -1922,7 +2348,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     const M = mastersRef.current as typeof mastersRef.current & { accounts?: readonly { id?: string; accountName?: string; isDeleted?: boolean }[]; parties?: readonly { id?: string; name?: string; isDeleted?: boolean }[] };
     const voucherType = optsRef.current.currentVoucherType ?? A.voucherType;
     const moneyFields = ["voucher_type", "voucher_type_reason", "doc_kind", "bank_flow", "bank_flow_reason", "party_name", "date_ad", "date_bs", "grand_total", "payment_mode", "transfer_mode", "transfer_reference", "transfer_charges", "debit_account", "debit_bank", "credit_account", "credit_bank", "account_holder_name", "beneficiary_name", "lines", "uncertain_fields", "notes"];
-    const billFields = ["voucher_type", "voucher_type_reason", "doc_kind", "our_company_role", "party_name", "party_pan", "party_address", "party_phone", "invoice_no", "date_ad", "date_bs", "items", "item_columns", "subtotal", "discount", "taxable", "vat_percent", "vat_amount", "grand_total", "uncertain_fields", "notes"];
+    const billFields = ["voucher_type", "voucher_type_reason", "doc_kind", "our_company_role", "party_name", "party_pan", "party_address", "party_phone", "invoice_no", "date_ad", "date_bs", "due_date", "credit_days", "amount_in_words", "items", "item_columns", "subtotal", "discount", "taxable", "vat_percent", "vat_amount", "grand_total", "uncertain_fields", "notes"];
     const aiData = lastRawRef.current?.ai?.data as unknown as Record<string, unknown> | undefined;
     const relevantKeys = ["payment_in", "payment_out", "receipt", "payment", "contra", "direct_expense", "direct_income"].includes(String(voucherType)) ? moneyFields : billFields;
     const ocrResult = aiData ? Object.fromEntries(relevantKeys.filter((key) => {

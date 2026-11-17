@@ -1,7 +1,7 @@
 /**
  * Google Cloud Vision (and its drag-and-drop demo) can return Devanagari bills with a space between EVERY
  * akshara / digit / Latin letter: "क र वि ज क", "ज म्मा", "4 4 2 4 7 7 9", "S h r e s t h a O i l".
- * This module re-joins such text so the bill parser sees words and numbers again. Normal text (tesseract,
+ * This module re-joins such text so the bill parser sees words and numbers again. Normal text,
  * or Vision text that already has word spaces) is left alone - see `isSpacedOcrText`.
  *
  * Limits (the spacing carries no word-boundary information):

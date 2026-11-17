@@ -122,7 +122,6 @@ import { HeaderAppearanceMenu } from "@/components/layout/HeaderAppearanceMenu";
 import { LanguageGlobeButton } from "@/components/layout/LanguageGlobeButton";
 import { useFileHoverPreview } from "@/contexts/FileHoverPreviewContext";
 import { CopyLedgerHeaderButton } from "@/components/ledger/CopyLedgerHeaderButton";
-import { ShareForReconciliationHeaderButton } from "@/components/reconciliation/ShareForReconciliationHeaderButton";
 import { RenewProrationPills } from "@/components/billing/RenewProrationPills";
 import { useDisplayCurrency } from "@/hooks/useDisplayCurrency";
 import { getCompanyPlanExpiryMsFromDoc } from "@/lib/companyPlanExpiryMs";
@@ -2605,7 +2604,6 @@ export function DesktopAppHeader() {
               <HeaderServerSwitch />
               <UserProfileButton />
               <CopyLedgerHeaderButton />
-              <ShareForReconciliationHeaderButton />
               <LanguageGlobeButton />
               <HeaderAppearanceMenu />
               <GlobalFileHoverPreviewSwitch />
