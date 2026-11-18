@@ -45,7 +45,7 @@ import { Button } from "@/components/ui/button";
 import { AUTO_POST_UI, useAutoPostUiCopy } from "@/components/gallery/autoPostUiCopy";
 import { useVouchersByIds } from "@/modules/ocr/useVouchersByIds";
 import { useLocalMasterNames } from "@/modules/ocr/useLocalMasterNames";
-import { recentOcrUserLabel } from "@/modules/ocr/recentOcrUserLabel";
+import { recentOcrUserLabel, recentOcrUserLines } from "@/modules/ocr/recentOcrUserLabel";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -190,6 +190,10 @@ const RECENT_OCR_TABLE_CSS = [
   "[data-pl-recent-ocr-table] [data-pl-txn-row-menu-trigger]{position:relative;left:10px;}",
   '[data-pl-recent-ocr-table] col[data-pl-col="debit"],[data-pl-recent-ocr-table] col[data-pl-col="credit"]{width:150px !important;min-width:150px !important;}',
   "[data-pl-recent-ocr-table] tbody tr.transaction-main-row > td.tabular-nums{white-space:nowrap;min-width:150px;padding-right:4px;overflow:visible;text-overflow:clip;}",
+  // User column: fixed width (header + body share the colgroup), 10px gap before File, never spill into File.
+  '[data-pl-recent-ocr-table] col[data-pl-col="user"]{width:150px !important;min-width:150px !important;}',
+  "[data-pl-recent-ocr-table] tbody tr.transaction-main-row > td[data-pl-txn-user-cell]{overflow:hidden !important;padding-right:10px !important;max-width:150px;text-overflow:ellipsis;}",
+  "[data-pl-recent-ocr-table] td[data-pl-txn-user-cell] > span{overflow:hidden;text-overflow:ellipsis;}",
 ].join("\n");
 const GalleryRunnerTransactionsTable = dynamic(
   () => import("@/components/vouchers/TransactionsTable").then((m) => m.TransactionsTable),
@@ -927,17 +931,20 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
           ? `${t(AUTO_POST_UI.postedPrefix)} ${dateSystem === "AD" ? formatDate(addedAt) : formatDateBS(addedAt)} ${format(addedAt, "h:mm a")}`
           : "";
         // Full: engine only; Semi: user + engine; Manual: user only (Dashboard Recent's name).
-        const ocrUserName = recentOcrUserLabel({
+        // Semi renders as two lines (user, then smaller engine) so it never runs under the File column.
+        const ocrUserLines = recentOcrUserLines({
           mode: runnerVoucherModes.get(String(row.id || "")),
           provider: runnerVoucherProviders.get(String(row.id || "")),
           userName: row.userDisplayName || row.userName,
-        }).label;
+        });
+        const ocrUserName = ocrUserLines.line1;
         return {
           ...row,
           _recentOcrOriginalDate: row.date,
           _recentOcrOriginalUserName: row.userName,
           _recentOcrOriginalUserDisplayName: row.userDisplayName,
           _dateSubline: postedLabel,
+          _userSubline: ocrUserLines.line2,
           userName: ocrUserName,
           userDisplayName: ocrUserName,
         };

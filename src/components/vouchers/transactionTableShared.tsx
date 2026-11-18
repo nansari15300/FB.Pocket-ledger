@@ -2301,6 +2301,7 @@ export const TransactionRow = React.memo(
         )}
         {showCol("user") && context !== "note" && (
           <TableCell
+            data-pl-txn-user-cell=""
             className={cn(
               ensureMinGaps &&
                 (tdsLedgerRowLayout
@@ -2340,6 +2341,21 @@ export const TransactionRow = React.memo(
                       aria-label="Auto recurring voucher"
                       className="shrink-0 origin-center scale-[0.72] border-2 border-green-600 data-[state=checked]:border-green-600 dark:border-green-500 dark:data-[state=checked]:border-green-500"
                     />
+                  </span>
+                );
+              }
+              /** Opt-in small second line (Gallery Recent OCR Semi: engine label under the user name). */
+              const userSubline =
+                typeof (transaction as { _userSubline?: unknown })._userSubline === "string"
+                  ? String((transaction as { _userSubline?: string })._userSubline).trim()
+                  : "";
+              if (userSubline) {
+                return (
+                  <span className="block min-w-0" title={`${displayName}, ${userSubline}`}>
+                    <span className="block truncate whitespace-nowrap">{hlForColumn("user")(displayName)}</span>
+                    <span data-pl-txn-user-subline="" className="block truncate whitespace-nowrap text-[10px] leading-tight text-foreground/70">
+                      {hlForColumn("user")(userSubline)}
+                    </span>
                   </span>
                 );
               }
