@@ -43,6 +43,7 @@ import {
   resetRunCounterState,
   shouldHoldWhenQueueEmpty,
   shouldRestoreRunOnLoad,
+  shouldStopDrainAfterJob,
 } from "@/components/gallery/autoPostRunPolicy";
 import { AUTO_POST_UI, useAutoPostUiCopy } from "@/components/gallery/autoPostUiCopy";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -260,6 +261,8 @@ export function GalleryLocalAutoPostRunner({
       .catch((error) => console.warn("[GalleryLocalAutoPost] could not refresh the local Unassigned copy", error));
   };
   const manualRetryIdsRef = useRef<Set<string>>(new Set());
+  /** Retry pressed while no run was draining: stop after the retried files (a Start run keeps going). */
+  const retryOnlyRunRef = useRef(false);
   const processPendingRef = useRef<() => Promise<void>>(async () => {});
   const savedJobRef = useRef(false);
   const handledMissingJobIdRef = useRef("");
@@ -416,8 +419,11 @@ export function GalleryLocalAutoPostRunner({
     void processPendingRef.current();
   }, [canRun, masters.loading, runnerHeld, runnerHoldLoadedFor, runnerHoldStorageKey]);
   const clearManualRetryId = useCallback((id: string) => {
-    manualRetryIdsRef.current.delete(id);
-    if (manualRetryIdsRef.current.size === 0 && !settingsRefValue.current.runOnUpload) drainQueueRef.current = false;
+    const wasManualRetry = manualRetryIdsRef.current.delete(id);
+    const retriesLeft = manualRetryIdsRef.current.size;
+    // Only a retry-only run stops here; a Start run must go on to the next file (Start-only stalled after file 1).
+    if (shouldStopDrainAfterJob({ wasManualRetry, retriesLeft, retryOnlyRun: retryOnlyRunRef.current, runOnUpload: settingsRefValue.current.runOnUpload })) drainQueueRef.current = false;
+    if (retriesLeft === 0) retryOnlyRunRef.current = false;
   }, []);
 
   const deferForServerRateLimit = useCallback((error: unknown) => {
@@ -922,6 +928,8 @@ export function GalleryLocalAutoPostRunner({
         toast.message("Retry is not running on this device", { description: "Open Gallery on the selected Local PC admin device and try again." });
         return;
       }
+      // Retry while nothing is draining = process just these files, then stop. Retry during a run = the run goes on.
+      if (manualRetryIdsRef.current.size === 0) retryOnlyRunRef.current = !drainQueueRef.current;
       ids.forEach((id) => manualRetryIdsRef.current.add(id));
       const requeuePatch = {
         status: "FREE",

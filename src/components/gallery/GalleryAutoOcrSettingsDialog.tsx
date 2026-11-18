@@ -1098,7 +1098,7 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
 
             {isRunnerMode(settingsSection) && <section className="full-auto-post-card space-y-3 p-3">
               <h3 className="flex items-center gap-2 border-b pb-2 text-base font-semibold"><Clock3 className="h-4 w-4" />When to scan</h3>
-              <div className="space-y-2">
+              <div className="space-y-2" aria-disabled={manualProfileReadOnly || undefined} style={manualProfileReadOnly ? { opacity: 0.6 } : undefined}>
                 <SettingToggle
                   title="As soon as a file arrives"
                   checked={settingsSection === "manual" ? false : settings.runOnUpload}
@@ -1114,18 +1114,19 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
                 <div className="space-y-1">
                   <SettingToggle
                     title={AUTO_POST_UI.onlyWhenStart}
-                    checked={settingsSection === "manual" || isManualStartTrigger(settings)}
+                    checked={settingsSection !== "manual" && isManualStartTrigger(settings)}
                     onChange={(on) => { if (on) patch({ runOnManualStart: true }); }}
                     disabled={manualProfileReadOnly || !isCompanyAdmin || loading || saving}
                   />
-                  {(settingsSection === "manual" || isManualStartTrigger(settings)) && (
+                  {settingsSection !== "manual" && isManualStartTrigger(settings) && (
                     <p className="text-xs text-muted-foreground">{AUTO_POST_UI.onlyWhenStartHint}</p>
                   )}
                 </div>
+                {/* Manual Runner has no automatic start: the whole card is disabled, file limit fixed to All, triggers off. */}
                 <ScanRunLimitSetting
-                  value={settings.maxVouchersPerRun}
+                  value={manualProfileReadOnly ? "all" : settings.maxVouchersPerRun}
                   onChange={(maxVouchersPerRun) => patch({ maxVouchersPerRun })}
-                  disabled={!isCompanyAdmin || loading || saving}
+                  disabled={manualProfileReadOnly || !isCompanyAdmin || loading || saving}
                 />
               </div>
               {settingsSection !== "manual" && settings.runOnSchedule && <div className="full-auto-post-card space-y-3 p-3">

@@ -8,7 +8,7 @@ import {
   enforceProfileRules,
   pickProfileRules,
 } from "../../src/components/gallery/autoPostMode";
-import { resetRunCounterState, shouldHoldWhenQueueEmpty, shouldRestoreRunOnLoad } from "../../src/components/gallery/autoPostRunPolicy";
+import { resetRunCounterState, shouldHoldWhenQueueEmpty, shouldRestoreRunOnLoad, shouldStopDrainAfterJob } from "../../src/components/gallery/autoPostRunPolicy";
 import { pickAutoEngine, scanEngineHasKey } from "../../src/modules/ocr/engineKeys";
 import { parseManualOcrProfile, resolveVoucherAutoPost } from "../../src/modules/ocr/manualProfileCore";
 
@@ -157,6 +157,50 @@ const profile = (extra: Record<string, unknown>) => ({
   assert.equal(resolveVoucherAutoPost({ runnerJob: false, override: false, manual: { autoPost: true } }), false);
   assert.equal(resolveVoucherAutoPost({ runnerJob: true, runnerAutoPost: false, manual: { autoPost: true } }), false, "runner job ignores manual profile");
   assert.equal(resolveVoucherAutoPost({ runnerJob: true, override: true, runnerAutoPost: false, manual: { autoPost: false } }), true);
+}
+
+// ---- Manual Runner: "When to scan" is fixed — file limit All, triggers off (also after Copy settings / Save) ----
+{
+  const m = enforceProfileRules("manual", profile({ maxVouchersPerRun: 5, runOnUpload: true, runOnSchedule: true }));
+  assert.equal(m.maxVouchersPerRun, "all");
+  assert.equal(m.runOnUpload, false);
+  assert.equal(m.runOnSchedule, false);
+  const copied = copyRunnerProfileFields(profile({ maxVouchersPerRun: "all" }), profile({ maxVouchersPerRun: 7, scanEngine: "azure" }), "manual");
+  assert.equal(copied.maxVouchersPerRun, "all", "copy into Manual keeps All");
+  assert.equal(copied.scanEngine, "azure");
+  assert.equal(copied.runOnUpload, false);
+  const saved = buildRunnerSettingsSave({ manual: profile({ maxVouchersPerRun: 3, runOnUpload: true }), semi: profile({ enabled: true }), full: profile({}) }, "manual");
+  assert.equal(saved.runnerProfiles.manual.maxVouchersPerRun, "all");
+  assert.equal(saved.runnerProfiles.manual.runOnUpload, false);
+  assert.equal(saved.maxVouchersPerRun, "all", "top level mirrors Manual when active");
+  assert.equal(saved.runnerProfiles.semi.maxVouchersPerRun, 5, "Semi keeps its own limit");
+}
+
+// ---- Bug 2026-11-18: Start-only Semi stopped after file 1 — after each finished file the next one must be claimed ----
+{
+  const startOnly = { runOnUpload: false, runOnSchedule: false };
+  // Simulate the runner loop: Start (limit 5, 13 files), each file saves, drain decides the next claim.
+  let drain = true;
+  let remaining = 5;
+  const queue = Array.from({ length: 13 }, (_, i) => `f${i + 1}`);
+  const retryIds = new Set<string>();
+  const processed: string[] = [];
+  while (drain && remaining > 0 && queue.length) {
+    const file = queue.shift()!;
+    processed.push(file);
+    remaining -= 1;
+    const wasManualRetry = retryIds.delete(file);
+    if (shouldStopDrainAfterJob({ wasManualRetry, retriesLeft: retryIds.size, retryOnlyRun: false, runOnUpload: startOnly.runOnUpload })) drain = false;
+  }
+  assert.deepEqual(processed, ["f1", "f2", "f3", "f4", "f5"], "after file 1 completes the next file is claimed, up to the limit");
+  assert.equal(shouldHoldWhenQueueEmpty(startOnly), true);
+  // Retry pressed while idle: stop after the retried files.
+  assert.equal(shouldStopDrainAfterJob({ wasManualRetry: true, retriesLeft: 0, retryOnlyRun: true, runOnUpload: false }), true);
+  assert.equal(shouldStopDrainAfterJob({ wasManualRetry: true, retriesLeft: 1, retryOnlyRun: true, runOnUpload: false }), false);
+  // Retry during a Start run: the run continues.
+  assert.equal(shouldStopDrainAfterJob({ wasManualRetry: true, retriesLeft: 0, retryOnlyRun: false, runOnUpload: false }), false);
+  // A normal (non-retry) file never stops the run.
+  assert.equal(shouldStopDrainAfterJob({ wasManualRetry: false, retriesLeft: 0, retryOnlyRun: true, runOnUpload: false }), false);
 }
 
 console.log("galleryRunnerRules selftest: OK");

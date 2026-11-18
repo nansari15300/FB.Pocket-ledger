@@ -100,6 +100,8 @@ const asRecord = (value: unknown): Record<string, unknown> =>
  * directly (Auto Post forced on, no countdown). Other profiles are returned unchanged.
  */
 export function enforceProfileRules<T extends Partial<RunnerMissingRules> & { autoSaveEnabled?: boolean }>(mode: AutoPostMode, profile: T): T {
+  // Manual Runner has no automatic start (2026-11-18): file limit is always All and both triggers are off.
+  if (mode === "manual") return { ...profile, maxVouchersPerRun: "all", runOnUpload: false, runOnSchedule: false };
   if (mode !== "full") return profile;
   const rules = asRecord(profile.missingFieldRules);
   const forced: Record<string, string> = {};

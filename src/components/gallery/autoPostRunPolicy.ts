@@ -288,3 +288,13 @@ export function resetRunCounterState(
 ): { remaining: number | null; scanned: number; draining: boolean; startProcessing: false } {
   return { remaining: remainingLimit, scanned: 0, draining: state.draining, startProcessing: false };
 }
+
+/**
+ * After a job ends (saved / failed / duplicate / cancelled): should the queue drain stop?
+ * Only a retry-only run (Retry pressed while no run was draining) stops once its retried files are done.
+ * A Start / schedule / on-arrival run keeps claiming the next file until the file limit or the queue ends.
+ * (2026-11-18 fix: Start-only used to stop after file 1 because every finished job cleared the drain.)
+ */
+export function shouldStopDrainAfterJob(state: { wasManualRetry: boolean; retriesLeft: number; retryOnlyRun: boolean; runOnUpload: boolean }): boolean {
+  return state.wasManualRetry && state.retriesLeft === 0 && state.retryOnlyRun && !state.runOnUpload;
+}
