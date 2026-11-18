@@ -395,3 +395,37 @@ Ansari Ji ने 11 audit fixes approve किए; सब OCR Master ने क�
 - **Recent OCR date filter = posted date (Ansari Ji, 2026-11-18).** The date pill, Today button, calendar dots, and Total Vouchers count now filter/highlight by posted date (`createdAt`), not the voucher date. The Date column is unchanged (voucher date with a "Posted:" subline). A small (i) icon sits next to the Today pill; hover or click shows a short note in the app Intro language (en / hi / ne). Helper: `src/modules/ocr/recentOcrPostedDate.ts` (selftest `tests/ocr/recentOcrPostedDate.selftest.mts`). Left uncommitted for Git Master.
 
 - **Recent OCR sort (Ansari Ji, 2026-11-18).** Footer sort did not work in Recent mode because `filteredTransactions` always re-sorted by posted date descending and ignored `sortBy`/`sortOrder`. Date-filter mode used `sortTransactions`, which sorts by voucher date. Both modes now use `src/modules/ocr/recentOcrTransactionSort.ts`: default = posted date+time (`createdAt`, same helper as the date filter), newest first; By Amount and By Voucher No. keep asc/desc. Sort runs on the full list before pagination. The menu's Default mark is posted-date descending for this table only (`defaultSortOrder` on the shared dropdown; other ledgers stay date ascending). Selftest: `tests/ocr/recentOcrTransactionSort.selftest.mts`. Left uncommitted for Git Master.
+
+## Recent OCR server list + Company Doc server count + wrong-PC Start dialog (2026-11-18, OCR Master)
+
+Ansari Ji approved: Recent OCR must show only OCR-created vouchers and be the same on every PC (fetch from PocketBase when the local copy is missing). Company Doc must count every file attached to an alive company voucher (manual + OCR, all FYs), with the count computed on the server. Also: the "wrong PC" Start toast should be a centered dialog that stays until OK, in the Intro language.
+
+### Recent OCR
+- Source of truth is now GET `/api/pl/recent-ocr-links?company=...`. The hook reads `pl_unassigned_documents` (and `duplicate_documents` in `pl_docs`) including hard-deleted tombstones, where `autoOcrStatus=complete` and `autoOcrVoucherId` is set. Server delete keeps those fields in `data`, so a voucher still appears after the gallery file is hard-deleted.
+- If that route is not deployed yet, the client falls back to the previous local `unassigned_documents` snapshot.
+- Missing vouchers are loaded by `useVouchersByIds`: local store first, then POST `/api/pl/vouchers-by-ids` (app id or PocketBase record id), then a direct `getDoc` fallback. Deleted vouchers are excluded. FY scope on other pages is unchanged.
+
+### Company Doc badge
+- GET `/api/pl/company-file-count?company=...` counts attachment URLs on **alive** vouchers of the company across **all FYs**, with the same rule as `getVoucherAttachmentUrlsForUi` (`fileUrls`, else legacy `unassignedFile.url` when `fileUrls` is not an explicit empty array).
+- **Unassigned / Duplicate gallery files that are not attached to a voucher are not included.** They already have their own badges. "Company me jitne v file hai" is applied as every file on an alive voucher (manual or OCR).
+- The client caches the number and refreshes on voucher store changes and window focus, not on every render. If the route is unavailable, it falls back to the previous local (FY-scoped `useVouchers()`) count so the badge still works before server deploy.
+
+### Wrong-PC Start dialog
+- Replaced the auto-dismiss toast `Start the runner on the selected Local PC admin device.` (`AUTO_POST_UI.startBlockedDeviceMismatch`) with a centered `RunnerWrongPcDialog` that stays until OK.
+- Call sites: `GalleryRunnerHoldButton` process-state handler and the 500ms Start fallback in `GalleryPageClient.tsx`. The runner now also publishes `localRunnerDeviceId` so the selected PC name can be filled in (device label from `devices`, else the device id).
+- Intro-language text (en / hi / ne) in `src/modules/ocr/runnerWrongPcIntro.ts`.
+
+### Server deploy (Server master — not deployed from this change)
+Laptop sources (do not copy from Server PC):
+`C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\company_file_count.pb.js`
+`C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\lib\company_file_count.js`
+Copy those two files onto ServerWin10 at:
+`C:\Project Next.js Balgram\PocketLedger-Server\sub-server\pb_hooks\company_file_count.pb.js`
+`C:\Project Next.js Balgram\PocketLedger-Server\sub-server\pb_hooks\lib\company_file_count.js`
+Then **restart PocketBase** (hooks load at process start). No migration needed. Auth: signed-in `pl_users` + active company member/owner (same generic 403 as other hooks).
+
+### Client files
+- New: `companyFileCountCore.ts`, `useCompanyFileCount.ts`, `recentOcrLinks.ts`, `useRecentOcrLinks.ts`, `plGalleryServerApi.ts`, `runnerWrongPcIntro.ts`, `RunnerWrongPcDialog.tsx`
+- Changed: `useVouchersByIds.ts`, `GalleryPageClient.tsx`, `GalleryLocalAutoPostRunner.tsx`
+- Selftests: `tests/ocr/companyFileCount.selftest.mts`, `recentOcrLinks.selftest.mts`, `runnerWrongPcIntro.selftest.mts`
+- Left uncommitted (and the server hook undeployed) for Git Master / Server master.

@@ -44,6 +44,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Button } from "@/components/ui/button";
 import { AUTO_POST_UI, useAutoPostUiCopy } from "@/components/gallery/autoPostUiCopy";
 import { useVouchersByIds } from "@/modules/ocr/useVouchersByIds";
+import { useRecentOcrLinks } from "@/modules/ocr/useRecentOcrLinks";
+import { useCompanyFileCount } from "@/modules/ocr/useCompanyFileCount";
+import { countCompanyVoucherFiles } from "@/modules/ocr/companyFileCountCore";
+import { RunnerWrongPcDialog } from "@/components/gallery/RunnerWrongPcDialog";
 import { useLocalMasterNames } from "@/modules/ocr/useLocalMasterNames";
 import { recentOcrUserLabel, recentOcrUserLines } from "@/modules/ocr/recentOcrUserLabel";
 import {
@@ -423,6 +427,9 @@ function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
   const controlAvailableRef = useRef(false);
   const heldRef = useRef(false);
   const lastBlockedSeqRef = useRef(0);
+  const lastDeviceIdRef = useRef("");
+  const [wrongPcOpen, setWrongPcOpen] = useState(false);
+  const [wrongPcDeviceId, setWrongPcDeviceId] = useState("");
   useEffect(() => {
     if (!fsId) { setAutoPostEnabled(false); return; }
     return onSnapshot(doc(firestore, `companies/${fsId}/auto_ocr_settings`, "server_auto_ocr"), (snapshot) => {
@@ -432,7 +439,7 @@ function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
   useEffect(() => {
     if (!fsId) return;
     const onState = (event: Event) => {
-      const detail = (event as CustomEvent<{ companyId?: string; held?: boolean; controlAvailable?: boolean; startBlockedReason?: string; startBlockedSeq?: number }>).detail;
+      const detail = (event as CustomEvent<{ companyId?: string; held?: boolean; controlAvailable?: boolean; startBlockedReason?: string; startBlockedSeq?: number; localRunnerDeviceId?: string }>).detail;
       if (String(detail?.companyId || "") !== fsId) return;
       const nextHeld = detail?.held === true;
       heldRef.current = nextHeld;
@@ -440,11 +447,17 @@ function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
       const available = detail?.controlAvailable === true;
       controlAvailableRef.current = available;
       setControlAvailable(available);
+      if (detail?.localRunnerDeviceId) lastDeviceIdRef.current = String(detail.localRunnerDeviceId);
       const reason = String(detail?.startBlockedReason || "").trim();
       const seq = Number(detail?.startBlockedSeq) || 0;
       if (seq > lastBlockedSeqRef.current) lastBlockedSeqRef.current = seq;
       if (reason && claimStartBlockedToast(fsId, seq)) {
-        toast.message(t(reason));
+        if (reason === AUTO_POST_UI.startBlockedDeviceMismatch) {
+          setWrongPcDeviceId(String(detail?.localRunnerDeviceId || lastDeviceIdRef.current || ""));
+          setWrongPcOpen(true);
+        } else {
+          toast.message(t(reason));
+        }
       }
     };
     window.addEventListener("pl:gallery:auto-post-process-state", onState);
@@ -452,6 +465,7 @@ function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
     return () => window.removeEventListener("pl:gallery:auto-post-process-state", onState);
   }, [fsId, t]);
   return (
+    <>
     <Button
       type="button"
       size="sm"
@@ -468,7 +482,13 @@ function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
             const currentSeq = Math.max(lastBlockedSeqRef.current, lastStartBlockedToast.companyId === fsId ? lastStartBlockedToast.seq : 0);
             if (currentSeq !== seqAtClick) return;
             if (!heldRef.current) return;
-            toast.message(t(!isCompanyAdmin ? AUTO_POST_UI.startBlockedNotAdmin : !controlAvailableRef.current ? AUTO_POST_UI.startBlockedDeviceMismatch : AUTO_POST_UI.startBlockedSettingsLoading));
+            const fallbackReason = !isCompanyAdmin ? AUTO_POST_UI.startBlockedNotAdmin : !controlAvailableRef.current ? AUTO_POST_UI.startBlockedDeviceMismatch : AUTO_POST_UI.startBlockedSettingsLoading;
+            if (fallbackReason === AUTO_POST_UI.startBlockedDeviceMismatch) {
+              setWrongPcDeviceId(lastDeviceIdRef.current);
+              setWrongPcOpen(true);
+            } else {
+              toast.message(t(fallbackReason));
+            }
           }, 500);
         }
       }}
@@ -476,6 +496,8 @@ function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
     >
       {held || !autoPostEnabled ? t(AUTO_POST_UI.startRunner) : t(AUTO_POST_UI.stopRunner)}
     </Button>
+    <RunnerWrongPcDialog open={wrongPcOpen} onClose={() => setWrongPcOpen(false)} companyId={fsId} deviceId={wrongPcDeviceId} />
+    </>
   );
 }
 
@@ -847,9 +869,18 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
   const { user } = useAuth();
   const { vouchers, processedAccounts, journalAccountNames, userNames } = useVouchers();
   const fsId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
-  const [runnerVoucherProviders, setRunnerVoucherProviders] = useState<Map<string, string>>(() => new Map());
+  const recentOcrLinks = useRecentOcrLinks(String(companyId || ""), fsId);
+  const runnerVoucherProviders = useMemo(() => {
+    const providers = new Map<string, string>();
+    for (const link of recentOcrLinks) providers.set(link.voucherId, link.provider);
+    return providers;
+  }, [recentOcrLinks]);
   /** voucherId -> runner mode stored on the gallery row at post time ("" for rows posted before 2026-11-18). */
-  const [runnerVoucherModes, setRunnerVoucherModes] = useState<Map<string, string>>(() => new Map());
+  const runnerVoucherModes = useMemo(() => {
+    const modes = new Map<string, string>();
+    for (const link of recentOcrLinks) modes.set(link.voucherId, link.mode);
+    return modes;
+  }, [recentOcrLinks]);
   const [search, setSearch] = useState("");
   const [recentMode, setRecentMode] = useState(true);
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
@@ -868,29 +899,6 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
     selectValue: rowsPerPageSelectValue,
     onSelectValueChange: handleRowsPerPageChange,
   } = useRowsPerPageSelectControl(rowsPerPage, setRowsPerPage, setCurrentPage, ROWS_PER_PAGE_OPTIONS_DEFAULT, "10");
-
-  useEffect(() => {
-    if (!fsId) {
-      setRunnerVoucherProviders(new Map());
-      setRunnerVoucherModes(new Map());
-      return;
-    }
-    const q = query(collection(firestore, `companies/${fsId}/unassigned_documents`), orderBy("uploadedAt", "desc"));
-    return onSnapshot(q, (snapshot) => {
-      const providers = new Map<string, string>();
-      const modes = new Map<string, string>();
-      snapshot.docs.forEach((docSnap) => {
-        const row = docSnap.data() as { autoOcrStatus?: string; autoOcrVoucherId?: string; autoOcrProvider?: string; autoOcrRunnerMode?: string };
-        const voucherId = String(row.autoOcrVoucherId || "").trim();
-        if (row.autoOcrStatus === "complete" && voucherId) {
-          providers.set(voucherId, String(row.autoOcrProvider || "").trim());
-          modes.set(voucherId, String(row.autoOcrRunnerMode || "").trim());
-        }
-      });
-      setRunnerVoucherProviders(providers);
-      setRunnerVoucherModes(modes);
-    }, (error) => console.warn("[Gallery Recent OCR] could not watch runner entries", error));
-  }, [fsId]);
 
   // Runner vouchers outside the FY-scoped list (e.g. bill dated in an older year) are read by id.
   const missingRunnerVoucherIds = useMemo(() => {
@@ -5187,12 +5195,17 @@ export function GalleryPageContent() {
   const { user } = useAuth();
   const { company, companyId } = useCompany();
   const { vouchers } = useVouchers();
+  const localCompanyFileCount = useMemo(
+    () => countCompanyVoucherFiles((vouchers || []) as Record<string, unknown>[]),
+    [vouchers]
+  );
+  const companyFileCount = useCompanyFileCount(String(companyId || ""), localCompanyFileCount);
   const tabCounts = useMemo<GalleryTabCounts>(() => ({
     unassigned: 0,
     duplicate: 0,
     autoFailed: 0,
-    companyFiles: (vouchers || []).reduce((count, voucher: any) => count + getVoucherAttachmentUrlsForUi(voucher).length, 0),
-  }), [vouchers]);
+    companyFiles: companyFileCount,
+  }), [companyFileCount]);
   const [documentTabCounts, setDocumentTabCounts] = useState({ unassigned: 0, duplicate: 0, autoFailed: 0 });
   const [ocrHistoryOpen, setOcrHistoryOpen] = useState(false);
   const galleryFirestoreCompanyId = firestoreCompanyIdForGallery(companyId, company as any);

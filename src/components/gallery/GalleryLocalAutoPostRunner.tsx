@@ -988,6 +988,7 @@ export function GalleryLocalAutoPostRunner({
         waitSeconds: waitBanner?.seconds || 0,
         startBlockedReason: startBlockedReasonRef.current,
         startBlockedSeq: startBlockedSeqRef.current,
+        localRunnerDeviceId: settings.localRunnerDeviceId || "",
       },
     }));
     publishProcessStateRef.current = publishState;
@@ -1501,7 +1502,7 @@ export function GalleryLocalAutoPostRunner({
       window.removeEventListener(AUTO_POST_VOUCHER_TYPE_CHANGED, onVoucherTypeChanged);
       window.removeEventListener(OCR_SWITCH_EVENT, onOcrTypeSwitch);
     };
-  }, [activeProcess, canControlRunner, clearManualRetryId, failJob, fsId, holdRunner, openRunnerVoucher, processDialogVisible, releaseToUnassigned, runnerHeld, runnerHoldStorageKey, settings.enabled, tUi, voucherOpen, waitBanner, writeStatus]);
+  }, [activeProcess, canControlRunner, clearManualRetryId, failJob, fsId, holdRunner, openRunnerVoucher, processDialogVisible, releaseToUnassigned, runnerHeld, runnerHoldStorageKey, settings.enabled, settings.localRunnerDeviceId, tUi, voucherOpen, waitBanner, writeStatus]);
 
   useEffect(() => {
     if (!canRun || masters.loading || !drainQueueRef.current) return;

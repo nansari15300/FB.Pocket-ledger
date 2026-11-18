@@ -8,13 +8,31 @@ import {
   getCompanyDocFromBrowserDb,
   type BrowserDbCollectionBumpDetail,
 } from "@/lib/localCompanyDocMirror";
+import { fetchVouchersByAnyIds, isGalleryServerApiUnavailable } from "@/modules/ocr/plGalleryServerApi";
+import { isAliveRecentOcrVoucher, voucherLookupIds } from "@/modules/ocr/recentOcrLinks";
 
 export type VoucherDocById = Record<string, unknown> & { id: string };
+
+function asVoucher(row: Record<string, unknown>, fallbackId: string): VoucherDocById | null {
+  if (!isAliveRecentOcrVoucher(row)) return null;
+  const id = String(row.id || row.app_id || fallbackId || "").trim();
+  if (!id) return null;
+  return { ...row, id };
+}
+
+function indexVoucher(map: Map<string, VoucherDocById>, row: VoucherDocById, requestedId?: string) {
+  for (const id of voucherLookupIds(row, requestedId)) {
+    map.set(id, row);
+  }
+}
 
 /**
  * Vouchers by id, read straight from the local voucher store (PocketBase as fallback), for ids
  * that are missing from the FY-scoped `useVouchers()` list - e.g. a runner voucher whose bill date
  * is in an older year. Gallery OCR History / Recent OCR Trxn use it so such vouchers still show.
+ *
+ * Resolves both the app document id (`data.id` / `app_id`) and the PocketBase record id. Missing
+ * local rows are fetched from the server hook, then by a direct document read.
  */
 export function useVouchersByIds(
   companyId: string,
@@ -55,6 +73,7 @@ export function useVouchersByIds(
     let cancelled = false;
     void (async () => {
       const next = new Map<string, VoucherDocById>();
+      const missing: string[] = [];
       for (const id of key.split("|")) {
         let row: Record<string, unknown> | null = null;
         try {
@@ -62,16 +81,37 @@ export function useVouchersByIds(
         } catch {
           row = null;
         }
-        if (!row && fsId) {
-          try {
-            const snap = await getDoc(doc(firestore, `companies/${fsId}/vouchers`, id));
-            row = snap.exists() ? ((snap.data() as Record<string, unknown>) ?? null) : null;
-          } catch {
-            row = null;
+        const local = row ? asVoucher(row, id) : null;
+        if (local) indexVoucher(next, local, id);
+        else missing.push(id);
+        if (cancelled) return;
+      }
+      if (missing.length && !cancelled) {
+        try {
+          const fromServer = await fetchVouchersByAnyIds(cid, missing);
+          for (const id of missing) {
+            const hit = fromServer.get(id);
+            if (hit && asVoucher(hit, id)) indexVoucher(next, asVoucher(hit, id)!, id);
+          }
+        } catch (error) {
+          if (!isGalleryServerApiUnavailable(error)) {
+            console.warn("[useVouchersByIds] server batch lookup failed", error);
           }
         }
-        if (row && row.isDeleted !== true) next.set(id, { ...row, id });
-        if (cancelled) return;
+      }
+      const stillMissing = key.split("|").filter((id) => !next.has(id));
+      if (fsId && stillMissing.length && !cancelled) {
+        for (const id of stillMissing) {
+          try {
+            const snap = await getDoc(doc(firestore, `companies/${fsId}/vouchers`, id));
+            const data = snap.exists() ? ((snap.data() as Record<string, unknown>) ?? null) : null;
+            const remote = data ? asVoucher(data, id) : null;
+            if (remote) indexVoucher(next, remote, id);
+          } catch {
+            /* leave this id missing */
+          }
+          if (cancelled) return;
+        }
       }
       if (!cancelled) setById(next);
     })();
