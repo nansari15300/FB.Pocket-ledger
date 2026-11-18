@@ -378,3 +378,10 @@ Ansari Ji ने 11 audit fixes approve किए; सब OCR Master ने क�
 - **Voucher type हाथ से बदला** (runner job): सारी runner settings साथ जाती हैं (`runnerJob` flag handoff में), Auto Post ON हो या OFF।
 - Tests: `tests/ocr/galleryRunnerRules.selftest.mts` (decisions 1, 2, 4, 5, 6/7, 10, 11)।
 - Open: Common का duplicate «Pause and open for review» Full में अभी भी रोकता है; voucher-type-switch pending Full में भी pause करता है; auto voucher-type change countdown अभी device pref है।
+
+## Gallery OCR History dates + party ledger FY widen (2026-11-18, OCR Master)
+- OCR History table: `Voucher Date` (saved voucher's own date, '—' if unknown) + `Posted Date` (old Date/Time). Out-of-scope vouchers are read by id via `src/modules/ocr/useVouchersByIds.ts` (local store, PB fallback). Recent OCR Trxn uses the same hook, so runner vouchers dated outside the loaded FY scope still show.
+- `src/lib/fyPagination/entityMinTxnScope.ts`: party/entity ledger widen jumps straight to the month of the entity's oldest local voucher (`entityWidenPlan.ts`); the old month walk (stops after 6 empty months) is kept only when there are no local rows.
+- `src/lib/fyPagination/scopeGeneration.ts`: date-range / default scope loads bump a per-company counter; background widens stop when it changes (they could overwrite the user's date range).
+- `voucherQueries.countVouchersInDateRange` ignores soft-deleted tombstones (the default min-10 scope stopped too early).
+- Selftest: `npx tsx tests/fyPagination/entityWiden.selftest.mts`.

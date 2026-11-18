@@ -24,6 +24,7 @@ import {
 } from "@/lib/fyPagination/sqliteFirstFyLoad";
 import { notifyBrowserDbCollectionUpdated } from "@/lib/localCompanyDocMirror";
 import type { FyDateRangeMs } from "@/lib/fyPagination/types";
+import { bumpFyScopeGeneration } from "@/lib/fyPagination/scopeGeneration";
 
 export type FyScopeCompany = CompanyStorageRow & { country?: string };
 
@@ -103,6 +104,7 @@ export async function applyDefaultFyLedgerScope(params: {
   const { company, fy } = params;
   const companyId = String(company?.id || "").trim();
   if (!companyId || !fy.enabled) return;
+  bumpFyScopeGeneration(companyId);
 
   fy.resetScopeState();
   const scope = companyUsesFiscalMergeDividers(company)
@@ -141,6 +143,8 @@ export async function applyFyLoadForLedgerDateRange(params: {
 
   const scope = resolveLedgerDateRangeScope(company?.country, dateRange);
   if (!scope) return;
+  // Stop any background "load older months" widen so it cannot overwrite this date range.
+  bumpFyScopeGeneration(companyId);
 
   await applyFyScopeFromSqlite({ companyId, fy, scope });
   await paintScopeOpeningFast(company, companyId, scope, fy);

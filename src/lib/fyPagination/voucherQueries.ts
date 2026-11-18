@@ -95,7 +95,33 @@ export async function listVoucherIdsInDateRange(
   }
 }
 
+/**
+ * Live (not soft-deleted) vouchers in range. Soft-deleted tombstones keep their projection row,
+ * so counting projection ids alone made the default "min 10 txns" scope stop too early
+ * (e.g. 1 Sep instead of 1 Aug) and hid in-FY vouchers from ledgers / Gallery Recent OCR.
+ */
 export async function countVouchersInDateRange(companyId: string, range: FyDateRangeMs): Promise<number> {
+  if (typeof window === "undefined" || !companyId) return 0;
+  const db = await getBrowserDbForCompanyId(companyId);
+  if (!db) return 0;
+  try {
+    const row = db
+      .prepare(
+        `SELECT COUNT(*) AS n
+         FROM company_docs cd
+         INNER JOIN company_docs_projection p
+           ON cd.company_id = p.company_id AND cd.collection = p.collection AND cd.id = p.id
+         WHERE cd.company_id = ? AND cd.collection = 'vouchers'
+           AND p.doc_date_ms IS NOT NULL
+           AND p.doc_date_ms >= ? AND p.doc_date_ms <= ?
+           AND COALESCE(json_extract(cd.data, '$.isDeleted'), 0) NOT IN (1, 'true')`
+      )
+      .get(companyId, range.fromMs, range.toMs) as { n?: number } | undefined;
+    const n = Number(row?.n);
+    if (Number.isFinite(n)) return n;
+  } catch {
+    /* JSON1 unavailable: fall back to the projection id count */
+  }
   const ids = await listVoucherIdsInDateRange(companyId, range);
   return ids.length;
 }

@@ -70,6 +70,8 @@ export const AUTO_POST_UI = {
   startBlockedFirstCard: "The first file is still marked as processing, so the runner could not start.",
   startBlockedRequeueFailed: "Could not return the first file to the queue. Press Start to try again.",
   startBlockedNoFiles: "There are no files waiting to scan.",
+  voucherDate: "Voucher Date",
+  postedDate: "Posted Date",
 } as const;
 
 export type AutoPostUiKey = keyof typeof AUTO_POST_UI;

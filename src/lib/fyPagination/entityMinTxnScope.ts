@@ -25,6 +25,8 @@ import { openingBoundaryPeriodKey } from "@/lib/fyPagination/openingBoundaryKeys
 import type { FyActiveScope, FyDateRangeMs } from "@/lib/fyPagination/types";
 import { listVouchersFromBrowserDbByDateRange } from "@/lib/fyPagination/voucherQueries";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
+import { entityVoucherStats, entityWidenAction, type EntityVoucherStats } from "@/lib/fyPagination/entityWidenPlan";
+import { currentFyScopeGeneration } from "@/lib/fyPagination/scopeGeneration";
 import { isCloudLinkedCompanyStorage } from "@/lib/companyUnlockGate";
 import type { CompanyStorageRow } from "@/lib/companyStorageKind";
 
@@ -132,6 +134,23 @@ export async function countEntityVouchersInSqliteFull(
   }
 }
 
+/** Count + oldest voucher date for this entity in the full SQLite mirror (widen jump target). */
+export async function entityVoucherStatsInSqliteFull(
+  companyId: string,
+  entityId: string,
+  kind: MasterLedgerEntityKind
+): Promise<EntityVoucherStats | null> {
+  const cid = String(companyId || "").trim();
+  const id = String(entityId || "").trim();
+  if (!cid || !id) return null;
+  try {
+    const rows = await listCompanyDocsFromBrowserDb(cid, "vouchers", { forBackupMerge: true });
+    return entityVoucherStats(rows, (v) => countEntityVouchersInList([v], id, kind) === 1);
+  } catch {
+    return null;
+  }
+}
+
 function resolveOpeningSnapshotIdForWiden(
   today: Date,
   effectiveRange: FyDateRangeMs,
@@ -144,9 +163,76 @@ function resolveOpeningSnapshotIdForWiden(
   return openingBoundaryPeriodKey(effectiveRange.fromMs);
 }
 
+/** Apply one widened range: scope + SQLite rows + background online/local/opening hydrate. */
+async function applyEntityWidenRange(params: {
+  company: FyScopeCompany | null | undefined;
+  companyId: string;
+  fy: ReturnType<typeof useFyVoucherScope>;
+  scope: FyActiveScope;
+  newFromMs: number;
+  today: Date;
+}): Promise<FyActiveScope> {
+  const { company, companyId, fy, scope: prev, newFromMs, today } = params;
+  const newRange: FyDateRangeMs = { fromMs: newFromMs, toMs: prev.range.toMs };
+  const fyRange = currentFiscalYearRange(company?.country, today);
+  const scope: FyActiveScope = {
+    ...prev,
+    range: newRange,
+    fyFloorMs: newFromMs,
+    openingSnapshotId: resolveOpeningSnapshotIdForWiden(today, newRange, fyRange, company?.country),
+  };
+
+  fy.setActiveScope(scope);
+
+  const localOpening = await readLocalFyOpeningBalances(companyId, scope);
+  if (localOpening) fy.applyOpeningHydrateResult(localOpening);
+  else fy.setOpeningBalancesLoading();
+
+  const allInRange = await listVouchersFromBrowserDbByDateRange(companyId, newRange);
+  if (allInRange.length) {
+    fy.mergeHydratedVouchers(allInRange);
+    fy.registerInMemoryVoucherIds(allInRange.map((v) => String(v.id || "")));
+  }
+
+  scheduleBackgroundOnlineFyRangeHydrate({
+    company,
+    companyId,
+    range: newRange,
+    fy,
+  });
+
+  if (!isCloudLinkedCompanyStorage(company) && newRange.fromMs > 0) {
+    void hydrateLedgerHistoryBeforeMs(company, companyId, company?.country, newRange.fromMs)
+      .then(async () => {
+        const refreshed = await listVouchersFromBrowserDbByDateRange(companyId, newRange);
+        if (refreshed.length) {
+          fy.mergeHydratedVouchers(refreshed);
+          fy.registerInMemoryVoucherIds(refreshed.map((v) => String(v.id || "")));
+        }
+        notifyBrowserDbCollectionUpdated(companyId, "vouchers", {
+          immediate: true,
+          source: "fy_range_hydrate",
+        });
+      })
+      .catch((err) => {
+        console.warn("[entityMinTxnScope] background local history hydrate", err);
+      });
+  }
+
+  void hydrateLedgerOpeningBalances({ company, companyId, scope })
+    .then((opening) => fy.applyOpeningHydrateResult(opening))
+    .catch((err) => {
+      console.warn("[entityMinTxnScope] background opening hydrate", err);
+    });
+  return scope;
+}
+
 /**
- * Master ledger default view: walk scope backward month-by-month (cross-FY) until this entity
- * has at least `minTxn` vouchers in SQLite, or we hit the calendar floor.
+ * Master ledger default view: load this entity's older vouchers.
+ * With a local mirror the scope jumps straight to the month of the entity's oldest voucher
+ * (2026-11-18: the old month walk stopped after 6 empty months, so a party whose previous bill
+ * was years back never showed it). Without local rows it falls back to the month walk.
+ * Stops if the user sets a date range / resets scope meanwhile (scope generation).
  */
 export async function widenFyScopeUntilEntityMinTxns(params: {
   company: FyScopeCompany | null | undefined;
@@ -161,25 +247,36 @@ export async function widenFyScopeUntilEntityMinTxns(params: {
     params;
   const companyId = String(company?.id || "").trim();
   if (!companyId || !fy.enabled || !fy.activeScope) return;
+  const generation = currentFyScopeGeneration(companyId);
+  const scopeStillOurs = () => currentFyScopeGeneration(companyId) === generation;
 
+  const stats = await entityVoucherStatsInSqliteFull(companyId, entityId, entityKind);
   const fullEntityCount =
     typeof params.targetTxnCount === "number" && params.targetTxnCount > 0
       ? params.targetTxnCount
-      : await countEntityVouchersInSqliteFull(companyId, entityId, entityKind);
+      : stats?.count ?? 0;
   const targetCount = Math.max(minTxn, fullEntityCount);
 
-  // A normal “Last N” expansion is only a few months back.  Computing the
-  // exact BS floor can invoke datex-bs's long day-walk, so defer it until we
-  // are actually close to that boundary.  The guard is deliberately later
-  // than the real BS floor; the exact check still decides the final limit.
+  // Exact BS floor can invoke datex-bs's long day-walk; only compute it near that boundary.
   const calendarFloorGuardMs = new Date(BS_CALENDAR_MIN_YEAR - 56, 0, 1).getTime();
   let scope: FyActiveScope = fy.activeScope;
+
+  const plan = entityWidenAction({ scopeFromMs: scope.range.fromMs, stats });
+  if (plan.kind === "done") return;
+  if (plan.kind === "jump") {
+    let fromMs = plan.fromMs;
+    if (fromMs < calendarFloorGuardMs) fromMs = Math.max(fromMs, bsCalendarFloorMs());
+    if (fromMs >= scope.range.fromMs || !scopeStillOurs()) return;
+    await applyEntityWidenRange({ company, companyId, fy, scope, newFromMs: fromMs, today });
+    return;
+  }
+
   let stagnantPasses = 0;
   let lastCount = -1;
-
   for (let i = 0; i < MAX_WIDEN_MONTHS; i++) {
     // Keep tax/ledger clicks responsive during multi-month FY widen.
     if (i > 0) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    if (!scopeStillOurs()) return;
     const rows = await listVouchersFromBrowserDbByDateRange(companyId, scope.range);
     const count = countEntityVouchersInList(rows, entityId, entityKind);
     if (count >= targetCount) return;
@@ -192,59 +289,8 @@ export async function widenFyScopeUntilEntityMinTxns(params: {
     const newFromMs = startOfDay(startOfMonth(monthCursor)).getTime();
     if (newFromMs >= scope.range.fromMs) return;
     if (newFromMs < calendarFloorGuardMs && newFromMs < bsCalendarFloorMs()) return;
-
-    const newRange: FyDateRangeMs = { fromMs: newFromMs, toMs: scope.range.toMs };
-
-    const fyRange = currentFiscalYearRange(company?.country, today);
-    scope = {
-      ...scope,
-      range: newRange,
-      fyFloorMs: newFromMs,
-      openingSnapshotId: resolveOpeningSnapshotIdForWiden(today, newRange, fyRange, company?.country),
-    };
-
-    fy.setActiveScope(scope);
-
-    const localOpening = await readLocalFyOpeningBalances(companyId, scope);
-    if (localOpening) fy.applyOpeningHydrateResult(localOpening);
-    else fy.setOpeningBalancesLoading();
-
-    const allInRange = await listVouchersFromBrowserDbByDateRange(companyId, newRange);
-    if (allInRange.length) {
-      fy.mergeHydratedVouchers(allInRange);
-      fy.registerInMemoryVoucherIds(allInRange.map((v) => String(v.id || "")));
-    }
-
-    scheduleBackgroundOnlineFyRangeHydrate({
-      company,
-      companyId,
-      range: newRange,
-      fy,
-    });
-
-    if (!isCloudLinkedCompanyStorage(company) && newRange.fromMs > 0) {
-      void hydrateLedgerHistoryBeforeMs(company, companyId, company?.country, newRange.fromMs)
-        .then(async () => {
-          const refreshed = await listVouchersFromBrowserDbByDateRange(companyId, newRange);
-          if (refreshed.length) {
-            fy.mergeHydratedVouchers(refreshed);
-            fy.registerInMemoryVoucherIds(refreshed.map((v) => String(v.id || "")));
-          }
-          notifyBrowserDbCollectionUpdated(companyId, "vouchers", {
-            immediate: true,
-            source: "fy_range_hydrate",
-          });
-        })
-        .catch((err) => {
-          console.warn("[entityMinTxnScope] background local history hydrate", err);
-        });
-    }
-
-    void hydrateLedgerOpeningBalances({ company, companyId, scope })
-      .then((opening) => fy.applyOpeningHydrateResult(opening))
-      .catch((err) => {
-        console.warn("[entityMinTxnScope] background opening hydrate", err);
-      });
+    if (!scopeStillOurs()) return;
+    scope = await applyEntityWidenRange({ company, companyId, fy, scope, newFromMs, today });
   }
 }
 
@@ -266,6 +312,7 @@ export async function widenFyScopeUntilRecentMinTxns(params: {
   const { company, fy, targetTxnCount, today = new Date() } = params;
   const companyId = String(company?.id || "").trim();
   if (!companyId || !fy.enabled || !fy.activeScope) return;
+  const generation = currentFyScopeGeneration(companyId);
 
   const calendarFloorGuardMs = new Date(BS_CALENDAR_MIN_YEAR - 56, 0, 1).getTime();
   let scope: FyActiveScope = fy.activeScope;
@@ -277,6 +324,7 @@ export async function widenFyScopeUntilRecentMinTxns(params: {
     const rows = await listVouchersFromBrowserDbByDateRange(companyId, scope.range);
     const validCount = rows.filter((v) => v && v.isDeleted !== true).length;
     if (validCount >= targetTxnCount) return;
+    if (currentFyScopeGeneration(companyId) !== generation) return;
     if (validCount === lastCount) stagnantPasses++;
     else stagnantPasses = 0;
     lastCount = validCount;

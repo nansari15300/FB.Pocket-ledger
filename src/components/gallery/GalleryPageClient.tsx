@@ -43,6 +43,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { AUTO_POST_UI, useAutoPostUiCopy } from "@/components/gallery/autoPostUiCopy";
+import { useVouchersByIds } from "@/modules/ocr/useVouchersByIds";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -811,9 +812,18 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
     }, (error) => console.warn("[Gallery Recent OCR] could not watch runner entries", error));
   }, [fsId]);
 
+  // Runner vouchers outside the FY-scoped list (e.g. bill dated in an older year) are read by id.
+  const missingRunnerVoucherIds = useMemo(() => {
+    const have = new Set((vouchers || []).map((voucher: any) => String(voucher?.id || "")));
+    return [...runnerVoucherProviders.keys()].filter((id) => !have.has(id));
+  }, [runnerVoucherProviders, vouchers]);
+  const extraRunnerVouchers = useVouchersByIds(String(companyId || ""), missingRunnerVoucherIds, fsId);
   const runnerVouchers = useMemo(
-    () => (vouchers || []).filter((voucher: any) => runnerVoucherProviders.has(String(voucher?.id || ""))),
-    [runnerVoucherProviders, vouchers],
+    () => [
+      ...(vouchers || []).filter((voucher: any) => runnerVoucherProviders.has(String(voucher?.id || ""))),
+      ...[...extraRunnerVouchers.values()].filter((voucher: any) => runnerVoucherProviders.has(String(voucher?.id || ""))),
+    ],
+    [extraRunnerVouchers, runnerVoucherProviders, vouchers],
   );
   const runnerVoucherById = useMemo(
     () => new Map(runnerVouchers.map((voucher: any) => [String(voucher?.id || ""), voucher])),
@@ -1101,7 +1111,10 @@ type GalleryOcrHistoryRow = {
   id: string;
   name: string;
   result: "passed" | "duplicate" | "auto-failed";
+  /** Posted / completed time (old Date / Time column). */
   date: Date;
+  /** The saved voucher's own date (bill date); null when unknown. */
+  voucherDate: Date | null;
   provider: string;
   voucherNumber: string;
   details: string;
@@ -1118,6 +1131,7 @@ function GalleryOcrHistoryDialog({ open, onOpenChange }: { open: boolean; onOpen
   const [unassignedRows, setUnassignedRows] = useState<any[]>([]);
   const [duplicateRows, setDuplicateRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const { t } = useAutoPostUiCopy();
 
   useEffect(() => {
     if (!open) return;
@@ -1179,11 +1193,23 @@ function GalleryOcrHistoryDialog({ open, onOpenChange }: { open: boolean; onOpen
     };
   }, [fsId, open]);
 
+  // Vouchers outside the FY-scoped list (older bill year) are read by id for Voucher Date / number.
+  const missingHistoryVoucherIds = useMemo(() => {
+    const have = new Set((vouchers || []).map((voucher: any) => String(voucher?.id || "")));
+    const ids: string[] = [];
+    for (const docRow of [...unassignedRows, ...duplicateRows]) {
+      const id = String(docRow?.autoOcrVoucherId || docRow?.duplicateOfVoucherId || "").trim();
+      if (id && !have.has(id)) ids.push(id);
+    }
+    return ids;
+  }, [duplicateRows, unassignedRows, vouchers]);
+  const extraHistoryVouchers = useVouchersByIds(String(companyId || ""), open ? missingHistoryVoucherIds : [], fsId);
+
   const historyRows = useMemo(() => {
     const voucherById = new Map((vouchers || []).map((voucher: any) => [String(voucher?.id || ""), voucher]));
     const asHistoryRow = (docRow: any, result: GalleryOcrHistoryRow["result"]): GalleryOcrHistoryRow | null => {
-      const voucherId = String(docRow.autoOcrVoucherId || "").trim();
-      const voucher = voucherId ? voucherById.get(voucherId) : undefined;
+      const voucherId = String(docRow.autoOcrVoucherId || docRow.duplicateOfVoucherId || "").trim();
+      const voucher: any = voucherId ? voucherById.get(voucherId) ?? extraHistoryVouchers.get(voucherId) : undefined;
       const rawDate = result === "duplicate"
         ? docRow.movedAt
         : docRow.autoOcrFinishedAt || docRow.updatedAt || docRow.uploadedAt;
@@ -1197,6 +1223,7 @@ function GalleryOcrHistoryDialog({ open, onOpenChange }: { open: boolean; onOpen
         name: String(docRow.name || docRow.fileName || docRow.originalName || docRow.id || "Document"),
         result,
         date,
+        voucherDate: parseFirestoreDateFieldToJsDate(voucher?.date),
         provider: provider ? provider.replace(/^./, (letter) => letter.toUpperCase()) : "—",
         voucherNumber: String(docRow.duplicateOfVoucherNumber || voucher?.voucherNumber || voucherId || "—"),
         details: String(docRow.duplicateReason || docRow.autoOcrError || ""),
@@ -1217,7 +1244,7 @@ function GalleryOcrHistoryDialog({ open, onOpenChange }: { open: boolean; onOpen
       if (row) byId.set(row.id, row);
     }
     return [...byId.values()].sort((a, b) => b.date.getTime() - a.date.getTime());
-  }, [duplicateRows, unassignedRows, vouchers]);
+  }, [duplicateRows, extraHistoryVouchers, unassignedRows, vouchers]);
   const transactionDates = useMemo(() => historyRows.map((row) => row.date), [historyRows]);
   const selectedRows = useMemo(() => historyRows.filter((row) => startOfDay(row.date).getTime() === selectedDay.getTime()), [historyRows, selectedDay]);
   const passedCount = selectedRows.filter((row) => row.result === "passed").length;
@@ -1267,10 +1294,11 @@ function GalleryOcrHistoryDialog({ open, onOpenChange }: { open: boolean; onOpen
           </div>
           <div className="min-h-0 overflow-auto rounded-lg border border-slate-300">
             <table className="w-full min-w-[48rem] border-collapse text-left text-sm">
-              <thead className="sticky top-0 z-[1] bg-slate-200 text-slate-900"><tr>{["Date / Time", "Result", "File", "Voucher", "OCR", "Details"].map((label) => <th key={label} className="border-b border-slate-400 px-2 py-2 font-semibold">{label}</th>)}</tr></thead>
+              <thead className="sticky top-0 z-[1] bg-slate-200 text-slate-900"><tr>{[t(AUTO_POST_UI.voucherDate), t(AUTO_POST_UI.postedDate), "Result", "File", "Voucher", "OCR", "Details"].map((label) => <th key={label} className="border-b border-slate-400 px-2 py-2 font-semibold">{label}</th>)}</tr></thead>
               <tbody>
                 {visibleHistoryRows.map((row) => (
                   <tr key={`${row.result}:${row.id}`} className="border-b border-slate-200 last:border-0">
+                    <td className="whitespace-nowrap px-2 py-2">{row.voucherDate ? dateLabel(row.voucherDate) : "—"}</td>
                     <td className="whitespace-nowrap px-2 py-2">{dateLabel(row.date)} <span className="text-xs text-muted-foreground">{format(row.date, "h:mm a")}</span></td>
                     <td className="whitespace-nowrap px-2 py-2 font-medium">{row.result === "passed" ? "Trxn passed" : row.result === "duplicate" ? "Moved to Duplicate" : "Moved to Auto failed"}</td>
                     <td className="max-w-56 truncate px-2 py-2" title={row.name}>{row.name}</td>
@@ -1279,8 +1307,8 @@ function GalleryOcrHistoryDialog({ open, onOpenChange }: { open: boolean; onOpen
                     <td className="max-w-72 truncate px-2 py-2" title={row.details}>{row.details || "—"}</td>
                   </tr>
                 ))}
-                {!loading && visibleHistoryRows.length === 0 ? <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">No OCR history for this filter and date.</td></tr> : null}
-                {loading && visibleHistoryRows.length === 0 ? <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">Loading OCR history…</td></tr> : null}
+                {!loading && visibleHistoryRows.length === 0 ? <tr><td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">No OCR history for this filter and date.</td></tr> : null}
+                {loading && visibleHistoryRows.length === 0 ? <tr><td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">Loading OCR history…</td></tr> : null}
               </tbody>
             </table>
           </div>
