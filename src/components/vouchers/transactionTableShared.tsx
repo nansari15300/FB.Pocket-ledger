@@ -1811,6 +1811,11 @@ export const TransactionRow = React.memo(
         : null;
     // Desktop table me bhi mobile card wali same entry-time priority dikhani hai: createdAt -> edited/updated -> voucher date.
     const entryClock = formatVoucherEntryTimeLocal(transaction as Record<string, unknown>);
+    /** Opt-in small second line under the date (Gallery Recent OCR: "Posted: ..."). */
+    const dateSubline =
+      typeof (transaction as { _dateSubline?: unknown })._dateSubline === "string"
+        ? String((transaction as { _dateSubline?: string })._dateSubline).trim()
+        : "";
     let debit = toLedgerAmount(transaction.debit);
     let credit = toLedgerAmount(transaction.credit);
     let balance = toLedgerAmount(transaction.balance);
@@ -2123,6 +2128,11 @@ export const TransactionRow = React.memo(
                       {hlForColumn("date_ad")(entryClock)}
                     </span>
                   ) : null}
+                  {dateSubline ? (
+                    <span data-pl-txn-date-subline="" className="block text-[10px] leading-tight text-foreground/70">
+                      {dateSubline}
+                    </span>
+                  ) : null}
                 </TableCell>
               </>
             ) : (
@@ -2139,6 +2149,11 @@ export const TransactionRow = React.memo(
                 {entryClock ? (
                   <span className="ml-1 inline-block text-[10px] text-foreground/70">
                     {hlForColumn("date")(entryClock)}
+                  </span>
+                ) : null}
+                {dateSubline ? (
+                  <span data-pl-txn-date-subline="" className="block text-[10px] leading-tight text-foreground/70">
+                    {dateSubline}
                   </span>
                 ) : null}
               </TableCell>

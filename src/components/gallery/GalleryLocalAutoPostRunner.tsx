@@ -622,6 +622,8 @@ export function GalleryLocalAutoPostRunner({
         autoOcrDeviceId: deviceId,
         autoOcrUserId: user.uid,
         autoOcrProvider: scanEngine,
+        // Runner mode at post time; Gallery Recent OCR picks the User column label from it.
+        autoOcrRunnerMode: activeRunnerFromSettings(settingsRefValue.current),
         autoOcrError: "",
         restoredFromDuplicateAtMs: 0,
         duplicateOfVoucherId: "",

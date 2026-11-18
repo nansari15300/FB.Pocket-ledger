@@ -72,6 +72,7 @@ export const AUTO_POST_UI = {
   startBlockedNoFiles: "There are no files waiting to scan.",
   voucherDate: "Voucher Date",
   postedDate: "Posted Date",
+  postedPrefix: "Posted:",
 } as const;
 
 export type AutoPostUiKey = keyof typeof AUTO_POST_UI;

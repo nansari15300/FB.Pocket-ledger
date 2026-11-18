@@ -44,6 +44,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Button } from "@/components/ui/button";
 import { AUTO_POST_UI, useAutoPostUiCopy } from "@/components/gallery/autoPostUiCopy";
 import { useVouchersByIds } from "@/modules/ocr/useVouchersByIds";
+import { useLocalMasterNames } from "@/modules/ocr/useLocalMasterNames";
+import { recentOcrUserLabel } from "@/modules/ocr/recentOcrUserLabel";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -183,6 +185,12 @@ export type FileData = { id: string; url: string; name: string; type: 'pdf' | 'i
 /** Gallery full-hover preview: 600×700px fix (sirf is page par) */
 const GALLERY_HOVER_PREVIEW_BOX = { width: 600, height: 700 } as const;
 
+/** Scoped to Gallery Recent OCR Trxn only (data-pl-recent-ocr-table); other tables are unchanged. */
+const RECENT_OCR_TABLE_CSS = [
+  "[data-pl-recent-ocr-table] [data-pl-txn-row-menu-trigger]{position:relative;left:10px;}",
+  '[data-pl-recent-ocr-table] col[data-pl-col="debit"],[data-pl-recent-ocr-table] col[data-pl-col="credit"]{width:150px !important;min-width:150px !important;}',
+  "[data-pl-recent-ocr-table] tbody tr.transaction-main-row > td.tabular-nums{white-space:nowrap;min-width:150px;padding-right:4px;overflow:visible;text-overflow:clip;}",
+].join("\n");
 const GalleryRunnerTransactionsTable = dynamic(
   () => import("@/components/vouchers/TransactionsTable").then((m) => m.TransactionsTable),
   { ssr: false, loading: () => null },
@@ -771,11 +779,14 @@ function GalleryTabSwitch({
 /** Recent-style table scoped to vouchers completed by this Gallery Auto OCR runner. */
 function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: any) => void }) {
   const { company, companyId } = useCompany();
-  const { dateSystem, formatDate } = useDate();
+  const { dateSystem, formatDate, formatDateBS } = useDate();
+  const { t } = useAutoPostUiCopy();
   const { user } = useAuth();
   const { vouchers, processedAccounts, journalAccountNames, userNames } = useVouchers();
   const fsId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
   const [runnerVoucherProviders, setRunnerVoucherProviders] = useState<Map<string, string>>(() => new Map());
+  /** voucherId -> runner mode stored on the gallery row at post time ("" for rows posted before 2026-11-18). */
+  const [runnerVoucherModes, setRunnerVoucherModes] = useState<Map<string, string>>(() => new Map());
   const [search, setSearch] = useState("");
   const [recentMode, setRecentMode] = useState(true);
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
@@ -798,17 +809,23 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
   useEffect(() => {
     if (!fsId) {
       setRunnerVoucherProviders(new Map());
+      setRunnerVoucherModes(new Map());
       return;
     }
     const q = query(collection(firestore, `companies/${fsId}/unassigned_documents`), orderBy("uploadedAt", "desc"));
     return onSnapshot(q, (snapshot) => {
       const providers = new Map<string, string>();
+      const modes = new Map<string, string>();
       snapshot.docs.forEach((docSnap) => {
-        const row = docSnap.data() as { autoOcrStatus?: string; autoOcrVoucherId?: string; autoOcrProvider?: string };
+        const row = docSnap.data() as { autoOcrStatus?: string; autoOcrVoucherId?: string; autoOcrProvider?: string; autoOcrRunnerMode?: string };
         const voucherId = String(row.autoOcrVoucherId || "").trim();
-        if (row.autoOcrStatus === "complete" && voucherId) providers.set(voucherId, String(row.autoOcrProvider || "").trim());
+        if (row.autoOcrStatus === "complete" && voucherId) {
+          providers.set(voucherId, String(row.autoOcrProvider || "").trim());
+          modes.set(voucherId, String(row.autoOcrRunnerMode || "").trim());
+        }
       });
       setRunnerVoucherProviders(providers);
+      setRunnerVoucherModes(modes);
     }, (error) => console.warn("[Gallery Recent OCR] could not watch runner entries", error));
   }, [fsId]);
 
@@ -828,6 +845,12 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
   const runnerVoucherById = useMemo(
     () => new Map(runnerVouchers.map((voucher: any) => [String(voucher?.id || ""), voucher])),
     [runnerVouchers],
+  );
+  // /gallery loads only vouchers into the provider, so party / bank names come from the local store.
+  const localMasterNames = useLocalMasterNames(String(companyId || ""));
+  const recentOcrAccountNames = useMemo(
+    () => ({ ...localMasterNames, ...(journalAccountNames || {}) }),
+    [journalAccountNames, localMasterNames],
   );
   const queryColumnFilters = useMemo(
     () => Object.fromEntries(Object.entries(unapprovedOnly ? {} : columnFilters).filter(([key]) => key !== "user")),
@@ -849,7 +872,7 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
     undefined,
     queryColumnFilters,
     undefined,
-    journalAccountNames,
+    recentOcrAccountNames,
     userNames,
     undefined,
     undefined,
@@ -862,7 +885,11 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
     const filtered = (daybookTransactions as Record<string, unknown>[]).filter((row: any) =>
       (!unapprovedOnly || row.isApproved !== true) &&
       (includeNotesInTable || row.type !== "note") &&
-      (!userQ || `OCR${runnerVoucherProviders.get(String(row.id || "")) ? ` ${String(runnerVoucherProviders.get(String(row.id || ""))).replace(/^./, (letter) => letter.toUpperCase())}` : ""}`.toLowerCase().includes(userQ)) &&
+      (!userQ || recentOcrUserLabel({
+        mode: runnerVoucherModes.get(String(row.id || "")),
+        provider: runnerVoucherProviders.get(String(row.id || "")),
+        userName: row.userDisplayName || row.userName,
+      }).label.toLowerCase().includes(userQ)) &&
       (!q ||
       [row.voucherNumber, row.type, row.narration, row.accountName, row.partyName, row.userName]
         .some((value) => String(value ?? "").toLowerCase().includes(q))),
@@ -879,7 +906,7 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
       });
     }
     return sortTransactions(filtered, sortBy, sortOrder, { tieBreakCreatedAtDesc: true });
-  }, [daybookTransactions, effectiveColumnFilters.user, includeNotesInTable, recentMode, runnerVoucherById, runnerVoucherProviders, search, sortBy, sortOrder, unapprovedOnly]);
+  }, [daybookTransactions, effectiveColumnFilters.user, includeNotesInTable, recentMode, runnerVoucherById, runnerVoucherModes, runnerVoucherProviders, search, sortBy, sortOrder, unapprovedOnly]);
   const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / rowsPerPage));
   const safePage = Math.min(currentPage, totalPages);
   const pageStart = (safePage - 1) * rowsPerPage;
@@ -895,19 +922,27 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
         const voucher = runnerVoucherById.get(String(row.id || ""));
         const addedAt = parseFirestoreDateFieldToJsDate(row.createdAt)
           ?? parseFirestoreDateFieldToJsDate(voucher?.createdAt);
-        const provider = runnerVoucherProviders.get(String(row.id || "")) || "";
-        const ocrUserName = `OCR${provider ? ` ${provider.replace(/^./, (letter) => letter.toUpperCase())}` : ""}`;
+        // Date column = the voucher's own date; posted time as a small second line.
+        const postedLabel = addedAt
+          ? `${t(AUTO_POST_UI.postedPrefix)} ${dateSystem === "AD" ? formatDate(addedAt) : formatDateBS(addedAt)} ${format(addedAt, "h:mm a")}`
+          : "";
+        // Full: engine only; Semi: user + engine; Manual: user only (Dashboard Recent's name).
+        const ocrUserName = recentOcrUserLabel({
+          mode: runnerVoucherModes.get(String(row.id || "")),
+          provider: runnerVoucherProviders.get(String(row.id || "")),
+          userName: row.userDisplayName || row.userName,
+        }).label;
         return {
           ...row,
           _recentOcrOriginalDate: row.date,
           _recentOcrOriginalUserName: row.userName,
           _recentOcrOriginalUserDisplayName: row.userDisplayName,
-          date: recentMode ? addedAt ?? row.date : row.date,
+          _dateSubline: postedLabel,
           userName: ocrUserName,
           userDisplayName: ocrUserName,
         };
     }),
-    [recentMode, runnerVoucherById, runnerVoucherProviders, visibleTransactions],
+    [dateSystem, formatDate, formatDateBS, runnerVoucherById, runnerVoucherModes, runnerVoucherProviders, t, visibleTransactions],
   );
   const handleTransactionRowClick = useCallback((row: any) => {
     if (Object.prototype.hasOwnProperty.call(row || {}, "_recentOcrOriginalUserName")) {
@@ -998,13 +1033,15 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
         </div>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
-        <div data-pl-daybook-unified-scroll="" className="flex min-h-0 flex-1 flex-col overflow-x-auto overflow-y-hidden">
+        <div data-pl-daybook-unified-scroll="" data-pl-recent-ocr-table="" className="flex min-h-0 flex-1 flex-col overflow-x-auto overflow-y-hidden">
+          {/* Recent OCR only: 3-dot 10px further right, and Debit/Credit wide enough for "Rs. 1,23,45,678.90" without hover. */}
+          <style>{RECENT_OCR_TABLE_CSS}</style>
           <GalleryRunnerTransactionsTable
             transactions={tableTransactions}
             context="daybook"
             daybookDesktopUnifiedScroll
             onRowClick={handleTransactionRowClick}
-            journalAccountNames={journalAccountNames}
+            journalAccountNames={recentOcrAccountNames}
             userNames={userNames}
             hideBalanceColumn
             hideFooter
