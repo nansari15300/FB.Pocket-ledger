@@ -2111,7 +2111,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       // a suggestion bubble replaces the missing bubble on the same field
       for (const k of [...out.keys()]) if (k.startsWith("m:") && out.has(`s:${k.slice(2)}`)) out.delete(k);
     }
-    return [...out.values()];
+    // Sirf info wale (bina action) "OCR could not find" popups nahi dikhte; action wale (Apply/Create/Switch) bubbles rehte hain.
+    return [...out.values()].filter((b) => b.kind !== "missing");
   }, [liveBubbles, sugOpen, switchTarget, lastBill, swCount]);
 
   const panel = useMemo(

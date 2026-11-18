@@ -30,3 +30,4 @@ Gallery page: UI, file preview, tiles, bugs, नए features।
 - Fix plan (हाँ का इंतज़ार): handleEditedUnassignedFile, rename और upload docData में lastEditedAt/updatedAt = Timestamp.fromMillis(pbServerTime()) जोड़ना। General fix writeGateway/mirror में होगा, जो दूसरी bots के हिस्से में है।
 - Code में कोई बदलाव नहीं किया।- 2026-11-10 17:34: user की हाँ के बाद fix लगाया (सिर्फ़ GalleryPageClient.tsx): galleryEditTimestamp() helper (pbServerTime), upload docData में createdAt/lastEditedAt/updatedAt, edit update और rename में lastEditedAt/updatedAt। tsc ठीक है। Commit नहीं किया।
 - बाकी काम: दो PC पर test करना। Edit के बाद पुरानी file तुरंत delete होती है, उसे नहीं बदला। General fix sync bots के पास है।
+- 2026-11-18 08:50: user की हाँ से GALLERY_TAB_ACTIVE_CN (GalleryPageClient.tsx ~297) बदला: green border/ring हटाया, अब नीला gradient, सफ़ेद text और परतों वाली असली shadow है। Commit नहीं किया।

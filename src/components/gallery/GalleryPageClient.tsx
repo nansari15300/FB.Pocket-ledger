@@ -295,7 +295,7 @@ function GalleryPagerInCard({
 const GALLERY_TAB_IDLE_CN =
   "!border !border-blue-300 !bg-blue-100/80 !text-blue-900 hover:!bg-blue-200/80";
 const GALLERY_TAB_ACTIVE_CN =
-  "-translate-y-[3px] !border-2 !border-green-600 bg-blue-200/90 font-semibold !text-blue-900 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),0_4px_0_0_#64748b,0_6px_10px_-2px_rgba(15,23,42,0.35)] ring-1 ring-green-300 active:translate-y-0 active:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9),0_1px_0_0_#64748b] hover:!bg-blue-200 hover:!border-green-600";
+  "-translate-y-[2px] !border !border-blue-700 !bg-gradient-to-b !from-blue-500 !to-blue-700 font-semibold !text-white shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35),0_1px_1px_rgba(15,23,42,0.10),0_2px_4px_rgba(15,23,42,0.12),0_6px_12px_-2px_rgba(15,23,42,0.22),0_12px_20px_-8px_rgba(15,23,42,0.28)] hover:!from-blue-500 hover:!to-blue-800 active:translate-y-0 active:shadow-[inset_0_2px_3px_rgba(15,23,42,0.30),0_1px_2px_rgba(15,23,42,0.12)]";
 
 function GalleryRunnerControls() {
   const { company, companyId } = useCompany();

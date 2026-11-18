@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { startOfDay, endOfDay, isSameDay } from "date-fns";
 import {
   Dialog,
@@ -97,6 +97,52 @@ export function DashboardStockSummaryCard({
   /** Top items list size — user 5 / 10 / 15 / 20 choose kar sakta hai. */
   const [topN, setTopN] = useState<number>(10);
   const [sectionDetails, setSectionDetails] = useState<"sale" | "purchase" | "low-stock" | null>(null);
+
+  /**
+   * Top Sale / Top Purchase / Low Stock cards: screen ki dikhne wali height me fit (upar-niche 10px gap),
+   * list card ke andar scroll. Height = scroll area ka top se dashboard footer ribbon ke top tak - 20px.
+   */
+  const sectionsGridRef = useRef<HTMLDivElement>(null);
+  const [sectionCardMaxH, setSectionCardMaxH] = useState<number | null>(null);
+  useEffect(() => {
+    const grid = sectionsGridRef.current;
+    if (!grid || typeof window === "undefined") return;
+    const footerSel = "[data-pl-dashboard-footer-ribbon]";
+    const measure = () => {
+      let top = 0;
+      let p: HTMLElement | null = grid.parentElement;
+      while (p && p !== document.body) {
+        const oy = window.getComputedStyle(p).overflowY;
+        if ((oy === "auto" || oy === "scroll") && !p.hasAttribute("data-radix-scroll-area-viewport")) {
+          top = Math.max(0, p.getBoundingClientRect().top);
+          break;
+        }
+        p = p.parentElement;
+      }
+      let bottom = window.innerHeight;
+      const footer = document.querySelector(footerSel);
+      if (footer) {
+        const r = footer.getBoundingClientRect();
+        if (r.height > 0 && r.top > top) bottom = Math.min(bottom, r.top);
+      }
+      const h = Math.floor(bottom - top - 20);
+      setSectionCardMaxH((prev) => {
+        const next = Math.max(160, h);
+        return prev === next ? prev : next;
+      });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    const footerEl = document.querySelector(footerSel);
+    if (ro && footerEl) ro.observe(footerEl);
+    return () => {
+      window.removeEventListener("resize", measure);
+      ro?.disconnect();
+    };
+  }, []);
+  const sectionCardStyle: React.CSSProperties | undefined =
+    sectionCardMaxH != null ? { maxHeight: sectionCardMaxH } : undefined;
 
   const overallStockSummary = useMemo<OverallStockSummary>(() => {
     // Tab band hai → kuch mat ginо (server/local scan bhi nahi).
@@ -421,15 +467,16 @@ export function DashboardStockSummaryCard({
       {/* Section cards — Top Sale | Top Purchase | Low Stock */}
       <CardContent className="p-3 flex flex-col min-h-0 flex-1">
         <ScrollArea className="flex-1 min-h-0 pr-3 -mr-1">
-          <div className="pb-2 grid gap-3 md:grid-cols-3 md:items-start">
+          <div ref={sectionsGridRef} className="py-[10px] grid gap-3 md:grid-cols-3 md:items-start">
               {/* Top Sale */}
               <Card
                 data-pl-stock-summary-section="sale"
-                className={cn("app-chrome-top-ribbon transition-colors overflow-hidden", proDashboardRibbonClass(3))}
+                className={cn("app-chrome-top-ribbon transition-colors overflow-hidden flex flex-col min-h-0", proDashboardRibbonClass(3))}
+                style={sectionCardStyle}
               >
-                <CardContent className="p-3">
-                  <h4 className="text-xs font-semibold mb-1.5 text-center">Top {topN} Sale Items</h4>
-                  <div className="space-y-1">
+                <CardContent className="p-3 flex flex-col min-h-0 flex-1">
+                  <h4 className="shrink-0 text-xs font-semibold mb-1.5 text-center">Top {topN} Sale Items</h4>
+                  <div data-pl-stock-section-list="" className="space-y-1 min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-slim-dim pr-1">
                     {overallStockSummary.topSaleItems.length === 0 ? (
                       <p className="py-2 text-center text-xs text-muted-foreground">No sale items</p>
                     ) : (
@@ -471,11 +518,12 @@ export function DashboardStockSummaryCard({
               {/* Top Purchase */}
               <Card
                 data-pl-stock-summary-section="purchase"
-                className={cn("app-chrome-top-ribbon transition-colors overflow-hidden", proDashboardRibbonClass(4))}
+                className={cn("app-chrome-top-ribbon transition-colors overflow-hidden flex flex-col min-h-0", proDashboardRibbonClass(4))}
+                style={sectionCardStyle}
               >
-                <CardContent className="p-3">
-                  <h4 className="text-xs font-semibold mb-1.5 text-center">Top {topN} Purchase Items</h4>
-                  <div className="space-y-1">
+                <CardContent className="p-3 flex flex-col min-h-0 flex-1">
+                  <h4 className="shrink-0 text-xs font-semibold mb-1.5 text-center">Top {topN} Purchase Items</h4>
+                  <div data-pl-stock-section-list="" className="space-y-1 min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-slim-dim pr-1">
                     {overallStockSummary.topPurchaseItems.length === 0 ? (
                       <p className="py-2 text-center text-xs text-muted-foreground">No purchase items</p>
                     ) : (
@@ -517,11 +565,12 @@ export function DashboardStockSummaryCard({
               {/* Low Stock */}
               <Card
                 data-pl-stock-summary-section="low-stock"
-                className={cn("app-chrome-top-ribbon transition-colors overflow-hidden", proDashboardRibbonClass(5))}
+                className={cn("app-chrome-top-ribbon transition-colors overflow-hidden flex flex-col min-h-0", proDashboardRibbonClass(5))}
+                style={sectionCardStyle}
               >
-                <CardContent className="p-3">
-                  <h4 className="text-xs font-semibold mb-1.5 text-center">Low Stock Items</h4>
-                  <div className="space-y-1">
+                <CardContent className="p-3 flex flex-col min-h-0 flex-1">
+                  <h4 className="shrink-0 text-xs font-semibold mb-1.5 text-center">Low Stock Items</h4>
+                  <div data-pl-stock-section-list="" className="space-y-1 min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-slim-dim pr-1">
                     {overallStockSummary.lowStockItems.length === 0 ? (
                       <p className="py-2 text-center text-xs text-muted-foreground">
                         No low stock items
