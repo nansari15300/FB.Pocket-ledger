@@ -19,6 +19,8 @@ import {
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from "react";
 import { Button } from "@/components/ui/button";
 import { useLiveVoucherDuplicate } from "@/hooks/useLiveVoucherDuplicate";
+import { useNotifyRunnerFormChanged } from "@/hooks/useNotifyRunnerFormChanged";
+import { useMoveAttachedFilesToDuplicate } from "@/hooks/useMoveAttachedFilesToDuplicate";
 import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
 import type { CandidateVoucher } from "@/lib/voucherDuplicateGuard";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -460,6 +462,7 @@ export function CreatePaymentInForm({
     resolver: zodResolver(formSchema) as Resolver<PaymentInFormValues>,
     defaultValues: getInitialFormValues(voucher || defaultVoucherData),
   });
+  useNotifyRunnerFormChanged({ form, companyId });
 
   /* OCR (local, generic adapter): first attachment -> validated autofill; Auto Post saves UNAPPROVED. */
   const ocr = useVoucherOcr({
@@ -519,6 +522,16 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     },
     !voucher?.id && !!accountId && !!duplicateDate && duplicateAmount > 0
   );
+
+  const { moveBusy: dupMoveBusy, moveToDuplicate, canAutoMove } = useMoveAttachedFilesToDuplicate({
+    files,
+    companyId,
+    company,
+    onClosed: () => {
+      dismissLiveDuplicate();
+      onVoucherAction?.("cancelled", false, savedVoucherId ?? undefined);
+    },
+  });
 
   const partyComboboxOptions = useMemo(
     () =>
@@ -2158,9 +2171,9 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
         <form
           data-suppress-global-copy-red
           onSubmit={(e) => handleFormSubmit(e)}
-          className="h-full flex flex-col min-w-0 w-full max-w-full"
+          className="h-full flex-1 min-h-0 flex flex-col min-w-0 w-full max-w-full"
         >
-<ScrollArea className={cn("flex-1 overflow-x-hidden min-w-0 w-full", !isMobile && "pr-6 -mr-6")}>
+<ScrollArea className={cn("flex-1 min-h-0 overflow-x-hidden min-w-0 w-full", !isMobile && "pr-6 -mr-6")}>
             <div className={cn(
               "space-y-6 min-w-0 max-w-full w-full overflow-x-hidden [&>*]:min-w-0 [&>*]:max-w-full",
               isMobile ? "" : "px-[2px]"
@@ -3288,7 +3301,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
 
           <div className={cn(
             "border-t min-w-0 max-w-full overflow-x-hidden",
-            isMobile ? "mt-[3px] pt-[3px] pb-[3px] space-y-0" : "pt-4 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4"
+            isMobile ? "mt-[3px] pt-[3px] pb-[3px] space-y-0" : "shrink-0 mt-auto w-full bg-slate-100 pt-4 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4"
           )}>
             {isMobile ? (
               <div className={cn("grid grid-cols-3 gap-2 w-full min-w-0", VOUCHER_BUTTONS_CLASS)}>
@@ -3365,7 +3378,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           </div>
         </form>
       <VoucherOcrAiCopilot ocr={ocr} layout={copilot} thumbUrl={thumbUrl} />
-        {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} /> : null}
+        {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} onMoveToDuplicate={() => void moveToDuplicate(liveDuplicate)} moveBusy={dupMoveBusy} canAutoMove={canAutoMove} /> : null}
       </Form>
       {convertPresentation ? (
         <VoucherEditConvertConfirmDialog

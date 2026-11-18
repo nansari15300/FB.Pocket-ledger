@@ -31,6 +31,7 @@ import { withMasterAccountFreezeComboboxOption } from "@/lib/masterAccountFreeze
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
+import { useNotifyRunnerFormChanged } from "@/hooks/useNotifyRunnerFormChanged";
 import { firestore, storage } from "@/lib/plClientSession";
 import { collection, serverTimestamp, doc, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, onSnapshot, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
@@ -84,7 +85,7 @@ const handleVoucherAttachmentInputChange = ocrWrapInputChange(__frozenAttachment
 import { voucherAttachmentUrlsForFormState } from "@/lib/voucherAttachmentNormalize";
 import { findDuplicateVoucher, hashAttachmentFiles, type CandidateVoucher, type DuplicateMatch } from "@/lib/voucherDuplicateGuard";
 import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
-import { galleryCompanyFsId } from "@/lib/galleryDuplicateMove";
+import { useMoveAttachedFilesToDuplicate } from "@/hooks/useMoveAttachedFilesToDuplicate";
 import { AttachmentHoldPasteSurface } from "@/components/vouchers/AttachmentHoldPasteSurface";
 import { attachmentMaxBytes, attachmentStillTooLargeToastFields } from "@/lib/attachmentCompressionUi";
 import { useVouchers } from "@/hooks/useVouchers";
@@ -328,8 +329,6 @@ export function CreateContraForm({
   const liveDuplicateDismissedKeyRef = useRef<string>("");
   /** Live guard sirf naye voucher par — edit/converting me apna hi voucher match ho jata, to band. */
   const visibleLiveDupChecks = !voucher?.id;
-  /** "Move to Duplicate" bubble action ka busy flag. */
-  const [dupMoveBusy, setDupMoveBusy] = useState(false);
   const [otherChargeEnabled, setOtherChargeEnabled] = useState(
     Boolean(voucher?.otherChargeAccountId || Number(voucher?.otherChargeAmount || 0) > 0)
   );
@@ -382,6 +381,7 @@ export function CreateContraForm({
       ? getInitialContraFormValues(voucher)
       : getInitialContraFormValues(),
   });
+  useNotifyRunnerFormChanged({ form, companyId });
 
   /* OCR (local, generic adapter): first attachment -> validated autofill; Auto Post saves UNAPPROVED. */
   const ocr = useVoucherOcr({
@@ -1216,108 +1216,18 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     voucher?.id,
   ]);
 
-  /**
-   * "Move to Duplicate": attached slip ko unassigned pool se Duplicate tab me bhejo,
-   * aur form se attachment hatao taaki user dobara wo file save na kare.
-   * Note: sirf wo attachment move hoti hai jo unassigned_documents row se aayi ho (`url` field match).
-   */
-  const handleMoveFilesToDuplicate = useCallback(
-    async (match: DuplicateMatch) => {
-      if (!companyId || dupMoveBusy) return;
-      setDupMoveBusy(true);
-      const toastId = sonnerToast.loading("Moving file to Duplicate Documents…");
-      try {
-        const { moveUnassignedFileToDuplicate } = await import("@/lib/galleryDuplicateMove");
-        const fsId = galleryCompanyFsId(companyId, company);
-        const { collection, getDocs, query, where } = await import("@/lib/pbCompat/firestore");
-        const attached = files;
-        const urls = attached.filter((f): f is string => typeof f === "string" && /^https?:|^pbatt:/.test(f));
-        if (!urls.length) {
-          /* Attached file server-side row nahi hai (direct upload / naya File) — move nahi kar sakte,
-           * par user ka intent "is bill ko chhod do" hai: error na dikhao, bas band karo. */
-          sonnerToast.info("Nothing to move", { id: toastId, description: "This attachment is not in Unassigned Documents — closing without saving." });
-          setDuplicatePrompt(null);
-          setLiveDuplicate(null);
-          onVoucherAction?.("cancelled", false, savedVoucherId ?? undefined);
-          return;
-        }
-        let moved = 0;
-        /** File pehle se Duplicate tab me hai (ya unassigned row nahi mila) — move ki zaroorat nahi. */
-        let alreadyDuplicate = false;
-        for (const u of urls) {
-          try {
-            const snap = await getDocs(
-              query(collection(firestore, `companies/${fsId}/unassigned_documents`), where("url", "==", u))
-            );
-            if (snap.empty) {
-              /* Unassigned me nahi mila — dekh lo pehle se Duplicate tab me hai kya. */
-              const dupSnap = await getDocs(
-                query(collection(firestore, `companies/${fsId}/duplicate_documents`), where("url", "==", u))
-              );
-              if (dupSnap.empty) continue;
-              for (const d of dupSnap.docs) {
-                const row = d.data() as Record<string, unknown>;
-                if (row?.isDeleted === true || row?.deleted === true) continue;
-                alreadyDuplicate = true;
-                break;
-              }
-              continue;
-            }
-            for (const d of snap.docs) {
-              const r = await moveUnassignedFileToDuplicate(companyId, company, {
-                fileId: d.id,
-                duplicateOfVoucherId: match.id,
-                duplicateOfVoucherNumber: match.voucherNumber,
-                reasons: match.reasons,
-                /* OCR narration + original voucher snapshot → Gallery "Why Duplicate" panel. */
-                ocrNarration: match.incomingNarration || "",
-                matchedNarration: match.voucherNarration,
-                matchedRef: match.voucherRef,
-                matchedAmount: match.amount,
-                matchedDateText: match.dateText,
-              });
-              if (r.ok) moved += 1;
-            }
-          } catch {
-            /* ek file fail ho to baaki try karo */
-          }
-        }
-        if (moved > 0) {
-          setDuplicatePrompt(null);
-          liveDuplicateDismissedKeyRef.current = `${match.id}|${match.reasons.join(",")}`;
-          setLiveDuplicate(null);
-          sonnerToast.success("Moved to Duplicate Documents", { id: toastId, description: `${moved} file(s) moved — Gallery → Duplicate tab me milengi.` });
-          /* Button ka matlab hai "Cancel & Move": file move hui, to aadha bhara voucher bhi band karo
-           * (user ne is bill ke liye naya voucher nahi banana chaha). */
-          onVoucherAction?.("cancelled", false, savedVoucherId ?? undefined);
-        } else if (alreadyDuplicate) {
-          /* File pehle se Duplicate tab me hai — error dikhane ka matlab nahi, sirf cancel/dismiss. */
-          sonnerToast.success("File is already in Duplicate Documents", {
-            id: toastId,
-            description: "Nothing to move — this slip was already filed as a duplicate.",
-          });
-          setDuplicatePrompt(null);
-          liveDuplicateDismissedKeyRef.current = `${match.id}|${match.reasons.join(",")}`;
-          setLiveDuplicate(null);
-          onVoucherAction?.("cancelled", false, savedVoucherId ?? undefined);
-        } else {
-          /* Unassigned/Duplicate dono me row nahi mili — move possible nahi, par user cancel hi chahta hai. */
-          sonnerToast.info("File not found in Unassigned Documents", {
-            id: toastId,
-            description: "Closing the voucher without saving.",
-          });
-          setDuplicatePrompt(null);
-          setLiveDuplicate(null);
-          onVoucherAction?.("cancelled", false, savedVoucherId ?? undefined);
-        }
-      } finally {
-        setDupMoveBusy(false);
-      }
+  const { moveBusy: dupMoveBusy, moveToDuplicate, canAutoMove } = useMoveAttachedFilesToDuplicate({
+    files,
+    companyId,
+    company,
+    onClosed: (match) => {
+      setDuplicatePrompt(null);
+      liveDuplicateDismissedKeyRef.current = `${match.id}|${match.reasons.join(",")}`;
+      setLiveDuplicate(null);
+      onVoucherAction?.("cancelled", false, savedVoucherId ?? undefined);
     },
-    [companyId, company, dupMoveBusy, files, form, onVoucherAction, savedVoucherId]
-  );
-
-  // Amount guard पहले; फिर validated `data` — `getValues()` से date miss न हो
+  });
+  const handleMoveFilesToDuplicate = (match: DuplicateMatch) => void moveToDuplicate(match);
   const handleFormSubmit = useCallback(
     (e: React.FormEvent, options: { ocrAutoPost?: boolean; saveAndNew?: boolean; print?: boolean; approveAfterSave?: boolean } = {}) => {
       e?.preventDefault?.();
@@ -2104,8 +2014,8 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
   return (
     <>
       <Form {...form}>
-        <form onSubmit={(e) => handleFormSubmit(e)} className="h-full flex flex-col min-w-0 w-full max-w-full">
-<ScrollArea className={cn("flex-1 overflow-x-hidden min-w-0 w-full", !isMobile && "pr-6 -mr-6")}>
+        <form onSubmit={(e) => handleFormSubmit(e)} className="h-full flex-1 min-h-0 flex flex-col min-w-0 w-full max-w-full">
+<ScrollArea className={cn("flex-1 min-h-0 overflow-x-hidden min-w-0 w-full", !isMobile && "pr-6 -mr-6")}>
             <div className={cn(
               "space-y-6 min-w-0 max-w-full w-full overflow-x-hidden [&>*]:min-w-0 [&>*]:max-w-full",
               isMobile ? "" : "px-[2px]"
@@ -2980,7 +2890,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
 
           <div className={cn(
             "border-t min-w-0 max-w-full overflow-x-hidden",
-            isMobile ? "mt-[3px] pt-[3px] pb-[3px]" : "pt-4 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4"
+            isMobile ? "mt-[3px] pt-[3px] pb-[3px]" : "shrink-0 mt-auto w-full bg-slate-100 pt-4 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4"
           )}>
             {isMobile ? (
               <div className={cn("grid grid-cols-3 gap-2 w-full", VOUCHER_BUTTONS_CLASS)}>
@@ -3180,6 +3090,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           }}
           onMoveToDuplicate={() => void handleMoveFilesToDuplicate(duplicatePrompt.match)}
           moveBusy={dupMoveBusy}
+          canAutoMove={canAutoMove}
           onDismiss={() => setDuplicatePrompt(null)}
         />
       ) : liveDuplicate ? (
@@ -3188,6 +3099,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           mode="live"
           onMoveToDuplicate={() => void handleMoveFilesToDuplicate(liveDuplicate)}
           moveBusy={dupMoveBusy}
+          canAutoMove={canAutoMove}
           onDismiss={() => {
             liveDuplicateDismissedKeyRef.current = `${liveDuplicate.id}|${liveDuplicate.reasons.join(",")}`;
             setLiveDuplicate(null);

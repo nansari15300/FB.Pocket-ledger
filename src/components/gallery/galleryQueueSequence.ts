@@ -37,7 +37,10 @@ function uploadedAtMs(value: unknown): number {
     return Number.isFinite(parsed) ? parsed : 0;
   }
   if (value && typeof value === "object" && typeof (value as { seconds?: unknown }).seconds === "number") {
-    return Number((value as { seconds: number }).seconds) * 1000;
+    const secondsMs = Number((value as { seconds: number }).seconds) * 1000;
+    const raw = value as { nanoseconds?: unknown; nanos?: unknown };
+    const nanos = typeof raw.nanoseconds === "number" ? raw.nanoseconds : typeof raw.nanos === "number" ? raw.nanos : 0;
+    return secondsMs + Math.floor(Number(nanos) / 1e6);
   }
   return 0;
 }

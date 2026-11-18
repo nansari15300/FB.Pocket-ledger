@@ -11,9 +11,10 @@
  * `isDeleted` + `deletedAt` se soft-delete (storage bytes intact — `hardDelete` alag action hai).
  */
 
-import { addDoc, collection, deleteDoc, doc, getDoc, serverTimestamp, setDoc } from "@/lib/pbCompat/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, where } from "@/lib/pbCompat/firestore";
 import { firestore } from "@/lib/plClientSession";
 import { upsertCompanyDocInBrowserDb } from "@/lib/localCompanyDocMirror";
+import type { DuplicateMatch } from "@/lib/voucherDuplicateGuard";
 
 export const DUPLICATE_DOCUMENTS_COLLECTION = "duplicate_documents";
 export const UNASSIGNED_DOCUMENTS_COLLECTION = "unassigned_documents";
@@ -179,4 +180,100 @@ export async function moveDuplicateFileBackToUnassigned(
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
+}
+
+
+/** In-flight auto-move claims, keyed by the matched voucher id, so the runner and the form do not both move. */
+const duplicateAutoMoveClaims = new Set<string>();
+
+export function claimDuplicateAutoMove(key: string): boolean {
+  const k = String(key || "").trim();
+  if (!k || duplicateAutoMoveClaims.has(k)) return false;
+  duplicateAutoMoveClaims.add(k);
+  return true;
+}
+
+export function releaseDuplicateAutoMove(key: string): void {
+  const k = String(key || "").trim();
+  if (k) duplicateAutoMoveClaims.delete(k);
+}
+
+export function isDuplicateAutoMoveClaimed(key: string): boolean {
+  return duplicateAutoMoveClaims.has(String(key || "").trim());
+}
+
+export function galleryAttachmentUrls(files: readonly (File | string)[] | null | undefined): string[] {
+  return (files ?? []).filter((f): f is string => typeof f === "string" && /^(https?:|pbatt:)/.test(f));
+}
+
+export function hasGalleryMoveableAttachment(files: readonly (File | string)[] | null | undefined): boolean {
+  return galleryAttachmentUrls(files).length > 0;
+}
+
+export type AttachedDuplicateMoveKind = "moved" | "already" | "nothing-to-move" | "no-gallery-file";
+
+export type AttachedDuplicateMoveResult = {
+  kind: AttachedDuplicateMoveKind;
+  moved: number;
+};
+
+/**
+ * Move every attached Unassigned Documents URL to the Duplicate tab.
+ * Direct File uploads (no gallery row) return `no-gallery-file`.
+ */
+export async function moveAttachedFilesToDuplicate(
+  companyId: string,
+  company: unknown,
+  files: readonly (File | string)[] | null | undefined,
+  match: Pick<DuplicateMatch, "id" | "voucherNumber" | "reasons" | "incomingNarration" | "voucherNarration" | "voucherRef" | "amount" | "dateText">,
+): Promise<AttachedDuplicateMoveResult> {
+  const cid = String(companyId || "").trim();
+  const urls = galleryAttachmentUrls(files);
+  if (!cid) return { kind: "nothing-to-move", moved: 0 };
+  if (!urls.length) return { kind: "no-gallery-file", moved: 0 };
+
+  const fsId = fsCompanyId(cid, company as never);
+  let moved = 0;
+  let alreadyDuplicate = false;
+
+  for (const url of urls) {
+    try {
+      const snap = await getDocs(
+        query(collection(firestore, `companies/${fsId}/${UNASSIGNED_DOCUMENTS_COLLECTION}`), where("url", "==", url)),
+      );
+      if (snap.empty) {
+        const dupSnap = await getDocs(
+          query(collection(firestore, `companies/${fsId}/${DUPLICATE_DOCUMENTS_COLLECTION}`), where("url", "==", url)),
+        );
+        if (dupSnap.empty) continue;
+        for (const d of dupSnap.docs) {
+          const row = d.data() as Record<string, unknown>;
+          if (row?.isDeleted === true || row?.deleted === true) continue;
+          alreadyDuplicate = true;
+          break;
+        }
+        continue;
+      }
+      for (const d of snap.docs) {
+        const r = await moveUnassignedFileToDuplicate(cid, company, {
+          fileId: d.id,
+          duplicateOfVoucherId: match.id,
+          duplicateOfVoucherNumber: match.voucherNumber,
+          reasons: match.reasons,
+          ocrNarration: match.incomingNarration || "",
+          matchedNarration: match.voucherNarration,
+          matchedRef: match.voucherRef,
+          matchedAmount: match.amount,
+          matchedDateText: match.dateText,
+        });
+        if (r.ok) moved += 1;
+      }
+    } catch {
+      /* try remaining attachments */
+    }
+  }
+
+  if (moved > 0) return { kind: "moved", moved };
+  if (alreadyDuplicate) return { kind: "already", moved: 0 };
+  return { kind: "nothing-to-move", moved: 0 };
 }

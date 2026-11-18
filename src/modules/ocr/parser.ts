@@ -12,6 +12,7 @@ import { canonicalizeNepaliBill } from "@/lib/ocr/nepaliBill";
 import { rebuildCellPerLineTable } from "./cellTable";
 import { amountsInLine, fixDigitConfusions, normalizeName, normalizeOcrLine, parseStrictAmount } from "./normalize";
 import { bestUniqueMatch, nameScore, namesOf, tokenCoverageScore } from "./fuzzy";
+import { matchPartyIdentity } from "./masterMatch";
 import { devanagariToRoman, nameSkeleton } from "./translit";
 import { isOcrSelectableParty } from "./types";
 import { ownNameRule, panConfusionDistance, textHasOwnName, textHasOwnPan, textHasOwnPanLoose } from "./ownCompany";
@@ -852,6 +853,23 @@ export function parseBill(rawIn: OcrRawResult, ctx: ParseContext): OcrParsedBill
       out.partyId = f(near[0].p.id, "flag", 0.7, `PAN read as ${pan}; closest party PAN ${real} - confirm`);
       out.pan = f(real, "flag", 0.7, `PAN read as ${pan} (unclear print)`);
       dbg(`Party: "${near[0].p.name}" by near PAN ${real} (read ${pan}, ${near[0].d} confusable digit(s)) - suggestion only`);
+    }
+  }
+  // Re-evaluate the selected/suggested master against every identity field present on the bill.
+  // A single field can suggest a party, but needs user confirmation; multi-field selection uses
+  // the shared 90% / 80% / 70% thresholds.
+  const identity = { name: partyName?.text, pan, phone: ids.phones[0] ?? null, address: ids.address ?? null };
+  if ([identity.name, identity.pan, identity.phone, identity.address].some((value) => !!String(value ?? "").trim())) {
+    const identityMatch = matchPartyIdentity(identity, pool);
+    if (identityMatch.decision === "auto" && identityMatch.best) {
+      out.partyId = f(identityMatch.best.item.id, "fill", identityMatch.best.total);
+      dbg(`Party: "${identityMatch.best.item.name}" — ${identityMatch.reason}`);
+    } else if ((identityMatch.decision === "suggest" || identityMatch.decision === "pick") && identityMatch.best) {
+      out.partyId = f(identityMatch.best.item.id, "flag", identityMatch.best.total, `${identityMatch.reason} — confirm the party`);
+      dbg(`Party suggestion: "${identityMatch.best.item.name}" — ${identityMatch.reason}`);
+    } else {
+      out.partyId = undefined;
+      dbg(`Party: no master passed the field checks (${identityMatch.reason})`);
     }
   }
   if (!out.partyId) dbg(pan ? `Party: no account has PAN ${pan}; name "${partyName?.text ?? "-"}" had no unique match >= 95%` : `Party: no PAN; name "${partyName?.text ?? "-"}" had no unique match >= 95%`);

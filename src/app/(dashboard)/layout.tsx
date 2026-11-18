@@ -65,6 +65,7 @@ import { PrefetchDashboardChunk } from "@/components/dashboard/PrefetchDashboard
 import { ElectronTabStripSyncBridge } from "@/components/layout/ElectronTabStripSyncBridge";
 import { RecurringVoucherAutoRunner } from "@/components/vouchers/RecurringVoucherAutoRunner";
 import { PendingAttachmentSyncBridge } from "@/components/vouchers/PendingAttachmentSyncBridge";
+import { VoucherPostSettingsBridge } from "@/components/gallery/VoucherPostSettingsBridge";
 import { BackupRunGlobalBanner } from "@/components/settings/BackupRunGlobalBanner";
 import { RestoreCloudPushGlobalBanner } from "@/components/RestoreCloudPushGlobalBanner";
 import { AutoBackupScheduler } from "@/components/settings/AutoBackupScheduler";
@@ -840,6 +841,7 @@ const DashboardMainShell = forwardRef<
   const isMobile = useIsMobile();
   const pathname = usePathname();
   const [pageExpanded, setPageExpanded] = useState(false);
+  const isGalleryPage = Boolean(pathname?.startsWith("/gallery"));
   const previousPathnameRef = useRef(pathname);
   useEffect(() => {
     if (!pageExpanded) return;
@@ -853,6 +855,14 @@ const DashboardMainShell = forwardRef<
     if (previousPathnameRef.current !== pathname) setPageExpanded(false);
     previousPathnameRef.current = pathname;
   }, [pathname]);
+  useEffect(() => {
+    const onToggleExpanded = () => setPageExpanded((expanded) => !expanded);
+    window.addEventListener("pl:dashboard:toggle-page-expanded", onToggleExpanded);
+    return () => window.removeEventListener("pl:dashboard:toggle-page-expanded", onToggleExpanded);
+  }, []);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("pl:dashboard:page-expanded-change", { detail: { expanded: pageExpanded } }));
+  }, [pageExpanded]);
   const showPageExpandControl = Boolean(pathname && pathname !== "/" && pathname !== "/dashboard");
   return (
     <main
@@ -865,7 +875,7 @@ const DashboardMainShell = forwardRef<
         pageExpanded && "fixed inset-0 z-[250] h-dvh max-h-dvh w-screen overflow-y-auto bg-background",
       )}
     >
-      {showPageExpandControl ? (
+      {showPageExpandControl && !isMobile && !isGalleryPage ? (
         <div className="pointer-events-none sticky top-0 z-[260] flex h-0 justify-end pr-3">
           <Button
             type="button"
@@ -994,6 +1004,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
             {/* Month-end recurring vouchers: app-open trigger runner (company settings + user scope aware). */}
             <RecurringVoucherAutoRunner />
             <PendingAttachmentSyncBridge />
+            <VoucherPostSettingsBridge />
             <AutoBackupScheduler />
             <ReportListProvider>
               <SettingsListProvider>

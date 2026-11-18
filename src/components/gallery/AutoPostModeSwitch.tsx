@@ -13,12 +13,12 @@ import {
   switchKnobMotionClass,
   type SwitchKnobMotion,
 } from "@/lib/switchMotion";
+import { AUTO_POST_MODE_INDEX, AUTO_POST_MODES, type AutoPostMode } from "@/components/gallery/autoPostMode";
+import { AUTO_POST_UI, useAutoPostUiCopy } from "@/components/gallery/autoPostUiCopy";
 
-export type AutoPostMode = "manual" | "semi" | "full";
+export type { AutoPostMode };
 
-const MODE_INDEX: Record<AutoPostMode, number> = { manual: 0, semi: 1, full: 2 };
 const PREVIEW_MODE: Record<AutoPostMode, "off" | "hover" | "click"> = { manual: "off", semi: "hover", full: "click" };
-const MODE_LABEL: Record<AutoPostMode, string> = { manual: "Manual", semi: "Semi automatic", full: "Full automatic" };
 const TRACK_HEIGHT = HEADER_FILE_PREVIEW_SWITCH_TRACK_H_PX;
 const TRACK_WIDTH_CLASS = "w-[12.5rem] min-w-[12.5rem]";
 
@@ -26,6 +26,10 @@ function knobLeft(mode: AutoPostMode) {
   if (mode === "manual") return SWITCH_KNOB_LEFT_OFF;
   if (mode === "semi") return SWITCH_KNOB_LEFT_MID;
   return SWITCH_KNOB_LEFT_ON;
+}
+
+function modeAtTrackIndex(index: number): AutoPostMode {
+  return AUTO_POST_MODES[Math.min(2, Math.max(0, index))] ?? "manual";
 }
 
 /** Three-position Auto post switch; shares the header preview switch keyframes and track treatment. */
@@ -42,13 +46,24 @@ export function AutoPostModeSwitch({
   className?: string;
   showLabels?: boolean;
 }) {
+  const { t } = useAutoPostUiCopy();
+  const shortLabel: Record<AutoPostMode, string> = {
+    manual: t(AUTO_POST_UI.modeManual),
+    semi: t(AUTO_POST_UI.modeSemi),
+    full: t(AUTO_POST_UI.modeFull),
+  };
+  const fullLabel: Record<AutoPostMode, string> = {
+    manual: t(AUTO_POST_UI.modeManualRunner),
+    semi: t(AUTO_POST_UI.modeSemiAutomatic),
+    full: t(AUTO_POST_UI.modeFullAutoPost),
+  };
   const [knobMotion, setKnobMotion] = React.useState<SwitchKnobMotion | null>(null);
   const [hoveredMode, setHoveredMode] = React.useState<AutoPostMode | null>(null);
   const motionTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const previousIndexRef = React.useRef(MODE_INDEX[mode]);
+  const previousIndexRef = React.useRef(AUTO_POST_MODE_INDEX[mode]);
 
   React.useEffect(() => {
-    const nextIndex = MODE_INDEX[mode];
+    const nextIndex = AUTO_POST_MODE_INDEX[mode];
     const previousIndex = previousIndexRef.current;
     previousIndexRef.current = nextIndex;
     if (nextIndex === previousIndex) return;
@@ -68,27 +83,26 @@ export function AutoPostModeSwitch({
   const chooseFromTrack = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (disabled) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const index = Math.min(2, Math.max(0, Math.floor(((event.clientX - rect.left) / rect.width) * 3)));
-    const next = (Object.keys(MODE_INDEX) as AutoPostMode[]).find((key) => MODE_INDEX[key] === index);
-    if (next && next !== mode) onModeChange(next);
+    const next = modeAtTrackIndex(Math.floor(((event.clientX - rect.left) / rect.width) * 3));
+    if (next !== mode) onModeChange(next);
   };
 
   const updateHoveredMode = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (event.pointerType === "touch") return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const index = Math.min(2, Math.max(0, Math.floor(((event.clientX - rect.left) / rect.width) * 3)));
-    setHoveredMode((Object.keys(MODE_INDEX) as AutoPostMode[]).find((key) => MODE_INDEX[key] === index) ?? null);
+    setHoveredMode(modeAtTrackIndex(Math.floor(((event.clientX - rect.left) / rect.width) * 3)));
   };
 
   const activeDirection = knobMotion !== null && knobMotion !== "file-hover-switch-off" && knobMotion !== "file-hover-switch-to-off-from-mid";
   const previewMode = PREVIEW_MODE[mode];
 
   return (
-    <div className={cn("relative inline-flex shrink-0 items-center", className)}>
+    <div className={cn("relative inline-flex shrink-0 flex-col items-stretch", className)}>
       <button
         type="button"
         role="radiogroup"
-        aria-label="Auto post mode: Manual, Semi, Full auto"
+        aria-label={t(AUTO_POST_UI.modeSliderAria)}
+        title={t(AUTO_POST_UI.modeSliderAria)}
         aria-disabled={disabled}
         onClick={chooseFromTrack}
         onPointerMove={updateHoveredMode}
@@ -107,8 +121,8 @@ export function AutoPostModeSwitch({
         )}
         style={{ height: TRACK_HEIGHT }}
       >
-        {(["manual", "semi", "full"] as const).map((value) => (
-          <span key={value} className="sr-only" role="radio" aria-checked={mode === value} aria-label={MODE_LABEL[value]} />
+        {AUTO_POST_MODES.map((value) => (
+          <span key={value} className="sr-only" role="radio" aria-checked={mode === value} aria-label={fullLabel[value]} />
         ))}
         <span
           className={cn(
@@ -124,13 +138,35 @@ export function AutoPostModeSwitch({
         <span className="pointer-events-none absolute inset-y-1 left-1/3 w-px bg-black/10" aria-hidden />
         <span className="pointer-events-none absolute inset-y-1 left-2/3 w-px bg-black/10" aria-hidden />
       </button>
+      {showLabels ? (
+        <div className={cn("mt-0.5 grid grid-cols-3", TRACK_WIDTH_CLASS)} aria-hidden={false}>
+          {AUTO_POST_MODES.map((value) => (
+            <button
+              key={value}
+              type="button"
+              disabled={disabled}
+              title={fullLabel[value]}
+              aria-label={fullLabel[value]}
+              aria-pressed={mode === value}
+              onClick={() => { if (!disabled && value !== mode) onModeChange(value); }}
+              className={cn(
+                "truncate px-0.5 text-center text-[9px] leading-tight text-blue-900 dark:text-blue-100",
+                mode === value ? "font-semibold" : "font-medium opacity-60",
+                disabled && "cursor-not-allowed"
+              )}
+            >
+              {shortLabel[value]}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {showLabels && hoveredMode ? (
         <span
           role="tooltip"
-          className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-blue-300 bg-white px-2 py-1 text-[10px] font-semibold leading-none text-blue-900 shadow-md"
-          style={{ left: `${((MODE_INDEX[hoveredMode] + 0.5) / 3) * 100}%`, top: "calc(50% - 14px)" }}
+          className="pointer-events-none absolute z-20 -translate-x-1/2 whitespace-nowrap rounded-full border border-blue-300 bg-white px-2 py-1 text-[10px] font-semibold leading-none text-blue-900 shadow-md"
+          style={{ left: `${((AUTO_POST_MODE_INDEX[hoveredMode] + 0.5) / 3) * 100}%`, top: "-1.15rem" }}
         >
-          {MODE_LABEL[hoveredMode]}
+          {fullLabel[hoveredMode]}
         </span>
       ) : null}
     </div>

@@ -29,6 +29,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
+import { useNotifyRunnerFormChanged } from "@/hooks/useNotifyRunnerFormChanged";
 import { firestore, storage } from "@/lib/plClientSession";
 import { collection, serverTimestamp, doc, query, where } from "@/lib/pbCompat/firestore";
 import { getDoc, onSnapshot, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
@@ -246,6 +247,7 @@ export function CreatePaymentInForm({
     resolver: zodResolver(formSchema) as Resolver<PaymentInFormValues>,
     defaultValues: getInitialFormValues(voucher),
   });
+  useNotifyRunnerFormChanged({ form, companyId });
 
   const { isDirty: _isFormFieldsDirty } = form.formState;
   const _isFileDirty = (() => {

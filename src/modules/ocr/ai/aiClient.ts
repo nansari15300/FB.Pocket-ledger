@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { PocketBaseNotSignedInError, PocketBaseRequestError, pbRequest } from "@/lib/pocketbaseData/pbClient";
 import { normalizeAiVoucher, type OcrAiResult, type OcrAiTypeCheck } from "./aiVoucher";
+import type { OcrFailKind } from "../ocrRunStrings";
 import { normalizeProposedRule, normalizeRulesList, type OcrAiDocTypeKey, type OcrAiProposedRule, type OcrAiRulesList } from "./aiChatModel";
 
 export type OcrAiProvider = "gemini";
@@ -23,12 +24,18 @@ export class OcrAiError extends Error {
   status: number;
   /** Server's retry hint in seconds (quota window / Gemini overloaded). 0 = no hint. */
   retryAfter: number;
-  constructor(code: OcrAiErrorCode, message: string, status = 0, retryAfter = 0) {
+  /** Server failure reason (ocr_cloud.js fail extra): overloaded | timeout | quota | network | fallback_failed; "" = none. */
+  reason: string;
+  /** Model that failed / second model tried by the server (error body `model` / `fallbackModel`); "" = not sent. */
+  model = "";
+  fallbackModel = "";
+  constructor(code: OcrAiErrorCode, message: string, status = 0, retryAfter = 0, reason = "") {
     super(message);
     this.name = "OcrAiError";
     this.code = code;
     this.status = status;
     this.retryAfter = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.round(retryAfter) : 0;
+    this.reason = reason;
   }
 }
 
@@ -80,23 +87,49 @@ function serverCode(data: unknown): string {
 }
 
 function toAiError(e: unknown): OcrAiError {
+  const err = toAiErrorBase(e);
+  if (e instanceof PocketBaseRequestError && !err.model) {
+    err.model = readModelName(e.data, "model");
+    err.fallbackModel = readModelName(e.data, "fallbackModel");
+  }
+  return err;
+}
+
+/** Model name field from the server error body (top-level or under `.data`); "" when missing / not a model name. */
+function readModelName(data: unknown, key: "model" | "fallbackModel"): string {
+  if (!data || typeof data !== "object") return "";
+  const o = data as Record<string, unknown>;
+  const v = o[key] ?? (o.data && typeof o.data === "object" ? (o.data as Record<string, unknown>)[key] : "");
+  return typeof v === "string" && /^[a-z0-9][a-z0-9.\-]{2,63}$/.test(v) ? v : "";
+}
+
+function toAiErrorBase(e: unknown): OcrAiError {
   if (e instanceof OcrAiError) return e;
   if (e instanceof PocketBaseNotSignedInError) return new OcrAiError("not_signed_in", "Not signed in to Pocket Ledger Server", 401);
   if (e instanceof PocketBaseRequestError) {
     const c = serverCode(e.data);
     /* Server sends retryAfter (seconds) with quota / overloaded failures. */
     const retry = readRetryAfter(e.data);
-    if (c === "disabled" || c === "no_key" || c === "forbidden" || c === "quota" || c === "network") return new OcrAiError(c, e.message, e.status, retry);
+    const why = readReason(e.data);
+    if (c === "disabled" || c === "no_key" || c === "forbidden" || c === "quota" || c === "network") return new OcrAiError(c, e.message, e.status, retry, why);
     if (e.status === 401) return new OcrAiError("not_signed_in", e.message, e.status);
     if (e.status === 403) return new OcrAiError("forbidden", e.message, e.status);
-    if (e.status === 429) return new OcrAiError("quota", e.message, e.status, retry);
+    if (e.status === 429) return new OcrAiError("quota", e.message, e.status, retry, why);
     if (e.status === 404) return new OcrAiError("network", "AI OCR is not installed on the server yet", e.status);
-    if (e.status === 0 || e.status >= 502) return new OcrAiError("network", e.message, e.status, retry);
+    if (e.status === 0 || e.status >= 502) return new OcrAiError("network", e.message, e.status, retry, why);
     return new OcrAiError("unknown", e.message, e.status);
   }
   const msg = e instanceof Error ? e.message : "Request failed";
   if (/timeout|timed out|abort/i.test(msg)) return new OcrAiError("timeout", "AI OCR timed out");
   return new OcrAiError("network", msg);
+}
+
+/** `reason` from the server body (top-level or under `.data`): short lowercase token or "". */
+function readReason(data: unknown): string {
+  if (!data || typeof data !== "object") return "";
+  const o = data as Record<string, unknown>;
+  const r = o.reason ?? (o.data && typeof o.data === "object" ? (o.data as Record<string, unknown>).reason : "");
+  return typeof r === "string" && /^[a-z_]{1,40}$/.test(r) ? r : "";
 }
 
 /** `retryAfter` from the server body (top-level or under `.data`), clamped to 0..3600 s. */
@@ -248,6 +281,8 @@ export type OcrAiReadInput = {
   ownAccounts?: { accountName?: string | null; aliasName?: string | null; accountNumber?: string | null; bankName?: string | null; accountType?: string | null }[];
   /** Ask Gemini to output item/party/narration text in English (translate any local-language/Devanagari text). */
   translateToEnglish?: boolean;
+  /** This scan only: Gemini model to use instead of the company's saved one (server checks it is in the offered list). */
+  model?: string;
   signal?: AbortSignal;
 };
 
@@ -263,6 +298,7 @@ export async function ocrAiRead(input: OcrAiReadInput): Promise<OcrAiResult> {
   if (input.hint) body.hint = input.hint;
   if (input.docType) body.docType = input.docType;
   if (input.translateToEnglish) body.translateToEnglish = true;
+  if (input.model) body.model = input.model;
   if (input.ownAccounts && input.ownAccounts.length) {
     body.ownAccounts = input.ownAccounts.slice(0, 40).map((a) => ({
       accountName: a.accountName ?? "",
@@ -283,6 +319,8 @@ export async function ocrAiRead(input: OcrAiReadInput): Promise<OcrAiResult> {
     usage: { promptTokens: n(u.promptTokens), outputTokens: n(u.outputTokens), thoughtsTokens: n(u.thoughtsTokens), totalTokens: n(u.totalTokens) },
     rulesUsed: n(raw.rulesUsed),
     typeCheck: normalizeTypeCheck(raw.typeCheck),
+    fallbackUsed: raw.fallbackUsed === true,
+    primaryModel: typeof raw.primaryModel === "string" ? raw.primaryModel : undefined,
   };
 }
 
@@ -317,8 +355,8 @@ export function ocrAiErrorText(e: unknown): string {
       return "The saved Gemini key was rejected or has expired. Save a valid key in OCR settings.";
     default: {
       const msg = err.message || "Something went wrong.";
-      /* Gemini 503/UNAVAILABLE — server already says "temporarily overloaded"; add the retry hint. */
-      if (/overloaded|unavailable|503|try again later/i.test(msg)) {
+      /* Gemini 503/UNAVAILABLE — server already says "temporarily overloaded"; add the retry hint (once). */
+      if (/overloaded|unavailable|503|try again later|busy on both models/i.test(msg) && !/briefly busy/i.test(msg)) {
         return `${msg}${wait ? ` Retry in about ${wait}.` : ""} Google's model is briefly busy — this is not a key or quota problem.`;
       }
       return msg;
@@ -328,6 +366,27 @@ export function ocrAiErrorText(e: unknown): string {
 
 export function ocrAiErrorCode(e: unknown): OcrAiErrorCode {
   return toAiError(e).code;
+}
+
+/**
+ * Friendly reason kind for the "could not read this bill" dialog (translated via ocrRunStrings().fail.reason).
+ * Reads the server reason first, then the error code, then the message text (older servers send no reason).
+ * Works for OcrAiError, engine.ts OcrRunError (code / reason / message) and plain errors.
+ */
+export function ocrAiFailKind(e: unknown): OcrFailKind {
+  const o = (e && typeof e === "object" ? e : {}) as { code?: unknown; reason?: unknown; message?: unknown };
+  const reason = typeof o.reason === "string" ? o.reason : "";
+  const code = typeof o.code === "string" && o.code ? o.code : ocrAiErrorCode(e);
+  const msg = typeof o.message === "string" ? o.message : String(e ?? "");
+  if (reason === "fallback_failed" || /busy on both models/i.test(msg)) return "fallback_failed";
+  if (reason === "quota" || code === "quota") return "quota";
+  if (reason === "network") return "network";
+  if (reason === "overloaded" || /overloaded|\b503\b|try again later|briefly busy/i.test(msg)) return "overloaded";
+  if (reason === "model" || /model "[^"]*" is not available|not in the allowed list/i.test(msg)) return "model";
+  if (reason === "timeout" || code === "timeout" || /took too long|timed? ?out|\b504\b|deadline/i.test(msg)) return "timeout";
+  if (code === "no_key" || code === "forbidden" || code === "disabled" || code === "not_signed_in" || code === "unreadable" || code === "unavailable") return code;
+  if (reason === "network" || /not reachable|offline|fetch failed|network/i.test(msg)) return "network";
+  return "other";
 }
 
 /** Settings dialog: live AI status for one company. setState only in async callbacks (react-hooks/set-state-in-effect). */

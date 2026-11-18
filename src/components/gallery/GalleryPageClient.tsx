@@ -2,9 +2,11 @@
 
 import "./gallery-canvas.css";
 import { writeBatch, updateDoc, deleteDoc, setDoc } from "@/lib/writeGateway/pbWrites";
+import { patchVoucherFields } from "@/lib/voucherActionsClient";
 import { STAFF_ENTITY_LABEL } from "@/lib/staffEntityDisplayName";
 
-import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import React, { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import dynamic from "next/dynamic";
 import {
   Card,
   CardHeader,
@@ -40,7 +42,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { AUTO_POST_UI, useAutoPostUiCopy } from "@/components/gallery/autoPostUiCopy";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -50,6 +54,7 @@ import {
 } from "@/components/ui/select";
 import {
   Calendar as CalendarIcon,
+  X,
   XCircle,
   UploadCloud,
   Plus,
@@ -68,17 +73,23 @@ import {
   ChevronUp,
   Eye,
   EyeOff,
+  Expand,
+  Shrink,
   CheckSquare,
   Square,
   HelpCircle,
   Copy,
 } from "lucide-react";
 import type { DateRange } from "@/components/ui/ad-calendar";
+import AdCalendar from "@/components/ui/ad-calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useVouchers } from "@/hooks/useVouchers";
+import { DAYBOOK_TRANSACTIONS_ENTITY, useTransactions } from "@/hooks/use-transactions";
 import { useDate } from "@/hooks/useDate";
 import BsDatePicker from "@/components/ui/BsDatePicker";
+import { collectVoucherCalendarDates, parseFirestoreDateFieldToJsDate } from "@/lib/voucherDateNormalize";
 import { cn } from "@/lib/utils";
-import { format, startOfDay, endOfDay, startOfMonth, endOfMonth, subDays } from "date-fns";
+import { addDays, format, startOfDay, endOfDay, startOfMonth, endOfMonth, subDays } from "date-fns";
 import { FilePreview, prewarmPdfThumbnailsForGallery } from "@/components/vouchers/FilePreview";
 import {
   tryGetStoragePathFromFirebaseDownloadUrl,
@@ -109,6 +120,7 @@ import { UnassignedCameraCapture } from "@/components/gallery/UnassignedCameraCa
 import { GalleryTilePreview } from "@/components/gallery/GalleryTilePreview";
 import { openAttachmentInApp } from "@/lib/openAttachmentInApp";
 import { getAttachmentFormatLabel, getAttachmentFormatLabelFromHints } from "@/lib/attachmentFormatLabel";
+import { getVoucherAttachmentUrlsForUi } from "@/lib/voucherAttachmentNormalize";
 import { isLocalOnlyMode } from "@/lib/localMode";
 import { canSyncCompanyToServer } from "@/lib/localVoucherOutbox";
 import { getPendingFiles, isLocalFileRef, getBlobFromLocalFileRef, LOCAL_FILE_PREFIX } from "@/lib/localPendingFiles";
@@ -118,7 +130,18 @@ import { companyUsesLocalAttachmentSourcesOnly } from "@/lib/staticAttachmentDis
 import { FIREBASE_LEDGER_COMPANY_SYNC_PREFS_CHANGED_EVENT } from "@/lib/firebaseLedgerCompanySyncPrefs";
 import { setVisiblePageAttachmentUrls } from "@/lib/attachmentNetworkGate";
 import { GalleryAutoOcrSettingsDialog } from "@/components/gallery/GalleryAutoOcrSettingsDialog";
+import { DashboardWelcomeFooterBanner, DAYBOOK_SHIFT_DATE_EVENT } from "@/components/dashboard/DashboardWelcomeFooterBanner";
+import { sortTransactions } from "@/lib/transactionSort";
+import { ROWS_PER_PAGE_OPTIONS_DEFAULT } from "@/lib/rowsPerPageSelect";
+import { useRowsPerPage } from "@/hooks/useRowsPerPage";
+import { useRowsPerPageSelectControl } from "@/hooks/useRowsPerPageSelect";
+import type { TransactionSortBy, TransactionSortOrder } from "@/components/vouchers/TransactionTableSortDropdown";
+import type { TransactionColumnKey } from "@/components/vouchers/TransactionsTable";
+import { COLUMN_LABELS, useShowNotes, useTransactionVisibleColumns } from "@/components/vouchers/transactionColumnVisibility";
+import { LedgerFooterCheckboxPill } from "@/components/vouchers/ledgerFooterChrome";
+import { LedgerFooterColumnsMenu } from "@/components/vouchers/LedgerFooterColumnsMenu";
 import { AutoPostModeSwitch, type AutoPostMode } from "@/components/gallery/AutoPostModeSwitch";
+import { activeRunnerFromSettings, runnerModePersistFields, withExclusiveRunnerProfiles } from "@/components/gallery/autoPostMode";
 import { DEFAULT_GALLERY_QUEUE_SEQUENCE, DEFAULT_GALLERY_SORT_ORDER, GALLERY_QUEUE_SEQUENCES, normalizeGalleryQueueSequence, normalizeGallerySortOrder, orderGalleryQueue, sortGalleryFiles, type GalleryQueueSequence, type GallerySortOrder } from "@/components/gallery/galleryQueueSequence";
 
 
@@ -154,6 +177,15 @@ export type FileData = { id: string; url: string; name: string; type: 'pdf' | 'i
 
 /** Gallery full-hover preview: 600×700px fix (sirf is page par) */
 const GALLERY_HOVER_PREVIEW_BOX = { width: 600, height: 700 } as const;
+
+const GalleryRunnerTransactionsTable = dynamic(
+  () => import("@/components/vouchers/TransactionsTable").then((m) => m.TransactionsTable),
+  { ssr: false, loading: () => null },
+);
+const GalleryLedgerDesktopFooter = dynamic(
+  () => import("@/components/vouchers/LedgerDesktopFooter").then((m) => m.LedgerDesktopFooter),
+  { ssr: false, loading: () => null },
+);
 
 /** Pagination: kitni file tiles ek page par — company + unassigned dono tabs */
 const GALLERY_FILES_PER_PAGE_OPTIONS = [20, 30, 40, 50] as const;
@@ -300,19 +332,26 @@ const GALLERY_TAB_ACTIVE_CN =
 function GalleryRunnerControls() {
   const { company, companyId } = useCompany();
   const fsId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
-  const [state, setState] = useState<{ active: boolean; fileName: string; visible: boolean; held: boolean }>({ active: false, fileName: "", visible: true, held: false });
+  const [state, setState] = useState<{ active: boolean; fileName: string; visible: boolean; held: boolean; waitMessage: string; waitSeconds: number }>({ active: false, fileName: "", visible: true, held: false, waitMessage: "", waitSeconds: 0 });
   useEffect(() => {
     if (!fsId) return;
     const onState = (event: Event) => {
-      const detail = (event as CustomEvent<{ companyId?: string; active?: boolean; fileName?: string; visible?: boolean; held?: boolean }>).detail;
+      const detail = (event as CustomEvent<{ companyId?: string; active?: boolean; fileName?: string; visible?: boolean; held?: boolean; waitMessage?: string; waitSeconds?: number }>).detail;
       if (String(detail?.companyId || "") !== fsId) return;
-      setState({ active: detail.active === true, fileName: String(detail.fileName || ""), visible: detail.visible !== false, held: detail.held === true });
+      setState({
+        active: detail.active === true,
+        fileName: String(detail.fileName || ""),
+        visible: detail.visible !== false,
+        held: detail.held === true,
+        waitMessage: String(detail.waitMessage || ""),
+        waitSeconds: Math.max(0, Number(detail.waitSeconds) || 0),
+      });
     };
     window.addEventListener("pl:gallery:auto-post-process-state", onState);
     window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-state-request", { detail: { companyId: fsId } }));
     return () => window.removeEventListener("pl:gallery:auto-post-process-state", onState);
   }, [fsId]);
-  if (!state.active) return null;
+  if (!state.active && !state.waitMessage) return null;
   const dispatchVisibility = (visible: boolean) => {
     setState((current) => ({ ...current, visible }));
     window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-visibility", { detail: { companyId: fsId, visible } }));
@@ -320,7 +359,7 @@ function GalleryRunnerControls() {
   return (
     <div className="flex min-w-0 shrink-0 flex-nowrap items-center gap-[10px] rounded-full border border-amber-300 bg-amber-50/80 px-2 py-1 text-[11px] text-amber-950" role="group" aria-label="Auto post runner controls">
       <span className="max-w-44 truncate font-medium" title={state.fileName}>
-        {state.held ? "Runner on hold" : state.fileName ? `Processing: ${state.fileName}` : "Auto post running"}
+        {state.waitMessage ? <>{AUTO_POST_UI.limitReachedPrefix}<span data-pl-no-translate>{state.waitSeconds}</span>{AUTO_POST_UI.limitReachedSuffix}</> : state.held ? "Runner on hold" : state.fileName ? `Processing: ${state.fileName}` : "Auto post running"}
       </span>
       {state.active ? <Button type="button" size="sm" variant="outline" className="h-8 shrink-0 rounded-full px-3 text-xs" onClick={() => dispatchVisibility(!state.visible)}>
         {state.visible ? "Hide process" : "Show process"}
@@ -329,9 +368,25 @@ function GalleryRunnerControls() {
   );
 }
 
+/** Shared across the 2–3 GalleryRunnerHoldButton mounts so one process-state event toasts once. */
+let lastStartBlockedToast = { companyId: "", seq: 0 };
+function claimStartBlockedToast(companyId: string, seq: number): boolean {
+  if (!seq) return false;
+  if (companyId !== lastStartBlockedToast.companyId || seq < lastStartBlockedToast.seq) {
+    lastStartBlockedToast = { companyId, seq };
+    return true;
+  }
+  if (seq > lastStartBlockedToast.seq) {
+    lastStartBlockedToast = { companyId, seq };
+    return true;
+  }
+  return false;
+}
+
 function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
   const { company, companyId } = useCompany();
   const { user } = useAuth();
+  const { t } = useAutoPostUiCopy();
   const fsId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
   const uid = String(user?.uid || "");
   const isCompanyAdmin = !!uid && !!company && (
@@ -341,6 +396,10 @@ function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
   );
   const [held, setHeld] = useState(false);
   const [autoPostEnabled, setAutoPostEnabled] = useState(false);
+  const [controlAvailable, setControlAvailable] = useState(false);
+  const controlAvailableRef = useRef(false);
+  const heldRef = useRef(false);
+  const lastBlockedSeqRef = useRef(0);
   useEffect(() => {
     if (!fsId) { setAutoPostEnabled(false); return; }
     return onSnapshot(doc(firestore, `companies/${fsId}/auto_ocr_settings`, "server_auto_ocr"), (snapshot) => {
@@ -350,13 +409,25 @@ function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
   useEffect(() => {
     if (!fsId) return;
     const onState = (event: Event) => {
-      const detail = (event as CustomEvent<{ companyId?: string; held?: boolean }>).detail;
-      if (String(detail?.companyId || "") === fsId) setHeld(detail?.held === true);
+      const detail = (event as CustomEvent<{ companyId?: string; held?: boolean; controlAvailable?: boolean; startBlockedReason?: string; startBlockedSeq?: number }>).detail;
+      if (String(detail?.companyId || "") !== fsId) return;
+      const nextHeld = detail?.held === true;
+      heldRef.current = nextHeld;
+      setHeld(nextHeld);
+      const available = detail?.controlAvailable === true;
+      controlAvailableRef.current = available;
+      setControlAvailable(available);
+      const reason = String(detail?.startBlockedReason || "").trim();
+      const seq = Number(detail?.startBlockedSeq) || 0;
+      if (seq > lastBlockedSeqRef.current) lastBlockedSeqRef.current = seq;
+      if (reason && claimStartBlockedToast(fsId, seq)) {
+        toast.message(t(reason));
+      }
     };
     window.addEventListener("pl:gallery:auto-post-process-state", onState);
     window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-state-request", { detail: { companyId: fsId } }));
     return () => window.removeEventListener("pl:gallery:auto-post-process-state", onState);
-  }, [fsId]);
+  }, [fsId, t]);
   return (
     <Button
       type="button"
@@ -364,11 +435,57 @@ function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
       variant="outline"
       aria-pressed={!held}
       disabled={!isCompanyAdmin || !fsId || !autoPostEnabled}
-      title={!autoPostEnabled ? "Enable Auto post vouchers in Auto post settings to start the runner" : held ? "Start the selected Auto post mode and keep watching for documents" : "Stop the Auto post runner"}
-      onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId: fsId, held: !held } }))}
+      title={!autoPostEnabled ? t(AUTO_POST_UI.enableAutoPostToStart) : held ? "Start the selected Auto post mode and keep watching for documents" : "Stop the Auto post runner"}
+      onClick={() => {
+        const starting = held || !autoPostEnabled;
+        const seqAtClick = Math.max(lastBlockedSeqRef.current, lastStartBlockedToast.companyId === fsId ? lastStartBlockedToast.seq : 0);
+        window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId: fsId, held: !held } }));
+        if (starting) {
+          window.setTimeout(() => {
+            const currentSeq = Math.max(lastBlockedSeqRef.current, lastStartBlockedToast.companyId === fsId ? lastStartBlockedToast.seq : 0);
+            if (currentSeq !== seqAtClick) return;
+            if (!heldRef.current) return;
+            toast.message(t(!isCompanyAdmin ? AUTO_POST_UI.startBlockedNotAdmin : !controlAvailableRef.current ? AUTO_POST_UI.startBlockedDeviceMismatch : AUTO_POST_UI.startBlockedSettingsLoading));
+          }, 500);
+        }
+      }}
       className={cn("h-8 shrink-0 rounded-full border px-3 text-xs", held ? "!border-green-600 !bg-green-100 !text-green-950" : "!border-amber-500 !bg-amber-100 !text-amber-950", inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0 max-sm:px-2")}
     >
-      {held || !autoPostEnabled ? "Start runner" : "Stop runner"}
+      {held || !autoPostEnabled ? t(AUTO_POST_UI.startRunner) : t(AUTO_POST_UI.stopRunner)}
+    </Button>
+  );
+}
+
+
+function GalleryRunnerResetButton({ inline = false }: { inline?: boolean }) {
+  const { company, companyId } = useCompany();
+  const { user } = useAuth();
+  const fsId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
+  const uid = String(user?.uid || "");
+  const isCompanyAdmin = !!uid && !!company && (
+    String((company as any).ownerId || (company as any).owner || "") === uid ||
+    (Array.isArray((company as any).sharedWith) && (company as any).sharedWith.some((member: any) =>
+      String(member?.uid || member?.userId || "") === uid && ["admin", "CompanyAdmin", "SuperAdmin"].includes(String(member?.role || ""))))
+  );
+  const [autoPostEnabled, setAutoPostEnabled] = useState(false);
+  useEffect(() => {
+    if (!fsId) { setAutoPostEnabled(false); return; }
+    return onSnapshot(doc(firestore, `companies/${fsId}/auto_ocr_settings`, "server_auto_ocr"), (snapshot) => {
+      setAutoPostEnabled(snapshot.exists() && snapshot.data()?.enabled === true);
+    }, () => setAutoPostEnabled(false));
+  }, [fsId]);
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      disabled={!isCompanyAdmin || !fsId || !autoPostEnabled}
+      title={AUTO_POST_UI.resetTitle}
+      aria-label={AUTO_POST_UI.reset}
+      onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-reset", { detail: { companyId: fsId } }))}
+      className={cn("h-8 shrink-0 rounded-full border px-3 text-xs", inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0 max-sm:px-2")}
+    >
+      {AUTO_POST_UI.reset}
     </Button>
   );
 }
@@ -391,12 +508,14 @@ function GalleryAutoPostModeRibbon({ inline = false }: { inline?: boolean }) {
     return onSnapshot(doc(firestore, `companies/${fsId}/auto_ocr_settings`, "server_auto_ocr"), (snapshot) => {
       const value = snapshot.exists() ? snapshot.data() as Record<string, unknown> : {};
       setSavedSettings(value);
-      setMode(value.enabled !== true ? "manual" : value.processingMode === "full" ? "full" : "semi");
+      setMode(activeRunnerFromSettings(value));
     });
   }, [fsId]);
   const chooseMode = async (next: AutoPostMode) => {
     if (!fsId || !uid || !isCompanyAdmin || saving || next === mode) return;
-    if (next !== "manual" && savedSettings.runLocation === "local-pc" && (!savedSettings.localRunnerUid || !savedSettings.localRunnerDeviceId)) {
+    const profiles = savedSettings.runnerProfiles && typeof savedSettings.runnerProfiles === "object" ? savedSettings.runnerProfiles as Record<string, unknown> : {};
+    const profile = profiles[next] && typeof profiles[next] === "object" ? profiles[next] as Record<string, unknown> : savedSettings;
+    if (next !== "manual" && profile.runLocation === "local-pc" && (!profile.localRunnerUid || !profile.localRunnerDeviceId)) {
       toast.error("Select an admin device in Auto post settings before enabling the runner.");
       window.dispatchEvent(new Event("pl:gallery:auto-ocr-settings"));
       return;
@@ -407,8 +526,9 @@ function GalleryAutoPostModeRibbon({ inline = false }: { inline?: boolean }) {
     setSaving(true);
     try {
       await setDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, "server_auto_ocr"), {
-        enabled: next !== "manual",
-        processingMode: next === "full" ? "full" : "semi",
+        ...profile,
+        ...runnerModePersistFields(next),
+        runnerProfiles: withExclusiveRunnerProfiles(profiles, next),
         updatedAt: serverTimestamp(),
         updatedBy: uid,
       }, { merge: true });
@@ -503,20 +623,54 @@ function GalleryQueueSequenceRibbon({ inline = false }: { inline?: boolean }) {
   );
 }
 
+type GalleryTabCounts = {
+  unassigned: number;
+  duplicate: number;
+  autoFailed: number;
+  companyFiles: number;
+};
+
 function GalleryTabSwitch({
   activeTab,
   onTabChange,
+  tabCounts,
+  companyAvatarsOnly = false,
+  onShowCompanyVouchers,
   className,
   inline = false,
 }: {
-  activeTab: "company-files" | "unassigned" | "duplicate" | "auto-failed";
-  onTabChange: (tab: "company-files" | "unassigned" | "duplicate" | "auto-failed") => void;
+  activeTab: "company-files" | "runner-entry" | "unassigned" | "duplicate" | "auto-failed";
+  onTabChange: (tab: "company-files" | "runner-entry" | "unassigned" | "duplicate" | "auto-failed") => void;
+  tabCounts?: GalleryTabCounts;
+  companyAvatarsOnly?: boolean;
+  onShowCompanyVouchers?: () => void;
   className?: string;
   /** true: wrapper ke bina — parent grid ke direct children (full-width cells) */
   inline?: boolean;
 }) {
   const buttons = (
     <>
+      <Button
+        onClick={() => onTabChange("runner-entry")}
+        variant="secondary"
+        size="sm"
+        className={cn(
+          "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
+          inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
+          activeTab === "runner-entry" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
+        )}
+      >
+        Recent OCR Trxn
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className={cn("h-8 w-auto shrink-0 rounded-full border px-3 text-xs", GALLERY_TAB_IDLE_CN)}
+        onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:open-ocr-history"))}
+      >
+        OCR History
+      </Button>
       <Button
         onClick={() => onTabChange("unassigned")}
         variant="secondary"
@@ -527,7 +681,7 @@ function GalleryTabSwitch({
           activeTab === "unassigned" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
       >
-        Unassigned Doc
+        Unassigned Doc{tabCounts ? <span className="ml-1 tabular-nums opacity-75">{tabCounts.unassigned}</span> : null}
       </Button>
       {/* Duplicate Documents — Unassigned ka mirror; duplicate guard se "Move to Duplicate" yahan aata hai. */}
       <Button
@@ -540,7 +694,7 @@ function GalleryTabSwitch({
           activeTab === "duplicate" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
       >
-        Duplicate Doc
+        Duplicate Doc{tabCounts ? <span className="ml-1 tabular-nums opacity-75">{tabCounts.duplicate}</span> : null}
       </Button>
       <Button
         onClick={() => onTabChange("auto-failed")}
@@ -552,10 +706,13 @@ function GalleryTabSwitch({
           activeTab === "auto-failed" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
       >
-        Auto post failed
+        Auto post failed{tabCounts ? <span className="ml-1 tabular-nums opacity-75">{tabCounts.autoFailed}</span> : null}
       </Button>
       <Button
-        onClick={() => onTabChange("company-files")}
+        onClick={() => {
+          if (activeTab === "company-files" && companyAvatarsOnly) onShowCompanyVouchers?.();
+          else onTabChange("company-files");
+        }}
         variant="secondary"
         size="sm"
         className={cn(
@@ -564,17 +721,18 @@ function GalleryTabSwitch({
           activeTab === "company-files" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
       >
-        Company Doc
+        {companyAvatarsOnly ? "Voucher" : "Company Doc"}{tabCounts ? <span className="ml-1 tabular-nums opacity-75">{tabCounts.companyFiles}</span> : null}
       </Button>
       <GalleryAutoPostModeRibbon inline={inline} />
       <GalleryRunnerHoldButton inline={inline} />
+      <GalleryRunnerResetButton inline={inline} />
       <GalleryQueueSequenceRibbon inline={inline} />
       <Button
         type="button"
         size="sm"
         variant="outline"
-        title="Auto post setting"
-        aria-label="Auto post setting"
+        title="Voucher Post Setting"
+        aria-label="Voucher Post Setting"
         onClick={() => typeof window !== "undefined" && window.dispatchEvent(new Event("pl:gallery:auto-ocr-settings"))}
         className={cn(
           "h-8 w-auto shrink-0 gap-1.5 rounded-full px-3 text-xs",
@@ -583,7 +741,7 @@ function GalleryTabSwitch({
         )}
       >
         <Settings className="h-4 w-4 shrink-0" aria-hidden />
-        <span className="truncate">Auto post setting</span>
+        <span className="truncate">Voucher Post Setting</span>
       </Button>
     </>
   );
@@ -592,6 +750,530 @@ function GalleryTabSwitch({
 
   return (
     <div className={cn("min-w-0 flex flex-wrap items-center gap-[10px]", className)}>{buttons}</div>
+  );
+}
+
+/** Recent-style table scoped to vouchers completed by this Gallery Auto OCR runner. */
+function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: any) => void }) {
+  const { company, companyId } = useCompany();
+  const { dateSystem, formatDate } = useDate();
+  const { user } = useAuth();
+  const { vouchers, processedAccounts, journalAccountNames, userNames } = useVouchers();
+  const fsId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
+  const [runnerVoucherProviders, setRunnerVoucherProviders] = useState<Map<string, string>>(() => new Map());
+  const [search, setSearch] = useState("");
+  const [recentMode, setRecentMode] = useState(true);
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+  const [activeColumnFilter, setActiveColumnFilter] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<Date>(() => startOfDay(new Date()));
+  const [dayCalendarOpen, setDayCalendarOpen] = useState(false);
+  const [unapprovedOnly, setUnapprovedOnly] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [showNarration, setShowNarration] = useState(true);
+  const [rowsPerPage, setRowsPerPage] = useRowsPerPage(10, "app-recent-rows-per-page");
+  const [sortBy, setSortBy] = useState<TransactionSortBy>("date");
+  const [sortOrder, setSortOrder] = useState<TransactionSortOrder>("desc");
+  const { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuNoTdsFilter } = useTransactionVisibleColumns();
+  const { setShowNotes, includeNotesInTable, notesPreferenceLockedOnMobile } = useShowNotes();
+  const {
+    selectValue: rowsPerPageSelectValue,
+    onSelectValueChange: handleRowsPerPageChange,
+  } = useRowsPerPageSelectControl(rowsPerPage, setRowsPerPage, setCurrentPage, ROWS_PER_PAGE_OPTIONS_DEFAULT, "10");
+
+  useEffect(() => {
+    if (!fsId) {
+      setRunnerVoucherProviders(new Map());
+      return;
+    }
+    const q = query(collection(firestore, `companies/${fsId}/unassigned_documents`), orderBy("uploadedAt", "desc"));
+    return onSnapshot(q, (snapshot) => {
+      const providers = new Map<string, string>();
+      snapshot.docs.forEach((docSnap) => {
+        const row = docSnap.data() as { autoOcrStatus?: string; autoOcrVoucherId?: string; autoOcrProvider?: string };
+        const voucherId = String(row.autoOcrVoucherId || "").trim();
+        if (row.autoOcrStatus === "complete" && voucherId) providers.set(voucherId, String(row.autoOcrProvider || "").trim());
+      });
+      setRunnerVoucherProviders(providers);
+    }, (error) => console.warn("[Gallery Recent OCR] could not watch runner entries", error));
+  }, [fsId]);
+
+  const runnerVouchers = useMemo(
+    () => (vouchers || []).filter((voucher: any) => runnerVoucherProviders.has(String(voucher?.id || ""))),
+    [runnerVoucherProviders, vouchers],
+  );
+  const runnerVoucherById = useMemo(
+    () => new Map(runnerVouchers.map((voucher: any) => [String(voucher?.id || ""), voucher])),
+    [runnerVouchers],
+  );
+  const queryColumnFilters = useMemo(
+    () => Object.fromEntries(Object.entries(unapprovedOnly ? {} : columnFilters).filter(([key]) => key !== "user")),
+    [columnFilters, unapprovedOnly],
+  );
+  const runnerTransactionDates = useMemo(
+    () => collectVoucherCalendarDates(runnerVouchers),
+    [runnerVouchers],
+  );
+  const transactionDateFilter = recentMode ? undefined : { from: selectedDay, to: selectedDay };
+  const effectiveColumnFilters = unapprovedOnly ? {} : columnFilters;
+  const { daybookTransactions = [] } = useTransactions(
+    DAYBOOK_TRANSACTIONS_ENTITY,
+    "daybook",
+    transactionDateFilter,
+    undefined,
+    processedAccounts,
+    runnerVouchers,
+    undefined,
+    queryColumnFilters,
+    undefined,
+    journalAccountNames,
+    userNames,
+    undefined,
+    undefined,
+    true,
+    true,
+  );
+  const filteredTransactions = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const userQ = String(effectiveColumnFilters.user || "").trim().toLowerCase();
+    const filtered = (daybookTransactions as Record<string, unknown>[]).filter((row: any) =>
+      (!unapprovedOnly || row.isApproved !== true) &&
+      (includeNotesInTable || row.type !== "note") &&
+      (!userQ || `OCR${runnerVoucherProviders.get(String(row.id || "")) ? ` ${String(runnerVoucherProviders.get(String(row.id || ""))).replace(/^./, (letter) => letter.toUpperCase())}` : ""}`.toLowerCase().includes(userQ)) &&
+      (!q ||
+      [row.voucherNumber, row.type, row.narration, row.accountName, row.partyName, row.userName]
+        .some((value) => String(value ?? "").toLowerCase().includes(q))),
+    );
+    if (recentMode) {
+      return [...filtered].sort((a: any, b: any) => {
+        const aVoucher = runnerVoucherById.get(String(a.id || ""));
+        const bVoucher = runnerVoucherById.get(String(b.id || ""));
+        const aAdded = parseFirestoreDateFieldToJsDate(a.createdAt)?.getTime()
+          ?? parseFirestoreDateFieldToJsDate(aVoucher?.createdAt)?.getTime() ?? 0;
+        const bAdded = parseFirestoreDateFieldToJsDate(b.createdAt)?.getTime()
+          ?? parseFirestoreDateFieldToJsDate(bVoucher?.createdAt)?.getTime() ?? 0;
+        return bAdded - aAdded;
+      });
+    }
+    return sortTransactions(filtered, sortBy, sortOrder, { tieBreakCreatedAtDesc: true });
+  }, [daybookTransactions, effectiveColumnFilters.user, includeNotesInTable, recentMode, runnerVoucherById, runnerVoucherProviders, search, sortBy, sortOrder, unapprovedOnly]);
+  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / rowsPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStart = (safePage - 1) * rowsPerPage;
+  const pageEnd = Math.min(filteredTransactions.length, pageStart + rowsPerPage);
+  const beforeCount = Math.max(0, filteredTransactions.length - pageEnd);
+  const afterCount = pageStart;
+  const visibleTransactions = useMemo(
+    () => filteredTransactions.slice((safePage - 1) * rowsPerPage, safePage * rowsPerPage),
+    [filteredTransactions, rowsPerPage, safePage],
+  );
+  const tableTransactions = useMemo(
+    () => visibleTransactions.map((row: any) => {
+        const voucher = runnerVoucherById.get(String(row.id || ""));
+        const addedAt = parseFirestoreDateFieldToJsDate(row.createdAt)
+          ?? parseFirestoreDateFieldToJsDate(voucher?.createdAt);
+        const provider = runnerVoucherProviders.get(String(row.id || "")) || "";
+        const ocrUserName = `OCR${provider ? ` ${provider.replace(/^./, (letter) => letter.toUpperCase())}` : ""}`;
+        return {
+          ...row,
+          _recentOcrOriginalDate: row.date,
+          _recentOcrOriginalUserName: row.userName,
+          _recentOcrOriginalUserDisplayName: row.userDisplayName,
+          date: recentMode ? addedAt ?? row.date : row.date,
+          userName: ocrUserName,
+          userDisplayName: ocrUserName,
+        };
+    }),
+    [recentMode, runnerVoucherById, runnerVoucherProviders, visibleTransactions],
+  );
+  const handleTransactionRowClick = useCallback((row: any) => {
+    if (Object.prototype.hasOwnProperty.call(row || {}, "_recentOcrOriginalUserName")) {
+      const { _recentOcrOriginalDate, _recentOcrOriginalUserName, _recentOcrOriginalUserDisplayName, ...transaction } = row;
+      onEditVoucher({
+        ...transaction,
+        date: _recentOcrOriginalDate,
+        userName: _recentOcrOriginalUserName,
+        userDisplayName: _recentOcrOriginalUserDisplayName,
+      });
+      return;
+    }
+    onEditVoucher(row);
+  }, [onEditVoucher]);
+  useEffect(() => setCurrentPage(1), [recentMode, selectedDay, search, unapprovedOnly, includeNotesInTable]);
+  useEffect(() => setCurrentPage((page) => Math.min(page, totalPages)), [totalPages]);
+
+  const greetingHour = new Date().getHours();
+  const greeting = greetingHour < 12 ? "Good Morning" : greetingHour < 18 ? "Good Afternoon" : "Good Evening";
+  const displayName = String(user?.displayName || user?.email?.split("@")[0] || "User");
+  const shiftSelectedDay = useCallback((delta: -1 | 1) => {
+    setRecentMode(false);
+    setSelectedDay((previous) => {
+      const next = startOfDay(addDays(previous, delta));
+      const today = startOfDay(new Date());
+      return next > today ? today : next;
+    });
+  }, []);
+  useEffect(() => {
+    const onShiftDay = (event: Event) => {
+      const delta = (event as CustomEvent<number>).detail;
+      if (delta === -1 || delta === 1) shiftSelectedDay(delta);
+    };
+    window.addEventListener(DAYBOOK_SHIFT_DATE_EVENT, onShiftDay);
+    return () => window.removeEventListener(DAYBOOK_SHIFT_DATE_EVENT, onShiftDay);
+  }, [shiftSelectedDay]);
+  const selectSingleDay = (date: Date) => {
+    setRecentMode(false);
+    setSelectedDay(startOfDay(date));
+    setDayCalendarOpen(false);
+  };
+
+  return (
+    <Card className="box-border flex min-h-0 w-full flex-1 flex-col overflow-hidden !rounded-none border border-t-0 border-slate-300/80 bg-background shadow-md">
+      <CardHeader className="shrink-0 border-b border-blue-300 bg-blue-100 px-3 py-2 dark:border-blue-800 dark:bg-blue-950">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <CardTitle className="shrink-0 text-base font-semibold">Recent OCR Trxn</CardTitle>
+          <Button type="button" variant={recentMode ? "default" : "outline"} size="sm" className="h-8 min-h-8" onClick={() => setRecentMode(true)}>Recent</Button>
+          <Input
+            type="search"
+            listChrome
+            listChromeSearch
+            placeholder="Search OCR transactions"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="h-8 min-h-8 w-full max-w-[14.4rem] flex-1 bg-white py-1 text-sm dark:bg-white"
+            aria-label="Search OCR transactions"
+          />
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          {dateSystem === "BS" && (
+            <BsDatePicker
+              valueAD={selectedDay}
+              onChangeAD={(date) => date && selectSingleDay(date as Date)}
+              isRange={false}
+              transactionDates={runnerTransactionDates}
+              className="h-8 min-h-8 max-h-8"
+            />
+          )}
+          {(dateSystem === "AD" || dateSystem === "Both") && (
+            <Popover open={dayCalendarOpen} onOpenChange={setDayCalendarOpen}>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="outline" size="sm" className="h-8 min-h-8 justify-start whitespace-nowrap">
+                  <CalendarIcon className="mr-1.5 h-4 w-4" aria-hidden />{formatDate(selectedDay)}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <AdCalendar valueAD={selectedDay} isRange={false} onSelect={selectSingleDay} transactionDates={runnerTransactionDates} />
+              </PopoverContent>
+            </Popover>
+          )}
+          <Button type="button" variant={!recentMode && selectedDay.getTime() === startOfDay(new Date()).getTime() ? "default" : "outline"} size="sm" className="h-8 min-h-8" onClick={() => selectSingleDay(new Date())}>Today</Button>
+          <span className="text-sm font-medium text-muted-foreground">Total Vouchers: {filteredTransactions.length}</span>
+          </div>
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+            <Button type="button" size="sm" variant={unapprovedOnly ? "default" : "outline"} className="h-8 whitespace-nowrap" onClick={() => setUnapprovedOnly((value) => !value)}>Unapproved</Button>
+            {(unapprovedOnly || Object.values(columnFilters).some(Boolean)) ? <Button type="button" variant="ghost" size="icon" className="h-8 w-8" aria-label="Clear filters" onClick={() => { setUnapprovedOnly(false); setColumnFilters({}); setActiveColumnFilter(null); }}><X className="h-4 w-4" /></Button> : null}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+        <div data-pl-daybook-unified-scroll="" className="flex min-h-0 flex-1 flex-col overflow-x-auto overflow-y-hidden">
+          <GalleryRunnerTransactionsTable
+            transactions={tableTransactions}
+            context="daybook"
+            daybookDesktopUnifiedScroll
+            onRowClick={handleTransactionRowClick}
+            journalAccountNames={journalAccountNames}
+            userNames={userNames}
+            hideBalanceColumn
+            hideFooter
+            showNarration={showNarration}
+            visibleColumns={visibleColumns}
+            filters={effectiveColumnFilters}
+            setFilters={setColumnFilters}
+            activeFilter={activeColumnFilter}
+            setActiveFilter={setActiveColumnFilter}
+            transactionCardSearchHighlight={search}
+          />
+        </div>
+        <div className="pointer-events-none flex shrink-0 items-center justify-center gap-2 py-1 print:hidden">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="pointer-events-auto h-8 w-10 shrink-0 rounded-full shadow-lg"
+            aria-label="Previous day"
+            title="Previous day"
+            onClick={() => shiftSelectedDay(-1)}
+          >
+            <ChevronLeft className="h-[18px] w-[18px]" aria-hidden />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="pointer-events-auto h-8 w-10 shrink-0 rounded-full shadow-lg disabled:pointer-events-none disabled:opacity-40"
+            aria-label="Next day"
+            title="Next day"
+            disabled={selectedDay.getTime() >= startOfDay(new Date()).getTime()}
+            onClick={() => shiftSelectedDay(1)}
+          >
+            <ChevronRight className="h-[18px] w-[18px]" aria-hidden />
+          </Button>
+        </div>
+        <DashboardWelcomeFooterBanner
+          embedded
+          lineSections
+          showDaybookDateNav
+          className="bg-blue-100 dark:bg-blue-950"
+          greeting={greeting}
+          displayName={displayName}
+          newYearInfo={null}
+        />
+        <GalleryLedgerDesktopFooter
+          shellClassName="mt-0 rounded-none border-0 border-t border-blue-300 bg-blue-100 py-1.5 px-2 shadow-none overflow-x-hidden overflow-y-hidden dark:border-blue-800 dark:bg-blue-950"
+          left={
+            <>
+              <LedgerFooterCheckboxPill
+                id="show-narration-recent-ocr"
+                checked={showNarration}
+                onCheckedChange={(checked) => setShowNarration(Boolean(checked))}
+                label="Show Narration"
+              />
+              <LedgerFooterColumnsMenu>
+                <DropdownMenuContent align="start" className="w-52 p-2">
+                  {(Object.keys(COLUMN_LABELS) as TransactionColumnKey[])
+                    .filter(ledgerColumnMenuNoTdsFilter)
+                    .filter((key) => key !== "runningBalance" && key !== "status")
+                    .map((key) => (
+                      <DropdownMenuItem key={key} onSelect={(event) => event.preventDefault()} className="flex cursor-pointer items-center gap-2">
+                        <Checkbox
+                          id={`col-${key}-recent-ocr`}
+                          checked={visibleColumns[key] !== false}
+                          onCheckedChange={(checked) => handleColumnVisibilityChange(key, Boolean(checked))}
+                        />
+                        <label htmlFor={`col-${key}-recent-ocr`} className="flex-1 cursor-pointer text-sm font-medium">{COLUMN_LABELS[key]}</label>
+                      </DropdownMenuItem>
+                    ))}
+                </DropdownMenuContent>
+              </LedgerFooterColumnsMenu>
+              <LedgerFooterCheckboxPill
+                id="show-notes-recent-ocr"
+                checked={includeNotesInTable}
+                disabled={notesPreferenceLockedOnMobile}
+                onCheckedChange={(checked) => setShowNotes(Boolean(checked))}
+                label="Note"
+              />
+            </>
+          }
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          onSortChange={(by, order) => { setSortBy(by); setSortOrder(order); }}
+          viewMode="statement"
+          currentPage={safePage}
+          totalPages={totalPages}
+          setCurrentPage={setCurrentPage}
+          rowsPerPageSelectValue={rowsPerPageSelectValue}
+          onRowsPerPageChange={handleRowsPerPageChange}
+          rowsPerPageOptions={ROWS_PER_PAGE_OPTIONS_DEFAULT}
+          beforeCount={beforeCount}
+          afterCount={afterCount}
+          totalCount={filteredTransactions.length}
+          includeAllOption={false}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+type GalleryOcrHistoryRow = {
+  id: string;
+  name: string;
+  result: "passed" | "duplicate" | "auto-failed";
+  date: Date;
+  provider: string;
+  voucherNumber: string;
+  details: string;
+};
+
+function GalleryOcrHistoryDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { company, companyId } = useCompany();
+  const { vouchers } = useVouchers();
+  const { dateSystem, formatDate, formatDateBS } = useDate();
+  const fsId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
+  const [selectedDay, setSelectedDay] = useState<Date>(() => startOfDay(new Date()));
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<"all" | GalleryOcrHistoryRow["result"]>("all");
+  const [unassignedRows, setUnassignedRows] = useState<any[]>([]);
+  const [duplicateRows, setDuplicateRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    if (isLocalOnlyMode()) {
+      const syncLocalHistory = () => {
+        setUnassignedRows(readLocalUnassignedDocs("unassigned"));
+        setDuplicateRows(readLocalUnassignedDocs("duplicate"));
+        setLoading(false);
+      };
+      syncLocalHistory();
+      window.addEventListener(GALLERY_LOCAL_DOC_COUNTS_CHANGED_EVENT, syncLocalHistory);
+      window.addEventListener("storage", syncLocalHistory);
+      return () => {
+        window.removeEventListener(GALLERY_LOCAL_DOC_COUNTS_CHANGED_EVENT, syncLocalHistory);
+        window.removeEventListener("storage", syncLocalHistory);
+      };
+    }
+    if (!fsId) {
+      setUnassignedRows([]);
+      setDuplicateRows([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    let unassigned: any[] = [];
+    let duplicates: any[] = [];
+    let ready = 0;
+    const publish = () => {
+      setUnassignedRows(unassigned);
+      setDuplicateRows(duplicates);
+      ready += 1;
+      if (ready >= 2) setLoading(false);
+    };
+    const unassignedQuery = query(
+      collection(firestore, `companies/${fsId}/unassigned_documents`),
+      orderBy("uploadedAt", "desc"),
+    );
+    const duplicateQuery = query(
+      collection(firestore, `companies/${fsId}/duplicate_documents`),
+      orderBy("uploadedAt", "desc"),
+    );
+    const stopUnassigned = onSnapshot(unassignedQuery, (snapshot) => {
+      unassigned = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+      publish();
+    }, (error) => {
+      console.warn("[Gallery OCR History] Could not load unassigned history", error);
+      publish();
+    });
+    const stopDuplicate = onSnapshot(duplicateQuery, (snapshot) => {
+      duplicates = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+      publish();
+    }, (error) => {
+      console.warn("[Gallery OCR History] Could not load duplicate history", error);
+      publish();
+    });
+    return () => {
+      stopUnassigned();
+      stopDuplicate();
+    };
+  }, [fsId, open]);
+
+  const historyRows = useMemo(() => {
+    const voucherById = new Map((vouchers || []).map((voucher: any) => [String(voucher?.id || ""), voucher]));
+    const asHistoryRow = (docRow: any, result: GalleryOcrHistoryRow["result"]): GalleryOcrHistoryRow | null => {
+      const voucherId = String(docRow.autoOcrVoucherId || "").trim();
+      const voucher = voucherId ? voucherById.get(voucherId) : undefined;
+      const rawDate = result === "duplicate"
+        ? docRow.movedAt
+        : docRow.autoOcrFinishedAt || docRow.updatedAt || docRow.uploadedAt;
+      const date = parseFirestoreDateFieldToJsDate(rawDate)
+        ?? parseFirestoreDateFieldToJsDate(docRow.updatedAt)
+        ?? parseFirestoreDateFieldToJsDate(docRow.uploadedAt);
+      if (!date) return null;
+      const provider = String(docRow.autoOcrProvider || "").trim();
+      return {
+        id: String(docRow.id || ""),
+        name: String(docRow.name || docRow.fileName || docRow.originalName || docRow.id || "Document"),
+        result,
+        date,
+        provider: provider ? provider.replace(/^./, (letter) => letter.toUpperCase()) : "—",
+        voucherNumber: String(docRow.duplicateOfVoucherNumber || voucher?.voucherNumber || voucherId || "—"),
+        details: String(docRow.duplicateReason || docRow.autoOcrError || ""),
+      };
+    };
+    const byId = new Map<string, GalleryOcrHistoryRow>();
+    for (const docRow of unassignedRows) {
+      const status = String(docRow.autoOcrStatus || "").toLowerCase();
+      const result = status === "complete" ? "passed" : status === "failed" ? "auto-failed" : null;
+      if (!result) continue;
+      const row = asHistoryRow(docRow, result);
+      if (row) byId.set(row.id, row);
+    }
+    for (const docRow of duplicateRows) {
+      const status = String(docRow.autoOcrStatus || docRow.status || "").toLowerCase();
+      if (status !== "duplicate") continue;
+      const row = asHistoryRow(docRow, "duplicate");
+      if (row) byId.set(row.id, row);
+    }
+    return [...byId.values()].sort((a, b) => b.date.getTime() - a.date.getTime());
+  }, [duplicateRows, unassignedRows, vouchers]);
+  const transactionDates = useMemo(() => historyRows.map((row) => row.date), [historyRows]);
+  const selectedRows = useMemo(() => historyRows.filter((row) => startOfDay(row.date).getTime() === selectedDay.getTime()), [historyRows, selectedDay]);
+  const passedCount = selectedRows.filter((row) => row.result === "passed").length;
+  const duplicateCount = selectedRows.filter((row) => row.result === "duplicate").length;
+  const failedCount = selectedRows.filter((row) => row.result === "auto-failed").length;
+  const successRate = selectedRows.length ? `${((passedCount / selectedRows.length) * 100).toFixed(1)}%` : "0%";
+  const visibleHistoryRows = historyFilter === "all" ? selectedRows : selectedRows.filter((row) => row.result === historyFilter);
+  const dateLabel = (date: Date) => dateSystem === "AD" ? formatDate(date) : formatDateBS(date);
+  const selectDay = (date: Date) => {
+    setSelectedDay(startOfDay(date));
+    setHistoryFilter("all");
+    setCalendarOpen(false);
+  };
+  const moveDay = (delta: -1 | 1) => {
+    const next = startOfDay(addDays(selectedDay, delta));
+    if (next <= startOfDay(new Date())) {
+      setSelectedDay(next);
+      setHistoryFilter("all");
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[88vh] w-[min(96vw,68rem)] max-w-[68rem] flex-col overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b border-blue-300 bg-blue-100 px-4 py-3 text-left dark:border-blue-800 dark:bg-blue-950">
+          <DialogTitle>OCR History</DialogTitle>
+          <DialogDescription>Auto OCR results grouped by the day each action completed.</DialogDescription>
+        </DialogHeader>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" size="icon" className="h-8 w-8" aria-label="Previous day" onClick={() => moveDay(-1)}><ChevronLeft className="h-4 w-4" /></Button>
+            {dateSystem === "BS" && <BsDatePicker valueAD={selectedDay} onChangeAD={(date) => date && selectDay(date as Date)} isRange={false} transactionDates={transactionDates} className="h-8 min-h-8 max-h-8" />}
+            {(dateSystem === "AD" || dateSystem === "Both") && (
+              <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                <PopoverTrigger asChild><Button type="button" variant="outline" size="sm" className="h-8"><CalendarIcon className="mr-1.5 h-4 w-4" />{dateLabel(selectedDay)}</Button></PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start"><AdCalendar valueAD={selectedDay} isRange={false} onSelect={selectDay} transactionDates={transactionDates} /></PopoverContent>
+              </Popover>
+            )}
+            <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => selectDay(new Date())}>Today</Button>
+            <Button type="button" variant="outline" size="icon" className="h-8 w-8" aria-label="Next day" disabled={selectedDay.getTime() >= startOfDay(new Date()).getTime()} onClick={() => moveDay(1)}><ChevronRight className="h-4 w-4" /></Button>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <Button type="button" variant="outline" aria-pressed={historyFilter === "all"} onClick={() => setHistoryFilter("all")} className={cn("h-auto justify-between rounded-lg border-emerald-300 bg-emerald-50 p-3 text-left text-sm text-foreground hover:bg-emerald-100 dark:bg-emerald-950/30", historyFilter === "all" && "ring-2 ring-emerald-500")}><span className="font-semibold">All</span><span className="font-bold tabular-nums">{selectedRows.length}</span></Button>
+            <Button type="button" variant="outline" aria-pressed={historyFilter === "duplicate"} onClick={() => setHistoryFilter("duplicate")} className={cn("h-auto justify-between rounded-lg border-amber-300 bg-amber-50 p-3 text-left text-sm text-foreground hover:bg-amber-100 dark:bg-amber-950/30", historyFilter === "duplicate" && "ring-2 ring-amber-500")}><span className="font-semibold">Moved to Duplicate</span><span className="font-bold tabular-nums">{duplicateCount}</span></Button>
+            <Button type="button" variant="outline" aria-pressed={historyFilter === "auto-failed"} onClick={() => setHistoryFilter("auto-failed")} className={cn("h-auto justify-between rounded-lg border-rose-300 bg-rose-50 p-3 text-left text-sm text-foreground hover:bg-rose-100 dark:bg-rose-950/30", historyFilter === "auto-failed" && "ring-2 ring-rose-500")}><span className="font-semibold">Moved to Auto failed</span><span className="font-bold tabular-nums">{failedCount}</span></Button>
+            <Button type="button" variant="outline" aria-pressed={historyFilter === "passed"} onClick={() => setHistoryFilter("passed")} title="Show successful OCR transactions" className={cn("h-auto justify-between rounded-lg border-blue-300 bg-blue-50 p-3 text-left text-sm text-foreground hover:bg-blue-100 dark:bg-blue-950/30", historyFilter === "passed" && "ring-2 ring-blue-500")}><span className="font-semibold">Success Rate</span><span className="font-bold tabular-nums">{successRate}</span></Button>
+          </div>
+          <div className="min-h-0 overflow-auto rounded-lg border border-slate-300">
+            <table className="w-full min-w-[48rem] border-collapse text-left text-sm">
+              <thead className="sticky top-0 z-[1] bg-slate-200 text-slate-900"><tr>{["Date / Time", "Result", "File", "Voucher", "OCR", "Details"].map((label) => <th key={label} className="border-b border-slate-400 px-2 py-2 font-semibold">{label}</th>)}</tr></thead>
+              <tbody>
+                {visibleHistoryRows.map((row) => (
+                  <tr key={`${row.result}:${row.id}`} className="border-b border-slate-200 last:border-0">
+                    <td className="whitespace-nowrap px-2 py-2">{dateLabel(row.date)} <span className="text-xs text-muted-foreground">{format(row.date, "h:mm a")}</span></td>
+                    <td className="whitespace-nowrap px-2 py-2 font-medium">{row.result === "passed" ? "Trxn passed" : row.result === "duplicate" ? "Moved to Duplicate" : "Moved to Auto failed"}</td>
+                    <td className="max-w-56 truncate px-2 py-2" title={row.name}>{row.name}</td>
+                    <td className="whitespace-nowrap px-2 py-2">{row.voucherNumber}</td>
+                    <td className="whitespace-nowrap px-2 py-2">{row.provider}</td>
+                    <td className="max-w-72 truncate px-2 py-2" title={row.details}>{row.details || "—"}</td>
+                  </tr>
+                ))}
+                {!loading && visibleHistoryRows.length === 0 ? <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">No OCR history for this filter and date.</td></tr> : null}
+                {loading && visibleHistoryRows.length === 0 ? <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">Loading OCR history…</td></tr> : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <DialogFooter className="shrink-0 border-t border-blue-200 px-4 py-2"><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Close</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -843,7 +1525,7 @@ function GalleryCollapsedFooterBar({
 }
 
 // --- Sub-Component: Company Files Tab ---
-function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTabChange }: { previewColumns: string | number, onColumnsChange: (columns: string | number) => void, onEditVoucher: (voucher: any) => void, onTabChange: (tab: "company-files" | "unassigned" | "duplicate" | "auto-failed") => void }) {
+function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTabChange, tabCounts, showAvatarsOnly, onShowAvatarsOnlyChange }: { previewColumns: string | number, onColumnsChange: (columns: number | string) => void, onEditVoucher: (voucher: any) => void, onTabChange: (tab: "company-files" | "runner-entry" | "unassigned" | "duplicate" | "auto-failed") => void, tabCounts?: GalleryTabCounts, showAvatarsOnly: boolean, onShowAvatarsOnlyChange: (show: boolean) => void }) {
   const isMobile = useIsMobile();
   const { vouchers, loading, journalAccountNames, processedParties, processedPartiesForSelection, processedStaff, processedAccounts, processedItems, expenseAccounts, processedTaxes, userNames: vouchersUserNames } = useVouchers();
   const { dateSystem, formatDate, formatDateBS } = useDate();
@@ -869,7 +1551,6 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
   const [voucherNumberSearch, setVoucherNumberSearch] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string | "all">("all");
   const [selectedAccountType, setSelectedAccountType] = useState<string>("all");
-  const [showAvatarsOnly, setShowAvatarsOnly] = useState(false);
   /** Neela footer card: arrow se filters slide up/down — zyada grid dikhe mobile par */
   const [companyFooterExpanded, setCompanyFooterExpanded] = useState(true);
   // Desktop hover: refresh ke baad pehle false jab tak PDF prewarm na ho; phir localStorage (default on)
@@ -902,6 +1583,61 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
 
   const [companyFilesPerPage, setCompanyFilesPerPage] = useState(DEFAULT_GALLERY_FILES_PER_PAGE);
   const [companyFilesPage, setCompanyFilesPage] = useState(1);
+  const [editingCompanyAttachmentKey, setEditingCompanyAttachmentKey] = useState<string | null>(null);
+  const [companyAttachmentNameDraft, setCompanyAttachmentNameDraft] = useState("");
+  const [savingCompanyAttachmentKey, setSavingCompanyAttachmentKey] = useState<string | null>(null);
+  const companyRenameInFlightRef = useRef(false);
+  const companyRenameCancelledRef = useRef(false);
+
+  const saveCompanyAttachmentName = async (item: any, url: string, fileIndex: number, originalName: string, requestedName: string) => {
+    if (companyRenameInFlightRef.current || !companyId || !item?.id) return;
+    const { extension } = splitGalleryFileName(originalName);
+    const enteredBase = requestedName.trim();
+    if (!enteredBase) {
+      setEditingCompanyAttachmentKey(null);
+      return;
+    }
+    const baseName = extension && enteredBase.toLowerCase().endsWith(extension.toLowerCase())
+      ? enteredBase.slice(0, -extension.length).trim()
+      : enteredBase;
+    if (!baseName) {
+      setEditingCompanyAttachmentKey(null);
+      return;
+    }
+    const newName = `${baseName}${extension}`;
+    if (baseName === splitGalleryFileName(originalName).baseName) {
+      setEditingCompanyAttachmentKey(null);
+      return;
+    }
+
+    companyRenameInFlightRef.current = true;
+    const key = `${item.id}:${fileIndex}`;
+    setSavingCompanyAttachmentKey(key);
+    try {
+      const nextFiles: any[] = Array.isArray(item.files)
+        ? item.files.map((entry: any) => entry && typeof entry === "object" ? { ...entry } : entry)
+        : [];
+      const atIndex = nextFiles[fileIndex];
+      let metaIndex = atIndex && typeof atIndex === "object" && (atIndex.url === url || atIndex.downloadUrl === url)
+        ? fileIndex
+        : nextFiles.findIndex((entry) => entry && typeof entry === "object" && (entry.url === url || entry.downloadUrl === url));
+      if (metaIndex < 0 && atIndex && typeof atIndex === "object") metaIndex = fileIndex;
+      if (metaIndex < 0) {
+        nextFiles.push({ url, name: newName });
+      } else {
+        nextFiles[metaIndex] = { ...(nextFiles[metaIndex] as Record<string, unknown>), url, name: newName };
+      }
+      await patchVoucherFields(String(companyId), String(item.id), { files: nextFiles });
+      setEditingCompanyAttachmentKey(null);
+      toast.success("File renamed successfully");
+    } catch (error) {
+      console.error("Error renaming company attachment:", error);
+      toast.error("Failed to rename file");
+    } finally {
+      companyRenameInFlightRef.current = false;
+      setSavingCompanyAttachmentKey(null);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -1065,7 +1801,11 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
   }, [processedParties, processedStaff, processedAccounts]);
 
   const displayItems = useMemo(() => {
-      let itemsToFilter = showAvatarsOnly ? avatarFiles.map(a => ({...a, fileUrls: [a.url], voucherNumber: a.name, type: a.type, isAvatar: true })) : vouchers.filter(v => Array.isArray(v.fileUrls) && v.fileUrls.length > 0);
+      let itemsToFilter = showAvatarsOnly
+        ? avatarFiles.map(a => ({ ...a, fileUrls: [a.url], voucherNumber: a.name, type: a.type, isAvatar: true }))
+        : vouchers
+            .map((voucher) => ({ ...voucher, fileUrls: getVoucherAttachmentUrlsForUi(voucher) }))
+            .filter((voucher) => voucher.fileUrls.length > 0);
       // Apply common filters
       if (selectedUserId !== 'all') {
         itemsToFilter = itemsToFilter.filter(item => {
@@ -1094,7 +1834,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
          * User ne date pill khud badla ho to uska intent respect karo (fallback nahi).
          */
         const wouldBeEmpty = filtered.length === 0;
-        const companyHasFiles = vouchers.some((v) => Array.isArray(v.fileUrls) && v.fileUrls.length > 0);
+        const companyHasFiles = vouchers.some((v) => getVoucherAttachmentUrlsForUi(v).length > 0);
         if (wouldBeEmpty && companyHasFiles && !dateRangeUserTouchedRef.current && !selectedEntityId.includes("-") && selectedVoucherTypes.includes('all') && selectedUserId === 'all') {
           // no-op: itemsToFilter unchanged (all dates)
         } else {
@@ -1150,7 +1890,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
     if (dateRangeUserTouchedRef.current) return false;
     if (!dateRange?.from) return false;
     if (voucherNumberSearch.trim()) return false;
-    const base = vouchers.filter((v) => Array.isArray(v.fileUrls) && v.fileUrls.length > 0);
+    const base = vouchers.filter((v) => getVoucherAttachmentUrlsForUi(v).length > 0);
     if (base.length === 0) return false;
     const fromDate = startOfDay(dateRange.from);
     const toDate = dateRange.to ? endOfDay(dateRange.to) : endOfDay(fromDate);
@@ -1163,7 +1903,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
 
 
   const allFilesCount = useMemo(() => {
-    return vouchers.reduce((acc, v) => acc + (v.fileUrls?.length || 0), 0);
+    return vouchers.reduce((acc, v) => acc + getVoucherAttachmentUrlsForUi(v).length, 0);
   }, [vouchers]);
 
   const filteredFilesCount = useMemo(() => {
@@ -1332,7 +2072,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
       setDateRange(undefined);
       setSelectedUserId('all');
       setSelectedAccountType('all');
-      setShowAvatarsOnly(false);
+      onShowAvatarsOnlyChange(false);
   };
 
   // Pehli baar jo default 30-day range load hoti hai usse match = "no filter"; tabhi Clear All chhupa rahein
@@ -1375,9 +2115,9 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
           {paginatedCompanyRows.map(({ item, url, fileIndex: index }) => {
               const attachMeta = getVoucherAttachmentMeta(item, url, index, companyId);
               const formatCaption = companyGalleryFormatCaption(url, attachMeta, pendingLocalLabelsByRef);
-              const cleanFileName = getCleanName(
-                attachMeta.sourceFileName || url.split("/").pop()?.split("?")[0] || ""
-              );
+              const rawFileName = attachMeta.sourceFileName || url.split("/").pop()?.split("?")[0] || "";
+              const cleanFileName = getCleanName(rawFileName);
+              const companyAttachmentKey = `${item.id}:${index}`;
               const voucherDate = item.date?.toDate ? item.date.toDate() : new Date();
               const effectiveUserId = item.userId || (item as any).createdBy || (item as any).createdByUserId || (item as any).changedBy;
               const userName = (effectiveUserId && userNames[effectiveUserId]) || 'Unknown User';
@@ -1458,9 +2198,56 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                               </DropdownMenu>
                             )}
                          </div>
-                         <p className="pl-gallery-tile-caption w-full max-w-full min-w-0 truncate px-0.5 text-center text-[10px] text-muted-foreground" style={{ width: `${tileSize}px` }}>
-                            {cleanFileName}
-                         </p>
+                         {!item.isAvatar && editingCompanyAttachmentKey === companyAttachmentKey ? (
+                           <Input
+                             autoFocus
+                             value={companyAttachmentNameDraft}
+                             disabled={savingCompanyAttachmentKey === companyAttachmentKey}
+                             onChange={(e) => setCompanyAttachmentNameDraft(e.target.value)}
+                             onFocus={(e) => e.currentTarget.select()}
+                             onClick={(e) => e.stopPropagation()}
+                             onBlur={(e) => {
+                               if (companyRenameCancelledRef.current) {
+                                 companyRenameCancelledRef.current = false;
+                                 return;
+                               }
+                               void saveCompanyAttachmentName(item, url, index, rawFileName, e.currentTarget.value);
+                             }}
+                             onKeyDown={(e) => {
+                               if (e.key === "Enter") {
+                                 e.preventDefault();
+                                 void saveCompanyAttachmentName(item, url, index, rawFileName, e.currentTarget.value);
+                               } else if (e.key === "Escape") {
+                                 e.preventDefault();
+                                 companyRenameCancelledRef.current = true;
+                                 setEditingCompanyAttachmentKey(null);
+                               }
+                             }}
+                             aria-label={`Rename ${cleanFileName} without extension`}
+                             title="Type a new name; the file extension is kept"
+                             className="h-6 min-w-0 rounded px-1 text-center text-[10px]"
+                             style={{ width: `${tileSize}px` }}
+                           />
+                         ) : item.isAvatar ? (
+                           <p className="pl-gallery-tile-caption w-full max-w-full min-w-0 truncate px-0.5 text-center text-[10px] text-muted-foreground" style={{ width: `${tileSize}px` }}>
+                             {cleanFileName}
+                           </p>
+                         ) : (
+                           <button
+                             type="button"
+                             className="pl-gallery-tile-caption w-full max-w-full min-w-0 truncate border-0 bg-transparent px-0.5 text-center text-[10px] text-muted-foreground hover:text-foreground hover:underline"
+                             style={{ width: `${tileSize}px` }}
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               if (companyRenameInFlightRef.current) return;
+                               setCompanyAttachmentNameDraft(splitGalleryFileName(cleanFileName, true).baseName);
+                               setEditingCompanyAttachmentKey(companyAttachmentKey);
+                             }}
+                             title={`Click to rename ${cleanFileName}`}
+                           >
+                             {cleanFileName}
+                           </button>
+                         )}
                       </div>
               );
 
@@ -1476,7 +2263,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
               }
 
               return (
-                <Tooltip key={`${item.id}-${index}`} open={hoverPreviewActive ? undefined : false}>
+                <Tooltip key={`${item.id}-${index}`} open={hoverPreviewActive && editingCompanyAttachmentKey !== companyAttachmentKey ? undefined : false}>
                     <TooltipTrigger asChild>
                       {tileEl}
                     </TooltipTrigger>
@@ -1596,11 +2383,11 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
               </div>
               <Button
                 variant={showAvatarsOnly ? "secondary" : "outline"}
-                onClick={() => setShowAvatarsOnly(!showAvatarsOnly)}
+                onClick={() => onShowAvatarsOnlyChange(!showAvatarsOnly)}
                 className="h-8 shrink-0 px-2.5 text-xs"
               >
                 <UserCircle className="mr-1.5 h-3.5 w-3.5" />
-                Avatars
+                {showAvatarsOnly ? "Voucher" : "Avatars"}
               </Button>
               {mounted && (
                 <BsDatePicker valueAD={dateRange} onChangeAD={handleCompanyDateRangeChange as any} className="h-8 min-h-8 shrink-0 px-2 text-xs" />
@@ -1849,11 +2636,11 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
               <div className={cn("flex flex-wrap items-center gap-[5px]", isMobile && "flex w-full min-w-0 flex-row flex-nowrap items-center gap-[5px]")}>
                 <Button
                   variant={showAvatarsOnly ? "secondary" : "outline"}
-                  onClick={() => setShowAvatarsOnly(!showAvatarsOnly)}
+                  onClick={() => onShowAvatarsOnlyChange(!showAvatarsOnly)}
                   className={cn("h-8 shrink-0 px-2.5 text-xs")}
                 >
                   {!isMobile && <UserCircle className="mr-1.5 h-3.5 w-3.5" />}
-                  Avatars
+                  {showAvatarsOnly ? "Voucher" : "Avatars"}
                 </Button>
                 {mounted &&
                   (isMobile ? (
@@ -1967,7 +2754,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                   </div>
                 )}
                 <div className={cn(isMobile ? "col-span-2 grid grid-cols-2 gap-[5px]" : "col-span-2 flex items-center justify-end gap-1.5")}>
-                  <GalleryTabSwitch activeTab="company-files" onTabChange={onTabChange} inline />
+                  <GalleryTabSwitch activeTab="company-files" onTabChange={onTabChange} tabCounts={tabCounts} companyAvatarsOnly={showAvatarsOnly} onShowCompanyVouchers={() => onShowAvatarsOnlyChange(false)} inline />
                 </div>
               </>
             ) : (
@@ -2007,6 +2794,7 @@ type UnassignedFile = {
     status: 'FREE' | 'LOCKED' | 'ASSIGNED';
     isDeleted?: boolean;
     deleted?: boolean;
+    _pbHardDeleted?: boolean;
     /* --- Duplicate Documents tab metadata (duplicate guard "Move to Duplicate" se aata hai) --- */
     duplicateOfVoucherId?: string;
     duplicateOfVoucherNumber?: string;
@@ -2019,15 +2807,28 @@ type UnassignedFile = {
     duplicateMatchedAmount?: number;
     duplicateMatchedDateText?: string;
     duplicateIncomingRef?: string;
+    movedFromUnassignedId?: string;
     movedAtMs?: number;
     autoOcrStatus?: "queued" | "processing" | "failed" | "complete" | "restored";
     autoOcrError?: string;
     autoOcrProvider?: string;
     autoOcrVoucherId?: string;
     autoOcrFinishedAt?: unknown;
+    autoOcrStartedAtMs?: number;
+    autoOcrDeviceId?: string;
+    autoOcrUserId?: string;
     updatedAt?: unknown;
     autoPostIgnoreDuplicateOnce?: boolean;
     restoredFromDuplicateAtMs?: number;
+}
+
+type GalleryDocumentListMode = "unassigned" | "duplicate" | "auto-failed";
+
+function isGalleryDocumentVisibleInMode(file: Partial<UnassignedFile>, mode: GalleryDocumentListMode): boolean {
+  if (file.isDeleted || file.deleted || file._pbHardDeleted || file.status === "ASSIGNED") return false;
+  if (mode === "auto-failed") return file.autoOcrStatus === "failed";
+  if (mode === "unassigned") return file.autoOcrStatus !== "failed";
+  return true;
 }
 
 type UploadingFile = {
@@ -2039,6 +2840,7 @@ type UploadingFile = {
 const LOCAL_UNASSIGNED_DOCS_KEY = "local_unassigned_documents_v1";
 /** Duplicate Documents tab (device-only company) — alag key, warna delete/reload par mix ho jate. */
 const LOCAL_DUPLICATE_DOCS_KEY = "local_duplicate_documents_v1";
+const GALLERY_LOCAL_DOC_COUNTS_CHANGED_EVENT = "pl:gallery:local-doc-counts-changed";
 
 /**
  * Edit time for unassigned-document writes, on the server clock. The other device's mirror merge
@@ -2133,6 +2935,7 @@ function writeLocalUnassignedDocs(value: UnassignedFile[], kind: "unassigned" | 
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(localGalleryDocsKey(kind), JSON.stringify(value));
+    window.dispatchEvent(new Event(GALLERY_LOCAL_DOC_COUNTS_CHANGED_EVENT));
   } catch {
     // Local cache write failure ignore; UI still keeps runtime state.
   }
@@ -2173,7 +2976,7 @@ export function firestoreCompanyIdForGallery(
 }
 
 // --- Sub-Component: Unassigned Documents Tab ---
-function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, previewColumns, onColumnsChange, onTabChange }: { mode?: "unassigned" | "duplicate" | "auto-failed"; handleAttachToVoucher: any; previewColumns: string | number; onColumnsChange: (columns: string | number) => void; onTabChange: (tab: "company-files" | "unassigned" | "duplicate" | "auto-failed") => void; }) {
+function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, previewColumns, onColumnsChange, onTabChange, tabCounts }: { mode?: "unassigned" | "duplicate" | "auto-failed"; handleAttachToVoucher: any; previewColumns: string | number; onColumnsChange: (columns: string | number) => void; onTabChange: (tab: "company-files" | "runner-entry" | "unassigned" | "duplicate" | "auto-failed") => void; tabCounts?: GalleryTabCounts; }) {
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const { company, companyId } = useCompany();
@@ -2218,7 +3021,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
   const [isBatchDeleting, setIsBatchDeleting] = useState(false);
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
-  const [fileToRename, setFileToRename] = useState<UnassignedFile | null>(null);
+  const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
   /** Duplicate tab: "Why Duplicate" panel — kis file ka reason dikha rahe hain. */
   const [whyDuplicateFile, setWhyDuplicateFile] = useState<UnassignedFile | null>(null);
   const [postAnywayBusy, setPostAnywayBusy] = useState(false);
@@ -2234,6 +3037,8 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
   const [editorRequest, setEditorRequest] = useState<{ key: number; urlOrBlob: string | Blob } | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
+  const renameSaveInFlightRef = useRef(false);
+  const renameCancelledRef = useRef(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [selectedUploaderId, setSelectedUploaderId] = useState<string | "all">("all");
   const [unassignedFilesPerPage, setUnassignedFilesPerPage] = useState(DEFAULT_GALLERY_FILES_PER_PAGE);
@@ -2334,7 +3139,8 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
   useEffect(() => {
     if (!companyId || unassignedUseDeviceLocalOnly === null) return;
     if (unassignedUseDeviceLocalOnly) {
-      setUnassignedFiles(readLocalUnassignedDocs(localKind));
+      const localFiles = readLocalUnassignedDocs(localKind);
+      setUnassignedFiles(localFiles.filter((file) => isGalleryDocumentVisibleInMode(file, mode)));
       return;
     }
     const fsId = firestoreCompanyIdForGallery(companyId, company);
@@ -2342,8 +3148,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
     const unsubscribe = onSnapshot(q, (snapshot) => {
         const filesData = snapshot.docs
           .map(d => ({id: d.id, ...d.data()}) as UnassignedFile)
-          .filter(f => !f.isDeleted && !f.deleted && (f.status as any) !== 'ASSIGNED')
-          .filter(f => mode === "auto-failed" ? f.autoOcrStatus === "failed" : mode === "unassigned" ? f.autoOcrStatus !== "failed" : true);
+          .filter((file) => isGalleryDocumentVisibleInMode(file, mode));
         setUnassignedFiles(filesData);
     });
     return () => unsubscribe();
@@ -2621,11 +3426,6 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
     return () => window.removeEventListener("pl:gallery:select-all", onSelectAll);
   }, []);
   
-  useEffect(() => {
-    if (fileToRename) setRenameValue(getCleanName(fileToRename.name));
-    else setRenameValue("");
-  }, [fileToRename]);
-
   /**
    * "Edit file" (3-dot menu → existing image): camera editor me existing photo khulti hai;
    * Save hone par (a) local-only company ke liye localStorage entry replace, aur
@@ -2734,35 +3534,61 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
     [companyId, user, company]
   );
 
-  const handleRenameFile = async () => {    if (!fileToRename || !companyId || !renameValue.trim()) return;
-    const newName = renameValue.trim();
-    if (newName === getCleanName(fileToRename.name)) {
-      setFileToRename(null);
+  const startInlineRename = (file: UnassignedFile, visibleName: string) => {
+    if (renameSaveInFlightRef.current) return;
+    const { baseName } = splitGalleryFileName(visibleName, true);
+    setRenameValue(baseName);
+    setRenamingFileId(file.id);
+  };
+
+  const handleRenameFile = async (target: UnassignedFile, requestedName: string) => {
+    if (renameSaveInFlightRef.current || !companyId) return;
+    const { extension } = splitGalleryFileName(target.name);
+    const enteredBase = requestedName.trim();
+    if (!enteredBase) {
+      setRenamingFileId(null);
       return;
     }
+    // Keep the original extension fixed. The inline editor only exposes the base name.
+    const baseName = extension && enteredBase.toLowerCase().endsWith(extension.toLowerCase())
+      ? enteredBase.slice(0, -extension.length).trim()
+      : enteredBase;
+    if (!baseName) {
+      setRenamingFileId(null);
+      return;
+    }
+    const newName = `${baseName}${extension}`;
+    if (baseName === splitGalleryFileName(target.name).baseName) {
+      setRenamingFileId(null);
+      return;
+    }
+    renameSaveInFlightRef.current = true;
     setIsRenaming(true);
     try {
       const deviceOnly =
         isLocalOnlyMode() && !(await canSyncCompanyToServer(companyId));
       if (deviceOnly) {
         const next = readLocalUnassignedDocs(localKind).map((f) =>
-          f.id === fileToRename.id ? { ...f, name: newName } : f
+          f.id === target.id ? { ...f, name: newName } : f
         );
         writeLocalUnassignedDocs(next, localKind);
         setUnassignedFiles(next);
         toast.success("File renamed successfully");
-        setFileToRename(null);
+        setRenamingFileId(null);
         return;
       }
       const fsId = firestoreCompanyIdForGallery(companyId, company);
       const editedAt = await galleryEditTimestamp();
-      await updateDoc(doc(firestore, `companies/${fsId}/unassigned_documents`, fileToRename.id), { name: newName, lastEditedAt: editedAt, updatedAt: editedAt });
+      const collectionName = mode === "duplicate" ? "duplicate_documents" : "unassigned_documents";
+      await updateDoc(doc(firestore, `companies/${fsId}/${collectionName}`, target.id), { name: newName, lastEditedAt: editedAt, updatedAt: editedAt });
+      setUnassignedFiles((prev) => prev.map((file) => file.id === target.id ? { ...file, name: newName } : file));
       toast.success("File renamed successfully");
-      setFileToRename(null);
+      setRenamingFileId(null);
     } catch (error) {
       console.error("Error renaming file:", error);
       toast.error("Failed to rename file");
     } finally {
+      renameSaveInFlightRef.current = false;
       setIsRenaming(false);
     }
   };
@@ -2857,8 +3683,20 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
     return mode === "unassigned" ? sortGalleryFiles(filtered, gallerySortOrder) : filtered;
   }, [unassignedFiles, selectedUploaderId, dateRange, mode, gallerySortOrder]);
 
+  // Keep every document visible in the grid, but only number documents that the
+  // local runner can actually pick. Previously completed files kept a visible
+  // No. 1 badge while the runner correctly skipped them and opened No. 2 instead.
   const orderedQueueFiles = useMemo(
-    () => orderGalleryQueue(filteredFiles, queueSequence, Number(previewColumns) || 2, gallerySortOrder),
+    () => orderGalleryQueue(
+      filteredFiles.filter((file) =>
+        !!file.url && file.status !== "ASSIGNED" && file.status !== "LOCKED" &&
+        file.isDeleted !== true && file.deleted !== true &&
+        ((file.autoOcrStatus !== "complete" && file.autoOcrStatus !== "failed") || Number(file.restoredFromDuplicateAtMs || 0) > 0)
+      ),
+      queueSequence,
+      Number(previewColumns) || 2,
+      gallerySortOrder
+    ),
     [filteredFiles, queueSequence, previewColumns, gallerySortOrder]
   );
   const queuePositionByFileId = useMemo(
@@ -2867,12 +3705,18 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
   );
 
   // Keep the local Auto post runner on the exact same order used for the visible card numbers.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (mode !== "unassigned" || !queueSettingsCompanyId || typeof window === "undefined") return;
     window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-queue-order", {
-      detail: { companyId: queueSettingsCompanyId, fileIds: orderedQueueFiles.map((file) => file.id) },
+      detail: {
+        companyId: queueSettingsCompanyId,
+        fileIds: orderedQueueFiles.map((file) => file.id),
+        queueSequence,
+        gallerySortOrder,
+        columns: Number(previewColumns) || 2,
+      },
     }));
-  }, [mode, orderedQueueFiles, queueSettingsCompanyId]);
+  }, [mode, orderedQueueFiles, queueSettingsCompanyId, queueSequence, gallerySortOrder, previewColumns]);
 
   const handleFailedFileAction = async (action: "restore" | "retry") => {
     if (!whyFailedFile || !companyId || failedFileActionBusy) return;
@@ -2892,7 +3736,21 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
       autoOcrStartedAtMs: 0,
       autoOcrDeviceId: "",
       autoOcrUserId: "",
+      autoOcrVoucherId: "",
       autoOcrRestoredAt: null,
+      autoPostIgnoreDuplicateOnce: false,
+      restoredFromDuplicateAtMs: 0,
+      duplicateOfVoucherId: "",
+      duplicateOfVoucherNumber: "",
+      duplicateReason: "",
+      duplicateReasons: [],
+      duplicateOcrNarration: "",
+      duplicateMatchedNarration: "",
+      duplicateMatchedRef: "",
+      duplicateMatchedAmount: 0,
+      duplicateMatchedDateText: "",
+      duplicateIncomingRef: "",
+      movedAtMs: 0,
       updatedAt: serverTimestamp(),
     };
     setFailedFileActionBusy(true);
@@ -2918,9 +3776,11 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
       setWhyFailedFile(null);
       setRestoreAllFailedFiles(false);
       if (action === "retry") {
+        onTabChange("unassigned");
         window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-retry", { detail: { companyId: firestoreCompanyIdForGallery(companyId, company), fileIds: [...ids] } }));
         toast.success(`${targets.length} file${targets.length === 1 ? "" : "s"} queued for retry`);
       } else {
+        onTabChange("unassigned");
         toast.success(`${targets.length} file${targets.length === 1 ? "" : "s"} restored to Unassigned Documents`);
       }
     } catch (error) {
@@ -2939,8 +3799,10 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
     try {
       const localOnly = unassignedUseDeviceLocalOnly === true;
       const actionTime = new Date();
+      const restoredId = String(file.movedFromUnassignedId || file.id);
       const restored: UnassignedFile = {
         ...file,
+        id: restoredId,
         status: "FREE",
         isDeleted: false,
         deleted: false,
@@ -2964,12 +3826,12 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
       };
       if (localOnly) {
         const duplicateDocs = readLocalUnassignedDocs("duplicate").filter((item) => item.id !== file.id);
-        const unassignedDocs = readLocalUnassignedDocs("unassigned").filter((item) => item.id !== file.id);
+        const unassignedDocs = readLocalUnassignedDocs("unassigned").filter((item) => item.id !== restoredId);
         writeLocalUnassignedDocs(duplicateDocs, "duplicate");
         writeLocalUnassignedDocs([restored, ...unassignedDocs], "unassigned");
       } else {
         const fsId = firestoreCompanyIdForGallery(companyId, company);
-        const unassignedRef = doc(firestore, `companies/${fsId}/unassigned_documents`, file.id);
+        const unassignedRef = doc(firestore, `companies/${fsId}/unassigned_documents`, restoredId);
         const duplicateRef = doc(firestore, `companies/${fsId}/duplicate_documents`, file.id);
         await setDoc(unassignedRef, restored, { merge: true });
         try {
@@ -2989,7 +3851,8 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
       setWhyDuplicateFile(null);
       if (autoPostEnabled) {
         const fsId = firestoreCompanyIdForGallery(companyId, company);
-        window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-retry", { detail: { companyId: fsId, fileIds: [file.id] } }));
+        onTabChange("unassigned");
+        window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-retry", { detail: { companyId: fsId, fileIds: [restoredId] } }));
         toast.success("Auto runner started", { description: "This document is queued to scan and post. Its duplicate warning will be skipped once." });
       } else {
         const matchedVoucher = vouchers.find((voucher) => String(voucher?.id || "") === String(file.duplicateOfVoucherId || ""));
@@ -2998,6 +3861,82 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
       }
     } catch (error) {
       toast.error("Could not post this duplicate document", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setPostAnywayBusy(false);
+    }
+  };
+
+  const handleRestoreDuplicateToUnassigned = async () => {
+    const file = whyDuplicateFile;
+    if (!file || mode !== "duplicate" || !companyId || postAnywayBusy) return;
+    setPostAnywayBusy(true);
+    try {
+      const localOnly = unassignedUseDeviceLocalOnly === true;
+      const actionTime = new Date();
+      const restoredId = String(file.movedFromUnassignedId || file.id);
+      const restored: UnassignedFile = {
+        ...file,
+        id: restoredId,
+        status: "FREE",
+        isDeleted: false,
+        deleted: false,
+        // Reset the moved document into the normal gallery queue. Its card rank
+        // decides when the runner picks it; no special retry order is imposed.
+        autoOcrStatus: "queued",
+        autoOcrError: "",
+        autoOcrProvider: "",
+        autoOcrFinishedAt: null,
+        autoOcrStartedAtMs: 0,
+        autoOcrDeviceId: "",
+        autoOcrUserId: "",
+        autoOcrVoucherId: "",
+        autoPostIgnoreDuplicateOnce: false,
+        restoredFromDuplicateAtMs: 0,
+        duplicateOfVoucherId: "",
+        duplicateOfVoucherNumber: "",
+        duplicateReasons: [],
+        duplicateOcrNarration: "",
+        duplicateMatchedNarration: "",
+        duplicateMatchedRef: "",
+        duplicateMatchedAmount: 0,
+        duplicateMatchedDateText: "",
+        duplicateIncomingRef: "",
+        movedFromUnassignedId: "",
+        movedAtMs: 0,
+        updatedAt: localOnly ? actionTime as any : serverTimestamp() as any,
+      };
+      if (localOnly) {
+        const duplicates = readLocalUnassignedDocs("duplicate").filter((item) => item.id !== file.id);
+        const unassigned = readLocalUnassignedDocs("unassigned").filter((item) => item.id !== restoredId);
+        writeLocalUnassignedDocs(duplicates, "duplicate");
+        writeLocalUnassignedDocs([restored, ...unassigned], "unassigned");
+      } else {
+        const fsId = firestoreCompanyIdForGallery(companyId, company);
+        const unassignedRef = doc(firestore, `companies/${fsId}/unassigned_documents`, restoredId);
+        const duplicateRef = doc(firestore, `companies/${fsId}/duplicate_documents`, file.id);
+        await setDoc(unassignedRef, restored, { merge: true });
+        try {
+          await deleteDoc(duplicateRef);
+        } catch (error) {
+          await deleteDoc(unassignedRef).catch(() => {});
+          throw error;
+        }
+      }
+      setUnassignedFiles((current) => current.filter((item) => item.id !== file.id));
+      setSelectedFileIds((current) => {
+        const next = new Set(current);
+        next.delete(file.id);
+        return next;
+      });
+      setWhyDuplicateFile(null);
+      onTabChange("unassigned");
+      toast.success("Restored to Unassigned Documents", {
+        description: "The file is reset into the selected gallery queue and will be processed in its numbered order when the runner is active.",
+      });
+    } catch (error) {
+      toast.error("Could not restore the duplicate document", {
         description: error instanceof Error ? error.message : "Please try again.",
       });
     } finally {
@@ -3350,7 +4289,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
                         <DropdownMenuItem
                           onSelect={() => {
                             markDropdownMenuAction();
-                            setFileToRename(file);
+                            startInlineRename(file, cleanFileName);
                           }}
                         >
                           <Edit className="h-3.5 w-3.5 mr-2" /> Rename
@@ -3390,7 +4329,48 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                  <p className="pl-gallery-tile-caption w-full min-w-0 max-w-full truncate px-0.5 text-center text-[10px] text-muted-foreground">{cleanFileName}</p>
+                  {renamingFileId === file.id ? (
+                    <Input
+                      autoFocus
+                      value={renameValue}
+                      disabled={isRenaming}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onClick={(e) => e.stopPropagation()}
+                      onBlur={(e) => {
+                        if (renameCancelledRef.current) {
+                          renameCancelledRef.current = false;
+                          return;
+                        }
+                        void handleRenameFile(file, e.currentTarget.value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void handleRenameFile(file, e.currentTarget.value);
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          renameCancelledRef.current = true;
+                          setRenamingFileId(null);
+                        }
+                      }}
+                      aria-label={`Rename ${cleanFileName} without extension`}
+                      title="Type a new name; the file extension is kept"
+                      className="h-6 w-full min-w-0 rounded px-1 text-center text-[10px]"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="pl-gallery-tile-caption w-full min-w-0 max-w-full truncate border-0 bg-transparent px-0.5 text-center text-[10px] text-muted-foreground hover:text-foreground hover:underline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startInlineRename(file, cleanFileName);
+                      }}
+                      title={`Click to rename ${cleanFileName}`}
+                    >
+                      {cleanFileName}
+                    </button>
+                  )}
                 </div>
               );
 
@@ -3743,6 +4723,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
             <GalleryTabSwitch
               activeTab={mode === "auto-failed" ? "auto-failed" : "unassigned"}
               onTabChange={onTabChange}
+              tabCounts={tabCounts}
               inline
               className="col-span-2 hidden max-sm:grid max-sm:w-full max-sm:grid-cols-2 max-sm:gap-[5px]"
             />
@@ -3824,29 +4805,6 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
             </AlertDialogContent>
         </AlertDialog>
 
-        <Dialog open={!!fileToRename} onOpenChange={(open) => !open && setFileToRename(null)}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Rename file</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <Input
-                value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
-                placeholder="Enter new file name"
-                onKeyDown={(e) => e.key === "Enter" && handleRenameFile()}
-              />
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setFileToRename(null)} disabled={isRenaming}>Cancel</Button>
-              <Button onClick={handleRenameFile} disabled={isRenaming || !renameValue.trim()}>
-                {isRenaming ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Save
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
         {/* Duplicate tab: OCR-generated duplicate reason panel — tile hover button se khulta hai. */}
         <Dialog open={!!whyDuplicateFile} onOpenChange={(open) => !open && setWhyDuplicateFile(null)}>
           <DialogContent className="sm:max-w-lg">
@@ -3866,6 +4824,25 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
               const ocrText = String(f.duplicateOcrNarration || "").trim();
               const matchedText = String(f.duplicateMatchedNarration || "").trim();
               const sameText = Boolean(ocrText && matchedText && ocrText === matchedText);
+              const matchedVoucher = vouchers.find((voucher) => String(voucher?.id || "") === String(f.duplicateOfVoucherId || "")) as Record<string, any> | undefined;
+              const voucherMeta = [matchedVoucher?.metadata, matchedVoucher?.metaData, matchedVoucher?.meta].find((value) => value && typeof value === "object") as Record<string, any> | undefined;
+              const savedVoucherNumber = String(
+                matchedVoucher?.voucherNumber ?? matchedVoucher?.voucherNo ?? matchedVoucher?.voucher_no ?? matchedVoucher?.number ??
+                voucherMeta?.voucherNumber ?? voucherMeta?.voucherNo ?? voucherMeta?.voucher_no ?? voucherMeta?.number ?? ""
+              ).trim();
+              const recordedVoucherNumber = String(f.duplicateOfVoucherNumber || "").trim();
+              const recordedLooksLikeDocId = recordedVoucherNumber === String(f.duplicateOfVoucherId || "") || /^voucher_[a-z0-9]+_[a-f0-9-]+$/i.test(recordedVoucherNumber);
+              const matchedVoucherNumber = savedVoucherNumber || (recordedVoucherNumber && !recordedLooksLikeDocId ? recordedVoucherNumber : "");
+              const matchedUserId = String(matchedVoucher?.userId || matchedVoucher?.createdBy || matchedVoucher?.createdByUserId || matchedVoucher?.changedBy || voucherMeta?.userId || voucherMeta?.createdBy || "").trim();
+              const matchedUserName = String(matchedVoucher?.userDisplayName || matchedVoucher?.userName || matchedVoucher?.createdByName || matchedVoucher?.changedByName || voucherMeta?.userDisplayName || voucherMeta?.userName || voucherMeta?.createdByName || userNames[matchedUserId] || "").trim();
+              const uploadedByName = String(userNames[f.uploadedBy] || getEmailSuffixLabel(f.uploadedBy) || "").trim();
+              const matchedDateValue = matchedVoucher?.date;
+              const matchedDate = matchedDateValue instanceof Date
+                ? formatDate(matchedDateValue)
+                : typeof matchedDateValue?.toDate === "function"
+                  ? formatDate(matchedDateValue.toDate())
+                  : String(matchedDateValue || "").slice(0, 10);
+              const matchedAmount = Number(f.duplicateMatchedAmount || matchedVoucher?.amount || matchedVoucher?.total || 0);
               return (
                 <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1 text-xs">
                   <div className="rounded-md border border-blue-200 bg-blue-50/70 p-2 dark:border-blue-900 dark:bg-blue-950/40">
@@ -3873,12 +4850,14 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
                       Already exists as
                     </p>
                     <p className="mt-0.5 text-sm font-semibold text-blue-900 dark:text-blue-100">
-                      {f.duplicateOfVoucherNumber ? `Voucher ${f.duplicateOfVoucherNumber}` : "An existing voucher"}
+                      {matchedVoucherNumber ? `Voucher ${matchedVoucherNumber}` : "An existing voucher (number unavailable)"}
                     </p>
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
-                      {f.duplicateMatchedDateText ? <span>Date: {f.duplicateMatchedDateText}</span> : null}
-                      {f.duplicateMatchedAmount ? <span>Amount: {f.duplicateMatchedAmount}</span> : null}
+                      {f.duplicateMatchedDateText || matchedDate ? <span>Date: {f.duplicateMatchedDateText || matchedDate}</span> : null}
+                      {matchedAmount ? <span>Amount: {matchedAmount}</span> : null}
                       {f.duplicateMatchedRef ? <span>Ref: {f.duplicateMatchedRef}</span> : null}
+                      {matchedUserName ? <span>Voucher user: {matchedUserName}</span> : null}
+                      {uploadedByName ? <span>File uploaded by: {uploadedByName}</span> : null}
                     </div>
                   </div>
 
@@ -3947,8 +4926,13 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
             })()}
             <DialogFooter>
               {mode === "duplicate" ? (
-                <Button type="button" onClick={() => void handlePostAnyway()} disabled={postAnywayBusy || autoPostEnabled === null}>
+                <Button type="button" variant="outline" onClick={() => void handleRestoreDuplicateToUnassigned()} disabled={postAnywayBusy}>
                   {postAnywayBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+                  Restore to Unassigned
+                </Button>
+              ) : null}
+              {mode === "duplicate" ? (
+                <Button type="button" onClick={() => void handlePostAnyway()} disabled={postAnywayBusy || autoPostEnabled === null}>
                   Post anyway
                 </Button>
               ) : null}
@@ -4021,7 +5005,7 @@ function formatAutoOcrProvider(provider: string): string {
   if (provider === "gemini") return "Selected engine: Pocket AI (Gemini)";
   if (provider === "google") return "Selected engine: Google OCR";
   if (provider === "azure") return "Selected engine: Azure OCR";
-  if (provider === "local-tesseract") return "Legacy scan label: local-tesseract (older records may not reflect the engine selected in settings).";
+  if (provider === "local-tesseract") return "Legacy OCR provider record";
   return `Selected engine: ${provider}`;
 }
 
@@ -4032,24 +5016,106 @@ function getCleanName(name: string) {
   return name;
 }
 
-const GALLERY_TABS = ['company-files', 'unassigned', 'duplicate', 'auto-failed'] as const;
+function splitGalleryFileName(name: string, alreadyClean = false): { baseName: string; extension: string } {
+  const visibleName = (alreadyClean ? String(name || "") : getCleanName(String(name || ""))).trim();
+  const dot = visibleName.lastIndexOf(".");
+  if (dot > 0 && dot < visibleName.length - 1) {
+    return { baseName: visibleName.slice(0, dot), extension: visibleName.slice(dot) };
+  }
+  return { baseName: visibleName, extension: "" };
+}
+
+const GALLERY_TABS = ['company-files', 'runner-entry', 'unassigned', 'duplicate', 'auto-failed'] as const;
 type GalleryTab = (typeof GALLERY_TABS)[number];
 
 // Default unassigned when no tab in URL (app open, sidebar nav); refresh keeps current tab from URL
 function getTabFromSearchParams(searchParams: URLSearchParams): GalleryTab {
   const tab = searchParams.get('tab');
   if (tab === 'company-files') return 'company-files';
+  if (tab === 'runner-entry') return 'runner-entry';
   if (tab === 'duplicate') return 'duplicate';
   if (tab === 'auto-failed') return 'auto-failed';
   return 'unassigned';
 }
 
 export function GalleryPageContent() {
+  const isMobile = useIsMobile();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { user } = useAuth();
+  const { company, companyId } = useCompany();
+  const { vouchers } = useVouchers();
+  const tabCounts = useMemo<GalleryTabCounts>(() => ({
+    unassigned: 0,
+    duplicate: 0,
+    autoFailed: 0,
+    companyFiles: (vouchers || []).reduce((count, voucher: any) => count + getVoucherAttachmentUrlsForUi(voucher).length, 0),
+  }), [vouchers]);
+  const [documentTabCounts, setDocumentTabCounts] = useState({ unassigned: 0, duplicate: 0, autoFailed: 0 });
+  const [ocrHistoryOpen, setOcrHistoryOpen] = useState(false);
+  const galleryFirestoreCompanyId = firestoreCompanyIdForGallery(companyId, company as any);
+  const galleryLocalOnly = isLocalOnlyMode();
+  useEffect(() => {
+    const syncLocalCounts = () => {
+      const unassignedDocs = readLocalUnassignedDocs("unassigned");
+      setDocumentTabCounts({
+        unassigned: unassignedDocs.filter((file) => isGalleryDocumentVisibleInMode(file, "unassigned")).length,
+        autoFailed: unassignedDocs.filter((file) => isGalleryDocumentVisibleInMode(file, "auto-failed")).length,
+        duplicate: readLocalUnassignedDocs("duplicate").filter((file) => isGalleryDocumentVisibleInMode(file, "duplicate")).length,
+      });
+    };
+    if (galleryLocalOnly) {
+      syncLocalCounts();
+      window.addEventListener(GALLERY_LOCAL_DOC_COUNTS_CHANGED_EVENT, syncLocalCounts);
+      window.addEventListener("storage", syncLocalCounts);
+      return () => {
+        window.removeEventListener(GALLERY_LOCAL_DOC_COUNTS_CHANGED_EVENT, syncLocalCounts);
+        window.removeEventListener("storage", syncLocalCounts);
+      };
+    }
+    if (!galleryFirestoreCompanyId) {
+      setDocumentTabCounts({ unassigned: 0, duplicate: 0, autoFailed: 0 });
+      return;
+    }
+    // Match the Gallery tab's ordered snapshot: Firestore/PocketBase ordered reads exclude
+    // legacy rows without uploadedAt, so the button must count the same visible document set.
+    const unassignedQuery = query(
+      collection(firestore, `companies/${galleryFirestoreCompanyId}/unassigned_documents`),
+      orderBy("uploadedAt", "desc"),
+    );
+    const duplicateQuery = query(
+      collection(firestore, `companies/${galleryFirestoreCompanyId}/duplicate_documents`),
+      orderBy("uploadedAt", "desc"),
+    );
+    const stopUnassigned = onSnapshot(unassignedQuery, (snapshot) => {
+      let unassigned = 0;
+      let autoFailed = 0;
+      snapshot.docs.forEach((document) => {
+        const file = { id: document.id, ...document.data() } as UnassignedFile;
+        if (isGalleryDocumentVisibleInMode(file, "unassigned")) unassigned += 1;
+        if (isGalleryDocumentVisibleInMode(file, "auto-failed")) autoFailed += 1;
+      });
+      setDocumentTabCounts((previous) => ({ ...previous, unassigned, autoFailed }));
+    }, (error) => console.warn("[Gallery] Could not count unassigned documents", error));
+    const stopDuplicate = onSnapshot(duplicateQuery, (snapshot) => {
+      const duplicate = snapshot.docs.reduce((count, document) => {
+        const file = { id: document.id, ...document.data() } as UnassignedFile;
+        return count + (isGalleryDocumentVisibleInMode(file, "duplicate") ? 1 : 0);
+      }, 0);
+      setDocumentTabCounts((previous) => ({ ...previous, duplicate }));
+    }, (error) => console.warn("[Gallery] Could not count duplicate documents", error));
+    return () => {
+      stopUnassigned();
+      stopDuplicate();
+    };
+  }, [galleryFirestoreCompanyId, galleryLocalOnly]);
+  const galleryTabCounts = useMemo<GalleryTabCounts>(() => ({ ...tabCounts, ...documentTabCounts }), [tabCounts, documentTabCounts]);
   const [activeTab, setActiveTab] = useState<GalleryTab>(() => getTabFromSearchParams(searchParams));
+  const [companyAvatarsOnly, setCompanyAvatarsOnly] = useState(false);
+  useEffect(() => {
+    if (activeTab !== "company-files") setCompanyAvatarsOnly(false);
+  }, [activeTab]);
   /** Selection state of the Unassigned tab, mirrored here for the tab-bar Select All button. */
   const [gallerySelection, setGallerySelection] = useState({ total: 0, selected: 0, allSelected: false });
   useEffect(() => {
@@ -4067,6 +5133,7 @@ export function GalleryPageContent() {
   const [previewColumns, setPreviewColumns] = useState<string | number>(GALLERY_DEFAULT_COLUMNS);
   const [galleryColumnsPreferenceLoadedFor, setGalleryColumnsPreferenceLoadedFor] = useState("");
   const [galleryTopRibbonExpanded, setGalleryTopRibbonExpanded] = useState(true);
+  const [pageExpanded, setPageExpanded] = useState(false);
   const [isVoucherOpen, setIsVoucherOpen] = useState(false);
   const [defaultVoucherData, setDefaultVoucherData] = useState<any>(null);
 
@@ -4078,6 +5145,22 @@ export function GalleryPageContent() {
     const openSettings = () => setAutoOcrSettingsOpen(true);
     window.addEventListener("pl:gallery:auto-ocr-settings", openSettings);
     return () => window.removeEventListener("pl:gallery:auto-ocr-settings", openSettings);
+  }, []);
+
+  useEffect(() => {
+    const openHistory = () => setOcrHistoryOpen(true);
+    window.addEventListener("pl:gallery:open-ocr-history", openHistory);
+    return () => window.removeEventListener("pl:gallery:open-ocr-history", openHistory);
+  }, []);
+
+  useEffect(() => {
+    const main = document.querySelector("main");
+    setPageExpanded(main?.hasAttribute("data-page-expanded") ?? false);
+    const onPageExpandedChange = (event: Event) => {
+      setPageExpanded((event as CustomEvent<{ expanded?: boolean }>).detail?.expanded === true);
+    };
+    window.addEventListener("pl:dashboard:page-expanded-change", onPageExpandedChange);
+    return () => window.removeEventListener("pl:dashboard:page-expanded-change", onPageExpandedChange);
   }, []);
 
   // Keep URL in sync with tab so refresh keeps same tab
@@ -4213,14 +5296,23 @@ export function GalleryPageContent() {
   }, [isEditVoucherOpen]);
 
   return (
-    <div data-pl-gallery-grey-shell className="box-border flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-neutral-800 px-0 pt-2 pb-0 dark:bg-zinc-900 sm:px-2 sm:pt-3 sm:pb-4 md:px-3 md:pt-4 md:pb-5">
+    <div
+      data-pl-gallery-grey-shell
+      className={cn(
+        "box-border flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-neutral-800 px-0 pt-2 pb-0 dark:bg-zinc-900 sm:px-2 sm:pt-3 sm:pb-4 md:px-3 md:pt-4 md:pb-5",
+        activeTab === "runner-entry" && "!p-0 !bg-transparent",
+      )}
+    >
        {/* Mobile: tab buttons footer card ke andar. PC: yahan top me.
            PC: "Add File" tab pills ke baayein (mobile me ye footer card ke andar hi rehta hai). */}
-       <div className="hidden shrink-0 sm:block sm:w-full">
+       <div className={cn("shrink-0 w-full", isMobile ? "hidden" : "block")}>
         {galleryTopRibbonExpanded ? (
-          <div className="relative min-w-0 w-full rounded-xl border border-slate-300/80 bg-background/95 p-2 shadow-md">
-            <div className={cn("flex min-w-0 flex-wrap items-center gap-[10px]", activeTab === "unassigned" ? "pr-[145px]" : "pr-10")}>
-              <GalleryTabSwitch activeTab={activeTab} onTabChange={setGalleryTab} className="min-w-0 flex-1 !w-auto justify-start" />
+          <div className={cn(
+            "relative min-w-0 w-full rounded-xl border border-slate-300/80 bg-background/95 p-2 shadow-md",
+            activeTab === "runner-entry" && "!rounded-none border-b-0 pb-2",
+          )}>
+            <div className={cn("flex min-w-0 flex-wrap items-center gap-[10px]", activeTab === "unassigned" ? "pr-[190px]" : "pr-[82px]")}>
+              <GalleryTabSwitch activeTab={activeTab} onTabChange={setGalleryTab} tabCounts={galleryTabCounts} companyAvatarsOnly={companyAvatarsOnly} onShowCompanyVouchers={() => setCompanyAvatarsOnly(false)} className="min-w-0 flex-1 !w-auto justify-start" />
               <GalleryRunnerControls />
             </div>
             <div className="absolute right-2 top-2 z-[2] flex shrink-0 items-center gap-1.5">
@@ -4235,6 +5327,18 @@ export function GalleryPageContent() {
                   Add File
                 </Button>
               )}
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 shrink-0 rounded-full border-blue-400/70 bg-background/90"
+                aria-expanded={pageExpanded}
+                aria-label={pageExpanded ? "Exit expanded page view" : "Expand page"}
+                title={pageExpanded ? "Exit expanded view" : "Expand page"}
+                onClick={() => window.dispatchEvent(new CustomEvent("pl:dashboard:toggle-page-expanded"))}
+              >
+                {pageExpanded ? <Shrink className="h-4 w-4" aria-hidden /> : <Expand className="h-4 w-4" aria-hidden />}
+              </Button>
               <Button
                 type="button"
                 variant="outline"
@@ -4270,16 +5374,19 @@ export function GalleryPageContent() {
         {/* min-h-0: dashboard main ke andar sirf yahan grid scroll, tab row + footer card fixed */}
         <div data-pl-gallery-tab-body className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {activeTab === 'company-files' && (
-           <CompanyFilesTab previewColumns={previewColumns} onColumnsChange={setPreviewColumns} onEditVoucher={handleEditVoucherClick} onTabChange={setGalleryTab} />
+           <CompanyFilesTab previewColumns={previewColumns} onColumnsChange={setPreviewColumns} onEditVoucher={handleEditVoucherClick} onTabChange={setGalleryTab} tabCounts={galleryTabCounts} showAvatarsOnly={companyAvatarsOnly} onShowAvatarsOnlyChange={setCompanyAvatarsOnly} />
+        )}
+        {activeTab === 'runner-entry' && (
+           <RecentOcrTransactionsTab onEditVoucher={handleEditVoucherClick} />
         )}
         {activeTab === 'unassigned' && (
-           <UnassignedDocumentsTab handleAttachToVoucher={handleAttachToVoucher} previewColumns={previewColumns} onColumnsChange={setPreviewColumns} onTabChange={setGalleryTab} />
+           <UnassignedDocumentsTab handleAttachToVoucher={handleAttachToVoucher} previewColumns={previewColumns} onColumnsChange={setPreviewColumns} onTabChange={setGalleryTab} tabCounts={galleryTabCounts} />
         )}
         {activeTab === 'duplicate' && (
-           <UnassignedDocumentsTab mode="duplicate" handleAttachToVoucher={handleAttachToVoucher} previewColumns={previewColumns} onColumnsChange={setPreviewColumns} onTabChange={setGalleryTab} />
+           <UnassignedDocumentsTab mode="duplicate" handleAttachToVoucher={handleAttachToVoucher} previewColumns={previewColumns} onColumnsChange={setPreviewColumns} onTabChange={setGalleryTab} tabCounts={galleryTabCounts} />
         )}
         {activeTab === 'auto-failed' && (
-           <UnassignedDocumentsTab mode="auto-failed" handleAttachToVoucher={handleAttachToVoucher} previewColumns={previewColumns} onColumnsChange={setPreviewColumns} onTabChange={setGalleryTab} />
+           <UnassignedDocumentsTab mode="auto-failed" handleAttachToVoucher={handleAttachToVoucher} previewColumns={previewColumns} onColumnsChange={setPreviewColumns} onTabChange={setGalleryTab} tabCounts={galleryTabCounts} />
         )}
         </div>
 
@@ -4293,6 +5400,7 @@ export function GalleryPageContent() {
           onVoucherAction={() => {}} 
         />
         <GalleryAutoOcrSettingsDialog open={autoOcrSettingsOpen} onOpenChange={setAutoOcrSettingsOpen} />
+        <GalleryOcrHistoryDialog open={ocrHistoryOpen} onOpenChange={setOcrHistoryOpen} />
         {/* Dialog for editing existing voucher */}
         <AddVoucherDialog 
           isOpen={isEditVoucherOpen}

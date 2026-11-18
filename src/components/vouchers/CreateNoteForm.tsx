@@ -20,6 +20,8 @@ import { assertCan, assertCanPerformBackdated, assertCanEdit, PermissionDeniedEr
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { useLiveVoucherDuplicate } from "@/hooks/useLiveVoucherDuplicate";
+import { useNotifyRunnerFormChanged } from "@/hooks/useNotifyRunnerFormChanged";
+import { useMoveAttachedFilesToDuplicate } from "@/hooks/useMoveAttachedFilesToDuplicate";
 import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
 import type { CandidateVoucher } from "@/lib/voucherDuplicateGuard";
 import { Input } from "@/components/ui/input";
@@ -241,6 +243,7 @@ export function CreateNoteForm({
     defaultValues: getInitialFormValues(voucher?.context || initialContext, voucher?.entityId || initialEntityId),
     mode: "onChange", // Run validation on change so Save enables when form is valid
   });
+  useNotifyRunnerFormChanged({ form, companyId });
 
   /* OCR (local, generic adapter): first attachment -> validated autofill; Auto Post saves UNAPPROVED. */
   const ocr = useVoucherOcr({
@@ -281,6 +284,16 @@ export function CreateNoteForm({
     },
     !voucher?.id && !!selectedContext && !!form.getValues("entityId") && duplicateTitle.trim().length >= 2
   );
+
+  const { moveBusy: dupMoveBusy, moveToDuplicate, canAutoMove } = useMoveAttachedFilesToDuplicate({
+    files,
+    companyId,
+    company,
+    onClosed: () => {
+      dismissLiveDuplicate();
+      onVoucherAction?.("cancelled", false, savedVoucherId ?? undefined);
+    },
+  });
   // Page-level Add Note dialogs always use compact footer for consistent button set.
   const isEntityAddNoteDialog = !voucher?.id && Boolean(initialContext) && Boolean(initialEntityId);
   // Compact footer removes Delete/History/Save&New/Save&Print and keeps only Cancel/Save/Save&Approve.
@@ -890,7 +903,7 @@ export function CreateNoteForm({
   return (
     <>
     <Form {...form}>
-      <form onSubmit={(e) => handleFormSubmit(e)} className="h-full flex flex-col min-w-0 w-full max-w-full">
+      <form onSubmit={(e) => handleFormSubmit(e)} className="h-full flex-1 min-h-0 flex flex-col min-w-0 w-full max-w-full">
         <ScrollArea className={cn("flex-1 min-h-0 overflow-x-hidden min-w-0 w-full", !isMobile && "pr-6 -mr-6")}>
             <div className={cn(
               "space-y-4 min-w-0 max-w-full w-full overflow-x-hidden [&>*]:min-w-0 [&>*]:max-w-full",
@@ -1220,7 +1233,7 @@ export function CreateNoteForm({
               </div>
             </div>
         </ScrollArea>
-        <div className={cn("border-t min-w-0 max-w-full overflow-x-hidden shrink-0 bg-background", isMobile ? "mt-[3px] pt-[3px] pb-[max(6px,env(safe-area-inset-bottom,0px))]" : "pt-4 flex flex-col md:flex-row items-stretch md:items-center gap-4", !isMobile && useCompactFooter && "justify-end", !isMobile && !useCompactFooter && "justify-between")}>
+        <div className={cn("border-t min-w-0 max-w-full overflow-x-hidden shrink-0 bg-background", isMobile ? "mt-[3px] pt-[3px] pb-[max(6px,env(safe-area-inset-bottom,0px))]" : "mt-auto w-full bg-slate-100 pt-4 flex flex-col md:flex-row items-stretch md:items-center gap-4", !isMobile && useCompactFooter && "justify-end", !isMobile && !useCompactFooter && "justify-between")}>
             {isMobile ? (
               <div className={cn("grid grid-cols-3 gap-2 w-full min-w-0", VOUCHER_BUTTONS_CLASS)}>
                 {!useCompactFooter && (
@@ -1289,7 +1302,7 @@ export function CreateNoteForm({
             )}
         </div>
       </form>
-      {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} /> : null}
+      {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} onMoveToDuplicate={() => void moveToDuplicate(liveDuplicate)} moveBusy={dupMoveBusy} canAutoMove={canAutoMove} /> : null}
     </Form>
 
     <CreatePartyDialog

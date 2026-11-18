@@ -35,6 +35,10 @@ export type RunOcrOptions = {
   signal?: AbortSignal;
   /** AI engine: document type whose taught rules the server adds (aiDocTypeForVoucher). */
   aiDocType?: string;
+  /** AI engine: Gemini model for this scan only (fail popup "Read with this model"); empty = company model. */
+  aiModel?: string;
+  /** Called with the Gemini model being requested (override, else company active model) for the progress toast. */
+  onAiModel?: (model: string) => void;
 };
 
 const CLOUD_MAX_BYTES = 3.8 * 1024 * 1024;
@@ -72,7 +76,7 @@ async function cloudJpeg(file: Blob, mime: string): Promise<{ b64: string; w: nu
 }
 
 /** Online OCR attempt (Google or Azure). Returns null with a reason when unavailable or failed. */
-type EngineTry = { raw: OcrRawResult | null; note: string; /** The provider / server error behind a failed read. */ cause?: unknown };
+type EngineTry = { raw: OcrRawResult | null; note: string; /** The provider / server error behind a failed read. */ cause?: unknown; /** Cloud provider that was tried (Auto mode names the real one). */ provider?: "google" | "azure" };
 
 /**
  * Single-engine failure with machine-readable detail for the Gallery runner (pl:gallery:auto-post-scan-failed):
@@ -88,13 +92,19 @@ export class OcrRunError extends Error {
   status: number;
   retryAfter: number;
   engine: "gemini" | "google" | "azure" | "online";
-  constructor(message: string, code: string, status: number, retryAfter: number, engine: OcrRunError["engine"]) {
+  /** Server failure reason from Gemini (OcrAiError.reason); "" = none. */
+  reason: string;
+  /** Gemini model that failed / second model the server tried ("" = unknown). */
+  model = "";
+  fallbackModel = "";
+  constructor(message: string, code: string, status: number, retryAfter: number, engine: OcrRunError["engine"], reason = "") {
     super(message);
     this.name = "OcrRunError";
     this.code = code;
     this.status = status;
     this.retryAfter = retryAfter;
     this.engine = engine;
+    this.reason = reason;
   }
 }
 
@@ -102,7 +112,12 @@ const UNREADABLE_RX = /returned no text|returned nothing readable|could not read
 function runErrorOf(t: EngineTry, fallback: string, engine: OcrRunError["engine"]): OcrRunError {
   const msg = t.note || fallback;
   const c = t.cause;
-  if (c instanceof OcrAiError) return new OcrRunError(msg, c.code, c.status, c.retryAfter, engine);
+  if (c instanceof OcrAiError) {
+    const r = new OcrRunError(msg, c.code, c.status, c.retryAfter, engine, c.reason);
+    r.model = c.model;
+    r.fallbackModel = c.fallbackModel;
+    return r;
+  }
   if (isOcrCloudError(c)) {
     const retry = Number((c as { retryAfter?: unknown }).retryAfter);
     return new OcrRunError(msg, c.code, c.status, Number.isFinite(retry) && retry > 0 ? Math.round(retry) : 0, engine);
@@ -133,8 +148,9 @@ async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promi
   const providerAvailable = status.isAdmin
     ? status.keys ? !!status.keys[requestedProvider] : !!status.hasKey && status.provider === requestedProvider
     : !!status.canUse && (status.providers ? status.providers.includes(requestedProvider) : status.provider === requestedProvider);
-  if (!status.canUse || !providerAvailable) return { raw: null, note: !status.companyEnabled ? "Online OCR off for this company" : !providerAvailable ? `no ${requestedProvider} OCR key or access` : "Online OCR not allowed for this user" };
-  if (opts.signal?.aborted) return { raw: null, note: "Online OCR cancelled" };
+  const triedProvider: "google" | "azure" = requestedProvider === "azure" ? "azure" : "google";
+  if (!status.canUse || !providerAvailable) return { raw: null, provider: triedProvider, note: !status.companyEnabled ? "Online OCR off for this company" : !providerAvailable ? `no ${requestedProvider} OCR key or access` : "Online OCR not allowed for this user" };
+  if (opts.signal?.aborted) return { raw: null, provider: triedProvider, note: "Online OCR cancelled" };
   const ac = new AbortController();
   let t: ReturnType<typeof setTimeout> | undefined;
   const onOuterAbort = () => ac.abort();
@@ -159,14 +175,14 @@ async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promi
       new Promise<never>((_, rej) => { t = setTimeout(() => { ac.abort(); rej(new Error("Online OCR timed out")); }, CLOUD_TIMEOUT_MS); }),
     ]);
     const text = String(res?.text ?? "");
-    if (text.replace(/\s+/g, "").length < 8) return { raw: null, note: "Online OCR returned no text" };
+    if (text.replace(/\s+/g, "").length < 8) return { raw: null, provider: triedProvider, note: "Online OCR returned no text" };
     const fromVision = res && typeof res === "object" && "provider" in (res as object) ? (res as { provider?: unknown }).provider : undefined;
     const provider = fromVision === "azure" || fromVision === "google" ? fromVision : status.provider === "azure" ? "azure" as const : "google" as const;
     return { raw: rawFromCloudText(text, { engine: provider, note: `JPEG ${img.w}x${img.h} ${img.kb} KB`, pageWidth: img.w, pageHeight: img.h, pages: res?.pages }), note: "" };
   } catch (e) {
     const code = ocrCloudErrorCode(e);
     if (process.env.NODE_ENV !== "production") console.warn("[OCR] Online OCR failed", code, e);
-    return { raw: null, note: `Online OCR failed (${code})`, cause: e };
+    return { raw: null, provider: triedProvider, note: `Online OCR failed (${code})`, cause: e };
   } finally {
     if (t) clearTimeout(t);
     opts.signal?.removeEventListener("abort", onOuterAbort);
@@ -187,6 +203,8 @@ async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<
   if (!status.serverOcrEnabled) return { raw: null, note: "AI OCR off on server" };
   if (!status.canUse) return { raw: null, note: !status.companyEnabled ? "AI: online OCR off for this company" : status.isAdmin && status.companyHasKey === false ? "AI: no Gemini key saved" : "AI: not allowed for this user or no Gemini key" };
   if (opts.signal?.aborted) return { raw: null, note: "AI: cancelled" };
+  const reqModel = opts.aiModel || status.modelActive || "";
+  if (reqModel) { try { opts.onAiModel?.(reqModel); } catch { /* UI only */ } }
   const ac = new AbortController();
   let t: ReturnType<typeof setTimeout> | undefined;
   /** Caller's Stop / voucher closed cancels the Gemini request too (no wasted quota). */
@@ -199,7 +217,7 @@ async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<
       (async () => {
         recordOcrUsage(opts.companyId, "gemini", "call");
         try {
-          const result = await ocrAiRead({ companyId: opts.companyId, imageBase64: img.b64, mimeType: "image/jpeg", ownCompany: opts.ownCompany, ownAccounts: opts.ownAccounts, docType: opts.aiDocType, translateToEnglish: getOcrPrefs().translateToEnglish || undefined, signal: ac.signal });
+          const result = await ocrAiRead({ companyId: opts.companyId, imageBase64: img.b64, mimeType: "image/jpeg", ownCompany: opts.ownCompany, ownAccounts: opts.ownAccounts, docType: opts.aiDocType, translateToEnglish: getOcrPrefs().translateToEnglish || undefined, model: opts.aiModel || undefined, signal: ac.signal });
           recordOcrUsage(opts.companyId, "gemini", "reply", { prompt: result.usage.promptTokens, output: result.usage.outputTokens });
           return result;
         } catch (error) {
@@ -281,7 +299,8 @@ async function runOcrOnFileInternal(file: Blob, mime: string, opts: RunOcrOption
     const cloud: EngineTry = await tryCloudOcr(file, mime, opts).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})`, cause: e }));
     if (cloud.raw) return cloud.raw;
     if (aborted()) throw new DOMException("OCR cancelled", "AbortError");
-    throw onlyOne(cloud, `${provider === "google" ? "Google" : provider === "azure" ? "Azure" : "Online"} OCR could not read this document`, provider === "google" || provider === "azure" ? provider : "online");
+    const failedProvider = provider === "google" || provider === "azure" ? provider : cloud.provider;
+    throw onlyOne(cloud, `${failedProvider === "google" ? "Google" : failedProvider === "azure" ? "Azure" : "Online"} OCR could not read this document`, failedProvider ?? "online");
   }
 
   // ---- auto: use configured online OCR; keep an unavailable provider visible as an error ----
@@ -289,5 +308,6 @@ async function runOcrOnFileInternal(file: Blob, mime: string, opts: RunOcrOption
   const cloud: EngineTry = await tryCloudOcr(file, mime, opts).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})`, cause: e }));
   if (cloud.raw) return cloud.raw;
   if (aborted()) throw new DOMException("OCR cancelled", "AbortError");
-  throw onlyOne(cloud, "Online OCR could not read this document", "online");
+  /* Auto mode: name the provider that really ran / failed (Azure vs Google Vision) for the fail popup and runner. */
+  throw onlyOne(cloud, "Online OCR could not read this document", cloud.provider ?? "online");
 }

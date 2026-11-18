@@ -14,6 +14,8 @@ import { ArrowDown, ArrowUp, CheckCircle, FileText, History, Link2, Loader2, Plu
 
 import { Button } from "@/components/ui/button";
 import { useLiveVoucherDuplicate } from "@/hooks/useLiveVoucherDuplicate";
+import { useNotifyRunnerFormChanged } from "@/hooks/useNotifyRunnerFormChanged";
+import { useMoveAttachedFilesToDuplicate } from "@/hooks/useMoveAttachedFilesToDuplicate";
 import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
 import type { CandidateVoucher } from "@/lib/voucherDuplicateGuard";
 import { VoucherDeleteConfirmAlertDialog } from "@/components/vouchers/VoucherDeleteConfirmAlertDialog";
@@ -256,6 +258,7 @@ export function CreateAdjustmentForm({
       narration: voucher?.narration || "",
     },
   });
+  useNotifyRunnerFormChanged({ form, companyId });
 
   /* OCR (local, generic adapter): first attachment -> validated autofill; Auto Post saves UNAPPROVED. */
   const ocr = useVoucherOcr({
@@ -476,6 +479,16 @@ export function CreateAdjustmentForm({
     },
     !voucher?.id && !!duplicateDate && Number(watchedAmount) > 0
   );
+
+  const { moveBusy: dupMoveBusy, moveToDuplicate, canAutoMove } = useMoveAttachedFilesToDuplicate({
+    files,
+    companyId,
+    company,
+    onClosed: () => {
+      dismissLiveDuplicate();
+      onVoucherAction?.("cancelled", false, savedVoucherId ?? undefined);
+    },
+  });
   const targetSide = direction === "increase" ? "Dr" : "Cr";
   const adjustmentSide = direction === "increase" ? "Cr" : "Dr";
   const adjustmentBillWiseSide: "debit" | "credit" = direction === "increase" ? "debit" : "credit";
@@ -1110,6 +1123,7 @@ export function CreateAdjustmentForm({
     <>
     <Form {...form}>
       <form onSubmit={(e) => handleFormSubmit(e)} className="flex min-h-0 flex-1 flex-col gap-4">
+        <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded-md border bg-white p-3 text-sm">
             <FormItem>
@@ -1414,9 +1428,10 @@ export function CreateAdjustmentForm({
             )}
           </div>
         )}
+        </div>
         <div className={cn(
           "mt-auto border-t min-w-0 max-w-full overflow-x-hidden shrink-0 bg-background",
-          isMobile ? "pt-[3px] pb-[max(6px,env(safe-area-inset-bottom,0px))]" : "pt-4 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4"
+          isMobile ? "pt-[3px] pb-[max(6px,env(safe-area-inset-bottom,0px))]" : "w-full bg-slate-100 pt-4 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4"
         )}>
           {isMobile ? (
             <div className={cn("grid grid-cols-3 gap-2 w-full", VOUCHER_BUTTONS_CLASS)}>
@@ -1580,7 +1595,7 @@ export function CreateAdjustmentForm({
           )}
         </div>
       </form>
-      {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} /> : null}
+      {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} onMoveToDuplicate={() => void moveToDuplicate(liveDuplicate)} moveBusy={dupMoveBusy} canAutoMove={canAutoMove} /> : null}
       <LinkPaymentToTxnsDialog
         isOpen={!!isLinkDialogOpen && adjustmentLinkContext?.kind === "party"}
         onOpenChange={(open) => {

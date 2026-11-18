@@ -25,7 +25,8 @@ ok(missing.length === 0, "every app field exists in the server schema", missing)
 const extra = props.filter((k) => !clientKeys.includes(k));
 ok(extra.length === 0, "every server schema field is read by the app", extra);
 ok(JSON.stringify([...spec.VOUCHER_SCHEMA.properties.voucher_type.enum].sort()) === JSON.stringify([...AI_VOUCHER_TYPES].sort()), "voucher_type enum identical");
-ok(spec.AI_MAX_LINES === AI_MAX_LINES && spec.VOUCHER_SCHEMA.properties.lines.maxItems === AI_MAX_LINES, "lines cap identical (30)");
+ok(spec.AI_MAX_LINES === AI_MAX_LINES && spec.VOUCHER_SCHEMA.properties.lines.maxItems === undefined, "lines cap identical (30); no maxItems on lines (Gemini HTTP 400)");
+ok(!JSON.stringify(spec.VOUCHER_SCHEMA).includes("maxItems"), "no maxItems anywhere in the Gemini schema (complexity budget -> HTTP 400)");
 const norm = (o: Record<string, { required: readonly string[]; optional: readonly string[]; empty: readonly string[] }>) =>
   JSON.stringify(Object.keys(o).sort().map((k) => [k, [...o[k].required], [...o[k].optional].sort(), [...o[k].empty].sort()]));
 ok(norm(spec.VOUCHER_TYPE_FIELDS) === norm(AI_VOUCHER_TYPE_FIELDS as never), "per-type field lists identical");

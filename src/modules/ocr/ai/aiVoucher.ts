@@ -15,7 +15,7 @@
  */
 import { defaultVoucherDateWindow, resolveBillDate } from "@/lib/ocr/dates";
 import { bestUniqueMatch, namesOf } from "../fuzzy";
-import { matchMasters, partyProof } from "../masterMatch";
+import { matchPartyIdentity } from "../masterMatch";
 import { normalizeName } from "../normalize";
 import { isOcrSelectableParty } from "../types";
 import type { OcrDocType, OcrField, OcrItemLike, OcrLineItem, OcrParsedBill, OcrPartyLike } from "../types";
@@ -119,7 +119,7 @@ export type OcrAiVoucher = {
 export type OcrAiUsage = { promptTokens: number; outputTokens: number; thoughtsTokens: number; totalTokens: number };
 /** Server-side per-type check (ocr_cloud.js validateVoucherByType): required fields missing / fields the type should leave empty. */
 export type OcrAiTypeCheck = { voucher_type: string | null; missing: string[]; unexpected: string[] };
-export type OcrAiResult = { provider: "gemini"; model: string; data: OcrAiVoucher; usage: OcrAiUsage; /** Taught rules the server added to the prompt. */ rulesUsed?: number; typeCheck?: OcrAiTypeCheck | null };
+export type OcrAiResult = { provider: "gemini"; model: string; data: OcrAiVoucher; usage: OcrAiUsage; /** Taught rules the server added to the prompt. */ rulesUsed?: number; typeCheck?: OcrAiTypeCheck | null; /** Server read it with the fallback model (primary was busy). */ fallbackUsed?: boolean; primaryModel?: string };
 
 const DOC_TYPES: readonly OcrAiDocType[] = ["purchase", "sale", "receipt", "payment", "contra", "expense", "other"];
 const DOC_KINDS: readonly OcrAiDocKind[] = ["tax_invoice", "vat_bill", "bank_transfer", "cheque", "deposit_slip", "purchase_order", "receipt", "other"];
@@ -387,7 +387,6 @@ export function parseAmountInWords(raw: string | null | undefined): number | nul
   if (!t0.trim()) return null;
   const digits = t0.replace(/,/g, "").match(/\d+(?:\.\d+)?/g);
   if (digits && digits.length === 1 && !/[a-z]{3,}\s+(?:hundred|thousand|lakh|crore)/.test(t0)) return Number(digits[0]);
-  const [rupeePart, paisaPart] = t0.split(/\b(?:and\s+)?(?:paisa|paise|paisa\.)\b/);
   const parse = (s: string): number | null => {
     const words = s.replace(/[^a-z\s-]/g, " ").replace(/-/g, " ").split(/\s+/).filter(Boolean);
     let total = 0, cur = 0, seen = false;
@@ -400,6 +399,19 @@ export function parseAmountInWords(raw: string | null | undefined): number | nul
     }
     return seen ? total + cur : null;
   };
+  // In common invoice wording, the rupee amount ends with "and <digits> paisa"
+  // (e.g. "... Forty Nine and Three Paisa"). Split before that final conjunction;
+  // otherwise the trailing paisa count is incorrectly included as rupees.
+  const paisaMarker = /\b(?:paisa|paise)\b/.exec(t0);
+  if (paisaMarker?.index != null) {
+    const andIndex = t0.lastIndexOf(" and ", paisaMarker.index);
+    if (andIndex >= 0) {
+      const rupees = parse(t0.slice(0, andIndex));
+      const paisa = parse(t0.slice(andIndex + 5, paisaMarker.index));
+      if (rupees != null && paisa != null) return rupees + paisa / 100;
+    }
+  }
+  const [rupeePart, paisaPart] = t0.split(/\b(?:and\s+)?(?:paisa|paise|paisa\.)\b/);
   const r = parse(rupeePart ?? "");
   if (r == null) return null;
   const p = paisaPart != null ? parse(paisaPart) : 0;
@@ -587,57 +599,28 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
   if (d.payment_mode) bill.paymentMode = ids.paymentMode = d.payment_mode;
   bill.identifiers = ids;
 
-  /* ---- Party match (existing rules: PAN exact, then strict unique name) ---- */
+  /* ---- Party match: compare every identity field read from this bill ---- */
   const pool = ctx.parties.filter(isOcrSelectableParty);
-  const panOf = (p: OcrPartyLike) => [p.pan, p.panNo, p.vatNo].map((x) => String(x ?? "").replace(/\D/g, "")).filter(Boolean);
+  const identity = { name: cp.name, pan, phone: cp.phones[0] ?? null, address: cp.address };
+  const identityMatch = matchPartyIdentity(identity, pool);
   // The text parser can match a party using a nearby phone/PAN even when the printed identifier
   // belongs to the bill's other side (for example, a customer's PAN on a purchase invoice).
-  // When Gemini has read the counter-party name, keep that parser pick only if the same master
-  // is independently supported by the counter-party name/identifiers. Otherwise clear it so
-  // the user gets a create/pick suggestion instead of a silently wrong account.
-  if (cp.name && bill.partyId?.value) {
+  // Keep a parser pick only when it is the same master that passes the field-by-field policy.
+  if (bill.partyId?.value) {
     const parsedParty = pool.find((p) => p.id === bill.partyId!.value);
-    const parsedMatch = parsedParty
-      ? matchMasters(cp.name, [parsedParty], (p) => namesOf(p), (p) =>
-          partyProof(
-            { name: cp.name, pan, phone: cp.phones[0] ?? null, address: cp.address ?? null },
-            { name: p.name, aliasName: p.aliasName, pan: p.pan, panNo: p.panNo, vatNo: p.vatNo, phone: p.phone, mobile: p.mobile, address: (p as { address?: string }).address, billingAddress: (p as { billingAddress?: string }).billingAddress },
-          ),
-        )
-      : null;
-    if (!parsedMatch || parsedMatch.decision !== "auto") {
+    if (!parsedParty || identityMatch.decision !== "auto" || identityMatch.best?.item.id !== parsedParty.id) {
       dbg(`AI Party: cleared parser pick "${parsedParty?.name ?? bill.partyId.value}"; it is not a confident match for counter-party "${cp.name}"`);
       delete bill.partyId;
     }
   }
-  if (pan) {
-    const hits = pool.filter((p) => panOf(p).includes(pan!));
-    if (hits.length === 1) {
-      if (bill.partyId?.value && bill.partyId.value !== hits[0].id) dbg(`AI Party: PAN ${pan} -> "${hits[0].name}" replaces text parser pick`);
-      bill.partyId = f(hits[0].id, "fill", 0.99);
-      dbg(`AI Party: "${hits[0].name}" by PAN ${pan}`);
-    } else if (hits.length > 1) bill.partyId = f("", "flag", 0.5, "Several parties share this PAN");
-  }
-  if (bill.partyId?.status !== "fill" && cp.name) {
-    /* Name 50%+ with proof (alias / PAN / phone / address) fills; name-only 50-90% stays a suggestion;
-     * two plausible masters -> let the user pick. Nothing below 50% is the same party. */
-    const m = matchMasters(cp.name, pool, (p) => namesOf(p), (p) =>
-      partyProof(
-        { name: cp.name, pan, phone: cp.phones[0] ?? null, address: cp.address ?? null },
-        { name: p.name, aliasName: p.aliasName, pan: p.pan, panNo: p.panNo, vatNo: p.vatNo, phone: p.phone, mobile: p.mobile, address: (p as { address?: string }).address, billingAddress: (p as { billingAddress?: string }).billingAddress },
-      ));
-    if (m.decision === "auto" && m.best) {
-      bill.partyId = f(m.best.item.id, "fill", Math.max(m.best.name, 0.9));
-      dbg(`AI Party: "${m.best.item.name}" — ${m.reason}`);
-    } else if (m.decision === "suggest" && m.best) {
-      bill.partyId = f(m.best.item.id, "flag", m.best.name, `Low match ${Math.round(m.best.name * 100)}% — confirm the party`);
-      dbg(`AI Party suggestion "${m.best.item.name}" — ${m.reason}`);
-    } else if (m.decision === "pick" && m.candidates.length) {
-      bill.partyId = f("", "flag", m.candidates[0].name, `${m.candidates.length} parties match "${cp.name}" — pick one`);
-      dbg(`AI Party: ${m.candidates.map((c) => c.item.name).join(" / ")} — ${m.reason}`);
-    } else if (m.decision === "none") {
-      dbg(`AI Party: no master >= 50% for "${cp.name}" (${m.reason})`);
-    }
+  if (identityMatch.decision === "auto" && identityMatch.best) {
+    bill.partyId = f(identityMatch.best.item.id, "fill", identityMatch.best.total);
+    dbg(`AI Party: "${identityMatch.best.item.name}" — ${identityMatch.reason}`);
+  } else if ((identityMatch.decision === "suggest" || identityMatch.decision === "pick") && identityMatch.best) {
+    bill.partyId = f(identityMatch.best.item.id, "flag", identityMatch.best.total, `${identityMatch.reason} — confirm the party`);
+    dbg(`AI Party suggestion "${identityMatch.best.item.name}" — ${identityMatch.reason}`);
+  } else if (identityMatch.decision === "none") {
+    dbg(`AI Party: no existing party passed field checks for "${cp.name ?? "-"}" (${identityMatch.reason})`);
   }
 
   /* ---- Items: qty x rate = amount ---- */

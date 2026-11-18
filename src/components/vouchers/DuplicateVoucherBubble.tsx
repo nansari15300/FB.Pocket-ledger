@@ -12,9 +12,12 @@
  * position `data-dup-anchor="save"` element se live measure hoti hai (scroll/resize par bhi follow).
  */
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { DuplicateMatch } from "@/lib/voucherDuplicateGuard";
+import { useAutoOcrDuplicatePolicy } from "@/hooks/useAutoOcrDuplicatePolicy";
+import { claimDuplicateAutoMove, isDuplicateAutoMoveClaimed } from "@/lib/galleryDuplicateMove";
+import { AUTO_POST_PAUSE_CAUSE_RESOLVED } from "@/components/gallery/autoPostPauseResume";
 
 export const DUP_ANCHOR_ATTR = "data-dup-anchor";
 export const DUP_SAVE_ANCHOR = "save";
@@ -52,6 +55,12 @@ function measure(el: HTMLElement | null, width: number, height: number): Pos {
   return { top, left, placement };
 }
 
+function emitDuplicateCauseResolved() {
+  window.dispatchEvent(new CustomEvent(AUTO_POST_PAUSE_CAUSE_RESOLVED, {
+    detail: { kind: "duplicate" },
+  }));
+}
+
 export function DuplicateVoucherBubble({
   match,
   mode,
@@ -60,6 +69,7 @@ export function DuplicateVoucherBubble({
   onOpen,
   onMoveToDuplicate,
   moveBusy,
+  canAutoMove = false,
 }: {
   match: DuplicateMatch;
   /** `live` = save se pehle ki warning (sirf dismiss), `confirm` = Save roka gaya (Save anyway). */
@@ -71,9 +81,12 @@ export function DuplicateVoucherBubble({
   /** Slip unassigned/attached pool se Duplicate tab me bhejna. */
   onMoveToDuplicate?: () => void;
   moveBusy?: boolean;
+  /** True when an Unassigned/gallery attachment can be moved automatically. */
+  canAutoMove?: boolean;
 }) {
   const [pos, setPos] = useState<Pos>({ top: 0, left: 0, placement: "top" });
   const [box, setBox] = useState<{ w: number; h: number }>({ w: 340, h: 200 });
+  const skipResolveOnUnmountRef = useRef(false);
 
   useLayoutEffect(() => {
     const measureNow = () => {
@@ -100,17 +113,31 @@ export function DuplicateVoucherBubble({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onDismiss();
+      if (e.key === "Escape") { skipResolveOnUnmountRef.current = true; onDismiss(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onDismiss]);
 
+
+  useEffect(() => {
+    return () => {
+      if (skipResolveOnUnmountRef.current) return;
+      if (!findAnchor()) return;
+      emitDuplicateCauseResolved();
+    };
+  }, []);
+  const policy = useAutoOcrDuplicatePolicy();
+  const hideForAutoPolicy = mode === "live" && policy.ready && (
+    policy.duplicateVoucherAction === "save-anyway" ||
+    (policy.duplicateVoucherAction === "move-to-duplicates" && !!canAutoMove && !!onMoveToDuplicate)
+  );
+
   useEffect(() => {
     if (mode !== "live") return;
     const onHandled = (event: Event) => {
       const detail = (event as CustomEvent<{ matchId?: string }>).detail;
-      if (String(detail?.matchId || "") === String(match.id)) onDismiss();
+      if (String(detail?.matchId || "") === String(match.id)) { skipResolveOnUnmountRef.current = true; onDismiss(); }
     };
     window.addEventListener("pl:gallery:auto-post-duplicate-action-completed", onHandled);
     window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-duplicate-detected", {
@@ -126,7 +153,29 @@ export function DuplicateVoucherBubble({
     return () => window.removeEventListener("pl:gallery:auto-post-duplicate-action-completed", onHandled);
   }, [match, mode, onDismiss]);
 
+  useEffect(() => {
+    if (mode !== "live" || !policy.ready) return;
+    if (policy.duplicateVoucherAction === "save-anyway") {
+      skipResolveOnUnmountRef.current = true;
+      onDismiss();
+      return;
+    }
+    if (policy.duplicateVoucherAction !== "move-to-duplicates" || !canAutoMove || !onMoveToDuplicate) return;
+    const timer = window.setTimeout(() => {
+      if (isDuplicateAutoMoveClaimed(match.id)) {
+        skipResolveOnUnmountRef.current = true;
+        onDismiss();
+        return;
+      }
+      if (!claimDuplicateAutoMove(match.id)) return;
+      skipResolveOnUnmountRef.current = true;
+      onMoveToDuplicate();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [canAutoMove, match.id, mode, onDismiss, onMoveToDuplicate, policy.duplicateVoucherAction, policy.ready]);
+
   if (typeof document === "undefined") return null;
+  if (hideForAutoPolicy) return null;
 
   const reasonText = match.reasons
     .map((r) => (r === "file" ? "same file" : r === "ref" ? "same reference" : r === "fields" ? "same date + amount" : "same narration"))
@@ -159,7 +208,7 @@ export function DuplicateVoucherBubble({
         />
         <div className="mb-1 flex items-start justify-between gap-2">
           <div className="text-sm font-semibold text-amber-700">Possible duplicate voucher</div>
-          <button type="button" onClick={onDismiss} className="text-muted-foreground hover:text-foreground" aria-label="Dismiss">
+          <button type="button" onClick={() => { skipResolveOnUnmountRef.current = true; onDismiss(); }} className="text-muted-foreground hover:text-foreground" aria-label="Dismiss">
             ×
           </button>
         </div>
@@ -180,6 +229,7 @@ export function DuplicateVoucherBubble({
             className="rounded-md border border-amber-400 px-2 py-1 text-[11px] text-amber-800 hover:bg-amber-50 disabled:opacity-50 dark:text-amber-200 dark:hover:bg-amber-950/40"
             disabled={!!moveBusy}
             onClick={() => {
+              skipResolveOnUnmountRef.current = true;
               if (onMoveToDuplicate) {
                 onMoveToDuplicate();
                 return;
@@ -199,14 +249,18 @@ export function DuplicateVoucherBubble({
           >
             {moveBusy ? "Moving…" : "Cancel & Move to Duplicate"}
           </button>
-          <button type="button" className="rounded-md border px-2 py-1 text-[11px]" onClick={onDismiss}>
+          <button type="button" className="rounded-md border px-2 py-1 text-[11px]" onClick={() => { skipResolveOnUnmountRef.current = true; onDismiss(); }}>
             {mode === "live" ? "Dismiss" : "Cancel"}
           </button>
           {mode === "confirm" && onSaveAnyway ? (
             <button
               type="button"
               className="rounded-md bg-amber-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-amber-700"
-              onClick={onSaveAnyway}
+              onClick={() => {
+                skipResolveOnUnmountRef.current = true;
+                emitDuplicateCauseResolved();
+                onSaveAnyway();
+              }}
             >
               Save anyway
             </button>

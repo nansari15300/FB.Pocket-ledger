@@ -9,6 +9,8 @@ import { z } from "zod";
 import { useState, useEffect, useRef, useCallback, useMemo, useId } from "react";
 import { Button } from "@/components/ui/button";
 import { useLiveVoucherDuplicate } from "@/hooks/useLiveVoucherDuplicate";
+import { useNotifyRunnerFormChanged } from "@/hooks/useNotifyRunnerFormChanged";
+import { useMoveAttachedFilesToDuplicate } from "@/hooks/useMoveAttachedFilesToDuplicate";
 import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
 import type { CandidateVoucher } from "@/lib/voucherDuplicateGuard";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -238,6 +240,7 @@ export function CreateProductionForm({
     resolver: zodResolver(formSchema),
     defaultValues: getInitialFormValues(voucher),
   });
+  useNotifyRunnerFormChanged({ form, companyId });
   const duplicateDate = form.watch("date");
   const duplicateAmount = Number(form.watch("totalOutput") || form.watch("totalCost")) || 0;
   const duplicateNarration = String(form.watch("narration") || "");
@@ -252,6 +255,16 @@ export function CreateProductionForm({
     },
     !voucher?.id && !!duplicateDate && duplicateAmount > 0
   );
+
+  const { moveBusy: dupMoveBusy, moveToDuplicate, canAutoMove } = useMoveAttachedFilesToDuplicate({
+    files,
+    companyId,
+    company,
+    onClosed: () => {
+      dismissLiveDuplicate();
+      onVoucherAction?.("cancelled", false, voucher?.id ?? undefined);
+    },
+  });
 
   /* OCR (local, generic adapter): first attachment -> validated autofill; Auto Post saves UNAPPROVED. */
   const ocr = useVoucherOcr({
@@ -790,7 +803,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
   return (
     <>
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full min-w-0 w-full max-w-full">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col h-full flex-1 min-h-0 min-w-0 w-full max-w-full">
         <ScrollArea className="flex-1 min-h-0 overflow-x-hidden min-w-0 w-full px-6 py-4">
           <div className="space-y-4 min-w-0 max-w-full w-full overflow-x-hidden [&>*]:min-w-0 [&>*]:max-w-full">
             {/* Section 1: Date + Production Number in one ribbon block. */}
@@ -1354,7 +1367,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           </div>
         </ScrollArea>
 
-        <div className={cn("border-t min-w-0 max-w-full overflow-x-hidden", isMobile ? "mt-[3px] pt-[3px] pb-[3px] px-2" : "p-4 flex justify-between items-center")}>
+        <div className={cn("border-t min-w-0 max-w-full overflow-x-hidden", isMobile ? "mt-[3px] pt-[3px] pb-[3px] px-2" : "shrink-0 mt-auto w-full bg-slate-100 p-4 flex justify-between items-center")}>
           {isMobile ? (
             <div className={cn("grid grid-cols-3 gap-2 w-full min-w-0", VOUCHER_BUTTONS_CLASS)}>
               {/* Row 0: Delete (left) | History (middle) | Save & Print (right) */}
@@ -1462,7 +1475,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           />
         )}
       </form>
-      {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} /> : null}
+      {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} onMoveToDuplicate={() => void moveToDuplicate(liveDuplicate)} moveBusy={dupMoveBusy} canAutoMove={canAutoMove} /> : null}
     </Form>
     <VoucherDeleteConfirmAlertDialog
       open={isDeleteDialogOpen}

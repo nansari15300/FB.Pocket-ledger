@@ -1,20 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { AlertCircle, Bot, Clock3, Gauge, Loader2, Monitor, Server, Trash2 } from "lucide-react";
+import { AlertCircle, Bot, ChevronRight, Clock3, Copy, Gauge, Info, KeyRound, ListChecks, Loader2, Monitor, PanelLeftClose, PanelLeftOpen, ScanText, Server, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { usePlI18nOptional } from "@/contexts/PlI18nContext";
 import { introTabLang } from "@/lib/i18n/introLangTab";
 import BsDatePicker from "@/components/ui/BsDatePicker";
 import { useDate } from "@/hooks/useDate";
 import { useCompany } from "@/hooks/useCompany";
+import { OCR_SETTINGS_DIALOG_CONTENT_CN, OCR_SETTINGS_DIALOG_OVERLAY_CN } from "@/lib/dialogShellChrome";
 import { useAuth } from "@/hooks/useAuth";
 import { doc, onSnapshot, serverTimestamp } from "@/lib/pbCompat/firestore";
 import { setDoc } from "@/lib/writeGateway/pbWrites";
@@ -24,14 +26,21 @@ import { useOcrAiStatus } from "@/modules/ocr/ai/aiClient";
 import { useOcrCloudStatus } from "@/modules/ocr/cloud/ocrCloudClient";
 import { getOrCreateDeviceId } from "@/lib/writeGateway/legacy/deviceLimitClient";
 import { GalleryLocalAutoPostRunner } from "@/components/gallery/GalleryLocalAutoPostRunner";
-import { AutoPostModeSwitch } from "@/components/gallery/AutoPostModeSwitch";
+import { VoucherOcrBankAliasesPanel, VoucherOcrKeySettingsPanel, VoucherOcrSettingsPanel } from "@/modules/ocr/VoucherOcrHeaderToggles";
+import { OcrEngineUsage } from "@/modules/ocr/OcrEngineUsage";
 import { pbListAppDocs } from "@/lib/pocketbaseData/pbSync";
 import { DEFAULT_GALLERY_QUEUE_SEQUENCE, DEFAULT_GALLERY_SORT_ORDER, normalizeGalleryQueueSequence, normalizeGallerySortOrder, type GalleryQueueSequence, type GallerySortOrder } from "@/components/gallery/galleryQueueSequence";
+import { SCAN_RUN_LIMIT_DEFAULT, scanRunLimitValue } from "@/components/gallery/scanRunLimit";
+import { exclusiveScanTriggers, isManualStartTrigger, normalizeDefaultDueDayValue, normalizeExclusiveTriggers, normalizeRunLocation } from "@/components/gallery/autoPostRunPolicy";
+import { activeRunnerFromSettings, runnerModePersistFields, withExclusiveRunnerProfiles } from "@/components/gallery/autoPostMode";
+import { AUTO_POST_UI, useAutoPostUiCopy } from "@/components/gallery/autoPostUiCopy";
+import { setOcrDefaultDueDays } from "@/modules/ocr/dueDate";
 
 const SETTINGS_DOC_ID = "server_auto_ocr";
 
 type AutoOcrSettings = {
   enabled: boolean;
+  manualScan: boolean;
   processingMode: "semi" | "full";
   runLocation: "local-pc" | "server";
   localRunnerUid: string;
@@ -42,7 +51,12 @@ type AutoOcrSettings = {
   scheduleMinutes: number;
   scheduleDate: string;
   scheduleTime: string;
-  scanEngine: "gemini" | "google" | "azure";
+  /** "all" = no cap (current behaviour). A number 1–500 caps each scan run. */
+  maxVouchersPerRun: number | "all";
+  autoSaveEnabled: boolean;
+  overwriteEdited: boolean;
+  autoSaveSeconds: number;
+  scanEngine: "gemini" | "google" | "azure" | "auto";
   maxCallsPerMinute: number;
   failOnMissingFields: boolean;
   missingFieldAction: "fail-and-continue" | "pause-and-hold";
@@ -60,6 +74,9 @@ type AutoOcrSettings = {
   gallerySortOrder: GallerySortOrder;
   checkDuplicateVouchers: boolean;
   duplicateVoucherAction: "move-to-duplicates" | "save-anyway" | "pause-for-review";
+  /** Blank (null) means leave Due Date empty. Clamped 0–365. */
+  defaultDueDaysSale: number | null;
+  defaultDueDaysPurchase: number | null;
 };
 
 const DEFAULT_MISSING_RULES: AutoOcrSettings["missingFieldRules"] = {
@@ -73,8 +90,9 @@ const DEFAULT_MISSING_RULES: AutoOcrSettings["missingFieldRules"] = {
 
 const DEFAULT_SETTINGS: AutoOcrSettings = {
   enabled: false,
+  manualScan: false,
   processingMode: "semi",
-  runLocation: "server",
+  runLocation: "local-pc",
   localRunnerUid: "",
   localRunnerDeviceId: "",
   runOnUpload: true,
@@ -83,6 +101,10 @@ const DEFAULT_SETTINGS: AutoOcrSettings = {
   scheduleMinutes: 5,
   scheduleDate: "",
   scheduleTime: "",
+  maxVouchersPerRun: "all",
+  autoSaveEnabled: true,
+  overwriteEdited: false,
+  autoSaveSeconds: 10,
   scanEngine: "gemini",
   maxCallsPerMinute: 5,
   failOnMissingFields: true,
@@ -94,18 +116,31 @@ const DEFAULT_SETTINGS: AutoOcrSettings = {
   gallerySortOrder: DEFAULT_GALLERY_SORT_ORDER,
   checkDuplicateVouchers: true,
   duplicateVoucherAction: "save-anyway",
+  defaultDueDaysSale: null,
+  defaultDueDaysPurchase: null,
 };
 
-const SCAN_ENGINES = {
-  gemini: { name: "Pocket AI (Gemini)", provider: "gemini" },
-  google: { name: "Google Cloud Vision", provider: "google" },
-  azure: { name: "Azure Vision", provider: "azure" },
-} as const;
+type RunnerMode = "full" | "semi" | "manual";
+type SettingsSection = RunnerMode | "runner-select" | "rules" | "voucher-settings" | "keys";
+type RunnerProfiles = Record<RunnerMode, AutoOcrSettings>;
+const isRunnerMode = (section: SettingsSection): section is RunnerMode => section === "full" || section === "semi" || section === "manual";
+const DEFAULT_PROFILES: RunnerProfiles = {
+  full: { ...DEFAULT_SETTINGS, enabled: false, processingMode: "full", autoSaveEnabled: true },
+  semi: { ...DEFAULT_SETTINGS, enabled: false, processingMode: "semi", autoSaveEnabled: true },
+  manual: { ...DEFAULT_SETTINGS, enabled: false, manualScan: true, processingMode: "semi", runLocation: "local-pc", autoSaveEnabled: false },
+};
 
 const LOCAL_INFO = {
   en: "Local PC processes documents on the selected computer. The app and internet connection must remain available; while the computer is offline, Auto post pauses and documents remain pending. Only a registered device belonging to an active company admin is eligible.",
   hi: "Local PC चुने गए कंप्यूटर पर documents process करता है। App और internet चालू रहना चाहिए; कंप्यूटर offline होने पर Auto post रुक जाता है और documents pending रहते हैं। यह सुविधा केवल active company admin के registered device पर चल सकती है।",
   ne: "Local PC ले छानिएको कम्प्युटरमा documents प्रक्रिया गर्छ। App र internet उपलब्ध हुनुपर्छ; कम्प्युटर offline हुँदा Auto post रोकिन्छ र documents pending रहन्छन्। Active company admin को registered device मा मात्र यो सेवा चल्न सक्छ।",
+} as const;
+
+const SCAN_ENGINES = {
+  gemini: { name: "Gemini AI", provider: "gemini" },
+  google: { name: "Google OCR", provider: "google" },
+  azure: { name: "Azure OCR", provider: "azure" },
+  auto: { name: "Auto OCR", provider: "auto" },
 } as const;
 
 const LOCAL_DEVICE_COPY = {
@@ -238,17 +273,21 @@ function normalizeSettings(raw: unknown): AutoOcrSettings {
   };
   return {
     enabled: value.enabled === true,
+    manualScan: value.manualScan === true,
     processingMode: value.processingMode === "full" ? "full" : "semi",
-    runLocation: value.runLocation === "local-pc" ? "local-pc" : "server",
+    runLocation: normalizeRunLocation(value.runLocation),
     localRunnerUid: typeof value.localRunnerUid === "string" ? value.localRunnerUid : "",
     localRunnerDeviceId: typeof value.localRunnerDeviceId === "string" ? value.localRunnerDeviceId : "",
-    runOnUpload: value.runOnUpload !== false,
-    runOnSchedule: value.runOnSchedule === true,
+    ...normalizeExclusiveTriggers(value.runOnUpload !== false, value.runOnSchedule === true),
     scheduleMode: value.scheduleMode === "date-time" ? "date-time" : "interval",
     scheduleMinutes: bounded(value.scheduleMinutes, DEFAULT_SETTINGS.scheduleMinutes, 1, 1440),
     scheduleDate: typeof value.scheduleDate === "string" ? value.scheduleDate : "",
     scheduleTime: typeof value.scheduleTime === "string" ? value.scheduleTime : "",
-    scanEngine: value.scanEngine === "google" || value.scanEngine === "azure" ? value.scanEngine : "gemini",
+    maxVouchersPerRun: scanRunLimitValue(value.maxVouchersPerRun),
+    autoSaveEnabled: typeof value.autoSaveEnabled === "boolean" ? value.autoSaveEnabled : DEFAULT_SETTINGS.autoSaveEnabled,
+    overwriteEdited: value.overwriteEdited === true,
+    autoSaveSeconds: bounded(value.autoSaveSeconds, DEFAULT_SETTINGS.autoSaveSeconds, 1, 60),
+    scanEngine: value.scanEngine === "google" || value.scanEngine === "azure" || value.scanEngine === "auto" ? value.scanEngine : "gemini",
     maxCallsPerMinute: bounded(value.maxCallsPerMinute, DEFAULT_SETTINGS.maxCallsPerMinute, 1, 15),
     failOnMissingFields: true,
     missingFieldAction: value.missingFieldAction === "fail-and-continue" ? "fail-and-continue" : "pause-and-hold",
@@ -270,6 +309,8 @@ function normalizeSettings(raw: unknown): AutoOcrSettings {
     gallerySortOrder: normalizeGallerySortOrder(value.gallerySortOrder),
     checkDuplicateVouchers: value.checkDuplicateVouchers !== false,
     duplicateVoucherAction: value.duplicateVoucherAction === "pause-for-review" ? "pause-for-review" : value.duplicateVoucherAction === "fail-and-continue" || value.duplicateVoucherAction === "move-to-duplicates" ? "move-to-duplicates" : "save-anyway",
+    defaultDueDaysSale: normalizeDefaultDueDayValue(value.defaultDueDaysSale),
+    defaultDueDaysPurchase: normalizeDefaultDueDayValue(value.defaultDueDaysPurchase),
   };
 }
 
@@ -292,16 +333,28 @@ function formatLocalDate(value: Date | undefined): string {
   return `${year}-${month}-${day}`;
 }
 
-export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = true, initialSection }: { open: boolean; onOpenChange: (open: boolean) => void; showRunner?: boolean; initialSection?: RunnerMode }) {
   const i18n = usePlI18nOptional();
   const introLang = introTabLang(i18n?.intro);
+  useAutoPostUiCopy();
   const { dateSystem, formatDate, formatDateBS } = useDate();
   const { company, companyId } = useCompany();
   const { user } = useAuth();
   const localDeviceId = useMemo(() => getOrCreateDeviceId(), []);
   const [settings, setSettings] = useState<AutoOcrSettings>(DEFAULT_SETTINGS);
-  const [settingsSection, setSettingsSection] = useState<"rules" | "device" | "schedule" | "usage">("rules");
+  const [runnerSettings, setRunnerSettings] = useState<AutoOcrSettings>(DEFAULT_SETTINGS);
+  const [profiles, setProfiles] = useState<RunnerProfiles>(DEFAULT_PROFILES);
+  const [savedProfiles, setSavedProfiles] = useState<RunnerProfiles>(DEFAULT_PROFILES);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("full");
+  const [activeRunnerMode, setActiveRunnerMode] = useState<RunnerMode>("full");
+  const [savedRunnerMode, setSavedRunnerMode] = useState<RunnerMode>("full");
+  const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [commonSettingExpanded, setCommonSettingExpanded] = useState(false);
   const [settingsLoadedFor, setSettingsLoadedFor] = useState("");
+  const settingsInitRef = useRef("");
+  const openRef = useRef(open);
+  openRef.current = open;
+  const settingsScrollRef = useRef<HTMLDivElement | null>(null);
   const [adminDevices, setAdminDevices] = useState<AdminDevice[]>([]);
   const [adminDevicesLoading, setAdminDevicesLoading] = useState(false);
   const [deviceActionTarget, setDeviceActionTarget] = useState<AdminDevice | null>(null);
@@ -309,7 +362,19 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savePrompt, setSavePrompt] = useState<null | "continue-stop" | "start-now">(null);
+  const priorRunActiveRef = useRef(false);
+  const lastProcessStateRef = useRef<{ held: boolean; enabled: boolean; active: boolean; schedule: boolean }>({ held: true, enabled: false, active: false, schedule: false });
+  const profilesRef = useRef(profiles);
+  profilesRef.current = profiles;
   const fsId = useMemo(() => companyId ? resolveCompanyId(companyId, company) : "", [companyId, company]);
+
+  useEffect(() => {
+    if (!open || !initialSection || settingsLoadedFor !== fsId) return;
+    setSettingsSection(initialSection);
+    setActiveRunnerMode(initialSection);
+    setSettings((current) => current === profiles[initialSection] ? current : profiles[initialSection]);
+  }, [open, initialSection, settingsLoadedFor, fsId]);
   const scheduleDateAD = useMemo(() => parseLocalDate(settings.scheduleDate), [settings.scheduleDate]);
   const scheduleDateLabel = scheduleDateAD
     ? dateSystem === "AD" ? formatDate(scheduleDateAD)
@@ -332,7 +397,7 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
         ? visionEngineStatus.providers.includes(provider)
         : visionEngineStatus.hasKey && visionEngineStatus.provider === provider);
     };
-    return { gemini: aiReady, google: visionReady("google"), azure: visionReady("azure") };
+    return { gemini: aiReady, google: visionReady("google"), azure: visionReady("azure"), auto: true };
   }, [aiEngineStatus, visionEngineStatus]);
 
   useEffect(() => {
@@ -342,17 +407,111 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
     setError(null);
     const unsubscribe = onSnapshot(doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID), (snapshot) => {
       if (cancelled) return;
-      setSettings(normalizeSettings(snapshot.exists() ? snapshot.data() : DEFAULT_SETTINGS));
+      const isInitialSnapshot = settingsInitRef.current !== fsId;
+      if (isInitialSnapshot) settingsInitRef.current = fsId;
+      const raw = snapshot.exists() ? snapshot.data() as Record<string, unknown> : {};
+      const legacy = normalizeSettings(raw);
+      const savedProfiles = raw.runnerProfiles && typeof raw.runnerProfiles === "object" ? raw.runnerProfiles as Record<string, unknown> : {};
+      const nextProfiles: RunnerProfiles = {
+        full: normalizeSettings(savedProfiles.full || { ...legacy, processingMode: "full" }),
+        semi: normalizeSettings(savedProfiles.semi || { ...legacy, processingMode: "semi" }),
+        manual: normalizeSettings(savedProfiles.manual || { ...legacy, enabled: false, manualScan: true, processingMode: "semi" }),
+      };
+      nextProfiles.full = { ...nextProfiles.full, manualScan: false };
+      nextProfiles.semi = { ...nextProfiles.semi, manualScan: false, runLocation: "local-pc" };
+      const manualProfileData = savedProfiles.manual && typeof savedProfiles.manual === "object" ? savedProfiles.manual as Record<string, unknown> : {};
+      nextProfiles.manual = {
+        ...nextProfiles.manual,
+        enabled: false,
+        runLocation: "local-pc",
+        autoSaveEnabled: typeof manualProfileData.autoSaveEnabled === "boolean" ? manualProfileData.autoSaveEnabled : false,
+        manualScan: typeof manualProfileData.manualScan === "boolean" ? manualProfileData.manualScan : true,
+      };
+      // Rules are shared by all runner profiles; legacy settings remain the migration source.
+      for (const mode of ["full", "semi", "manual"] as const) {
+        nextProfiles[mode] = { ...nextProfiles[mode], missingFieldRules: legacy.missingFieldRules, itemRowMismatchAction: legacy.itemRowMismatchAction, amountMismatchAction: legacy.amountMismatchAction, checkDuplicateVouchers: legacy.checkDuplicateVouchers, duplicateVoucherAction: legacy.duplicateVoucherAction, defaultDueDaysSale: legacy.defaultDueDaysSale, defaultDueDaysPurchase: legacy.defaultDueDaysPurchase };
+      }
+      const activeMode: RunnerMode = activeRunnerFromSettings(raw);
+      setProfiles(nextProfiles);
+      setSavedProfiles(nextProfiles);
+      setActiveRunnerMode(activeMode);
+      if (isInitialSnapshot || !openRef.current) {
+        setSavedRunnerMode(activeMode);
+        setSettings(activeMode === "manual" ? nextProfiles.manual : nextProfiles[activeMode]);
+        if (isInitialSnapshot) setSettingsSection(activeMode);
+      }
+      setRunnerSettings(nextProfiles[activeMode]);
       setSettingsLoadedFor(fsId);
+      setOcrDefaultDueDays(fsId, { sale: nextProfiles[activeMode].defaultDueDaysSale, purchase: nextProfiles[activeMode].defaultDueDaysPurchase });
       setLoading(false);
     }, (err) => {
       if (cancelled) return;
-      setSettings(DEFAULT_SETTINGS);
+      setSettings(DEFAULT_PROFILES.full);
+      setRunnerSettings(DEFAULT_SETTINGS);
+      setProfiles(DEFAULT_PROFILES);
+      setSavedProfiles(DEFAULT_PROFILES);
+      setSettingsSection("full");
+      setActiveRunnerMode("full");
+      setSavedRunnerMode("full");
       setSettingsLoadedFor(fsId);
       setError(err instanceof Error ? err.message : "Could not load settings.");
       setLoading(false);
     });
     return () => { cancelled = true; unsubscribe(); };
+  }, [fsId]);
+
+
+  useEffect(() => {
+    if (!fsId) return;
+    const onState = (event: Event) => {
+      const detail = (event as CustomEvent<{ companyId?: string; held?: boolean; enabled?: boolean; active?: boolean }>).detail;
+      if (String(detail?.companyId || "") !== fsId) return;
+      lastProcessStateRef.current = {
+        held: detail.held === true,
+        enabled: detail.enabled === true,
+        active: detail.active === true,
+        schedule: runnerSettings.runOnSchedule,
+      };
+    };
+    window.addEventListener("pl:gallery:auto-post-process-state", onState);
+    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-state-request", { detail: { companyId: fsId } }));
+    return () => window.removeEventListener("pl:gallery:auto-post-process-state", onState);
+  }, [fsId, runnerSettings.runOnSchedule]);
+
+  useEffect(() => {
+    if (!open) return;
+    const state = lastProcessStateRef.current;
+    priorRunActiveRef.current = (!state.held && state.enabled) || state.schedule || state.active || runnerSettings.runOnSchedule;
+  }, [open, runnerSettings.runOnSchedule]);
+
+  useEffect(() => {
+    if (!fsId) return;
+    const onDisableSchedule = (event: Event) => {
+      const detail = (event as CustomEvent<{ companyId?: string }>).detail;
+      if (String(detail?.companyId || "") !== fsId) return;
+      const current = profilesRef.current;
+      const nextProfiles: RunnerProfiles = {
+        full: { ...current.full, runOnSchedule: false },
+        semi: { ...current.semi, runOnSchedule: false },
+        manual: { ...current.manual, runOnSchedule: false },
+      };
+      setProfiles(nextProfiles);
+      setSavedProfiles(nextProfiles);
+      setSettings((s) => ({ ...s, runOnSchedule: false }));
+      setRunnerSettings((s) => ({ ...s, runOnSchedule: false }));
+      void setDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID), {
+        runOnSchedule: false,
+        runnerProfiles: nextProfiles,
+        updatedAt: serverTimestamp(),
+      }, { merge: true }).then(() => {
+        window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-schedule-disabled", { detail: { companyId: fsId, ok: true } }));
+      }).catch((err) => {
+        console.warn("[GalleryAutoOcrSettings] could not turn off schedule", err);
+        window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-schedule-disabled", { detail: { companyId: fsId, ok: false } }));
+      });
+    };
+    window.addEventListener("pl:gallery:auto-post-disable-schedule", onDisableSchedule);
+    return () => window.removeEventListener("pl:gallery:auto-post-disable-schedule", onDisableSchedule);
   }, [fsId]);
 
   const isCompanyAdmin = useMemo(() => {
@@ -411,6 +570,7 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
   const selectedAdminDevice = selectableAdminDevices.find((device) => device.id === selectedDeviceId);
   const localDeviceCopy = LOCAL_DEVICE_COPY[introLang];
   const isDeviceActionTargetThisDevice = deviceActionTarget?.id === localDeviceId;
+  const manualProfileReadOnly = settingsSection === "manual";
 
   const handleRemoveAdminDevice = async () => {
     if (!fsId || !user?.uid || !deviceActionTarget || !isCompanyAdmin) return;
@@ -446,19 +606,102 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
     }
   };
 
-  const patch = (next: Partial<AutoOcrSettings>) => setSettings((current) => ({ ...current, ...next }));
+  const patch = (next: Partial<AutoOcrSettings> & { runOnManualStart?: boolean }) => {
+    const { runOnManualStart: _runOnManualStart, ...settingsPatch } = next;
+    const updated = { ...settings, ...settingsPatch };
+    if ("runOnUpload" in next || "runOnSchedule" in next || "runOnManualStart" in next) {
+      const exclusive = exclusiveScanTriggers(next, settings);
+      updated.runOnUpload = exclusive.runOnUpload;
+      updated.runOnSchedule = exclusive.runOnSchedule;
+    }
+    if (settingsSection === "full" || settingsSection === "semi") updated.manualScan = false;
+    if (next.runLocation === "server") updated.runLocation = "local-pc";
+    setSettings(updated);
+    if (isRunnerMode(settingsSection)) setProfiles((items) => ({ ...items, [settingsSection]: updated }));
+    if ("missingFieldRules" in next || "itemRowMismatchAction" in next || "amountMismatchAction" in next || "checkDuplicateVouchers" in next || "duplicateVoucherAction" in next || "defaultDueDaysSale" in next || "defaultDueDaysPurchase" in next) {
+      setProfiles((items) => ({
+        full: { ...items.full, missingFieldRules: updated.missingFieldRules, itemRowMismatchAction: updated.itemRowMismatchAction, amountMismatchAction: updated.amountMismatchAction, checkDuplicateVouchers: updated.checkDuplicateVouchers, duplicateVoucherAction: updated.duplicateVoucherAction, defaultDueDaysSale: updated.defaultDueDaysSale, defaultDueDaysPurchase: updated.defaultDueDaysPurchase },
+        semi: { ...items.semi, missingFieldRules: updated.missingFieldRules, itemRowMismatchAction: updated.itemRowMismatchAction, amountMismatchAction: updated.amountMismatchAction, checkDuplicateVouchers: updated.checkDuplicateVouchers, duplicateVoucherAction: updated.duplicateVoucherAction, defaultDueDaysSale: updated.defaultDueDaysSale, defaultDueDaysPurchase: updated.defaultDueDaysPurchase },
+        manual: { ...items.manual, missingFieldRules: updated.missingFieldRules, itemRowMismatchAction: updated.itemRowMismatchAction, amountMismatchAction: updated.amountMismatchAction, checkDuplicateVouchers: updated.checkDuplicateVouchers, duplicateVoucherAction: updated.duplicateVoucherAction, defaultDueDaysSale: updated.defaultDueDaysSale, defaultDueDaysPurchase: updated.defaultDueDaysPurchase },
+      }));
+    }
+  };
 
-  const save = async () => {
+  const setRunnerEnabled = (mode: RunnerMode, enabled: boolean) => {
+    const nextMode: RunnerMode = enabled ? mode : activeRunnerMode;
+    const nextProfiles: RunnerProfiles = enabled
+      ? withExclusiveRunnerProfiles(profiles, mode) as RunnerProfiles
+      : {
+          full: { ...profiles.full, enabled: false },
+          semi: { ...profiles.semi, enabled: false },
+          manual: { ...profiles.manual, manualScan: false },
+        };
+    setProfiles(nextProfiles);
+    if (enabled) {
+      setActiveRunnerMode(mode);
+      setSettings(nextProfiles[mode]);
+    } else if (activeRunnerMode === mode) {
+      setSettings(nextProfiles[mode]);
+    }
     if (!fsId || !user?.uid || !isCompanyAdmin) return;
-    if (settings.enabled && settings.runLocation === "local-pc" && !selectedAdminDevice) {
+    const persist = enabled ? runnerModePersistFields(mode) : { enabled: false, processingMode: nextMode === "full" ? "full" as const : "semi" as const, activeRunnerMode: nextMode };
+    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId: fsId, held: true } }));
+    void setDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID), {
+      ...persist,
+      runnerProfiles: nextProfiles,
+      updatedAt: serverTimestamp(),
+      updatedBy: user.uid,
+    }, { merge: true }).then(() => {
+      setSavedProfiles(nextProfiles);
+      if (enabled) setSavedRunnerMode(mode);
+    }).catch((err) => {
+      setError(err instanceof Error ? err.message : "Could not change runner.");
+    });
+  };
+
+  const selectSection = (section: SettingsSection) => {
+    if (section === "voucher-settings") setCommonSettingExpanded(true);
+    if (isRunnerMode(section)) {
+      setSettings({ ...profiles[section], missingFieldRules: settings.missingFieldRules, itemRowMismatchAction: settings.itemRowMismatchAction, amountMismatchAction: settings.amountMismatchAction, checkDuplicateVouchers: settings.checkDuplicateVouchers, duplicateVoucherAction: settings.duplicateVoucherAction, defaultDueDaysSale: settings.defaultDueDaysSale, defaultDueDaysPurchase: settings.defaultDueDaysPurchase });
+      setActiveRunnerMode(section);
+    }
+    setSettingsSection(section);
+    setError(null);
+  };
+
+  const copyProfileFrom = (sourceMode: RunnerMode) => {
+    if (!isRunnerMode(settingsSection) || settingsSection === "manual" || sourceMode === "manual") return;
+    const copied = { ...profiles[sourceMode], missingFieldRules: settings.missingFieldRules, itemRowMismatchAction: settings.itemRowMismatchAction, amountMismatchAction: settings.amountMismatchAction, checkDuplicateVouchers: settings.checkDuplicateVouchers, duplicateVoucherAction: settings.duplicateVoucherAction, defaultDueDaysSale: settings.defaultDueDaysSale, defaultDueDaysPurchase: settings.defaultDueDaysPurchase };
+    setSettings(copied);
+    setProfiles((current) => ({ ...current, [settingsSection]: copied }));
+  };
+
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setProfiles(savedProfiles);
+      setActiveRunnerMode(savedRunnerMode);
+      setSettingsSection(savedRunnerMode);
+      setSettings(savedProfiles[savedRunnerMode]);
+      setError(null);
+    }
+    onOpenChange(nextOpen);
+  };
+
+  const save = async (closeAfterSave: boolean) => {
+    if (!fsId || !user?.uid || !isCompanyAdmin) return;
+    const sectionToKeep = settingsSection;
+    const scrollTopToKeep = settingsScrollRef.current?.scrollTop ?? 0;
+    const mode = isRunnerMode(settingsSection) ? settingsSection : activeRunnerMode;
+    const runnerEnabled = mode === "manual" ? false : settings.enabled;
+    if (runnerEnabled && settings.runLocation === "local-pc" && !selectedAdminDevice) {
       setError(LOCAL_DEVICE_COPY[introLang].required);
       return;
     }
-    if (settings.enabled && settings.runLocation === "local-pc" && !scanEngineAvailable[settings.scanEngine]) {
+    if (runnerEnabled && settings.runLocation === "local-pc" && !scanEngineAvailable[settings.scanEngine]) {
       setError("The selected scan engine has no configured key or access for this company.");
       return;
     }
-    if (settings.enabled && settings.runOnSchedule && settings.scheduleMode === "date-time" && (!settings.scheduleDate || !settings.scheduleTime)) {
+    if (runnerEnabled && settings.runOnSchedule && settings.scheduleMode === "date-time" && (!settings.scheduleDate || !settings.scheduleTime)) {
       setError("Choose both a date and time for the scheduled scan.");
       return;
     }
@@ -467,13 +710,35 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
     try {
       const settingsToSave = {
         ...settings,
-        localRunnerUid: settings.runLocation === "local-pc" ? selectedAdminDevice!.userId : settings.localRunnerUid,
-        localRunnerDeviceId: settings.runLocation === "local-pc" ? selectedAdminDevice!.id : settings.localRunnerDeviceId,
+        enabled: runnerEnabled,
+        processingMode: mode === "full" ? "full" as const : "semi" as const,
+        activeRunnerMode: mode,
+        runnerProfiles: {
+          ...profiles,
+          [mode]: {
+            ...settings,
+            enabled: mode === "manual" ? false : settings.enabled,
+            manualScan: mode === "manual" ? settings.manualScan : false,
+            processingMode: mode === "full" ? "full" as const : "semi" as const,
+            localRunnerUid: settings.runLocation === "local-pc" && selectedAdminDevice ? selectedAdminDevice.userId : settings.localRunnerUid,
+            localRunnerDeviceId: settings.runLocation === "local-pc" && selectedAdminDevice ? selectedAdminDevice.id : settings.localRunnerDeviceId,
+            scheduleMinutes: Math.max(1, Math.min(1440, Math.round(Number(settings.scheduleMinutes) || DEFAULT_SETTINGS.scheduleMinutes))),
+            maxCallsPerMinute: Math.max(1, Math.min(15, Math.round(Number(settings.maxCallsPerMinute) || DEFAULT_SETTINGS.maxCallsPerMinute))),
+            maxVouchersPerRun: scanRunLimitValue(settings.maxVouchersPerRun),
+            provider: SCAN_ENGINES[settings.scanEngine].provider,
+            providerLabel: SCAN_ENGINES[settings.scanEngine].name,
+          },
+        },
+        localRunnerUid: runnerEnabled && settings.runLocation === "local-pc" && selectedAdminDevice ? selectedAdminDevice.userId : settings.localRunnerUid,
+        localRunnerDeviceId: runnerEnabled && settings.runLocation === "local-pc" && selectedAdminDevice ? selectedAdminDevice.id : settings.localRunnerDeviceId,
         scheduleMinutes: Math.max(1, Math.min(1440, Math.round(Number(settings.scheduleMinutes) || DEFAULT_SETTINGS.scheduleMinutes))),
+        maxVouchersPerRun: scanRunLimitValue(settings.maxVouchersPerRun),
         scheduleTimeZone: typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC",
         maxCallsPerMinute: Math.max(1, Math.min(15, Math.round(Number(settings.maxCallsPerMinute) || DEFAULT_SETTINGS.maxCallsPerMinute))),
         failOnMissingFields: true,
         checkDuplicateVouchers: settings.checkDuplicateVouchers,
+        defaultDueDaysSale: normalizeDefaultDueDayValue(settings.defaultDueDaysSale),
+        defaultDueDaysPurchase: normalizeDefaultDueDayValue(settings.defaultDueDaysPurchase),
         updatedAt: serverTimestamp(),
         updatedBy: user.uid,
         provider: SCAN_ENGINES[settings.scanEngine].provider,
@@ -481,9 +746,23 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
         saveApproved: false,
       };
       await setDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID), settingsToSave, { merge: true });
-      setSettings(settingsToSave);
+      setOcrDefaultDueDays(fsId, { sale: settingsToSave.defaultDueDaysSale, purchase: settingsToSave.defaultDueDaysPurchase });
+      setProfiles(settingsToSave.runnerProfiles as RunnerProfiles);
+      setSavedProfiles(settingsToSave.runnerProfiles as RunnerProfiles);
+      setActiveRunnerMode(mode);
+      setSavedRunnerMode(mode);
+      setSettings({ ...settings, enabled: runnerEnabled, manualScan: mode === "manual" ? settings.manualScan : false, processingMode: mode === "full" ? "full" : "semi" });
+      setRunnerSettings(settingsToSave);
       setSettingsLoadedFor(fsId);
-      onOpenChange(false);
+      if (closeAfterSave) {
+        onOpenChange(false);
+        setSavePrompt(priorRunActiveRef.current || settingsToSave.runOnSchedule || settingsToSave.enabled ? "continue-stop" : "start-now");
+      } else {
+        setSettingsSection(sectionToKeep);
+        window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+          if (settingsScrollRef.current) settingsScrollRef.current.scrollTop = scrollTopToKeep;
+        }));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save settings.");
     } finally {
@@ -491,135 +770,227 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
     }
   };
 
-  const selectedAutoMode: "manual" | "semi" | "full" = !settings.enabled
-    ? "manual"
-    : settings.processingMode === "full" ? "full" : "semi";
-  const applyAutoMode = async (mode: "manual" | "semi" | "full") => {
-    if (!fsId || !user?.uid || !isCompanyAdmin || saving || loading || mode === selectedAutoMode) return;
-    const enabled = mode !== "manual";
-    if (enabled && settings.runLocation === "local-pc" && !selectedAdminDevice) {
-      setError(LOCAL_DEVICE_COPY[introLang].required);
-      return;
-    }
-    if (enabled && settings.runLocation === "local-pc" && !scanEngineAvailable[settings.scanEngine]) {
-      setError("The selected scan engine has no configured key or access for this company.");
-      return;
-    }
-    if (enabled && settings.runOnSchedule && settings.scheduleMode === "date-time" && (!settings.scheduleDate || !settings.scheduleTime)) {
-      setError("Choose both a date and time for the scheduled scan.");
-      return;
-    }
-    // Mode selection only configures the runner. Keep it paused until Resume is pressed.
-    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", {
-      detail: { companyId: fsId, held: true },
-    }));
-    setSaving(true);
-    setError(null);
-    const nextSettings = {
-      ...settings,
-      enabled,
-      processingMode: mode === "full" ? "full" as const : "semi" as const,
-      localRunnerUid: settings.runLocation === "local-pc" && enabled ? selectedAdminDevice!.userId : settings.localRunnerUid,
-      localRunnerDeviceId: settings.runLocation === "local-pc" && enabled ? selectedAdminDevice!.id : settings.localRunnerDeviceId,
-      scheduleTimeZone: typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC",
-      failOnMissingFields: true,
-      updatedAt: serverTimestamp(),
-      updatedBy: user.uid,
-      provider: SCAN_ENGINES[settings.scanEngine].provider,
-      providerLabel: SCAN_ENGINES[settings.scanEngine].name,
-      saveApproved: false,
-    };
-    try {
-      await setDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID), nextSettings, { merge: true });
-      setSettings(nextSettings);
-      setSettingsLoadedFor(fsId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not apply Auto post mode.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <>
-    <GalleryLocalAutoPostRunner settings={settings} settingsDialogOpen={open} isCompanyAdmin={isCompanyAdmin} settingsReady={settingsLoadedFor === fsId && !!fsId} />
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[88dvh] flex-col overflow-hidden sm:max-w-4xl">
-        <DialogHeader className="shrink-0">
-          <DialogTitle>Auto post settings</DialogTitle>
-          <DialogDescription>Choose where Auto post scans Unassigned documents and creates vouchers.</DialogDescription>
+    {showRunner && <GalleryLocalAutoPostRunner settings={runnerSettings} settingsDialogOpen={open} isCompanyAdmin={isCompanyAdmin} settingsReady={settingsLoadedFor === fsId && !!fsId} />}
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
+      <DialogContent
+        data-pl-full-auto-post=""
+        data-ocr-settings-open={showRunner ? undefined : "1"}
+        overlayClassName={showRunner ? undefined : OCR_SETTINGS_DIALOG_OVERLAY_CN}
+        className={`full-auto-post-dialog flex h-[calc(100dvh-2rem)] max-h-[calc(100dvh-2rem)] flex-col overflow-hidden bg-[#e5e7eb] p-0 sm:h-[88dvh] sm:max-h-[88dvh] sm:max-w-4xl ${showRunner ? "" : OCR_SETTINGS_DIALOG_CONTENT_CN}`}
+      >
+        <style>{`
+          [data-pl-full-auto-post].full-auto-post-dialog { background: #e5e7eb !important; }
+          [data-pl-full-auto-post] .full-auto-post-body { background: #e5e7eb; }
+          [data-pl-full-auto-post] .full-auto-post-card {
+            background: linear-gradient(180deg,#fff 0%,#f8fafc 100%) !important;
+            border: 1px solid rgba(15,23,42,.08) !important;
+            border-radius: 14px !important;
+            box-shadow: 0 1px 2px rgba(15,23,42,.06),0 4px 10px -2px rgba(15,23,42,.10),0 12px 24px -12px rgba(15,23,42,.18) !important;
+            transition: transform 180ms ease,box-shadow 180ms ease;
+          }
+          [data-pl-full-auto-post] .full-auto-post-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 2px 4px rgba(15,23,42,.08),0 10px 20px -4px rgba(15,23,42,.16),0 22px 40px -14px rgba(15,23,42,.28) !important;
+          }
+          [data-pl-full-auto-post] .full-auto-post-sidebar { background: #e5e7eb; }
+          [data-pl-full-auto-post] .full-auto-post-sideitem {
+            background: linear-gradient(180deg,#e5e7eb 0%,#dfe3e8 100%);
+            border: 1px solid rgba(15,23,42,.08);
+            border-radius: 12px;
+            box-shadow: 0 1px 2px rgba(15,23,42,.06),0 4px 10px -2px rgba(15,23,42,.10),0 12px 24px -12px rgba(15,23,42,.18);
+            transition: transform 180ms ease,box-shadow 180ms ease;
+          }
+          [data-pl-full-auto-post] .full-auto-post-sideitem:hover { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(15,23,42,.08),0 8px 16px -4px rgba(15,23,42,.16),0 18px 32px -14px rgba(15,23,42,.24); }
+          [data-pl-full-auto-post] .full-auto-post-sideitem[aria-current="page"] { background: linear-gradient(180deg,#dbeafe 0%,#bfdbfe 100%); border-color: rgba(59,130,246,.35); color: #1e3a8a; box-shadow: inset 0 1px 2px rgba(255,255,255,.75),0 3px 6px rgba(15,23,42,.12),0 10px 18px -10px rgba(15,23,42,.32); }
+          .dark [data-pl-full-auto-post] .full-auto-post-body { background: #0b1120; }
+          .dark [data-pl-full-auto-post].full-auto-post-dialog { background: #0b1120 !important; }
+          .dark [data-pl-full-auto-post] .full-auto-post-card { background: linear-gradient(180deg,#1e293b 0%,#172033 100%) !important; border-color: rgba(148,163,184,.18) !important; box-shadow: 0 1px 2px rgba(0,0,0,.4),0 6px 14px -4px rgba(0,0,0,.5) !important; }
+          .dark [data-pl-full-auto-post] .full-auto-post-card:hover { box-shadow: 0 2px 4px rgba(0,0,0,.45),0 14px 28px -8px rgba(0,0,0,.65) !important; }
+          .dark [data-pl-full-auto-post] .full-auto-post-sidebar { background: #0b1120; }
+          .dark [data-pl-full-auto-post] .full-auto-post-sideitem { background: linear-gradient(180deg,#0b1120 0%,#111827 100%); border-color: rgba(148,163,184,.18); color: #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,.4),0 6px 14px -4px rgba(0,0,0,.5); }
+          [data-pl-full-auto-post] .full-auto-post-footer { background: #e5e7eb; }
+          .dark [data-pl-full-auto-post] .full-auto-post-footer { background: #0b1120; }
+          .dark [data-pl-full-auto-post] .full-auto-post-sideitem[aria-current="page"] { background: linear-gradient(180deg,#1e40af 0%,#1e3a8a 100%); color: #eff6ff; }
+          @media (prefers-reduced-motion: reduce) { [data-pl-full-auto-post] .full-auto-post-card,[data-pl-full-auto-post] .full-auto-post-sideitem { transition: none; } [data-pl-full-auto-post] .full-auto-post-card:hover,[data-pl-full-auto-post] .full-auto-post-sideitem:hover { transform: none; } }
+        `}</style>
+        <DialogHeader className="relative shrink-0 bg-sky-200 px-3 py-3 sm:px-6">
+        <DialogTitle className="text-center font-bold">Voucher Post Setting <span className="mx-1 opacity-70">→</span> {settingsSection === "full" ? "Full Auto Post" : settingsSection === "semi" ? "Semi Automatic" : settingsSection === "manual" ? "Manual Runner" : settingsSection === "runner-select" ? "Select Runner" : settingsSection === "rules" ? "Common Setting" : settingsSection === "voucher-settings" ? "Voucher OCR Settings" : "Key Setting"}</DialogTitle>
+          <DialogDescription />
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="full-auto-post-body min-h-0 flex-1 overflow-hidden">
         {!isCompanyAdmin ? (
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Only a company owner or admin can change these settings.</div>
         ) : loading ? (
           <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading settings…</div>
         ) : (
-          <div className="grid h-full min-h-0 grid-cols-1 gap-3 md:grid-cols-[190px_minmax(0,1fr)]">
+          <div className={`flex h-full min-h-0 flex-col gap-3 p-[10px] md:grid ${sidebarVisible ? "md:grid-cols-[190px_minmax(0,1fr)]" : "md:grid-cols-1"}`}>
             <div className="md:hidden">
-              <Select value={settingsSection} onValueChange={(value) => setSettingsSection(value as typeof settingsSection)}>
+              <Select value={settingsSection} onValueChange={(value) => selectSection(value as SettingsSection)}>
                 <SelectTrigger className="h-10 bg-background"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="rules">Auto post &amp; rules</SelectItem>
-                  <SelectItem value="device">Run location</SelectItem>
-                  <SelectItem value="schedule">When to scan</SelectItem>
-                  <SelectItem value="usage">Usage &amp; saving</SelectItem>
+                  <SelectItem value="manual">Manual Runner</SelectItem>
+                  <SelectItem value="semi">Semi Automatic</SelectItem>
+                  <SelectItem value="full">Full Auto Post</SelectItem>
+                  <SelectItem value="runner-select">Select Runner</SelectItem>
+                  <SelectItem value="rules">Common Setting</SelectItem>
+                  <SelectItem value="voucher-settings">Voucher</SelectItem>
+                  <SelectItem value="keys">Key Setting</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <nav aria-label="Auto post settings sections" className="hidden min-h-0 flex-col gap-1 border-r pr-3 md:flex">
-              <div className="mb-1 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Settings</div>
+            {sidebarVisible && <nav aria-label="Auto post settings sections" className="full-auto-post-sidebar hidden h-full min-h-0 flex-col gap-2 border-r pr-3 md:flex">
+              <div className="mb-1 flex items-center justify-between gap-1 rounded-md bg-sky-200 px-2 py-2 text-xs font-semibold uppercase tracking-wide text-slate-800">
+                <span>Runner Profiles</span>
+                <button type="button" aria-label="Hide sidebar" title="Hide sidebar" className="rounded p-1 hover:bg-white/70" onClick={() => setSidebarVisible(false)}><PanelLeftClose className="h-4 w-4" /></button>
+              </div>
               {([
-                ["rules", "Auto post & rules", Bot],
-                ["device", "Run location", Monitor],
-                ["schedule", "When to scan", Clock3],
-                ["usage", "Usage & saving", Gauge],
+                ["manual", "Manual Runner", Monitor],
+                ["semi", "Semi Automatic", Clock3],
+                ["full", "Full Auto Post", Bot],
               ] as const).map(([key, label, Icon]) => (
                 <button
                   key={key}
                   type="button"
                   aria-current={settingsSection === key ? "page" : undefined}
-                  onClick={() => setSettingsSection(key)}
-                  className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-sm font-medium transition-all duration-150 hover:-translate-y-0.5 hover:shadow-sm ${settingsSection === key ? "border-emerald-400 bg-emerald-50 text-emerald-900 shadow-sm" : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/70 hover:text-foreground"}`}
+                  onClick={() => selectSection(key)}
+                  className={`full-auto-post-sideitem flex w-full items-center gap-2 px-2.5 py-2 text-left text-sm font-medium ${settingsSection === key ? "text-emerald-900" : "text-muted-foreground hover:text-foreground"}`}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
                   <span>{label}</span>
                 </button>
               ))}
-            </nav>
+              <button
+                type="button"
+                aria-current={settingsSection === "runner-select" ? "page" : undefined}
+                onClick={() => selectSection("runner-select")}
+                className={`full-auto-post-sideitem flex w-full items-center gap-2 px-2.5 py-2 text-left text-sm font-medium ${settingsSection === "runner-select" ? "text-emerald-900" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <ListChecks className="h-4 w-4 shrink-0" />
+                <span>Select Runner</span>
+              </button>
+              <div aria-current={settingsSection === "rules" || settingsSection === "voucher-settings" ? "page" : undefined} className={`full-auto-post-sideitem flex w-full items-center gap-1 px-2 py-1.5 ${settingsSection === "rules" || settingsSection === "voucher-settings" ? "text-emerald-900" : "text-muted-foreground"}`}>
+                <button type="button" onClick={() => selectSection("rules")} className="flex min-w-0 flex-1 items-center gap-2 px-0.5 py-0.5 text-left text-sm font-medium">
+                  <Gauge className="h-4 w-4 shrink-0" />
+                  <span className="truncate">Common Setting</span>
+                </button>
+                <button type="button" aria-label={commonSettingExpanded ? "Hide Voucher menu" : "Show Voucher menu"} aria-expanded={commonSettingExpanded} onClick={() => setCommonSettingExpanded((value) => !value)} className="rounded p-1 hover:bg-white/70">
+                  <ChevronRight className={`h-4 w-4 transition-transform ${commonSettingExpanded ? "rotate-90" : ""}`} />
+                </button>
+              </div>
+              {commonSettingExpanded && <button
+                type="button"
+                aria-current={settingsSection === "voucher-settings" ? "page" : undefined}
+                onClick={() => selectSection("voucher-settings")}
+                className={`full-auto-post-sideitem ml-3 flex w-[calc(100%-0.75rem)] items-center gap-2 px-2.5 py-2 text-left text-sm font-medium ${settingsSection === "voucher-settings" ? "text-emerald-900" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <ScanText className="h-4 w-4 shrink-0" />
+                <span>Voucher</span>
+              </button>}
+              <div className="my-1 border-t border-slate-300/80" />
+              <div className="mt-auto border-t border-slate-300/80 pt-2">
+                <button
+                  type="button"
+                  aria-current={settingsSection === "keys" ? "page" : undefined}
+                  onClick={() => selectSection("keys")}
+                  className={`full-auto-post-sideitem flex w-full items-center gap-2 px-2.5 py-2 text-left text-sm font-medium ${settingsSection === "keys" ? "text-emerald-900" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  <KeyRound className="h-4 w-4 shrink-0" />
+                  <span>Key Setting</span>
+                </button>
+              </div>
+            </nav>}
 
-            <div className="min-h-0 overflow-y-auto overflow-x-hidden pr-1">
+            <div ref={settingsScrollRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-1">
             <div className="space-y-4">
-            {settingsSection === "rules" && <section className="rounded-xl border bg-background/80 p-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
-              <h3 className="mb-3 flex items-center gap-2 border-b pb-2 text-base font-semibold"><Bot className="h-4 w-4" />Auto post &amp; rules</h3>
-              <div className="space-y-2">
-                <div className="flex items-center justify-center gap-2 text-center text-sm font-medium"><Bot className="h-4 w-4" />Enable Auto post vouchers</div>
-                <div className="flex justify-center">
-                  <AutoPostModeSwitch
-                    mode={selectedAutoMode}
-                    onModeChange={(mode) => void applyAutoMode(mode)}
-                    disabled={!isCompanyAdmin || saving || loading || !fsId}
-                  />
+            {!sidebarVisible && <button type="button" aria-label="Show sidebar" title="Show sidebar" className="hidden rounded-lg border bg-white/90 p-2 text-muted-foreground shadow-sm hover:text-foreground md:inline-flex" onClick={() => setSidebarVisible(true)}><PanelLeftOpen className="h-4 w-4" /><span className="ml-2 text-xs">Show profiles</span></button>}
+            {settingsSection === "runner-select" && <section className="full-auto-post-card space-y-3 p-3">
+              <h3 className="flex items-center gap-2 border-b border-indigo-200 pb-2 text-base font-semibold"><Monitor className="h-4 w-4" />Select Runner</h3>
+              <p className="text-xs text-muted-foreground">Only one runner can be enabled at a time. Turning one on turns the others off.</p>
+              <div className="space-y-3">
+                {([
+                  ["manual", "Manual Runner", Monitor, profiles.manual.manualScan],
+                  ["semi", "Semi Automatic", Clock3, profiles.semi.enabled],
+                  ["full", "Full Auto Post", Bot, profiles.full.enabled],
+                ] as const).map(([mode, label, Icon, checked]) => (
+                  <div key={mode} className="full-auto-post-card flex items-center justify-between gap-4 p-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Icon className="h-4 w-4 shrink-0 text-sky-700" />
+                      <span className="text-sm font-medium">{label}</span>
+                    </div>
+                    <Switch
+                      checked={checked}
+                      onCheckedChange={(enabled) => setRunnerEnabled(mode, enabled)}
+                      disabled={loading || saving}
+                      aria-label={`${label} ${mode === "manual" ? "manual scan" : "runner profile"}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>}
+            {isRunnerMode(settingsSection) && settingsSection !== "manual" && <section className="full-auto-post-card space-y-3 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">{settingsSection === "full" ? "Full Auto Post" : settingsSection === "semi" ? "Semi Automatic" : "Manual Runner"}</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium">Copy settings from</span>
+                  <Select onValueChange={(value) => copyProfileFrom(value as RunnerMode)}>
+                    <SelectTrigger className="h-9 w-40 bg-white"><SelectValue placeholder="Choose profile" /></SelectTrigger>
+                    <SelectContent>
+                      {(["full", "semi"] as const).filter((mode) => mode !== settingsSection).map((mode) => <SelectItem key={mode} value={mode}>{mode === "full" ? "Full Auto Post" : "Semi Automatic"}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Copy className="h-4 w-4 text-muted-foreground" />
                 </div>
               </div>
-              <p className="mt-1 text-center text-sm text-muted-foreground">
-                {selectedAutoMode === "manual"
-                  ? "Manual mode: Auto post will not scan Unassigned documents."
-                  : selectedAutoMode === "semi"
-                    ? "Semi automatic opens each voucher for OCR; complete scans save automatically and issues stay open for review."
-                    : "Full automatic scans in the background, saves vouchers that pass checks, and continues past failed files."}
-              </p>
-              <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/70 p-2.5 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
+            </section>}
+            {isRunnerMode(settingsSection) && <section className="full-auto-post-card space-y-3 p-3">
+              <h3 className="flex items-center gap-2 border-b border-indigo-200 pb-2 text-base font-semibold"><ScanText className="h-4 w-4" />Select Engine</h3>
+              <RadioGroup
+                value={settings.scanEngine}
+                onValueChange={(scanEngine) => patch({ scanEngine: scanEngine as AutoOcrSettings["scanEngine"] })}
+                disabled={!isCompanyAdmin || loading || saving}
+                className="grid grid-cols-3 gap-2"
+              >
+                {([ ["gemini", "Gemini AI"], ["google", "Google OCR"], ["azure", "Azure OCR"], ["auto", "Auto OCR"] ] as const).map(([engine, label]) => {
+                  const available = scanEngineAvailable[engine];
+                  const id = `runner-engine-${settingsSection}-${engine}`;
+                  return <label key={engine} htmlFor={id} title={available ? label : `${label} key or company access is not configured`} className={`flex cursor-pointer items-center gap-2 rounded-md border bg-background px-2.5 py-2 text-sm ${!available ? "cursor-not-allowed opacity-50" : "hover:bg-sky-50"}`}>
+                    <RadioGroupItem id={id} value={engine} disabled={!available} />
+                    <span>{label}{!available && <span className="ml-1 text-[10px] text-muted-foreground">Not configured</span>}</span>
+                  </label>;
+                })}
+              </RadioGroup>
+            </section>}
+            {isRunnerMode(settingsSection) && <section className="full-auto-post-card space-y-3 p-3">
+              <h3 className="flex items-center gap-2 border-b border-indigo-200 pb-2 text-base font-semibold"><Gauge className="h-4 w-4" />Auto save</h3>
+              <SettingToggle title="Auto Post" checked={settings.autoSaveEnabled} onChange={(autoSaveEnabled) => patch({ autoSaveEnabled })} disabled={!isCompanyAdmin || loading || saving} />
+              <SettingToggle title="Overwrite edited" checked={settings.overwriteEdited} onChange={(overwriteEdited) => patch({ overwriteEdited })} disabled={!isCompanyAdmin || loading || saving} />
+              <NumberSetting label="Auto save countdown (seconds)" value={settings.autoSaveSeconds} min={1} max={60} onChange={(autoSaveSeconds) => patch({ autoSaveSeconds })} disabled={!isCompanyAdmin || loading || saving || !settings.autoSaveEnabled} />
+            </section>}
+            {settingsSection === "rules" && <section className="space-y-3">
+              <h3 className="mb-3 flex items-center gap-2 border-b pb-2 text-base font-semibold">
+                <Bot className="h-4 w-4" />Common Setting
+                <Popover>
+                  <PopoverTrigger asChild><button type="button" aria-label="Common Setting information" className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-sky-100 hover:text-foreground"><Info className="h-4 w-4" /></button></PopoverTrigger>
+                  <PopoverContent align="start" data-pl-intro="" className={`max-w-sm text-xs font-normal leading-relaxed ${showRunner ? "" : "!z-[2147483003]"}`}>
+                    These rules and the bank-name matching below are shared by Full Auto Post, Semi Automatic, and Manual Runner.
+                    <p className="mt-2">{MISSING_RULE_LABELS[introLang].help}</p>
+                  </PopoverContent>
+                </Popover>
+              </h3>
+              <div className="space-y-3">
                 <div className="text-sm font-semibold">{MISSING_FIELD_ACTION_COPY[introLang].label}</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">{MISSING_RULE_LABELS[introLang].help}</p>
                 <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
                   {(["debitMaster", "creditMaster", "item", "date", "tax", "other"] as const).map((ruleKey) => {
                     const options = ruleKey === "item"
                       ? ["pause-and-hold", "fail-and-continue", "save-without"] as const
                       : ["pause-and-hold", "fail-and-continue"] as const;
                     return (
-                      <div key={ruleKey} className="rounded-md border bg-white p-2 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
+                      <div key={ruleKey} className="full-auto-post-card p-2">
                         <div className="mb-1.5 text-sm font-semibold">{MISSING_RULE_LABELS[introLang][ruleKey]}</div>
                         <RadioGroup
                           value={settings.missingFieldRules[ruleKey]}
@@ -633,34 +1004,39 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
                             return <label key={action} htmlFor={id} className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs transition-all duration-150 hover:-translate-y-0.5 hover:shadow-sm"><RadioGroupItem id={id} value={action} className="mt-0.5" /><span>{label}</span></label>;
                           })}
                         </RadioGroup>
-                        {ruleKey === "item" && <div className="mt-2 space-y-2 border-t pt-2">
-                          <div>
-                            <div className="mb-1 text-xs font-semibold">{MISSING_RULE_LABELS[introLang].rowMismatch}</div>
-                            <RadioGroup value={settings.itemRowMismatchAction} onValueChange={(action) => patch({ itemRowMismatchAction: action as AutoOcrSettings["itemRowMismatchAction"] })} disabled={!isCompanyAdmin || loading || saving} className="space-y-1">
-                              <label htmlFor="auto-ocr-item-row-count-pause" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-row-count-pause" value="pause-and-hold" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].pause}</span></label>
-                              <label htmlFor="auto-ocr-item-row-count-fail" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-row-count-fail" value="fail-and-continue" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].fail}</span></label>
-                            </RadioGroup>
-                          </div>
-                          <div>
-                            <div className="mb-1 text-xs font-semibold">{MISSING_RULE_LABELS[introLang].amountMismatch}</div>
-                            <RadioGroup value={settings.amountMismatchAction} onValueChange={(action) => patch({ amountMismatchAction: action as AutoOcrSettings["amountMismatchAction"] })} disabled={!isCompanyAdmin || loading || saving} className="space-y-1">
-                              <label htmlFor="auto-ocr-item-amount-pause" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-amount-pause" value="pause-and-hold" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].pause}</span></label>
-                              <label htmlFor="auto-ocr-item-amount-fail" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-amount-fail" value="fail-and-continue" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].fail}</span></label>
-                            </RadioGroup>
-                          </div>
-                        </div>}
                       </div>
                     );
                   })}
+                  <div className="full-auto-post-card p-2">
+                    <div className="mb-1.5 text-sm font-semibold">{MISSING_RULE_LABELS[introLang].rowMismatch}</div>
+                    <RadioGroup value={settings.itemRowMismatchAction} onValueChange={(action) => patch({ itemRowMismatchAction: action as AutoOcrSettings["itemRowMismatchAction"] })} disabled={!isCompanyAdmin || loading || saving} className="space-y-1.5">
+                      <label htmlFor="auto-ocr-item-row-count-pause" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-row-count-pause" value="pause-and-hold" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].pause}</span></label>
+                      <label htmlFor="auto-ocr-item-row-count-fail" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-row-count-fail" value="fail-and-continue" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].fail}</span></label>
+                    </RadioGroup>
+                  </div>
+                  <div className="full-auto-post-card p-2">
+                    <div className="mb-1.5 text-sm font-semibold">{MISSING_RULE_LABELS[introLang].amountMismatch}</div>
+                    <RadioGroup value={settings.amountMismatchAction} onValueChange={(action) => patch({ amountMismatchAction: action as AutoOcrSettings["amountMismatchAction"] })} disabled={!isCompanyAdmin || loading || saving} className="space-y-1.5">
+                      <label htmlFor="auto-ocr-item-amount-pause" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-amount-pause" value="pause-and-hold" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].pause}</span></label>
+                      <label htmlFor="auto-ocr-item-amount-fail" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-amount-fail" value="fail-and-continue" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].fail}</span></label>
+                    </RadioGroup>
+                  </div>
                 </div>
-                <div className="rounded-lg border border-amber-200 bg-white/70 p-2.5 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
+                <div className="full-auto-post-card space-y-2 p-2.5">
                   <SettingToggle
                     title={DUPLICATE_COPY[introLang].title}
                     checked={settings.checkDuplicateVouchers}
                     onChange={(checkDuplicateVouchers) => patch({ checkDuplicateVouchers })}
                     disabled={!isCompanyAdmin || loading || saving}
+                    info={(
+                      <Popover>
+                        <PopoverTrigger asChild><button type="button" aria-label="Duplicate voucher rule information" className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-sky-100 hover:text-foreground"><Info className="h-4 w-4" /></button></PopoverTrigger>
+                        <PopoverContent align="start" data-pl-intro="" className={`max-w-sm text-xs font-normal leading-relaxed ${showRunner ? "" : "!z-[2147483003]"}`}>
+                          {DUPLICATE_COPY[introLang].description}
+                        </PopoverContent>
+                      </Popover>
+                    )}
                   />
-                  <p className="mb-2 mt-1 text-xs leading-relaxed text-muted-foreground">{DUPLICATE_COPY[introLang].description}</p>
                   <RadioGroup
                     value={settings.duplicateVoucherAction}
                     onValueChange={(duplicateVoucherAction) => patch({ duplicateVoucherAction: duplicateVoucherAction as AutoOcrSettings["duplicateVoucherAction"] })}
@@ -672,32 +1048,130 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
                     <label htmlFor="auto-ocr-duplicate-pause" className="flex cursor-pointer items-start gap-2 rounded-md border bg-white p-2 text-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-sm"><RadioGroupItem id="auto-ocr-duplicate-pause" value="pause-for-review" className="mt-0.5" /><span>{DUPLICATE_COPY[introLang].pause}</span></label>
                   </RadioGroup>
                 </div>
+                <div className="full-auto-post-card space-y-2 p-2.5">
+                  <div className="text-sm font-semibold">{AUTO_POST_UI.defaultDueDaysTitle}</div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <DefaultDueDayInput
+                      label={AUTO_POST_UI.sale}
+                      ariaLabel={AUTO_POST_UI.defaultDueDaysSale}
+                      value={settings.defaultDueDaysSale}
+                      onChange={(defaultDueDaysSale) => patch({ defaultDueDaysSale })}
+                      disabled={!isCompanyAdmin || loading || saving}
+                    />
+                    <DefaultDueDayInput
+                      label={AUTO_POST_UI.purchase}
+                      ariaLabel={AUTO_POST_UI.defaultDueDaysPurchase}
+                      value={settings.defaultDueDaysPurchase}
+                      onChange={(defaultDueDaysPurchase) => patch({ defaultDueDaysPurchase })}
+                      disabled={!isCompanyAdmin || loading || saving}
+                    />
+                  </div>
+                </div>
+                <div className="full-auto-post-card p-3">
+                  <VoucherOcrBankAliasesPanel />
+                </div>
               </div>
             </section>}
 
-            {settingsSection === "device" && <section className="space-y-3 rounded-xl border bg-background/80 p-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
-              <h3 className="flex items-center gap-2 border-b pb-2 text-base font-semibold"><Monitor className="h-4 w-4" />Run location</h3>
+            {isRunnerMode(settingsSection) && <section className="full-auto-post-card space-y-3 p-3">
+              <h3 className="flex items-center gap-2 border-b pb-2 text-base font-semibold"><Clock3 className="h-4 w-4" />When to scan</h3>
+              <div className="space-y-2">
+                <SettingToggle
+                  title="As soon as a file arrives"
+                  checked={settingsSection === "manual" ? false : settings.runOnUpload}
+                  onChange={(runOnUpload) => patch({ runOnUpload })}
+                  disabled={manualProfileReadOnly || !isCompanyAdmin || loading || saving}
+                />
+                <SettingToggle
+                  title="Scan on a schedule"
+                  checked={settingsSection === "manual" ? false : settings.runOnSchedule}
+                  onChange={(runOnSchedule) => patch({ runOnSchedule })}
+                  disabled={manualProfileReadOnly || !isCompanyAdmin || loading || saving}
+                />
+                <div className="space-y-1">
+                  <SettingToggle
+                    title={AUTO_POST_UI.onlyWhenStart}
+                    checked={settingsSection === "manual" || isManualStartTrigger(settings)}
+                    onChange={(on) => { if (on) patch({ runOnManualStart: true }); }}
+                    disabled={manualProfileReadOnly || !isCompanyAdmin || loading || saving}
+                  />
+                  {(settingsSection === "manual" || isManualStartTrigger(settings)) && (
+                    <p className="text-xs text-muted-foreground">{AUTO_POST_UI.onlyWhenStartHint}</p>
+                  )}
+                </div>
+                <ScanRunLimitSetting
+                  value={settings.maxVouchersPerRun}
+                  onChange={(maxVouchersPerRun) => patch({ maxVouchersPerRun })}
+                  disabled={!isCompanyAdmin || loading || saving}
+                />
+              </div>
+              {settingsSection !== "manual" && settings.runOnSchedule && <div className="full-auto-post-card space-y-3 p-3">
+                <div className="text-xs font-medium">Schedule type</div>
+                <RadioGroup
+                  value={settings.scheduleMode}
+                  onValueChange={(scheduleMode) => patch({ scheduleMode: scheduleMode as AutoOcrSettings["scheduleMode"] })}
+                  disabled={!isCompanyAdmin || loading || saving}
+                  className="grid gap-2 sm:grid-cols-2"
+                >
+                  <label htmlFor="auto-ocr-schedule-interval" className="flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm shadow-sm"><RadioGroupItem id="auto-ocr-schedule-interval" value="interval" /><span>Every interval</span></label>
+                  <label htmlFor="auto-ocr-schedule-date-time" className="flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm shadow-sm"><RadioGroupItem id="auto-ocr-schedule-date-time" value="date-time" /><span>At a date and time (one time)</span></label>
+                </RadioGroup>
+                {settings.scheduleMode === "interval" ? (
+                  <NumberSetting label="Run every (minutes)" value={settings.scheduleMinutes} min={1} max={1440} onChange={(scheduleMinutes) => patch({ scheduleMinutes })} disabled={!isCompanyAdmin || loading || saving} />
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-1 text-sm"><span className="text-xs text-muted-foreground">Date</span><BsDatePicker isRange={false} valueAD={scheduleDateAD} onChangeAD={(date) => patch({ scheduleDate: formatLocalDate(date) })} disabled={!isCompanyAdmin || loading || saving} showDateConverterButton={false} className="!h-9 !min-h-9 w-full">{scheduleDateLabel}</BsDatePicker></label>
+                    <label className="space-y-1 text-sm"><span className="text-xs text-muted-foreground">Time</span><Input type="time" value={settings.scheduleTime} disabled={!isCompanyAdmin || loading || saving} onChange={(event) => patch({ scheduleTime: event.target.value })} /></label>
+                  </div>
+                )}
+              </div>}
+            </section>}
+
+            {settingsSection === "keys" && <section className="full-auto-post-card space-y-3 p-3">
+              <h3 className="border-b pb-2 text-base font-semibold">Key Setting</h3>
+              <VoucherOcrKeySettingsPanel />
+            </section>}
+            {settingsSection === "voucher-settings" && <section className="full-auto-post-card space-y-3 p-3">
+              <h3 className="border-b pb-2 text-base font-semibold">Voucher OCR Settings</h3>
+              <VoucherOcrSettingsPanel />
+            </section>}
+
+            {isRunnerMode(settingsSection) && <section className="full-auto-post-card space-y-3 p-3">
+              <h3 className="flex items-center gap-2 border-b pb-2 text-base font-semibold">
+                <Monitor className="h-4 w-4" />Run location
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button type="button" aria-label="Local PC information" className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-sky-100 hover:text-foreground">
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" data-pl-intro="" className={`max-w-sm text-xs font-normal leading-relaxed ${showRunner ? "" : "!z-[2147483003]"}`}>
+                    <p>{LOCAL_INFO[introLang]}</p>
+                    <p className="mt-2 border-t pt-2">{localDeviceCopy.oneOnly}</p>
+                  </PopoverContent>
+                </Popover>
+              </h3>
               <div className="text-sm font-semibold">Run Auto post on</div>
-              <RadioGroup value={settings.runLocation} onValueChange={(runLocation) => {
-                const nextLocation = runLocation as AutoOcrSettings["runLocation"];
+              <RadioGroup value={settings.runLocation === "server" ? "local-pc" : settings.runLocation} onValueChange={(runLocation) => {
+                if (runLocation === "server") return;
+                const nextLocation = "local-pc" as const;
                 const currentDeviceRegistered = selectableAdminDevices.some((device) => device.id === localDeviceId);
                 patch({
                   runLocation: nextLocation,
-                  ...(nextLocation === "local-pc" && !settings.localRunnerDeviceId && currentDeviceRegistered ? { localRunnerDeviceId: localDeviceId } : {}),
+                  ...(!settings.localRunnerDeviceId && currentDeviceRegistered ? { localRunnerDeviceId: localDeviceId } : {}),
                 });
-              }} disabled={!settings.enabled} className="grid gap-2 sm:grid-cols-2">
+              }} disabled={!isCompanyAdmin || loading || saving} className="grid gap-2 sm:grid-cols-2">
                 <label htmlFor="auto-ocr-local-pc" className="flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm shadow-sm"><RadioGroupItem id="auto-ocr-local-pc" value="local-pc" /><Monitor className="h-4 w-4" /><span>Local PC</span></label>
-                <label htmlFor="auto-ocr-server" className="flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm shadow-sm"><RadioGroupItem id="auto-ocr-server" value="server" /><Server className="h-4 w-4" /><span>Server</span></label>
+                <label htmlFor="auto-ocr-server" aria-disabled="true" className="flex cursor-not-allowed items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm shadow-sm opacity-50"><RadioGroupItem id="auto-ocr-server" value="server" disabled /><Server className="h-4 w-4" /><span>Server ({AUTO_POST_UI.comingSoon})</span></label>
               </RadioGroup>
               {settings.runLocation === "local-pc" ? (
-                <div className="space-y-3 rounded-md border border-sky-200 bg-sky-50 p-2.5 text-xs leading-relaxed text-sky-950">
-                  <p>{LOCAL_INFO[introLang]}</p>
+                <div className="full-auto-post-card space-y-3 p-2.5 text-xs leading-relaxed">
                   <label className="block space-y-1.5">
                     <span className="font-semibold">{localDeviceCopy.select}</span>
                     <Select
                       value={selectedDeviceId}
                       onValueChange={(localRunnerDeviceId) => patch({ localRunnerDeviceId })}
-                      disabled={!settings.enabled || adminDevicesLoading || !selectableAdminDevices.length}
+                      disabled={!isCompanyAdmin || loading || saving || adminDevicesLoading || !selectableAdminDevices.length}
                     >
                       <SelectTrigger className="h-9 bg-white text-foreground"><SelectValue placeholder={adminDevicesLoading ? localDeviceCopy.loading : localDeviceCopy.select} /></SelectTrigger>
                       <SelectContent>
@@ -711,7 +1185,6 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
                     </Select>
                   </label>
                   {adminDevicesLoading ? <p>{localDeviceCopy.loading}</p> : !selectableAdminDevices.length ? <p>{localDeviceCopy.empty}</p> : null}
-                  <p className="rounded border border-sky-200 bg-white/80 p-2">{localDeviceCopy.oneOnly}</p>
                   {selectedAdminDevice && selectedAdminDevice.id !== localDeviceId ? <p className="font-semibold">{localDeviceCopy.moved}</p> : null}
                   {selectableAdminDevices.length ? (
                     <div className="space-y-1.5">
@@ -747,84 +1220,30 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
               ) : <div className="rounded-md border bg-muted/50 p-2.5 text-xs text-muted-foreground">Server mode needs the Pocket Ledger Server Auto OCR worker enabled; the app does not run scans on this PC in this mode.</div>}
             </section>}
 
-            {settingsSection === "schedule" && <section className="space-y-3 rounded-xl border bg-background/80 p-3 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
-              <h3 className="flex items-center gap-2 border-b pb-2 text-base font-semibold"><Clock3 className="h-4 w-4" />When to scan</h3>
-              <SettingToggle title="As soon as a file arrives" checked={settings.runOnUpload} onChange={(runOnUpload) => patch({ runOnUpload })} disabled={!settings.enabled} />
-              <SettingToggle title="Scan on a schedule" checked={settings.runOnSchedule} onChange={(runOnSchedule) => patch({ runOnSchedule })} disabled={!settings.enabled} />
-              {settings.runOnSchedule && <div className="space-y-3 rounded-lg border bg-background/80 p-3 shadow-sm">
-                <div className="text-xs font-medium">Schedule type</div>
-                <RadioGroup
-                  value={settings.scheduleMode}
-                  onValueChange={(scheduleMode) => patch({ scheduleMode: scheduleMode as AutoOcrSettings["scheduleMode"] })}
-                  disabled={!settings.enabled}
-                  className="grid gap-2 sm:grid-cols-2"
-                >
-                  <label htmlFor="auto-ocr-schedule-interval" className="flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm shadow-sm">
-                    <RadioGroupItem id="auto-ocr-schedule-interval" value="interval" />
-                    <span>Every interval</span>
-                  </label>
-                  <label htmlFor="auto-ocr-schedule-date-time" className="flex cursor-pointer items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm shadow-sm">
-                    <RadioGroupItem id="auto-ocr-schedule-date-time" value="date-time" />
-                    <span>At a date and time (one time)</span>
-                  </label>
-                </RadioGroup>
-                {settings.scheduleMode === "interval" ? (
-                  <NumberSetting label="Run every (minutes)" value={settings.scheduleMinutes} min={1} max={1440} onChange={(scheduleMinutes) => patch({ scheduleMinutes })} disabled={!settings.enabled} />
-                ) : (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="space-y-1 text-sm">
-                      <span className="text-xs text-muted-foreground">Date</span>
-                      <BsDatePicker
-                        isRange={false}
-                        valueAD={scheduleDateAD}
-                        onChangeAD={(date) => patch({ scheduleDate: formatLocalDate(date) })}
-                        disabled={!settings.enabled}
-                        showDateConverterButton={false}
-                        className="!h-9 !min-h-9 w-full"
-                      >
-                        {scheduleDateLabel}
-                      </BsDatePicker>
-                    </label>
-                    <label className="space-y-1 text-sm">
-                      <span className="text-xs text-muted-foreground">Time</span>
-                      <Input type="time" value={settings.scheduleTime} disabled={!settings.enabled} onChange={(event) => patch({ scheduleTime: event.target.value })} />
-                    </label>
-                  </div>
-                )}
-              </div>}
-            </section>}
-
-            {settingsSection === "usage" && <section className="space-y-3 rounded-xl border border-indigo-300 bg-gradient-to-br from-indigo-100 via-sky-50 to-violet-100 p-3 shadow-[0_5px_14px_rgba(49,46,129,0.18)] transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md">
-              <h3 className="flex items-center gap-2 border-b border-indigo-200 pb-2 text-base font-semibold"><Gauge className="h-4 w-4" />Usage and voucher saving</h3>
-              <div className="rounded-lg border border-indigo-200 bg-white/90 p-2.5 shadow-[0_2px_6px_rgba(30,41,59,0.12)]">
-                <div className="mb-2 text-xs font-medium text-foreground">Scan Engine</div>
-                <Select value={settings.scanEngine} onValueChange={(scanEngine) => {
-                  const selected = scanEngine as AutoOcrSettings["scanEngine"];
-                  if (scanEngineAvailable[selected]) patch({ scanEngine: selected });
-                }} disabled={!settings.enabled}>
-                  <SelectTrigger className="h-9 bg-white"><SelectValue placeholder="Choose an engine" /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(SCAN_ENGINES).map(([value, engine]) => {
-                      const key = value as AutoOcrSettings["scanEngine"];
-                      const available = scanEngineAvailable[key];
-                      return <SelectItem key={value} value={value} disabled={!available} title={available ? engine.name : `${engine.name} key or company access is not configured`}>
-                        <span>{engine.name}</span>
-                        {!available && <span className="ml-2 text-[10px] text-muted-foreground">Not configured</span>}
-                      </SelectItem>;
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="rounded-lg border border-indigo-200 bg-white/90 p-2.5 shadow-[0_2px_6px_rgba(30,41,59,0.12)]">
-                <NumberSetting label={`Maximum ${SCAN_ENGINES[settings.scanEngine].name} calls per minute`} value={settings.maxCallsPerMinute} min={1} max={15} onChange={(maxCallsPerMinute) => patch({ maxCallsPerMinute })} disabled={!settings.enabled} />
+            {isRunnerMode(settingsSection) && <section className="full-auto-post-card space-y-3 p-3">
+              <h3 className="flex items-center gap-2 border-b border-indigo-200 pb-2 text-base font-semibold">
+                <Gauge className="h-4 w-4" />Usage and voucher saving
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button type="button" aria-label="Voucher saving information" className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-sky-100 hover:text-foreground">
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" data-pl-intro="" className={`max-w-sm text-xs font-normal leading-relaxed ${showRunner ? "" : "!z-[2147483003]"}`}>
+                    Automatically created vouchers remain unapproved. Use the required-information rule in the Common Setting tab to handle incomplete scans.
+                  </PopoverContent>
+                </Popover>
+              </h3>
+              <div className="full-auto-post-card p-2.5">
+                <NumberSetting label={`Maximum ${SCAN_ENGINES[settings.scanEngine].name} calls per minute`} value={settings.maxCallsPerMinute} min={1} max={15} onChange={(maxCallsPerMinute) => patch({ maxCallsPerMinute })} disabled={!isCompanyAdmin || loading || saving} />
                 <p className="mt-2 text-xs text-muted-foreground">{settings.runLocation === "local-pc"
                   ? "The selected PC runs the scan using this company’s configured engine key. Server and provider safety limits may still apply."
                   : "Limit applies to this company. The server’s engine safety limit may be lower."}</p>
               </div>
-              <p className="rounded-lg border border-indigo-200 bg-white/80 p-2.5 text-xs text-muted-foreground shadow-[0_2px_6px_rgba(30,41,59,0.1)]">Automatically created vouchers remain unapproved. Use the required-information rule in the Auto post mode card above to handle incomplete scans.</p>
+              <OcrEngineUsage companyId={fsId} selectedEngine={settings.scanEngine} />
             </section>}
 
-            {settingsSection === "device" && <div className="flex items-start gap-2 rounded-lg border bg-muted/60 p-3 text-xs text-muted-foreground shadow-sm"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />Files must be uploaded to the Pocket Ledger Server so the selected runner can access them.</div>}
+            {isRunnerMode(settingsSection) && <div className="flex items-start gap-2 rounded-lg border bg-muted/60 p-3 text-xs text-muted-foreground shadow-sm"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />Files must be uploaded to the Pocket Ledger Server so the selected runner can access them.</div>}
             </div>
             </div>
           </div>
@@ -832,14 +1251,43 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
 
         {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
         </div>
-        <DialogFooter className="shrink-0 border-t bg-background pt-3">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          {isCompanyAdmin && <Button type="button" onClick={() => void save()} disabled={loading || saving || !fsId}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save</Button>}
+        <DialogFooter className="full-auto-post-footer shrink-0 border-t px-[10px] pb-[10px] pt-3">
+          <Button type="button" variant="outline" onClick={() => handleDialogOpenChange(false)}>Cancel</Button>
+          {isCompanyAdmin && <>
+            <Button type="button" variant="outline" onClick={() => void save(false)} disabled={loading || saving || !fsId}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Apply</Button>
+            <Button type="button" onClick={() => void save(true)} disabled={loading || saving || !fsId}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save</Button>
+          </>}
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <AlertDialog open={savePrompt != null} onOpenChange={(nextOpen) => { if (!nextOpen) setSavePrompt(null); }}>
+      <AlertDialogContent overlayClassName={showRunner ? undefined : "z-[2147483004] bg-black/45 backdrop-blur-sm"} className={showRunner ? undefined : "!z-[2147483005]"}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{savePrompt === "continue-stop" ? AUTO_POST_UI.previousRunPrompt : AUTO_POST_UI.settingsSavedStart}</AlertDialogTitle>
+          <AlertDialogDescription className="sr-only">{savePrompt === "continue-stop" ? AUTO_POST_UI.previousRunPrompt : AUTO_POST_UI.settingsSavedStart}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          {savePrompt === "continue-stop" ? <>
+            <AlertDialogCancel onClick={() => {
+              setSavePrompt(null);
+              window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId: fsId, held: true } }));
+            }}>{AUTO_POST_UI.stop}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              setSavePrompt(null);
+              window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId: fsId, held: false } }));
+            }}>{AUTO_POST_UI.continue}</AlertDialogAction>
+          </> : <>
+            <AlertDialogCancel onClick={() => setSavePrompt(null)}>{AUTO_POST_UI.no}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              setSavePrompt(null);
+              window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId: fsId, held: false } }));
+            }}>{AUTO_POST_UI.yes}</AlertDialogAction>
+          </>}
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <AlertDialog open={!!deviceActionTarget} onOpenChange={(nextOpen) => { if (!nextOpen && !deviceActionBusy) setDeviceActionTarget(null); }}>
-      <AlertDialogContent>
+      <AlertDialogContent overlayClassName={showRunner ? undefined : "z-[2147483004] bg-black/45 backdrop-blur-sm"} className={showRunner ? undefined : "!z-[2147483005]"}>
         <AlertDialogHeader>
           <AlertDialogTitle>{localDeviceCopy.confirmTitle}</AlertDialogTitle>
           <AlertDialogDescription>
@@ -864,9 +1312,9 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange }: { open: boo
   );
 }
 
-function SettingToggle({ icon, title, checked, onChange, disabled = false }: { icon?: ReactNode; title: string; checked: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
+function SettingToggle({ icon, title, checked, onChange, disabled = false, info }: { icon?: ReactNode; title: string; checked: boolean; onChange: (value: boolean) => void; disabled?: boolean; info?: ReactNode }) {
   return <div className={`flex items-center justify-between gap-3 ${disabled ? "opacity-60" : ""}`}>
-    <span className="flex items-center gap-2 text-sm">{icon}{title}</span>
+    <span className="flex items-center gap-2 text-sm">{icon}{title}{info}</span>
     <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} aria-label={title} />
   </div>;
 }
@@ -876,4 +1324,76 @@ function NumberSetting({ label, value, min, max, onChange, disabled = false }: {
     <span>{label}</span>
     <Input className="h-9 w-24" type="number" min={min} max={max} value={value} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))} />
   </label>;
+}
+
+function DefaultDueDayInput({ label, ariaLabel, value, onChange, disabled = false }: { label: string; ariaLabel: string; value: number | null; onChange: (value: number | null) => void; disabled?: boolean }) {
+  const [draft, setDraft] = useState(value == null ? "" : String(value));
+  useEffect(() => {
+    setDraft(value == null ? "" : String(value));
+  }, [value]);
+  return <label className={`space-y-1 text-sm ${disabled ? "opacity-60" : ""}`}>
+    <span className="text-xs text-muted-foreground">{label}</span>
+    <Input
+      className="h-9"
+      type="number"
+      min={0}
+      max={365}
+      value={draft}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      onChange={(event) => {
+        const raw = event.target.value;
+        setDraft(raw);
+        if (raw.trim() === "") onChange(null);
+        else onChange(normalizeDefaultDueDayValue(raw));
+      }}
+    />
+  </label>;
+}
+
+function ScanRunLimitSetting({ value, onChange, disabled = false }: { value: number | "all"; onChange: (value: number | "all") => void; disabled?: boolean }) {
+  const isAll = value === "all";
+  const [draft, setDraft] = useState(typeof value === "number" ? String(value) : String(SCAN_RUN_LIMIT_DEFAULT));
+  useEffect(() => {
+    if (typeof value === "number") setDraft(String(value));
+  }, [value]);
+  return <div className={`flex items-center justify-between gap-3 ${disabled ? "opacity-60" : ""}`}>
+    <span className="text-sm">{AUTO_POST_UI.howManyFiles}</span>
+    <div className="flex items-center gap-2">
+      <Input
+        className="h-9 w-24"
+        type="number"
+        min={1}
+        max={500}
+        value={isAll ? draft : value}
+        disabled={disabled}
+        aria-label={AUTO_POST_UI.howManyFiles}
+        onChange={(event) => {
+          const raw = event.target.value;
+          setDraft(raw);
+          if (raw === "") return;
+          const n = Number(raw);
+          if (!Number.isFinite(n)) return;
+          onChange(scanRunLimitValue(n));
+        }}
+      />
+      <label className={`flex items-center gap-2 rounded-md border bg-white px-3 py-1.5 text-sm shadow-sm ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}>
+        <input
+          type="checkbox"
+          className="h-4 w-4"
+          checked={isAll}
+          disabled={disabled}
+          aria-label={AUTO_POST_UI.scanAllFiles}
+          onChange={(event) => {
+            if (event.target.checked) onChange("all");
+            else {
+              const next = scanRunLimitValue(draft);
+              onChange(next === "all" ? SCAN_RUN_LIMIT_DEFAULT : next);
+            }
+          }}
+        />
+        <span>{AUTO_POST_UI.all}</span>
+      </label>
+    </div>
+  </div>;
 }

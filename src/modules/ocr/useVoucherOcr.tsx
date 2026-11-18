@@ -28,7 +28,12 @@ import { aiAmountCheck } from "./ai/aiVoucher";
 import { getOcrOwnAliases } from "./ownAliases";
 import { defaultDueDaysFor, partyCreditDaysOf, resolveOcrDueDate } from "./dueDate";
 import { mapAiJournalLines } from "./journalLines";
-import { fmtOcr, ocrRunStrings } from "./ocrRunStrings";
+import { fmtOcr, ocrRunStrings, type OcrFailKind } from "./ocrRunStrings";
+import { markAiModelAvailable, markAiModelUnavailable, unavailableAiModels } from "./ai/aiModelAvailability";
+import { readAutoPostDuplicateAction } from "./autoPostDuplicatePolicy";
+import { loadOcrEngineOptions } from "./engineChoices";
+import { ocrMissingFieldKeys } from "./missingFieldKeys";
+import { findDuplicateVoucher, type CandidateVoucher, type DuplicateMatch } from "@/lib/voucherDuplicateGuard";
 import { CreatePartyDialog } from "@/components/party/CreatePartyDialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -48,7 +53,7 @@ import { resolveOcrItemUnit } from "./extras";
 import { inferItemGroupFromName } from "./extras";
 import { findOrCreateSheetSizeItemGroups, mergeMasterGroups, type MasterGroupLike } from "@/lib/masterEntityGroupWrite";
 import { billVatPercent, cleanItemName, partyNamePrefill, findVat13, isOwnCompany, otherPans, pickLedgerAccount } from "./extras";
-import { OcrAiError, ocrAiErrorCode, ocrAiErrorText, type OcrAiMasterProposal, type OcrAiVoucherPatch } from "./ai/aiClient";
+import { OcrAiError, ocrAiErrorCode, ocrAiErrorText, ocrAiFailKind, type OcrAiModelOption, type OcrAiMasterProposal, type OcrAiVoucherPatch } from "./ai/aiClient";
 import { getBlobFromLocalFileRef, isLocalFileRef } from "@/lib/localPendingFiles";
 import { fetchPbAttachmentBlob } from "@/lib/pocketbaseData/pbAttachments";
 import { useCompany } from "@/hooks/useCompany";
@@ -58,8 +63,9 @@ import { detectReceipt, AUTO_SWITCH_MIN_CONF, type ReceiptDetection } from "@/li
 import { accountDisplayLabel, buildMoneyVoucherFill, pickChargeAccount, receiptNarration, suggestMaskedPayees } from "@/lib/ocr/receiptDetect/fillPaymentOut";
 import type { ParsedReceipt } from "@/lib/ocr/receiptDetect/types";
 import { paymentAmountFromBill } from "./fillPaymentOut";
-import { normalizeName } from "./normalize";
+import { devanagariDigitsToAscii, normalizeName } from "./normalize";
 import { nameScore } from "./fuzzy";
+import { matchPartyIdentity } from "./masterMatch";
 import { resolveOcrBubbles, snapshotFromForm } from "./reactiveBubbles";
 import type { OcrFormAdapter } from "./adapters";
 import type { OcrItemLike, OcrParsedBill, OcrPartyLike } from "./types";
@@ -115,6 +121,10 @@ function isEmptyVal(v: unknown): boolean {
   return false;
 }
 
+function isItemMasterPath(path: string): boolean {
+  return /(?:^|\.)(?:lineItems|items)(?:\.\d+)?\.(?:itemId|serviceId)$/i.test(path);
+}
+
 /** Ignore Gemini's generated type explanation; it is metadata, not text printed on the bill. */
 function billShowsVat(text: string | undefined, vatAmount?: number): boolean {
   if (Number(vatAmount) > 0) return true;
@@ -157,6 +167,32 @@ export const OCR_BUILD = "2026-11-16.1";
 
 const MONEY_TYPES = ["payment_out", "payment_in", "direct_expense", "direct_income", "contra"] as const;
 const ALL_TYPE_CHOICES = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"] as const;
+
+/** Fail popup chooser: other engines for one more scan ("gemini:<model>" | "cloud:google" | "cloud:azure"). */
+type OcrFailChoiceInput = { engine: string; model?: string; fallbackModel?: string; models?: OcrAiModelOption[]; cloud?: { google: boolean; azure: boolean } };
+function ocrFailChoices(f: OcrFailChoiceInput, FS: ReturnType<typeof ocrRunStrings>["fail"]): { value: string; label: string; failed: boolean }[] {
+  return [
+    ...(f.models ?? []).map((m) => ({
+      value: `gemini:${m.id}`,
+      label: fmtOcr(FS.engineGemini, { model: m.label && m.label !== m.id ? `${m.label} · ${m.id}` : m.id }),
+      failed: f.engine === "Gemini" && (m.id === f.model || m.id === f.fallbackModel),
+    })),
+    ...(f.cloud?.azure ? [{ value: "cloud:azure", label: FS.engineAzure, failed: f.engine === "Azure" }] : []),
+    ...(f.cloud?.google ? [{ value: "cloud:google", label: FS.engineGoogle, failed: f.engine === "Google" }] : []),
+  ];
+}
+
+/** A voucher-type switch suggestion is pending (not blocked). */
+function switchPendingIn(list: readonly OcrSuggestion[]): boolean {
+  return list.some((x) => (x.id === "switch" || x.id.startsWith("switch-")) && !x.blocked);
+}
+
+/** The pending switch will fire by itself (same rule as the auto-switch countdown effect): the target form then re-runs this handoff. */
+function switchWillAutoFire(list: readonly OcrSuggestion[]): boolean {
+  if (getOcrPrefs().autoSwitchVoucher === false) return false;
+  const sw = list.find((x) => x.id === "switch");
+  return !!sw && !sw.blocked && (sw.confidence ?? 0) >= AUTO_SWITCH_MIN_CONF;
+}
 
 function findDuplicateByRef(vouchers: readonly any[] | undefined, txnId?: string, referenceId?: string, chequeNumber?: string): { id: string; voucherNumber?: string; type?: string } | null {
   const needles = [txnId, referenceId, chequeNumber].map((s) => String(s ?? "").trim()).filter((s) => s.length >= 6);
@@ -261,7 +297,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   /** OCR "Create account" — prefilled bank/cash ledger from the slip (side = which voucher field it fills). */
   const [createAccountFor, setCreateAccountFor] = useState<{ side: "from" | "to"; prefill: { accountName?: string; accountType?: "Bank" | "Cash" } } | null>(null);
   /** Single-engine OCR failed: reason dialog (engine name + server/Gemini message + hint). */
-  const [ocrFail, setOcrFail] = useState<{ engine: string; message: string; detail?: string; code?: string; retryAfter?: number } | null>(null);
+  const [ocrFail, setOcrFail] = useState<{ engine: string; message: string; detail?: string; code?: string; retryAfter?: number; kind?: OcrFailKind; model?: string; fallbackModel?: string; models?: OcrAiModelOption[]; cloud?: { google: boolean; azure: boolean } } | null>(null);
+  /** Fail popup model chooser: model for the next "Read with this model" (this scan only). */
+  const [failPick, setFailPick] = useState("");
   const [possibleBankCharge, setPossibleBankCharge] = useState<number | null>(null);
   const possibleBankChargeResolverRef = useRef<((includeCharge: boolean) => void) | null>(null);
   const [createItemFor, setCreateItemFor] = useState<{ index: number; name: string; unit?: string; rate: number; groupId?: string; ocrGroups?: MasterGroupLike[] } | null>(null);
@@ -367,6 +405,46 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
    * remounts the form. If this form is still mounted 1.5 s later the dialog refused the switch: drop the parked bill,
    * give the original upload back and show the suggestions again (they were hidden for the switch).
    */
+  /* Runner (Semi + Full Auto): a type switch that was expected to auto-fire but did not happen (dialog refused,
+   * countdown cancelled / blocked, no target) must reach the runner, or the job waits forever. Once per OCR result. */
+  /** One toast slot per voucher form: re-runs (runner resume) update the same toast instead of stacking new ones. */
+  const toastKeyRef = useRef(`ocr-${Math.random().toString(36).slice(2)}`);
+  /** Last "required fields missing" sent to the runner for this scan + the form values it was checked against. */
+  const lastRunnerMissingRef = useRef<{ raw: unknown; sig: string; detail: Record<string, unknown> } | null>(null);
+  const formSig = useCallback(() => {
+    try { return JSON.stringify(optsRef.current.form.getValues()); } catch { return ""; }
+  }, []);
+  const sendRunnerMissing = useCallback((detail: Record<string, unknown>) => {
+    lastRunnerMissingRef.current = { raw: lastRawRef.current, sig: formSig(), detail };
+    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-required-fields-missing", { detail }));
+  }, [formSig]);
+  const runnerSwitchWatchRef = useRef<number | null>(null);
+  const runnerSwitchNotifiedForRef = useRef<unknown>(null);
+  const clearRunnerSwitchWatch = useCallback(() => {
+    if (runnerSwitchWatchRef.current != null) { window.clearTimeout(runnerSwitchWatchRef.current); runnerSwitchWatchRef.current = null; }
+  }, []);
+  const notifyRunnerSwitchStalled = useCallback(() => {
+    clearRunnerSwitchWatch();
+    const opt = optsRef.current;
+    const raw = lastRawRef.current;
+    if (!mountedRef.current || !handoffAutoPostRef.current || savedRef.current || opt.isEditing) return;
+    if (runnerSwitchNotifiedForRef.current === raw) return;
+    runnerSwitchNotifiedForRef.current = raw;
+    const label = ocrRunStrings().voucherTypeSwitchPending;
+    sendRunnerMissing({ companyId: opt.companyId, missing: [label], fieldKeys: ocrMissingFieldKeys([label]), voucherType: opt.currentVoucherType ?? opt.adapter.voucherType, itemAmountMismatch: false, amountCheckReasons: [] });
+  }, [clearRunnerSwitchWatch, sendRunnerMissing]);
+  /** Armed when a runner handoff leaves the save to the auto-switch: countdown + margin, then report if still here. */
+  const armRunnerSwitchWatch = useCallback(() => {
+    clearRunnerSwitchWatch();
+    const ms = (clampAutoPostSeconds(getOcrPrefs().autoSwitchSeconds) + 6) * 1000;
+    runnerSwitchWatchRef.current = window.setTimeout(() => {
+      runnerSwitchWatchRef.current = null;
+      if (!mountedRef.current || apScheduledForRef.current === lastRawRef.current) return;
+      notifyRunnerSwitchStalled();
+    }, ms);
+  }, [clearRunnerSwitchWatch, notifyRunnerSwitchStalled]);
+  useEffect(() => () => { if (runnerSwitchWatchRef.current != null) window.clearTimeout(runnerSwitchWatchRef.current); }, []);
+
   const switchVoucher = useCallback((typ: string, raw: OcrRawResult, selectedIds: string[]) => {
     const files = optsRef.current.files;
     const original = takeOcrOriginal(files[0]);
@@ -392,8 +470,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       if (original && files[0]) linkOcrOriginal(files[0], original);
       setDoneIds((p) => { if (!p.has("switch")) return p; const n = new Set(p); n.delete("switch"); return n; });
       setSugOpen(true);
+      // Runner job: the switch was refused, so this form will not auto-post either -> let the runner apply its rule.
+      if (handoffAutoPostRef.current) notifyRunnerSwitchStalled();
     }, 1500);
-  }, []);
+  }, [notifyRunnerSwitchStalled]);
 
   // A user can change the voucher tab after OCR has already read the attachment.
   // Carry that cached OCR result to the new form so its adapter can reuse matching
@@ -419,14 +499,27 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         (path, v) => !(filledRef.current.has(path) && JSON.stringify(filledRef.current.get(path)) === JSON.stringify(v)) && F.getFieldState(path).isDirty,
         isEmptyVal,
       );
+      /* Gallery runner voucher: the new tab keeps the runner's auto-post rules (same flags as switchVoucher).
+       * A normal (non-runner) voucher stays manual: no auto-post. */
+      const runnerHandoff = handoffAutoPostRef.current === true;
       queueOcrHandoff(targetType, opt.files, {
         raw,
         original,
         selectedIds: [],
-        autoPost: false,
         manualTypeSwitch: true,
-        allowSaveWithoutItems: false,
         userValues: Object.keys(userValues).length ? userValues : undefined,
+        ...(runnerHandoff
+          ? {
+              autoPost: true,
+              autoPostSeconds: handoffAutoPostSecondsRef.current,
+              overwriteEdited: handoffOverwriteEditedRef.current,
+              allowSaveWithoutItems: handoffAllowSaveWithoutItemsRef.current,
+              enginePref: handoffEnginePrefRef.current,
+              cloudProvider: handoffCloudProviderRef.current,
+              checkDuplicateVouchers: handoffDupCheckOffRef.current ? false : undefined,
+              defaultDueDays: handoffDueDaysRef.current,
+            }
+          : { autoPost: false, allowSaveWithoutItems: false }),
       });
     };
     window.addEventListener(OCR_MANUAL_SWITCH_EVENT, onManualVoucherSwitch);
@@ -562,14 +655,32 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
 
 
   const run = useCallback(
-    async (reason: "auto" | "refresh" | "handoff", reuse?: { raw?: OcrRawResult; selectedIds?: string[]; enginePref?: import("./prefs").OcrEnginePref; cloudProvider?: "google" | "azure"; resumeCurrentForm?: boolean; manualTypeSwitch?: boolean }) => {
+    async (reason: "auto" | "refresh" | "handoff", reuse?: { raw?: OcrRawResult; selectedIds?: string[]; enginePref?: import("./prefs").OcrEnginePref; cloudProvider?: "google" | "azure"; resumeCurrentForm?: boolean; manualTypeSwitch?: boolean; aiModel?: string }) => {
       const opt = optsRef.current;
       const first = opt.files[0];
       if (!first || running) return;
       manualTypeSwitchRef.current = reuse?.manualTypeSwitch === true;
+      /* Manual tab switch of a gallery runner voucher: auto-post stays on, validated against the current form. */
+      const manualRunnerSwitch = reuse?.manualTypeSwitch === true && reason === "handoff" && handoffAutoPostRef.current;
+      /** Manual type change: the user's own values from the previous form win over the OCR re-map (applied once). */
+      const applyCarriedUserValues = () => {
+        const carried = reuse?.manualTypeSwitch ? handoffUserValuesRef.current : undefined;
+        if (!carried) return;
+        handoffUserValuesRef.current = undefined;
+        const A = opt.adapter;
+        const F = opt.form;
+        for (const [key, path, v] of carriedValueWrites(carried, { date: A.date, dueDate: A.dueDate, narration: A.narration, amount: A.amount, party: A.party?.path, account: A.accountPath })) {
+          if (key === "party") {
+            if (!A.party || !opt.parties.some((p) => p.id === v)) continue;
+            if (A.party.payeeTypePath && A.party.payeeTypeValue) F.setValue(A.party.payeeTypePath, A.party.payeeTypeValue as never, { shouldDirty: true });
+          }
+          F.setValue(path, v as never, { shouldDirty: true, shouldValidate: false });
+        }
+      };
       setRunning(true);
       setOcrFail(null);
-      const lead = reason === "refresh" ? "Re-reading bill" : reason === "handoff" ? "Filling from the bill already read" : "Reading bill";
+      const PS = ocrRunStrings().progress;
+      const lead = reason === "refresh" ? PS.rereading : reason === "handoff" ? PS.filling : PS.reading;
       const ac = new AbortController();
       ocrAbortRef.current = ac;
       /** Stop button on the toast: cancels the in-flight Gemini/cloud request. */
@@ -579,18 +690,24 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           onClick={() => ac.abort()}
           className="ml-2 shrink-0 rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900 hover:bg-amber-100"
         >
-          Stop
+          {PS.stop}
         </button>
       );
-      const tId = toast.loading(<span className="flex items-center gap-1">{lead}…<StopButton /></span>);
-      /** The selected engine name is shown in the same toast. */
+      const tId = toast.loading(<span className="flex items-center gap-1">{lead}<StopButton /></span>, { id: `${toastKeyRef.current}-run` });
+      /** The selected engine name (and the Gemini model being requested) is shown in the same toast. */
       const seen: string[] = [];
-      const onEngine = (name: string) => {
-        if (ac.signal.aborted) return;
-        if (!seen.includes(name)) seen.push(name);
-        const label = seen.join(" → ");
-        toast.loading(<span className="flex items-center gap-1">{reason === "handoff" ? `${lead}…` : `${lead} by ${label}…`}<StopButton /></span>, { id: tId });
+      let aiModelName = "";
+      const showProgress = () => {
+        if (ac.signal.aborted || !seen.length) return;
+        const label = seen.map((n) => (n === "Gemini" && aiModelName ? `${n} (${aiModelName})` : n)).join(" → ");
+        const text = reason === "handoff" ? lead : fmtOcr(reason === "refresh" ? PS.rereadingBy : PS.readingBy, { engine: label });
+        toast.loading(<span className="flex items-center gap-1">{text}<StopButton /></span>, { id: tId });
       };
+      const onEngine = (name: string) => {
+        if (!seen.includes(name)) seen.push(name);
+        showProgress();
+      };
+      const onAiModel = (m: string) => { aiModelName = m; showProgress(); };
       try {
         // Prefer the ORIGINAL full-resolution upload (attachment state holds the compressed copy)
         let raw: OcrRawResult;
@@ -606,7 +723,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           }
           raw = await runOcrOnFile(src.blob, src.mime, {
             companyId: opt.companyId,
-            enginePref: reuse?.enginePref ?? getOcrPrefs().engine,
+            enginePref: reuse?.aiModel ? "ai" : (reuse?.enginePref ?? getOcrPrefs().engine),
+            aiModel: reuse?.aiModel,
+            onAiModel,
             cloudProvider: reuse?.cloudProvider,
             ownCompany: { name: ownRef.current.name, pan: ownRef.current.pan },
             ownAccounts: (mastersRef.current.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ accountName: a.accountName, aliasName: (a as { aliasName?: string }).aliasName, accountNumber: a.accountNumber, bankName: a.bankName, accountType: a.accountType })),
@@ -614,6 +733,11 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             onEngine,
             signal: ac.signal,
           });
+          /* Server read it with the fallback Gemini model (first model was busy): small note, nothing blocks. */
+          if (raw.ai?.model) markAiModelAvailable(opt.companyId, raw.ai.model);
+          if (raw.ai?.fallbackUsed) {
+            toast.message(fmtOcr(ocrRunStrings().fail.fallbackNote, { primary: raw.ai.primaryModel || "Gemini", model: raw.ai.model || "Gemini" }), { duration: 4000, position: "top-right" });
+          }
         }
         lastRawRef.current = raw;
         if ((reason === "handoff" && !reuse?.manualTypeSwitch) || reason === "refresh") {
@@ -706,6 +830,25 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             const fillSafeOnly = !!rc.parsed && tabIsMoney && !rc.voucherType; // date/amount/narration only
 
             const pf = rc.parsed ? buildMoneyVoucherFill(rc.parsed, canFill ? direction : "payment_out", { ownAccounts: ownAcc, parties, staff, taxes }) : null;
+            // Money vouchers use a separate payee matcher. An exact counter-party PAN must
+            // win there too, regardless of voucher tab or payee-name score.
+            const moneyPan = devanagariDigitsToAscii(String(raw.ai?.data.party_pan ?? "")).replace(/\D/g, "");
+            const ownPanDigits = devanagariDigitsToAscii(String(own.pan ?? "")).replace(/\D/g, "");
+            const selectedPayeeTypeForPan = String(opt.form.getValues("payeeType") ?? "");
+            if (pf && canFill && direction !== "contra" && moneyPan.length === 9 && moneyPan !== ownPanDigits && (!selectedPayeeTypeForPan || selectedPayeeTypeForPan === "party")) {
+              const moneyPartyMap = new Map<string, OcrPartyLike>();
+              for (const party of M.parties ?? []) moneyPartyMap.set(party.id, { ...party });
+              for (const party of opt.parties ?? []) {
+                const current = moneyPartyMap.get(party.id);
+                moneyPartyMap.set(party.id, current ? { ...current, ...party, pan: party.pan || current.pan, panNo: party.panNo || current.panNo, vatNo: party.vatNo || current.vatNo } : party);
+              }
+              const panMatch = matchPartyIdentity({ pan: moneyPan }, [...moneyPartyMap.values()].filter((p) => isOcrSelectableParty(p as never)));
+              if (panMatch.decision === "auto" && panMatch.best) {
+                pf.payee = { payeeType: "party", id: panMatch.best.item.id, name: String(panMatch.best.item.name ?? ""), score: 1 };
+                pf.payeeName = panMatch.best.item.name ?? pf.payeeName;
+                pf.payeeUnsure = undefined;
+              }
+            }
             const allowWrite = !lowConf;
             let includedBankCharge: number | null = null;
             if (
@@ -1057,7 +1200,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 ? `Filled: ${rFilled.join(", ") || "nothing"}${rMissing.length ? ` | Missing: ${rMissing.map((x) => x.split(" (")[0]).join(", ")}` : ""}`
                 : here && highUnique ? `${niceType(cur)} is the right voucher.` : !highUnique ? "Cannot detect voucher type — stay on the current voucher or pick one." : `Suggested: ${types.map(niceType).join(" / ")}.`,
             });
-            if (!reuse?.manualTypeSwitch && (reason === "auto" || reason === "handoff") && (reason === "handoff" ? (handoffAutoPostOverrideRef.current ?? handoffAutoPostRef.current) : getOcrPrefs().autoPost) && !opt.isEditing && opt.adapter.autoPost && apScheduledForRef.current !== raw) {
+            if ((!reuse?.manualTypeSwitch || manualRunnerSwitch) && (reason === "auto" || reason === "handoff") && (reason === "handoff" ? (handoffAutoPostOverrideRef.current ?? handoffAutoPostRef.current) : getOcrPrefs().autoPost) && !opt.isEditing && opt.adapter.autoPost && apScheduledForRef.current !== raw) {
+              /* User-typed values from the previous tab go in before the check, so they are saved and never overwritten. */
+              if (manualRunnerSwitch) applyCarriedUserValues();
               const F = opt.form;
               const ok =
                 !lowConf &&
@@ -1077,25 +1222,49 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 const details = rMissing.length
                   ? `Needs review: ${rMissing.join(", ")}.`
                   : "Required fields are missing, type is uncertain, or the document needs review.";
-                toast.message("OCR Auto Post skipped", { description: details, duration: 5000 });
-                if (reason === "handoff" && handoffAutoPostRef.current && rMissing.length) {
-                  window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-required-fields-missing", {
-                    detail: { companyId: opt.companyId, missing: [...new Set(rMissing)], voucherType: opt.adapter.voucherType, itemAmountMismatch: moneyAmountMismatch, amountCheckReasons: moneyAmountCheck?.reasons ?? [] },
-                  }));
+                toast.message("OCR Auto Post skipped", { id: `${toastKeyRef.current}-skip`, description: details, duration: 5000 });
+                /* Pending type switch: if it auto-fires, the target form re-runs this handoff (wait, no event).
+                 * If it will not (ambiguous / low confidence / auto-switch off), tell the runner so it never hangs. */
+                const moneySwitchPending = switchPendingIn(sg);
+                const moneyAutoSwitch = moneySwitchPending && switchWillAutoFire(sg);
+                const moneyMissing = moneySwitchPending ? [...rMissing, ocrRunStrings().voucherTypeSwitchPending] : rMissing;
+                if (reason === "handoff" && handoffAutoPostRef.current && moneyAutoSwitch) armRunnerSwitchWatch();
+                if (reason === "handoff" && handoffAutoPostRef.current && moneyMissing.length && !moneyAutoSwitch) {
+                  sendRunnerMissing({ companyId: opt.companyId, missing: [...new Set(moneyMissing)], fieldKeys: ocrMissingFieldKeys(moneyMissing), voucherType: opt.adapter.voucherType, itemAmountMismatch: moneyAmountMismatch, amountCheckReasons: moneyAmountCheck?.reasons ?? [] });
                 }
               }
             }
             return;
           }
         }
-        const bill = parseBill(raw, { kind: opt.adapter.partySide === "seller" ? "purchase" : "sale", parties: opt.parties, items: opt.items, ownPan: own.pan, ownName: own.name });
+        // The voucher form's option list can lag one render behind the shared master hook
+        // when the gallery runner opens the form. Merge both sources so the first handoff
+        // scan sees the same current party masters that a later manual Refresh sees.
+        const partyMap = new Map<string, OcrPartyLike>();
+        for (const party of mastersRef.current.parties ?? []) partyMap.set(party.id, { ...party });
+        for (const party of opt.parties ?? []) {
+          const current = partyMap.get(party.id);
+          partyMap.set(party.id, current ? {
+            ...current,
+            ...party,
+            pan: party.pan || current.pan,
+            panNo: party.panNo || current.panNo,
+            vatNo: party.vatNo || current.vatNo,
+            address: party.address || current.address,
+            billingAddress: party.billingAddress || current.billingAddress,
+            phone: party.phone || current.phone,
+            mobile: party.mobile || current.mobile,
+          } : party);
+        }
+        const currentParties = [...partyMap.values()];
+        const bill = parseBill(raw, { kind: opt.adapter.partySide === "seller" ? "purchase" : "sale", parties: currentParties, items: opt.items, ownPan: own.pan, ownName: own.name });
         // The parser and AI matcher use conservative fuzzy thresholds. Before raising a
         // "create party" suggestion, honor an unambiguous normalized exact-name match
         // from the same selectable master list used by the Customer/Supplier combobox.
         if (bill.partyId?.status !== "fill" && bill.partyName?.value) {
           const normalizedPartyName = normalizeName(bill.partyName.value);
           const exactPartyMatches = normalizedPartyName
-            ? opt.parties.filter((party) =>
+              ? currentParties.filter((party) =>
                 isOcrSelectableParty(party) &&
                 [party.name, party.aliasName].some((name) => name && normalizeName(name) === normalizedPartyName),
               )
@@ -1113,15 +1282,32 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         }
         // Counter-party block identifiers from the parser (never our own buyer block); legacy scan as fallback
         const identifiers = bill.identifiers ?? extractIdentifiers(raw.lines.map((l) => l.text), opt.ownPan, bill.pan?.value);
+        // Exact PAN is the strongest party identity across every voucher adapter.
+        // Apply it again at the form boundary so no voucher-specific name matcher can
+        // leave a false "Party not found" when OCR and one selectable master share PAN.
+        const printedPartyPan = devanagariDigitsToAscii(String(identifiers.pan ?? bill.pan?.value ?? "")).replace(/\D/g, "");
+        if (printedPartyPan.length === 9) {
+          const panHits = currentParties.filter((party) =>
+            isOcrSelectableParty(party) &&
+            [party.pan, party.panNo, party.vatNo].some((value) => devanagariDigitsToAscii(String(value ?? "")).replace(/\D/g, "") === printedPartyPan),
+          );
+          if (panHits.length === 1) {
+            bill.partyId = { value: panHits[0].id, status: "fill", confidence: 1 };
+            bill.debug?.push(`Party: selected "${panHits[0].name}" by exact PAN ${printedPartyPan} across voucher types`);
+          } else if (panHits.length > 1) {
+            bill.partyId = undefined;
+            bill.debug?.push(`Party: PAN ${printedPartyPan} belongs to multiple selectable masters; left for review`);
+          }
+        }
         // HARD GUARD: our own company is never the party. Fall back to the other PAN printed on the bill.
         if (isOwnCompany(bill.partyName?.value, identifiers.pan, own)) {
           const alt = otherPans(raw.text + "\n" + (raw.altText ?? ""), own.pan)[0];
           bill.debug?.push(`Own company (${own.name ?? "-"} / ${own.pan ?? "-"}) was picked as party - dropped${alt ? `; using other PAN ${alt}` : ""}`);
           if (isOwnCompany(bill.partyName?.value, null, own)) bill.partyName = undefined;
           identifiers.pan = alt ?? undefined;
-          if (bill.partyId?.value && opt.parties.some((p) => p.id === bill.partyId!.value && isOwnCompany(p.name, p.pan, own))) bill.partyId = undefined;
+          if (bill.partyId?.value && currentParties.some((p) => p.id === bill.partyId!.value && isOwnCompany(p.name, p.pan, own))) bill.partyId = undefined;
           if (alt && !bill.partyId) {
-            const hits = opt.parties.filter((p) => !p.isDeleted && String(p.pan ?? "").replace(/\D/g, "") === alt);
+            const hits = currentParties.filter((p) => isOcrSelectableParty(p) && [p.pan, p.panNo, p.vatNo].some((value) => String(value ?? "").replace(/\D/g, "") === alt));
             if (hits.length === 1) bill.partyId = { value: hits[0].id, status: "fill", confidence: 0.99 };
           }
         }
@@ -1132,7 +1318,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         // Learned template (identifier → account) when strict match failed
         if (bill.partyId?.status !== "fill" && opt.companyId) {
           const tp = lookupTemplateParty(opt.companyId, identifiers);
-          const tpRow = tp ? opt.parties.find((p) => p.id === tp) : undefined;
+          const tpRow = tp ? currentParties.find((p) => p.id === tp) : undefined;
           if (tpRow && isOcrSelectableParty(tpRow)) {
             bill.partyId = { value: tp!, status: "fill", confidence: 0.98 };
             bill.debug?.push(`Party: "${tpRow.name}" from learned supplier template (PAN/phone)`);
@@ -1143,7 +1329,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         }
         // Final guard: only a party that is an option of the Supplier/Customer combobox may be written
         if (bill.partyId?.status === "fill") {
-          const row = opt.parties.find((p) => p.id === bill.partyId!.value);
+          const row = currentParties.find((p) => p.id === bill.partyId!.value);
           if (!isOcrSelectableParty(row)) {
             bill.debug?.push(`Party: picked "${row?.name ?? bill.partyId.value}" is not selectable (${!row ? "not in party list" : row.isFrozen ? "frozen" : row.isDeleted ? "deleted" : "system ledger"}) - not written`);
             bill.partyId = undefined;
@@ -1568,8 +1754,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         const partyOk = !A.party || !partyApplies || !!F.getValues(A.party.path);
         void partyApplies;
 
-        if (!reuse?.manualTypeSwitch && (reason === "auto" || reason === "handoff") && (reason === "handoff" ? (handoffAutoPostOverrideRef.current ?? handoffAutoPostRef.current) : getOcrPrefs().autoPost) && !opt.isEditing && apScheduledForRef.current !== raw) {
-          const resumeCurrentForm = reuse?.resumeCurrentForm === true;
+        if ((!reuse?.manualTypeSwitch || manualRunnerSwitch) && (reason === "auto" || reason === "handoff") && (reason === "handoff" ? (handoffAutoPostOverrideRef.current ?? handoffAutoPostRef.current) : getOcrPrefs().autoPost) && !opt.isEditing && apScheduledForRef.current !== raw) {
+          /* Manual runner tab switch: carried user values first, then validate the CURRENT form (like Resume). */
+          if (manualRunnerSwitch) applyCarriedUserValues();
+          const resumeCurrentForm = reuse?.resumeCurrentForm === true || manualRunnerSwitch;
           const voucherRowsForCheck = A.lineItems ? ((F.getValues(A.lineItems.path) as Array<Record<string, unknown>> | undefined) ?? []) : [];
           const unresolvedItems = A.lineItems
             ? resumeCurrentForm
@@ -1597,10 +1785,11 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           const aiAmountMismatch = bill.amountCheck?.ok === false;
           const itemAmountMismatch = rowAmountMismatch || aiAmountMismatch;
           const amountMismatchLabel = aiAmountMismatch && !rowAmountMismatch ? [ocrRunStrings().amountMismatch] : [];
+          const allowSaveWithoutItems = reason === "handoff" && handoffAllowSaveWithoutItemsRef.current;
           const missingRequiredPaths = (A.requiredPaths ?? [])
+            .filter((path) => !(allowSaveWithoutItems && isItemMasterPath(path)))
             .filter((path) => isEmptyVal(F.getValues(path)))
             .map((path) => `Required ${path.split(".").pop()?.replace(/Id$/, "").replace(/([A-Z])/g, " $1").trim() || "field"}`);
-          const allowSaveWithoutItems = reason === "handoff" && handoffAllowSaveWithoutItemsRef.current;
           const hasCurrentFieldEdit = (path: string) => {
             const field = F.getFieldState(path);
             return field.isDirty || field.isTouched || filledRef.current.has(path);
@@ -1645,30 +1834,87 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             A.autoPost &&
             currentPartyOk &&
             (resumeCurrentForm ? currentDateOk : (!A.date || filledKeys.has("date"))) &&
-            (resumeCurrentForm ? currentLineItemsOk : (!A.lineItems || filledKeys.has("lines"))) &&
+            (resumeCurrentForm ? currentLineItemsOk : (!A.lineItems || filledKeys.has("lines") || (allowSaveWithoutItems && voucherRowsForCheck.length > 0))) &&
             !itemRowCountMismatch &&
             !itemAmountMismatch &&
             (unresolvedItems.length === 0 || allowSaveWithoutItems) &&
             (resumeCurrentForm ? currentLedgerOk : !ledgerMissing) &&
             !hasMissingVatAccount &&
             (resumeCurrentForm ? currentAmountOk : (!A.amount || filledKeys.has("amount"))) &&
-            (A.requiredPaths ?? []).every((p) => !isEmptyVal(F.getValues(p)));
-          if (coreOk) {
+            (A.requiredPaths ?? []).every((p) =>
+              (allowSaveWithoutItems && isItemMasterPath(p)) || !isEmptyVal(F.getValues(p)),
+            );
+          /* Invoice duplicate gate (the Money path has its own !dup gate): gallery handoff auto-post only,
+           * skipped when the runner turned "Check for duplicate vouchers" off. Same fingerprint as the form's
+           * live duplicate bubble: date, total, party / ledger, bill no, narration. */
+          /* Pending voucher-type switch (same gate as the Money path): never start the save countdown on this form. */
+          const invoiceSwitchPending = switchPendingIn(sg);
+          const invoiceAutoSwitch = invoiceSwitchPending && switchWillAutoFire(sg);
+          let invoiceDup: DuplicateMatch | null = null;
+          if (coreOk && !invoiceSwitchPending && reason === "handoff" && handoffAutoPostRef.current && !handoffDupCheckOffRef.current) {
+            const strOrUndef = (v: unknown) => String(v ?? "").trim() || undefined;
+            const totalForDup = Number(bill.total?.value ?? 0) || voucherItemAmount;
+            try {
+              invoiceDup = findDuplicateVoucher(mastersRef.current.vouchers as unknown as CandidateVoucher[], {
+                type: A.voucherType,
+                date: A.date ? F.getValues(A.date) : undefined,
+                amount: totalForDup,
+                fromAccountId: A.party ? strOrUndef(F.getValues(A.party.path)) : undefined,
+                toAccountId: A.ledgerAccount ? strOrUndef(F.getValues(A.ledgerAccount.path)) : undefined,
+                narration: A.narration ? String(F.getValues(A.narration) ?? "") : undefined,
+                ref: strOrUndef(bill.billNo?.value),
+              });
+            } catch {
+              invoiceDup = null;
+            }
+          }
+          let invoiceDupBlocksSave = false;
+          if (invoiceDup) {
+            const dupCompanyId = String((profileCompany as { authoritativeCompanyId?: string } | null)?.authoritativeCompanyId || opt.companyId || "");
+            window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-duplicate-detected", {
+              detail: {
+                matchId: invoiceDup.id,
+                voucherNumber: invoiceDup.voucherNumber,
+                summary: invoiceDup.summary,
+                dateText: invoiceDup.dateText,
+                amount: String(invoiceDup.amount ?? ""),
+                reasons: invoiceDup.reasons,
+              },
+            }));
+            const dupAction = await readAutoPostDuplicateAction(dupCompanyId);
+            if (dupAction !== "save-anyway") {
+              invoiceDupBlocksSave = true;
+              const fileUrl = opt.files.find((f): f is string => typeof f === "string") ?? "";
+              const fileObj = opt.files.find((f) => typeof f !== "string") as File | undefined;
+              window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-duplicate-block-save", {
+                detail: { companyId: dupCompanyId, fileUrl, fileName: fileObj?.name ?? "" },
+              }));
+            }
+          }
+          if (coreOk && invoiceDupBlocksSave) {
+            /* move-to-duplicates / pause-for-review: the runner moves or pauses this document; no save countdown. */
+            apScheduledForRef.current = raw;
+          } else if (invoiceAutoSwitch) {
+            /* The auto-switch countdown opens the detected type; that form re-runs this handoff and auto-posts there. */
+            if (A.autoPost && reason === "handoff" && handoffAutoPostRef.current) armRunnerSwitchWatch();
+          } else if (coreOk && !invoiceSwitchPending) {
             apScheduledForRef.current = raw;
             if (F.getValues("isApproved") !== undefined) F.setValue("isApproved", false as never);
             toast.info("OCR Auto Post: saving as UNAPPROVED…", { duration: 2500 });
             // Pre-OCR path: attachment is appended (compressed) only after OCR -> post once it is in state
             startAutoPostCountdown();
           } else {
+            const skipNames = [...new Set([...requiredMissing, ...(invoiceSwitchPending ? [ocrRunStrings().voucherTypeSwitchPending] : [])])];
             toast.message("OCR Auto Post skipped", {
-              description: A.autoPost ? "Required fields missing - review and save manually." : "This voucher type needs manual review before saving.",
+              id: `${toastKeyRef.current}-skip`,
+              description: A.autoPost ? `Required fields missing - review and save manually.${skipNames.length ? ` (${skipNames.join(", ")})` : ""}` : "This voucher type needs manual review before saving.",
               duration: 5000,
             });
+            /* A switch that will not fire by itself: report it so the runner applies its rule instead of waiting forever. */
             if (A.autoPost && reason === "handoff" && handoffAutoPostRef.current) {
-              const fieldNames = [...new Set(requiredMissing.length ? requiredMissing : ["Required voucher fields"] )];
-              window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-required-fields-missing", {
-                detail: { companyId: opt.companyId, missing: fieldNames, voucherType: A.voucherType, itemRowCountMismatch, itemAmountMismatch, amountCheckReasons: bill.amountCheck?.reasons ?? [] },
-              }));
+              const baseMissing = requiredMissing.length ? requiredMissing : invoiceSwitchPending ? [] : ["Required voucher fields"];
+              const fieldNames = [...new Set(invoiceSwitchPending ? [...baseMissing, ocrRunStrings().voucherTypeSwitchPending] : baseMissing)];
+              sendRunnerMissing({ companyId: opt.companyId, missing: fieldNames, fieldKeys: ocrMissingFieldKeys(fieldNames), voucherType: A.voucherType, itemRowCountMismatch, itemAmountMismatch, amountCheckReasons: bill.amountCheck?.reasons ?? [] });
             }
           }
         }
@@ -1702,35 +1948,50 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               },
             }));
           }
+          /* Model names for the popup: server error body first, else the model we asked for; list for the chooser. */
+          /* Auto mode reports the cloud provider that really ran (OcrRunError.engine), not just "Online OCR". */
+          const failEngine = e instanceof OcrRunError && e.engine === "google" ? "Google"
+            : e instanceof OcrRunError && e.engine === "azure" ? "Azure"
+            : seen.length ? seen[seen.length - 1] : "OCR";
+          const errModels = e as { model?: unknown; fallbackModel?: unknown };
+          let failedModel = typeof errModels?.model === "string" && errModels.model ? errModels.model : aiModelName;
+          const fallbackModel = typeof errModels?.fallbackModel === "string" ? errModels.fallbackModel : "";
+          const failKind = ocrAiFailKind(e);
+          /* Chooser: usable Gemini models + Azure / Google Vision (only when their key is configured). */
+          let aiModels: OcrAiModelOption[] = [];
+          let cloudChoices = { google: false, azure: false };
+          if (opt.companyId) {
+            try {
+              const eo = await loadOcrEngineOptions(opt.companyId);
+              if (failEngine === "Gemini" && !failedModel) failedModel = eo.geminiActive;
+              /* "Not available for this key": remember it (per company, 1 day) and never offer it again in the chooser. */
+              if (failEngine === "Gemini" && failKind === "model" && failedModel) markAiModelUnavailable(opt.companyId, failedModel);
+              const blocked = unavailableAiModels(opt.companyId);
+              aiModels = eo.geminiModels.filter((m) => !blocked.has(m.id));
+              cloudChoices = { google: eo.google, azure: eo.azure };
+            } catch { /* chooser stays hidden */ }
+          }
+          const choiceInput = { engine: failEngine, model: failedModel || undefined, fallbackModel: fallbackModel || undefined, models: aiModels, cloud: cloudChoices };
+          setFailPick(ocrFailChoices(choiceInput, ocrRunStrings().fail).find((c) => !c.failed)?.value ?? "");
           setOcrFail({
-            engine: seen.length ? seen[seen.length - 1] : "OCR",
+            ...choiceInput,
             message: friendly,
-            detail: friendly !== rawMsg ? rawMsg : undefined,
+            /* Raw server text only in the collapsible "Server detail"; the reason line is translated (kind). */
+            detail: rawMsg || undefined,
             code,
             retryAfter,
+            kind: failKind,
           });
           toast.dismiss(tId);
         }
       } finally {
         if (ocrAbortRef.current === ac) ocrAbortRef.current = null;
-        /* Manual type change: the user's own values from the previous form win over the OCR re-map. */
-        const carried = reuse?.manualTypeSwitch ? handoffUserValuesRef.current : undefined;
-        if (carried) {
-          handoffUserValuesRef.current = undefined;
-          const A = opt.adapter;
-          const F = opt.form;
-          for (const [key, path, v] of carriedValueWrites(carried, { date: A.date, dueDate: A.dueDate, narration: A.narration, amount: A.amount, party: A.party?.path, account: A.accountPath })) {
-            if (key === "party") {
-              if (!A.party || !opt.parties.some((p) => p.id === v)) continue;
-              if (A.party.payeeTypePath && A.party.payeeTypeValue) F.setValue(A.party.payeeTypePath, A.party.payeeTypeValue as never, { shouldDirty: true });
-            }
-            F.setValue(path, v as never, { shouldDirty: true, shouldValidate: false });
-          }
-        }
+        /* Manual type change: the user's own values win over the OCR re-map (no-op if already applied before auto-post). */
+        applyCarriedUserValues();
         setRunning(false);
       }
     },
-    [canWrite, write, running, switchVoucher]
+    [canWrite, write, running, switchVoucher, armRunnerSwitchWatch, sendRunnerMissing]
   );
 
   // Stop holds the active voucher in place. Start reuses the last OCR result
@@ -1766,13 +2027,21 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       cancelAutoPostCountdown();
     };
     const onResumeCurrentVoucher = (event: Event) => {
-      const detail = (event as CustomEvent<{ companyId?: string; fileId?: string; fileUrl?: string; fileName?: string }>).detail;
+      const detail = (event as CustomEvent<{ companyId?: string; fileId?: string; fileUrl?: string; fileName?: string; forceRetry?: boolean }>).detail;
       const opt = optsRef.current;
       if (!detail?.fileId || !matchesRunnerVoucher(detail)) return;
       runnerHeldForHandoffRef.current = false;
       handoffAutoPostRef.current = true;
       apScheduledForRef.current = null;
       const raw = lastRawRef.current;
+      /* Runner auto-resume fires on any form change, including OCR's own writes. If the form is exactly as it was
+       * when this scan was reported incomplete, do not re-apply OCR (that writes again -> resume again -> loop):
+       * repeat the same answer so the runner stays paused quietly. */
+      const lastMissing = lastRunnerMissingRef.current;
+      if (!detail.forceRetry && raw && lastMissing && lastMissing.raw === raw && lastMissing.sig === formSig()) {
+        window.setTimeout(() => window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-required-fields-missing", { detail: lastMissing.detail })), 0);
+        return;
+      }
       void (raw
           ? run("handoff", { raw, resumeCurrentForm: true })
         : run("handoff", { enginePref: handoffEnginePrefRef.current, cloudProvider: handoffCloudProviderRef.current }));
@@ -1785,7 +2054,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       window.removeEventListener("pl:gallery:auto-post-duplicate-block-save", onDuplicateBlocksSave);
       window.removeEventListener("pl:gallery:auto-post-resume-current-voucher", onResumeCurrentVoucher);
     };
-  }, [cancelAutoPostCountdown, profileCompany, run]);
+  }, [cancelAutoPostCountdown, profileCompany, run, formSig]);
 
   // Voucher-type switch hand-off: receive the attachment, then OCR it here.
   const handoffRunRef = useRef<{ raw?: OcrRawResult; selectedIds?: string[]; autoPost?: boolean; autoPostSeconds?: number; overwriteEdited?: boolean; allowSaveWithoutItems?: boolean; manualTypeSwitch?: boolean; enginePref?: import("./prefs").OcrEnginePref; cloudProvider?: "google" | "azure" } | null>(null);
@@ -2180,43 +2449,88 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             <Dialog open onOpenChange={(v) => { if (!v) setOcrFail(null); }}>
               <DialogContent
                 overlayClassName={NESTED_VOUCHER_MASTER_CREATE_OVERLAY_CN}
-                className="!z-[121] max-w-md"
+                className="!z-[121] w-[calc(100vw-1.5rem)] max-w-lg overflow-x-hidden [&>*]:min-w-0"
                 onFocusOutside={(e) => e.preventDefault()}
               >
-                <DialogHeader>
-                  <DialogTitle>{ocrFail.engine} could not read this bill</DialogTitle>
-                  <DialogDescription>
-                    Only {ocrFail.engine} was used because it is the engine you selected. Nothing was filled, so nothing will be saved.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-2 text-xs">
-                  {ocrFail.code === "quota" ? (
-                    <p className="flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-100 px-2 py-1.5 font-medium text-amber-950 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-100">
-                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                      <span>Gemini quota / rate limit reached{ocrFail.retryAfter ? ` — try again in about ${ocrFail.retryAfter < 60 ? `${ocrFail.retryAfter}s` : `${Math.round(ocrFail.retryAfter / 60)} min`}` : ""}.</span>
-                    </p>
-                  ) : null}
-                  <p className={ocrFail.code === "quota"
-                    ? "text-muted-foreground break-words"
-                    : "rounded-md bg-amber-50 px-2 py-1.5 font-mono break-words text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"}>
-                    {ocrFail.message}
-                  </p>
-                  {ocrFail.detail ? (
-                    <details className="text-[11px] text-muted-foreground">
-                      <summary className="cursor-pointer select-none">Server detail</summary>
-                      <p className="mt-1 font-mono break-words">{ocrFail.detail}</p>
-                    </details>
-                  ) : null}
-                  <p className="text-muted-foreground">
-                    {ocrFail.code === "quota"
-                      ? "Gemini free tier allows a limited number of scans per minute; the limit resets shortly. Try again after a minute, or use Auto or Google/Azure OCR until it resets."
-                      : "Fix the reason above and press Refresh OCR. If you want an automatic second engine, pick Auto in OCR settings → Switch Engine."}
-                  </p>
-                </div>
-                <div className="flex justify-end gap-1.5">
-                  <Button type="button" size="sm" variant="outline" onClick={() => setOcrFail(null)}>Close</Button>
-                  <Button type="button" size="sm" onClick={() => { setOcrFail(null); void run("refresh"); }}>Refresh OCR</Button>
-                </div>
+                {(() => {
+                  /* All text from ocrRunStrings (UI language); raw server text only under "Server detail". */
+                  const FS = ocrRunStrings().fail;
+                  const kind: OcrFailKind = ocrFail.kind ?? (ocrFail.code === "quota" ? "quota" : "other");
+                  const ra = ocrFail.retryAfter ?? 0;
+                  const wait = ra > 0 ? (ra < 60 ? fmtOcr(FS.waitSec, { n: ra }) : fmtOcr(FS.waitMin, { n: Math.round(ra / 60) })) : "";
+                  const busy = kind === "overloaded" || kind === "fallback_failed" || kind === "timeout" || kind === "network";
+                  /* Any failure another usable engine could fix (not sign-in / OCR switched off): offer it for this scan only. */
+                  const choices = ocrFailChoices(ocrFail, FS);
+                  const canPickModel = kind !== "not_signed_in" && kind !== "disabled" && choices.some((c) => !c.failed);
+                  const reasonText = fmtOcr(FS.reason[kind], { model: ocrFail.model || "Gemini", fallback: ocrFail.fallbackModel || FS.otherModel });
+                  const reasonLine = `${reasonText}${wait && (busy || kind === "quota") ? ` ${fmtOcr(FS.retryIn, { wait })}` : ""}`;
+                  return (
+                    <>
+                      <DialogHeader>
+                        <DialogTitle>{fmtOcr(FS.title, { engine: ocrFail.engine })}</DialogTitle>
+                        <DialogDescription>{fmtOcr(FS.onlyEngine, { engine: ocrFail.engine })}</DialogDescription>
+                      </DialogHeader>
+                      {ocrFail.model ? (
+                        <p className="min-w-0 font-mono text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
+                          {ocrFail.fallbackModel ? fmtOcr(FS.modelsTried, { model: ocrFail.model, fallback: ocrFail.fallbackModel }) : fmtOcr(FS.modelTried, { model: ocrFail.model })}
+                        </p>
+                      ) : null}
+                      <div className="w-full min-w-0 space-y-2 text-xs">
+                        <p className="flex w-full min-w-0 items-start gap-1.5 rounded-md border border-amber-300 bg-amber-100 px-2 py-1.5 font-medium text-amber-950 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-100">
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                          <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{reasonLine}</span>
+                        </p>
+                        {ocrFail.detail ? (
+                          <details className="min-w-0 text-[11px] text-muted-foreground">
+                            <summary className="cursor-pointer select-none">{FS.serverDetail}</summary>
+                            <p className="mt-1 font-mono [overflow-wrap:anywhere]">{ocrFail.detail}</p>
+                          </details>
+                        ) : null}
+                        <p className="min-w-0 text-muted-foreground [overflow-wrap:anywhere]">
+                          {kind === "quota" ? FS.hintQuota : busy ? FS.hintBusy : FS.hintOther}
+                        </p>
+                        {canPickModel ? (
+                          <div className="w-full min-w-0 space-y-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 dark:border-slate-700 dark:bg-slate-900/40">
+                            <label className="block font-medium [overflow-wrap:anywhere]" htmlFor="ocr-fail-model-pick">{FS.pickModel}</label>
+                            <div className="flex w-full min-w-0 flex-wrap items-center gap-1.5">
+                              <select
+                                id="ocr-fail-model-pick"
+                                className="h-7 w-full min-w-0 max-w-full flex-1 basis-40 truncate rounded-md border border-input bg-background px-1.5 text-xs"
+                                value={failPick}
+                                onChange={(ev) => setFailPick(ev.target.value)}
+                              >
+                                {choices.map((c) => (
+                                  <option key={c.value} value={c.value}>
+                                    {c.failed ? `${c.label} ${FS.failedTag}` : c.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-auto min-h-7 max-w-full shrink-0 whitespace-normal"
+                                disabled={!failPick}
+                                onClick={() => {
+                                  const pick = failPick;
+                                  setOcrFail(null);
+                                  /* This scan only: saved engine prefs and the saved Gemini model stay as they are. */
+                                  if (pick.startsWith("gemini:")) void run("refresh", { aiModel: pick.slice("gemini:".length) });
+                                  else if (pick === "cloud:google" || pick === "cloud:azure") void run("refresh", { enginePref: "online", cloudProvider: pick === "cloud:google" ? "google" : "azure" });
+                                }}
+                              >
+                                {FS.readWithModel}
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="flex min-w-0 flex-wrap justify-end gap-1.5">
+                        <Button type="button" size="sm" variant="outline" className="h-auto min-h-8 whitespace-normal" onClick={() => setOcrFail(null)}>{FS.close}</Button>
+                        <Button type="button" size="sm" className="h-auto min-h-8 whitespace-normal" onClick={() => { setOcrFail(null); void run("refresh"); }}>{FS.refresh}</Button>
+                      </div>
+                    </>
+                  );
+                })()}
               </DialogContent>
             </Dialog>
           ) : null}

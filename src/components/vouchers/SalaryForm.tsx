@@ -25,6 +25,8 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { useLiveVoucherDuplicate } from "@/hooks/useLiveVoucherDuplicate";
+import { useNotifyRunnerFormChanged } from "@/hooks/useNotifyRunnerFormChanged";
+import { useMoveAttachedFilesToDuplicate } from "@/hooks/useMoveAttachedFilesToDuplicate";
 import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
 import type { CandidateVoucher } from "@/lib/voucherDuplicateGuard";
 import {
@@ -527,6 +529,7 @@ export function SalaryForm({
     resolver: zodResolver(formSchema) as Resolver<SalaryFormValues>,
     defaultValues: getInitialFormValues(voucher || defaultVoucherData, processedStaff, processedTaxes),
   });
+  useNotifyRunnerFormChanged({ form, companyId });
   const duplicateDate = form.watch("date");
   const duplicateNarration = String(form.watch("narration") || "");
   const { match: liveDuplicate, dismiss: dismissLiveDuplicate } = useLiveVoucherDuplicate(
@@ -541,6 +544,16 @@ export function SalaryForm({
     },
     !voucher?.id && !!duplicateDate && Number(form.watch("total")) > 0
   );
+
+  const { moveBusy: dupMoveBusy, moveToDuplicate, canAutoMove } = useMoveAttachedFilesToDuplicate({
+    files,
+    companyId,
+    company,
+    onClosed: () => {
+      dismissLiveDuplicate();
+      onVoucherAction?.("cancelled", false, savedVoucherId ?? undefined);
+    },
+  });
 
   /* OCR (local, generic adapter): first attachment -> validated autofill; Auto Post saves UNAPPROVED. */
   const ocr = useVoucherOcr({
@@ -2340,7 +2353,7 @@ try {
   return (
     <>
       <Form {...form}>
-        <form onSubmit={(e) => handleFormSubmit(e)} className="h-full flex flex-col min-w-0 w-full max-w-full">
+        <form onSubmit={(e) => handleFormSubmit(e)} className="h-full flex-1 min-h-0 flex flex-col min-w-0 w-full max-w-full">
           <ScrollArea className={cn("flex-1 min-h-0 overflow-x-hidden min-w-0 w-full", !isMobile && "pr-6 -mr-6")}>
             <div className={cn(
               "space-y-6 min-w-0 max-w-full w-full overflow-x-hidden [&>*]:min-w-0 [&>*]:max-w-full",
@@ -3318,7 +3331,7 @@ try {
           {isFormEditing && (
             <div className={cn(
               "border-t px-[2px] min-w-0 max-w-full overflow-x-hidden",
-              isMobile ? "mt-[3px] pt-[3px] pb-[3px] w-full" : "pt-4 flex flex-col gap-4 md:flex-row md:justify-between md:items-center"
+              isMobile ? "mt-[3px] pt-[3px] pb-[3px] w-full" : "shrink-0 mt-auto w-full bg-slate-100 pt-4 flex flex-col gap-4 md:flex-row md:justify-between md:items-center"
             )}>
             {isMobile ? (
               <div className={cn("grid grid-cols-3 gap-2 w-full", VOUCHER_BUTTONS_CLASS)}>
@@ -3379,7 +3392,7 @@ try {
           </div>
           )}
         </form>
-        {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} /> : null}
+        {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} onMoveToDuplicate={() => void moveToDuplicate(liveDuplicate)} moveBusy={dupMoveBusy} canAutoMove={canAutoMove} /> : null}
       </Form>
       <Dialog open={isLinkPaymentDialogOpen} onOpenChange={setIsLinkPaymentDialogOpen}>
         <DialogContent

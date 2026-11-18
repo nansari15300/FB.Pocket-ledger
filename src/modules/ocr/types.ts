@@ -88,6 +88,9 @@ export type OcrPartyLike = {
   vatNo?: string;
   phone?: string;
   mobile?: string;
+  address?: string;
+  billingAddress?: string;
+  email?: string;
   isDeleted?: boolean;
   isFrozen?: boolean;
 };

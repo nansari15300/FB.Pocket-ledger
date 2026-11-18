@@ -3,6 +3,9 @@ import { VoucherMasterEditHost } from "@/components/vouchers/VoucherMasterEditHo
 import { ReconciledPointGuardProvider } from "@/components/vouchers/ReconciledPointGuardContext";
 import { VoucherOcrHeaderToggles, OCR_SWITCH_EVENT, useOcrPrefs } from "@/modules/ocr";
 import { OCR_MANUAL_SWITCH_EVENT } from "@/modules/ocr/handoff";
+import { RunnerFooterControls } from "@/components/gallery/RunnerFooterControls";
+import { AUTO_POST_VOUCHER_TYPE_CHANGED } from "@/components/gallery/autoPostPauseResume";
+import { isAutoPostMode, type AutoPostMode } from "@/components/gallery/autoPostMode";
 import dynamic from "next/dynamic";
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from "react";
@@ -1181,7 +1184,7 @@ function VoucherDialogContent({
   recurringVoucherAuxiliaryDirty?: boolean;
 }) {
   const { processedStaff } = useVouchers();
-  const { company: voucherCompany, allCompanies } = useCompany();
+  const { company: voucherCompany, allCompanies, companyId: voucherContentCompanyId } = useCompany();
   const { user: authUser, customUser: authCustomUser } = useAuth();
   const livePlans = useLivePlans();
   const voucherCompanyPlanId = resolvePlanIdForActiveCompany(
@@ -1217,6 +1220,16 @@ function VoucherDialogContent({
     }));
     setActiveTab(next);
   }, [activeTab]);
+  const prevRunnerTabRef = useRef<VoucherType | null>(null);
+  useEffect(() => {
+    const prev = prevRunnerTabRef.current;
+    prevRunnerTabRef.current = activeTab;
+    if (prev == null || prev === activeTab) return;
+    const company = String((voucherCompany as { authoritativeCompanyId?: string } | null)?.authoritativeCompanyId || voucherContentCompanyId || "").trim();
+    window.dispatchEvent(new CustomEvent(AUTO_POST_VOUCHER_TYPE_CHANGED, {
+      detail: { companyId: company, fromType: prev, toType: activeTab },
+    }));
+  }, [activeTab, voucherCompany, voucherContentCompanyId]);
   /** Cashflow Quartet tab-switch: mismatch refresh + prefetch cancel — mount par duplicate fire na ho. */
   const prevCashflowQuadTabRef = useRef<VoucherType | null>(null);
   useEffect(() => {
@@ -1370,7 +1383,7 @@ function VoucherDialogContent({
       <div
         className={cn(
           // Voucher-type selector strip: stronger blue tone so it visually matches green section intensity.
-          "border-b border-sky-400 bg-sky-100",
+          "border-b border-sky-400 bg-sky-100 shrink-0",
           isMobile ? "px-3 py-2.5" : "px-[2px] md:px-6"
         )}
       >
@@ -1476,8 +1489,8 @@ function VoucherDialogContent({
       {/* Dialog form canvas: desktop `pt-6` breathable; APK/mobile par `pt-0` ta sky strip ke border ke niche white/slate wasted band (user scroll-area ke upar khali dhari). */}
       <div
         className={cn(
-          "w-full min-w-0 max-w-full pl-[2px] pr-[2px] flex-1 flex flex-col min-h-0 overflow-x-hidden box-border bg-slate-100",
-          isMobile ? "pt-0 pb-0" : "pt-6 pb-6 md:p-6"
+          "w-full min-w-0 max-w-full pl-[2px] pr-[2px] flex-1 flex flex-col min-h-0 overflow-x-hidden overflow-y-hidden box-border bg-slate-100",
+          isMobile ? "pt-0 pb-0" : "pt-6 px-6 pb-0"
         )}
       >
         {editConvertPresentation ? (
@@ -1539,22 +1552,6 @@ function VoucherDialogContent({
 
 const MIN_DIALOG_W = 420;
 const MIN_DIALOG_H = 320;
-/** Desktop (md+) content min width per voucher type: below this the whole form body+footer scrolls horizontally together. */
-const DESKTOP_VOUCHER_BODY_MIN_W_DEFAULT = 720;
-const DESKTOP_VOUCHER_BODY_MIN_W: Partial<Record<string, number>> = {
-  sale: SALE_PURCHASE_VOUCHER_DIALOG_MIN_W,
-  purchase: SALE_PURCHASE_VOUCHER_DIALOG_MIN_W,
-  add_salary: 780,
-  payment_in: 740,
-  payment_out: 740,
-  direct_income: 740,
-  direct_expense: 740,
-  journal: 780,
-  contra: 660,
-  adjustment: 660,
-  note: 660,
-  production: 740,
-};
 const DIALOG_VIEWPORT_W_RATIO = 0.8;
 const DIALOG_VIEWPORT_H_RATIO = 0.8;
 const VOUCHER_DIALOG_STORAGE_KEY = "pl-voucher-dialog-bounds";
@@ -1715,42 +1712,29 @@ export function AddVoucherDialog(props: any) {
   /** Offline + Firestore-mode company (non-embedded APK cloud): view-only — Save / Copy / Approve band. */
   const apkOfflineViewOnly = useMemo(() => apkCloudCompanyOfflineViewOnly(company, navigatorOnline), [company, navigatorOnline]);
   const { user, customUser } = useAuth();
-  const [galleryRunnerControl, setGalleryRunnerControl] = useState<{ available: boolean; active: boolean; held: boolean; enabled: boolean }>({ available: false, active: false, held: true, enabled: false });
+  const [galleryRunnerControl, setGalleryRunnerControl] = useState<{ available: boolean; active: boolean; held: boolean; enabled: boolean; mode: AutoPostMode }>({ available: false, active: false, held: true, enabled: false, mode: "manual" });
   useEffect(() => {
     if (!dialogOpen || !companyId) return;
     const onRunnerState = (event: Event) => {
-      const detail = (event as CustomEvent<{ companyId?: string; active?: boolean; held?: boolean; enabled?: boolean; controlAvailable?: boolean }>).detail;
+      const detail = (event as CustomEvent<{ companyId?: string; active?: boolean; held?: boolean; enabled?: boolean; controlAvailable?: boolean; mode?: string }>).detail;
       if (String(detail?.companyId || "") !== companyId) return;
-      setGalleryRunnerControl({ available: detail.controlAvailable === true, active: detail.active === true, held: detail.held === true || detail.enabled !== true, enabled: detail.enabled === true });
+      setGalleryRunnerControl({ available: detail.controlAvailable === true, active: detail.active === true, held: detail.held === true || detail.enabled !== true, enabled: detail.enabled === true, mode: isAutoPostMode(detail.mode) ? detail.mode : (detail.enabled === true ? "semi" : "manual") });
     };
     window.addEventListener("pl:gallery:auto-post-process-state", onRunnerState);
     window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-state-request", { detail: { companyId } }));
     return () => window.removeEventListener("pl:gallery:auto-post-process-state", onRunnerState);
   }, [companyId, dialogOpen]);
-  const autoPostRunnerToggleNode = useMemo(() => galleryRunnerControl.available ? (
-    <>
-      <Button
-        type="button"
-        className="h-8 shrink-0 rounded-full border border-green-600 bg-white px-3 text-[11px] font-medium text-green-900 shadow-sm hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-50"
-        aria-pressed={galleryRunnerControl.enabled && !galleryRunnerControl.held}
-        disabled={!galleryRunnerControl.enabled}
-        title={!galleryRunnerControl.enabled ? "Enable Auto post vouchers in Auto post settings to start the runner" : undefined}
-        onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId, held: !galleryRunnerControl.held } }))}
-      >
-        {galleryRunnerControl.held ? (galleryRunnerControl.active ? "Resume runner" : "Start runner") : "Stop runner"}
-      </Button>
-      {galleryRunnerControl.active && galleryRunnerControl.held ? (
-        <Button
-          type="button"
-          className="h-8 shrink-0 rounded-full border border-amber-500 bg-white px-3 text-[11px] font-medium text-amber-900 shadow-sm hover:bg-amber-50"
-          title="Skip this document and move it to Auto post failed"
-          onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-skip-current", { detail: { companyId } }))}
-        >
-          Skip &amp; move to Auto failed
-        </Button>
-      ) : null}
-    </>
-  ) : null, [companyId, galleryRunnerControl.active, galleryRunnerControl.available, galleryRunnerControl.enabled, galleryRunnerControl.held]);
+  const autoPostRunnerToggleNode = useMemo(() => (
+    galleryRunnerControl.available && galleryRunnerControl.active ? (
+      <RunnerFooterControls
+        companyId={companyId}
+        held={galleryRunnerControl.held}
+        active={galleryRunnerControl.active}
+        enabled={galleryRunnerControl.enabled}
+        mode={galleryRunnerControl.mode}
+      />
+    ) : null
+  ), [companyId, galleryRunnerControl.active, galleryRunnerControl.available, galleryRunnerControl.enabled, galleryRunnerControl.held, galleryRunnerControl.mode]);
   /** Company Display settings se AD/BS/Both — recurring dialog labels + apply-from picker. */
   const { dateSystem, formatDate, formatDateBS, formatCurrencyForPrint } = useDate();
   const calLab = useMemo(() => recurringAutoVoucherLabels(dateSystem), [dateSystem]);
@@ -2532,26 +2516,52 @@ export function AddVoucherDialog(props: any) {
       const frame = dialogFrameRef.current;
       if (!frame) return;
       const normalize = (txt: string) => txt.replace(/\s+/g, " ").trim().toLowerCase();
-      const buttons = Array.from(frame.querySelectorAll("button")) as HTMLButtonElement[];
-      const pocketAiButton = buttons.find((button) => {
-        const text = normalize(button.textContent || "");
-        const title = normalize(button.title || button.getAttribute("aria-label") || "");
-        return (text === "pocket ai" || text === "hide ai" || title.includes("pocket ai")) && button.offsetParent !== null;
-      });
-      const actionRow = pocketAiButton?.parentElement;
-      if (!actionRow || !pocketAiButton) return;
+      const allButtons = Array.from(frame.querySelectorAll("button")) as HTMLButtonElement[];
+      const saveCandidates = allButtons.filter((btn) => normalize(btn.textContent || "") === "save");
+      const savePrintCandidates = allButtons.filter((btn) => normalize(btn.textContent || "") === "save & print");
+      const anchorBtn =
+        saveCandidates.find((btn) => btn.offsetParent !== null) ||
+        saveCandidates[0] ||
+        savePrintCandidates.find((btn) => btn.offsetParent !== null) ||
+        savePrintCandidates[0];
+      if (!anchorBtn?.parentElement) return;
+      const actionRow = anchorBtn.parentElement;
+      let footerRoot: HTMLElement = actionRow;
+      let walk: HTMLElement | null = actionRow;
+      while (walk && walk !== frame) {
+        const cls = String(walk.className || "");
+        if (/\bborder-t\b/.test(cls)) { footerRoot = walk; break; }
+        walk = walk.parentElement;
+      }
+      if (footerRoot === actionRow && actionRow.parentElement && actionRow.parentElement !== frame) {
+        footerRoot = actionRow.parentElement;
+      }
+      const stackAbove = isMobile || (footerRoot.clientWidth > 0 && footerRoot.clientWidth < 860);
+      const parent = stackAbove ? footerRoot : actionRow;
+      const className = stackAbove
+        ? "flex w-full min-w-0 flex-wrap items-center gap-1.5 pb-1"
+        : "inline-flex shrink-0 items-center gap-1.5";
       let host = autoProcessRunnerHostRef.current;
-      if (!host || !host.isConnected || host.parentElement !== actionRow) {
+      const placeHost = (node: HTMLDivElement) => {
+        node.className = className;
+        node.style.cssText = "";
+        node.setAttribute("data-auto-post-runner-footer", "");
+        if (stackAbove) {
+          const before = actionRow.parentElement === footerRoot ? actionRow : footerRoot.firstChild;
+          if (before) footerRoot.insertBefore(node, before);
+          else footerRoot.appendChild(node);
+        } else if (node !== actionRow.firstChild) {
+          actionRow.insertBefore(node, actionRow.firstChild);
+        }
+      };
+      if (!host || !host.isConnected || host.parentElement !== parent) {
         if (host?.isConnected) host.remove();
         host = document.createElement("div");
-        host.className = "inline-flex shrink-0 items-center";
-        actionRow.insertBefore(host, pocketAiButton.nextSibling);
+        placeHost(host);
         autoProcessRunnerHostRef.current = host;
         setAutoProcessRunnerMountNode(host);
       } else {
-        host.className = "inline-flex shrink-0 items-center";
-        const target = pocketAiButton.nextSibling;
-        if (host !== target) actionRow.insertBefore(host, target);
+        placeHost(host);
       }
     };
     syncRunnerButtonHost();
@@ -2566,7 +2576,7 @@ export function AddVoucherDialog(props: any) {
       autoProcessRunnerHostRef.current = null;
       setAutoProcessRunnerMountNode((prev) => (prev === null ? prev : null));
     };
-  }, [dialogOpen, autoPostRunnerToggleNode]);
+  }, [dialogOpen, autoPostRunnerToggleNode, isMobile]);
 
   // Draggable & resizable (desktop only)
   const [dialogPosition, setDialogPosition] = useState({ x: 0, y: 0 });
@@ -5113,11 +5123,10 @@ export function AddVoucherDialog(props: any) {
                 Loading parties, items and accounts for this company…
               </div>
             ) : null}
-            {/* Desktop: ONE horizontal scroller around form body + footer; header stays fixed. Inner wrapper min-width per voucher type. */}
-            <div className="flex-1 flex flex-col min-h-0 overflow-x-auto overflow-y-auto overscroll-contain scrollbar-slim-dim">
+            {/* Desktop: header and footer stay fixed at full frame width, outside both scroll axes. Only the form body scrolls. */}
+            <div className="flex-1 flex flex-col min-h-0 overflow-x-hidden overflow-y-hidden overscroll-contain">
               <div
                 className="relative flex flex-1 flex-col min-h-0 w-full"
-                style={{ minWidth: DESKTOP_VOUCHER_BODY_MIN_W[voucherFormActiveTab] ?? DESKTOP_VOUCHER_BODY_MIN_W_DEFAULT }}
               >
                 {bodyBlock}
                 {dialogMastersPulling ? (

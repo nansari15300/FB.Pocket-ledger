@@ -19,6 +19,8 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { useLiveVoucherDuplicate } from "@/hooks/useLiveVoucherDuplicate";
+import { useNotifyRunnerFormChanged } from "@/hooks/useNotifyRunnerFormChanged";
+import { useMoveAttachedFilesToDuplicate } from "@/hooks/useMoveAttachedFilesToDuplicate";
 import { DuplicateVoucherBubble, DUP_ANCHOR_ATTR, DUP_SAVE_ANCHOR } from "@/components/vouchers/DuplicateVoucherBubble";
 import type { CandidateVoucher } from "@/lib/voucherDuplicateGuard";
 import {
@@ -620,6 +622,7 @@ export function CreateSaleForm({
     resolver: zodResolver(formSchema) as Resolver<SaleFormValues>,
     defaultValues: getInitialFormValues(voucher),
   });
+  useNotifyRunnerFormChanged({ form, companyId });
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -2156,6 +2159,16 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     },
     !voucher?.id && !!partyId && !!form.watch("date") && saleFormTotal > 0
   );
+
+  const { moveBusy: dupMoveBusy, moveToDuplicate, canAutoMove } = useMoveAttachedFilesToDuplicate({
+    files,
+    companyId,
+    company,
+    onClosed: () => {
+      dismissLiveDuplicate();
+      onVoucherAction?.("cancelled", false, savedVoucherId ?? undefined);
+    },
+  });
   const showCopyPartyFromSource = useMemo(() => {
     if (!copyDraftMasterHelpersEnabled) return false;
     const pid = String(partyId || "").trim();
@@ -2371,7 +2384,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
   return (
     <>
       <Form {...form}>
-        <form onSubmit={handleFormSubmit} className="h-full flex flex-col min-w-0 w-full max-w-full">
+        <form onSubmit={handleFormSubmit} className="h-full flex-1 min-h-0 flex flex-col min-w-0 w-full max-w-full">
           {/* PC: Radix ScrollArea viewport nested overflow clip karti hai—yahan native overflow-auto se horizontal scrollbar milta hai; footer form ke bahar hi rehta hai. */}
           <div
             className={cn(
@@ -4733,7 +4746,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           {/* Footer Actions */}
           <div className={cn(
             "border-t min-w-0 max-w-full overflow-x-hidden",
-            isMobile ? "mt-[3px] pt-[3px] pb-[3px] w-[calc(100%-4px)] mx-auto px-[2px]" : "pt-4 flex flex-row justify-between items-center px-[2px] gap-4"
+            isMobile ? "mt-[3px] pt-[3px] pb-[3px] w-[calc(100%-4px)] mx-auto px-[2px]" : "shrink-0 mt-auto w-full bg-slate-100 pt-4 flex flex-row justify-between items-center px-[2px] gap-4"
           )}>
             {isMobile ? (
               <div className={cn("grid grid-cols-3 gap-2 w-full min-w-0", VOUCHER_BUTTONS_CLASS)}>
@@ -4794,7 +4807,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
           </div>
         </form>
       <VoucherOcrAiCopilot ocr={ocr} layout={copilot} thumbUrl={thumbUrl} />
-        {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} /> : null}
+        {liveDuplicate ? <DuplicateVoucherBubble match={liveDuplicate} mode="live" onDismiss={dismissLiveDuplicate} onMoveToDuplicate={() => void moveToDuplicate(liveDuplicate)} moveBusy={dupMoveBusy} canAutoMove={canAutoMove} /> : null}
       </Form>
 
       {convertPresentation ? (
