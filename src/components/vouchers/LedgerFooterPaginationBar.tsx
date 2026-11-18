@@ -31,6 +31,8 @@ export type LedgerFooterPaginationBarProps = {
   sortOrder: TransactionSortOrder;
   onSortChange: (sortBy: TransactionSortBy, sortOrder: TransactionSortOrder) => void;
   viewMode?: "statement" | "bill_wise" | "spend_wise";
+  defaultSortBy?: TransactionSortBy;
+  defaultSortOrder?: TransactionSortOrder;
   currentPage: number;
   totalPages: number;
   setCurrentPage: React.Dispatch<React.SetStateAction<number>>;
@@ -60,6 +62,8 @@ export function LedgerFooterPaginationBar({
   sortOrder,
   onSortChange,
   viewMode = "statement",
+  defaultSortBy,
+  defaultSortOrder,
   currentPage,
   totalPages,
   setCurrentPage,
@@ -87,6 +91,8 @@ export function LedgerFooterPaginationBar({
           sortOrder={sortOrder}
           onSortChange={onSortChange}
           viewMode={viewMode}
+          defaultSortBy={defaultSortBy}
+          defaultSortOrder={defaultSortOrder}
           chromePill
           className={ledgerFooterPillBtnCn}
           menuContentClassName={footerDropdownCn}

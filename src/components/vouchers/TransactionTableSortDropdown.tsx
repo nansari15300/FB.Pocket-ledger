@@ -43,6 +43,9 @@ export type TransactionTableSortDropdownProps = {
   sortBy: TransactionSortBy;
   sortOrder: TransactionSortOrder;
   onSortChange: (sortBy: TransactionSortBy, sortOrder: TransactionSortOrder) => void;
+  /** Which option is marked Default. Ledger tables stay date + asc. Recent OCR passes date + desc. */
+  defaultSortBy?: TransactionSortBy;
+  defaultSortOrder?: TransactionSortOrder;
   /** View mode for label (Statement / Bill wise / Spend wise) */
   viewMode?: "statement" | "bill_wise" | "spend_wise";
   /** PC footer: chrome pill trigger (global ledger footer). */
@@ -56,6 +59,8 @@ export function TransactionTableSortDropdown({
   sortBy,
   sortOrder,
   onSortChange,
+  defaultSortBy = "date",
+  defaultSortOrder = "asc",
   viewMode = "statement",
   chromePill: chromePillProp,
   className,
@@ -90,7 +95,7 @@ export function TransactionTableSortDropdown({
             onSelect={(e) => e.preventDefault()}
             onClick={() => {
               // `DEFAULT_TRANSACTION_SORT_ORDER` in `@/lib/transactionSort` — purani date upar.
-              if (opt.value === "date") onSortChange("date", "asc");
+              if (opt.value === defaultSortBy) onSortChange(defaultSortBy, defaultSortOrder);
             }}
             className="flex items-center justify-between gap-2 py-1.5"
           >
@@ -107,13 +112,13 @@ export function TransactionTableSortDropdown({
                 className={cn(
                   // Keep arrow icons readable even when parent item hover/focus changes text color.
                   "p-1 rounded hover:bg-muted text-foreground hover:text-foreground",
-                  // Merge "Default" and ascending action into one box for By Date.
-                  opt.value === "date" && "flex items-center gap-1 border border-green-300 bg-green-50 px-1.5 py-0 text-[10px] font-semibold text-green-700 hover:bg-green-100 hover:text-green-700",
+                  // Merge "Default" into the default-order arrow (ledgers: By Date asc).
+                  opt.value === defaultSortBy && defaultSortOrder === "asc" && "flex items-center gap-1 border border-green-300 bg-green-50 px-1.5 py-0 text-[10px] font-semibold text-green-700 hover:bg-green-100 hover:text-green-700",
                   sortBy === opt.value && sortOrder === "asc" && "bg-muted"
                 )}
                 aria-label={`${opt.label} ascending`}
               >
-                {opt.value === "date" ? <span>Default</span> : null}
+                {opt.value === defaultSortBy && defaultSortOrder === "asc" ? <span>Default</span> : null}
                 <ArrowUp className="h-4 w-4" />
               </button>
               <button
@@ -125,10 +130,12 @@ export function TransactionTableSortDropdown({
                 className={cn(
                   // Keep arrow icons readable even when parent item hover/focus changes text color.
                   "p-1 rounded hover:bg-muted text-foreground hover:text-foreground",
+                  opt.value === defaultSortBy && defaultSortOrder === "desc" && "flex items-center gap-1 border border-green-300 bg-green-50 px-1.5 py-0 text-[10px] font-semibold text-green-700 hover:bg-green-100 hover:text-green-700",
                   sortBy === opt.value && sortOrder === "desc" && "bg-muted"
                 )}
                 aria-label={`${opt.label} descending`}
               >
+                {opt.value === defaultSortBy && defaultSortOrder === "desc" ? <span>Default</span> : null}
                 <ArrowDown className="h-4 w-4" />
               </button>
             </div>

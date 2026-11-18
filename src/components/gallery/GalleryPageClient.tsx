@@ -144,7 +144,7 @@ import { FIREBASE_LEDGER_COMPANY_SYNC_PREFS_CHANGED_EVENT } from "@/lib/firebase
 import { setVisiblePageAttachmentUrls } from "@/lib/attachmentNetworkGate";
 import { GalleryAutoOcrSettingsDialog } from "@/components/gallery/GalleryAutoOcrSettingsDialog";
 import { DashboardWelcomeFooterBanner, DAYBOOK_SHIFT_DATE_EVENT } from "@/components/dashboard/DashboardWelcomeFooterBanner";
-import { sortTransactions } from "@/lib/transactionSort";
+import { DEFAULT_RECENT_OCR_SORT_BY, DEFAULT_RECENT_OCR_SORT_ORDER, sortRecentOcrTransactions } from "@/modules/ocr/recentOcrTransactionSort";
 import { ROWS_PER_PAGE_OPTIONS_DEFAULT } from "@/lib/rowsPerPageSelect";
 import { useRowsPerPage } from "@/hooks/useRowsPerPage";
 import { useRowsPerPageSelectControl } from "@/hooks/useRowsPerPageSelect";
@@ -860,8 +860,8 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
   const [currentPage, setCurrentPage] = useState(1);
   const [showNarration, setShowNarration] = useState(true);
   const [rowsPerPage, setRowsPerPage] = useRowsPerPage(10, "app-recent-rows-per-page");
-  const [sortBy, setSortBy] = useState<TransactionSortBy>("date");
-  const [sortOrder, setSortOrder] = useState<TransactionSortOrder>("desc");
+  const [sortBy, setSortBy] = useState<TransactionSortBy>(DEFAULT_RECENT_OCR_SORT_BY);
+  const [sortOrder, setSortOrder] = useState<TransactionSortOrder>(DEFAULT_RECENT_OCR_SORT_ORDER);
   const { visibleColumns, handleColumnVisibilityChange, ledgerColumnMenuNoTdsFilter } = useTransactionVisibleColumns();
   const { setShowNotes, includeNotesInTable, notesPreferenceLockedOnMobile } = useShowNotes();
   const {
@@ -959,18 +959,7 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
         .some((value) => String(value ?? "").toLowerCase().includes(q))),
     );
     const scoped = recentMode ? filtered : filterRecentOcrByPostedDay(filtered, selectedDay, runnerVoucherById);
-    if (recentMode) {
-      return [...scoped].sort((a: any, b: any) => {
-        const aVoucher = runnerVoucherById.get(String(a.id || ""));
-        const bVoucher = runnerVoucherById.get(String(b.id || ""));
-        const aAdded = parseFirestoreDateFieldToJsDate(a.createdAt)?.getTime()
-          ?? parseFirestoreDateFieldToJsDate(aVoucher?.createdAt)?.getTime() ?? 0;
-        const bAdded = parseFirestoreDateFieldToJsDate(b.createdAt)?.getTime()
-          ?? parseFirestoreDateFieldToJsDate(bVoucher?.createdAt)?.getTime() ?? 0;
-        return bAdded - aAdded;
-      });
-    }
-    return sortTransactions(scoped, sortBy, sortOrder, { tieBreakCreatedAtDesc: true });
+    return sortRecentOcrTransactions(scoped, sortBy, sortOrder, runnerVoucherById);
   }, [daybookTransactions, effectiveColumnFilters.user, includeNotesInTable, recentMode, runnerVoucherById, runnerVoucherModes, runnerVoucherProviders, search, selectedDay, sortBy, sortOrder, unapprovedOnly]);
   const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / rowsPerPage));
   const safePage = Math.min(currentPage, totalPages);
@@ -1025,7 +1014,7 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
     }
     onEditVoucher(row);
   }, [onEditVoucher]);
-  useEffect(() => setCurrentPage(1), [recentMode, selectedDay, search, unapprovedOnly, includeNotesInTable]);
+  useEffect(() => setCurrentPage(1), [recentMode, selectedDay, search, unapprovedOnly, includeNotesInTable, sortBy, sortOrder]);
   useEffect(() => setCurrentPage((page) => Math.min(page, totalPages)), [totalPages]);
 
   const greetingHour = new Date().getHours();
@@ -1197,7 +1186,9 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
           }
           sortBy={sortBy}
           sortOrder={sortOrder}
-          onSortChange={(by, order) => { setSortBy(by); setSortOrder(order); }}
+          onSortChange={(by, order) => { setSortBy(by); setSortOrder(order); setCurrentPage(1); }}
+          defaultSortBy={DEFAULT_RECENT_OCR_SORT_BY}
+          defaultSortOrder={DEFAULT_RECENT_OCR_SORT_ORDER}
           viewMode="statement"
           currentPage={safePage}
           totalPages={totalPages}
