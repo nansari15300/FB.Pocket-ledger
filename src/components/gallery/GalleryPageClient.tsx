@@ -105,6 +105,10 @@ import { firestore } from "@/lib/plClientSession";
 import { collection, query, where, serverTimestamp, doc, orderBy, arrayRemove, Timestamp } from "@/lib/pbCompat/firestore";
 import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { toast } from "sonner";
+import { usePlI18nOptional } from "@/contexts/PlI18nContext";
+import { introTabLang } from "@/lib/i18n/introLangTab";
+import { loadOcrEngineOptions } from "@/modules/ocr/engineChoices";
+import { ENGINE_NO_KEY_COPY, scanEngineHasKey } from "@/modules/ocr/engineKeys";
 import { compressImageForCompany, attachmentImageStillTooLargeToastFields } from "@/lib/attachmentCompressionUi";
 import { uploadFileClient, deleteFileFromStorageClient } from "@/lib/storageClient";
 import { uploadUnassignedFileToPocketLedgerServer } from "@/lib/uploadUnassignedFileToPocketLedgerServer";
@@ -491,6 +495,7 @@ function GalleryRunnerResetButton({ inline = false }: { inline?: boolean }) {
 }
 
 function GalleryAutoPostModeRibbon({ inline = false }: { inline?: boolean }) {
+  const i18n = usePlI18nOptional();
   const { company, companyId } = useCompany();
   const { user } = useAuth();
   const fsId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
@@ -519,6 +524,15 @@ function GalleryAutoPostModeRibbon({ inline = false }: { inline?: boolean }) {
       toast.error("Select an admin device in Auto post settings before enabling the runner.");
       window.dispatchEvent(new Event("pl:gallery:auto-ocr-settings"));
       return;
+    }
+    // Decision 7: never switch to a runner whose engine has no saved key.
+    if (next !== "manual") {
+      const keyed = await loadOcrEngineOptions(fsId).catch(() => null);
+      if (!keyed || !scanEngineHasKey(profile.scanEngine || "auto", keyed)) {
+        const lang = introTabLang(i18n?.intro);
+        toast.error(ENGINE_NO_KEY_COPY[lang === "hi" || lang === "ne" ? lang : "en"]);
+        return;
+      }
     }
     const previous = mode;
     window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId: fsId, held: true } }));

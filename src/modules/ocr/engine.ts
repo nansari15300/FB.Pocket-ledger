@@ -1,6 +1,8 @@
 "use client";
 /**
  * OCR engine.
+ * 2026-11-18: no device-local engine fallback — callers pass the engine (and Google/Azure provider) explicitly.
+ *   "auto" picks one engine that has a saved key (Gemini → Google → Azure) and throws code "no_key" when none has.
  * Online (optional): Google Cloud Vision or Azure Image Analysis Read through the Pocket Ledger Server (`./cloud/ocrCloudClient`), only when the
  *   user's engine pref is "auto" or "online", the device is online, the file is an image/PDF page, and the server status says
  *   `canUse` (server OCR on + company enabled + user allowed + key saved). "online" runs ONLY the picked Google/Azure and reports its
@@ -17,6 +19,8 @@ import { getOcrAiStatusCached, OcrAiError, ocrAiErrorCode, ocrAiErrorText, ocrAi
 import { isOcrCloudError } from "@/lib/ocrCloudApi";
 import { aiFallbackText } from "./ai/aiVoucher";
 import { recordOcrUsage, type OcrUsageEngine } from "./ocrUsage";
+import { loadOcrEngineOptions } from "./engineChoices";
+import { pickAutoEngine } from "./engineKeys";
 
 export type RunOcrOptions = {
   /** Active company (server checks the user's online OCR permission for it). */
@@ -144,7 +148,7 @@ async function tryCloudOcr(file: Blob, mime: string, opts: RunOcrOptions): Promi
     return { raw: null, note: `Online OCR status unavailable (${ocrCloudErrorCode(e)})`, cause: e };
   }
   if (!status.serverOcrEnabled) return { raw: null, note: "Online OCR off on server" };
-  const requestedProvider = opts.cloudProvider || getOcrPrefs().onlineProvider || status.provider || "google";
+  const requestedProvider = opts.cloudProvider || status.provider || "google";
   const providerAvailable = status.isAdmin
     ? status.keys ? !!status.keys[requestedProvider] : !!status.hasKey && status.provider === requestedProvider
     : !!status.canUse && (status.providers ? status.providers.includes(requestedProvider) : status.provider === requestedProvider);
@@ -262,7 +266,7 @@ async function tryAiOcr(file: Blob, mime: string, opts: RunOcrOptions): Promise<
  */
 export async function runOcrOnFile(file: Blob, mime: string, opts: RunOcrOptions = {}): Promise<OcrRawResult> {
   const pref = opts.enginePref ?? "auto";
-  const selectedEngine: OcrUsageEngine = pref === "ai" ? "gemini" : pref === "online" ? (opts.cloudProvider || getOcrPrefs().onlineProvider || "google") : "auto";
+  const selectedEngine: OcrUsageEngine = pref === "ai" ? "gemini" : pref === "online" ? (opts.cloudProvider || "google") : "auto";
   if (selectedEngine === "auto") recordOcrUsage(opts.companyId, selectedEngine, "call");
   try {
     const result = await runOcrOnFileInternal(file, mime, opts);
@@ -283,6 +287,20 @@ async function runOcrOnFileInternal(file: Blob, mime: string, opts: RunOcrOption
   /** Single engine picked by the user: it runs alone, and its failure is reported (no silent fallback). */
   const onlyOne = (t: EngineTry, fallback: string, engine: OcrRunError["engine"]) => runErrorOf(t, fallback, engine);
 
+  // ---- auto (Decision 6, 2026-11-18): pick ONE engine that has a saved key (Gemini → Google → Azure), never a keyless one ----
+  if (pref === "auto") {
+    const keyed = await loadOcrEngineOptions(opts.companyId).catch(() => null);
+    const pick = keyed ? pickAutoEngine(keyed) : null;
+    if (aborted()) throw new DOMException("OCR cancelled", "AbortError");
+    if (!pick) {
+      throw new OcrRunError(
+        keyed ? "No OCR engine has a saved key for this company. Add a key in Voucher Post Setting → Key Setting." : "OCR engine status could not be loaded. Check the connection and try again.",
+        keyed ? "no_key" : "unavailable", 0, 0, "online",
+      );
+    }
+    return runOcrOnFileInternal(file, mime, { ...opts, enginePref: pick.enginePref, cloudProvider: pick.cloudProvider || undefined });
+  }
+
   // ---- AI (Gemini): the only engine the user picked ----
   if (pref === "ai") {
     stage("gemini");
@@ -294,7 +312,7 @@ async function runOcrOnFileInternal(file: Blob, mime: string, opts: RunOcrOption
 
   // ---- Google / Azure picked: only that cloud engine ----
   if (pref === "online") {
-    const provider = opts.cloudProvider || getOcrPrefs().onlineProvider || "";
+    const provider = opts.cloudProvider || "";
     stage(provider || "cloud");
     const cloud: EngineTry = await tryCloudOcr(file, mime, opts).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})`, cause: e }));
     if (cloud.raw) return cloud.raw;
@@ -303,11 +321,5 @@ async function runOcrOnFileInternal(file: Blob, mime: string, opts: RunOcrOption
     throw onlyOne(cloud, `${failedProvider === "google" ? "Google" : failedProvider === "azure" ? "Azure" : "Online"} OCR could not read this document`, failedProvider ?? "online");
   }
 
-  // ---- auto: use configured online OCR; keep an unavailable provider visible as an error ----
-  stage("cloud");
-  const cloud: EngineTry = await tryCloudOcr(file, mime, opts).catch((e) => ({ raw: null, note: `Online OCR failed (${ocrCloudErrorCode(e)})`, cause: e }));
-  if (cloud.raw) return cloud.raw;
-  if (aborted()) throw new DOMException("OCR cancelled", "AbortError");
-  /* Auto mode: name the provider that really ran / failed (Azure vs Google Vision) for the fail popup and runner. */
-  throw onlyOne(cloud, "Online OCR could not read this document", cloud.provider ?? "online");
+  throw new OcrRunError("Unknown OCR engine.", "unavailable", 0, 0, "online");
 }

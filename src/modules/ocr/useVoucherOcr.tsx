@@ -17,6 +17,7 @@ import { parseBill } from "./parser";
 import { extractIdentifiers, type OcrIdentifiers } from "./identifiers";
 import { learnTemplateParty, lookupTemplateParty } from "./templates";
 import { clampAutoPostSeconds, getOcrPrefs, setOcrPrefs, useOcrPrefs } from "./prefs";
+import { ensureManualOcrProfile, resolveVoucherAutoPost, useManualOcrProfile } from "./manualProfile";
 import { buildOcrNarration, formatOcrNarrationDate, itemsNarrationTag, readDateDisplayPrefs } from "./narration";
 import { AutoPostCountdownBubble } from "./AutoPostCountdownBubble";
 import { useOcrPlanAllowed } from "./gate";
@@ -163,7 +164,7 @@ async function loadFirstFile(f: File | string, companyId?: string | null): Promi
 }
 
 /** Bump when parser/engine logic changes: shown in Show OCR text to prove the browser runs the new bundle. */
-export const OCR_BUILD = "2026-11-16.1";
+export const OCR_BUILD = "2026-11-18.1";
 
 const MONEY_TYPES = ["payment_out", "payment_in", "direct_expense", "direct_income", "contra"] as const;
 const ALL_TYPE_CHOICES = ["sale", "purchase", "payment_in", "payment_out", "direct_income", "direct_expense", "contra"] as const;
@@ -257,6 +258,14 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const planAllowed = useOcrPlanAllowed();
   // Own company straight from the company profile (not only form props) - hard guard against offering ourselves as party
   const { company: profileCompany } = useCompany();
+  /* Decision 2 (2026-11-18): hand-opened vouchers follow Voucher Post Setting → Manual Runner
+   * (engine, Auto Post, countdown, Overwrite edited, item rule), not device-local OCR prefs. */
+  const manualOcrCompanyId = String((profileCompany as { authoritativeCompanyId?: string } | null)?.authoritativeCompanyId || o.companyId || "");
+  const manualOcrProfile = useManualOcrProfile(manualOcrCompanyId);
+  const manualOcrProfileRef = useRef(manualOcrProfile);
+  manualOcrProfileRef.current = manualOcrProfile;
+  const manualOcrCompanyIdRef = useRef(manualOcrCompanyId);
+  manualOcrCompanyIdRef.current = manualOcrCompanyId;
   const { user } = useAuth();
   const ownRef = useRef<{ name: string | null; pan: string | null }>({ name: null, pan: null });
   // Bank-receipt masters (local in-memory context, no Firestore read): own Bank/Cash, parties, staff
@@ -310,6 +319,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const filledRef = useRef(new Map<string, unknown>());
   const handoffAutoPostRef = useRef(false);
   const handoffAutoPostOverrideRef = useRef<boolean | undefined>(undefined);
+  /** Voucher opened by the Gallery runner (Semi / Full): its profile settings travel with every type switch. */
+  const handoffRunnerJobRef = useRef(false);
+  /** Full Auto Post: save right after autofill, no countdown. */
+  const handoffAutoPostImmediateRef = useRef(false);
   const handoffAutoPostSecondsRef = useRef<number | undefined>(undefined);
   const handoffOverwriteEditedRef = useRef<boolean | undefined>(undefined);
   const handoffAllowSaveWithoutItemsRef = useRef(false);
@@ -335,8 +348,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const startAutoPostCountdown = useCallback(() => {
     if (apTimerRef.current != null) window.clearInterval(apTimerRef.current);
     if (handoffAutoPostRef.current) localAutoPostPendingRef.current = true;
-    let n = clampAutoPostSeconds(handoffAutoPostSecondsRef.current ?? getOcrPrefs().autoPostSeconds);
-    setApCount(n);
+    const immediate = handoffRunnerJobRef.current && handoffAutoPostImmediateRef.current;
+    let n = immediate ? 1 : clampAutoPostSeconds(handoffAutoPostSecondsRef.current ?? manualOcrProfileRef.current.autoPostSeconds);
+    if (!immediate) setApCount(n);
     apTimerRef.current = window.setInterval(() => {
       n -= 1;
       if (n > 0) { setApCount(n); return; }
@@ -354,7 +368,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       localAutoPostPendingRef.current = false;
       savedRef.current = true;
       optsRef.current.autoPost();
-    }, 1000);
+    }, immediate ? 0 : 1000);
   }, []);
   const askPossibleBankCharge = useCallback((amount: number) => new Promise<boolean>((resolve) => {
     possibleBankChargeResolverRef.current = resolve;
@@ -378,7 +392,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     return () => window.removeEventListener("online", resumeLocalAutoPost);
   }, [startAutoPostCountdown]);
   useEffect(() => () => { if (apTimerRef.current != null) window.clearInterval(apTimerRef.current); }, []);
-  const apPrefOn = useOcrPrefs().autoPost;
+  const apPrefOn = manualOcrProfile.autoPost;
   useEffect(() => { if (!apPrefOn && handoffAutoPostOverrideRef.current !== true) cancelAutoPostCountdown(); }, [apPrefOn, cancelAutoPostCountdown]);
   const lastRawRef = useRef<OcrRawResult | null>(null);
   /** Manual voucher selection outranks OCR's type suggestion for this reused scan. */
@@ -455,7 +469,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       raw,
       original,
       selectedIds,
-      autoPost: handoffAutoPostRef.current,
+      // Runner job: carry every runner setting. Hand-opened voucher: undefined -> Manual Runner profile decides.
+      runnerJob: handoffRunnerJobRef.current || undefined,
+      autoPostImmediate: handoffRunnerJobRef.current ? handoffAutoPostImmediateRef.current : undefined,
+      autoPost: handoffRunnerJobRef.current ? handoffAutoPostRef.current : undefined,
       autoPostSeconds: handoffAutoPostSecondsRef.current,
       overwriteEdited: handoffOverwriteEditedRef.current,
       allowSaveWithoutItems: handoffAllowSaveWithoutItemsRef.current,
@@ -499,9 +516,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         (path, v) => !(filledRef.current.has(path) && JSON.stringify(filledRef.current.get(path)) === JSON.stringify(v)) && F.getFieldState(path).isDirty,
         isEmptyVal,
       );
-      /* Gallery runner voucher: the new tab keeps the runner's auto-post rules (same flags as switchVoucher).
-       * A normal (non-runner) voucher stays manual: no auto-post. */
-      const runnerHandoff = handoffAutoPostRef.current === true;
+      /* Decision 9: a Gallery runner voucher keeps ALL its runner profile settings on a manual type change
+       * (engine, Auto Post on or off, countdown, duplicate check, due days...). A normal voucher stays manual. */
+      const runnerHandoff = handoffRunnerJobRef.current === true;
       queueOcrHandoff(targetType, opt.files, {
         raw,
         original,
@@ -510,7 +527,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         userValues: Object.keys(userValues).length ? userValues : undefined,
         ...(runnerHandoff
           ? {
-              autoPost: true,
+              runnerJob: true,
+              autoPostImmediate: handoffAutoPostImmediateRef.current,
+              autoPost: handoffAutoPostRef.current,
               autoPostSeconds: handoffAutoPostSecondsRef.current,
               overwriteEdited: handoffOverwriteEditedRef.current,
               allowSaveWithoutItems: handoffAllowSaveWithoutItemsRef.current,
@@ -528,7 +547,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
 
   const canWrite = useCallback((path: string) => {
     const { form } = optsRef.current;
-    if (handoffOverwriteEditedRef.current ?? getOcrPrefs().overwriteEdited) return true;
+    if (handoffOverwriteEditedRef.current ?? manualOcrProfileRef.current.overwriteEdited) return true;
     const cur = form.getValues(path);
     if (isEmptyVal(cur)) return true;
     if (filledRef.current.has(path)) {
@@ -662,6 +681,13 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
       manualTypeSwitchRef.current = reuse?.manualTypeSwitch === true;
       /* Manual tab switch of a gallery runner voucher: auto-post stays on, validated against the current form. */
       const manualRunnerSwitch = reuse?.manualTypeSwitch === true && reason === "handoff" && handoffAutoPostRef.current;
+      /** Runner job: its own Auto Post. Hand-opened voucher: Manual Runner profile (an explicit "off" handoff wins). */
+      const autoPostWanted = (why: "auto" | "refresh" | "handoff") => resolveVoucherAutoPost({
+        runnerJob: why === "handoff" && handoffRunnerJobRef.current,
+        override: why === "handoff" ? handoffAutoPostOverrideRef.current : undefined,
+        runnerAutoPost: handoffAutoPostRef.current,
+        manual: manualOcrProfileRef.current,
+      });
       /** Manual type change: the user's own values from the previous form win over the OCR re-map (applied once). */
       const applyCarriedUserValues = () => {
         const carried = reuse?.manualTypeSwitch ? handoffUserValuesRef.current : undefined;
@@ -721,12 +747,15 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           if (process.env.NODE_ENV !== "production") {
             console.info(`[OCR] input: ${orig ? "ORIGINAL upload" : "stored attachment (compressed)"} ${src.mime} ${(src.blob.size / 1024).toFixed(0)} KB`);
           }
+          /* Decision 6: the engine is explicit — popup choice, else the runner's engine, else Manual Runner's. */
+          const pickedEngine = reuse?.aiModel ? "ai" as const : reuse?.enginePref;
+          const manualOcr = pickedEngine || handoffEnginePrefRef.current ? null : await ensureManualOcrProfile(manualOcrCompanyIdRef.current);
           raw = await runOcrOnFile(src.blob, src.mime, {
             companyId: opt.companyId,
-            enginePref: reuse?.aiModel ? "ai" : (reuse?.enginePref ?? getOcrPrefs().engine),
+            enginePref: pickedEngine ?? handoffEnginePrefRef.current ?? manualOcr?.enginePref ?? "auto",
             aiModel: reuse?.aiModel,
             onAiModel,
-            cloudProvider: reuse?.cloudProvider,
+            cloudProvider: pickedEngine ? reuse?.cloudProvider : (handoffCloudProviderRef.current ?? (manualOcr?.cloudProvider || undefined)),
             ownCompany: { name: ownRef.current.name, pan: ownRef.current.pan },
             ownAccounts: (mastersRef.current.accounts ?? []).filter((a) => !a.isDeleted).map((a) => ({ accountName: a.accountName, aliasName: (a as { aliasName?: string }).aliasName, accountNumber: a.accountNumber, bankName: a.bankName, accountType: a.accountType })),
             aiDocType: aiDocTypeForVoucher(opt.currentVoucherType ?? null, opt.adapter.partySide),
@@ -1200,7 +1229,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                 ? `Filled: ${rFilled.join(", ") || "nothing"}${rMissing.length ? ` | Missing: ${rMissing.map((x) => x.split(" (")[0]).join(", ")}` : ""}`
                 : here && highUnique ? `${niceType(cur)} is the right voucher.` : !highUnique ? "Cannot detect voucher type — stay on the current voucher or pick one." : `Suggested: ${types.map(niceType).join(" / ")}.`,
             });
-            if ((!reuse?.manualTypeSwitch || manualRunnerSwitch) && (reason === "auto" || reason === "handoff") && (reason === "handoff" ? (handoffAutoPostOverrideRef.current ?? handoffAutoPostRef.current) : getOcrPrefs().autoPost) && !opt.isEditing && opt.adapter.autoPost && apScheduledForRef.current !== raw) {
+            if ((!reuse?.manualTypeSwitch || manualRunnerSwitch) && (reason === "auto" || reason === "handoff") && autoPostWanted(reason) && !opt.isEditing && opt.adapter.autoPost && apScheduledForRef.current !== raw) {
               /* User-typed values from the previous tab go in before the check, so they are saved and never overwritten. */
               if (manualRunnerSwitch) applyCarriedUserValues();
               const F = opt.form;
@@ -1754,7 +1783,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
         const partyOk = !A.party || !partyApplies || !!F.getValues(A.party.path);
         void partyApplies;
 
-        if ((!reuse?.manualTypeSwitch || manualRunnerSwitch) && (reason === "auto" || reason === "handoff") && (reason === "handoff" ? (handoffAutoPostOverrideRef.current ?? handoffAutoPostRef.current) : getOcrPrefs().autoPost) && !opt.isEditing && apScheduledForRef.current !== raw) {
+        if ((!reuse?.manualTypeSwitch || manualRunnerSwitch) && (reason === "auto" || reason === "handoff") && autoPostWanted(reason) && !opt.isEditing && apScheduledForRef.current !== raw) {
           /* Manual runner tab switch: carried user values first, then validate the CURRENT form (like Resume). */
           if (manualRunnerSwitch) applyCarriedUserValues();
           const resumeCurrentForm = reuse?.resumeCurrentForm === true || manualRunnerSwitch;
@@ -1785,7 +1814,9 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
           const aiAmountMismatch = bill.amountCheck?.ok === false;
           const itemAmountMismatch = rowAmountMismatch || aiAmountMismatch;
           const amountMismatchLabel = aiAmountMismatch && !rowAmountMismatch ? [ocrRunStrings().amountMismatch] : [];
-          const allowSaveWithoutItems = reason === "handoff" && handoffAllowSaveWithoutItemsRef.current;
+          const allowSaveWithoutItems = reason === "handoff" && handoffRunnerJobRef.current
+            ? handoffAllowSaveWithoutItemsRef.current
+            : manualOcrProfileRef.current.itemRule === "save-without";
           const missingRequiredPaths = (A.requiredPaths ?? [])
             .filter((path) => !(allowSaveWithoutItems && isItemMasterPath(path)))
             .filter((path) => isEmptyVal(F.getValues(path)))
@@ -2068,6 +2099,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     const h = takeOcrHandoff(formType) ?? resumeOcrSession(formType);
     if (h?.files.length) {
       handoffRunRef.current = { raw: h.raw, selectedIds: h.selectedIds, autoPost: h.autoPost, autoPostSeconds: h.autoPostSeconds, overwriteEdited: h.overwriteEdited, allowSaveWithoutItems: h.allowSaveWithoutItems, manualTypeSwitch: h.manualTypeSwitch, enginePref: h.enginePref, cloudProvider: h.cloudProvider };
+      handoffRunnerJobRef.current = h.runnerJob === true;
+      handoffAutoPostImmediateRef.current = h.runnerJob === true && h.autoPostImmediate === true;
       handoffAutoPostRef.current = h.autoPost === true;
       handoffAutoPostOverrideRef.current = h.autoPost;
       handoffAutoPostSecondsRef.current = h.autoPostSeconds;

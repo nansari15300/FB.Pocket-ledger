@@ -16,6 +16,10 @@ export type OcrHandoff = {
   selectedIds?: string[];
   /** Gallery local Auto post: use the voucher form's normal guarded save after OCR autofill. */
   autoPost?: boolean;
+  /** Set only by the Gallery runner (Semi / Full). Hand-opened vouchers use the Manual Runner profile instead. */
+  runnerJob?: boolean;
+  /** Full Auto Post: save right after autofill — no voucher window countdown. */
+  autoPostImmediate?: boolean;
   /** Runner-specific save countdown; overrides the device-wide OCR preference for this handoff. */
   autoPostSeconds?: number;
   /** Runner-specific overwrite behaviour; overrides the device-wide OCR preference for this handoff. */

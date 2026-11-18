@@ -14,7 +14,7 @@ import { OCR_UNAVAILABLE_MESSAGE } from "@/components/gallery/autoPostRunPolicy"
  */
 export const AUTO_POST_UI = {
   reset: "Reset",
-  resetTitle: "Reset the scan-run counter to the current limit and continue this run",
+  resetTitle: "Refill the scan-run file counter to the current limit (does not start the runner; press Start to scan)",
   howManyFiles: "How many files to scan",
   scanAllFiles: "Scan all files",
   all: "All",
@@ -54,8 +54,8 @@ export const AUTO_POST_UI = {
   skipMoveToAutoFailed: "Skip & move to Auto failed",
   skipMoveToAutoFailedTitle: "Skip this document and move it to Auto post failed",
   enableAutoPostToStart: "Enable Auto post vouchers in Auto post settings to start the runner",
-  scanCounterReset: "Scan counter reset: {count} files left in this run",
-  scanCounterResetAll: "Scan counter reset: all files left in this run",
+  scanCounterReset: "Scan counter reset: {count} files allowed. Press Start to scan.",
+  scanCounterResetAll: "Scan counter reset: no file limit. Press Start to scan.",
   scannedPressStart: "Scanned {scanned} of {total}. Press Start to continue.",
   startBlockedSettingsLoading: "Auto post settings are still loading. Try Start again in a moment.",
   startBlockedNotEnabled: "Enable Auto post vouchers in Auto post settings to start the runner",

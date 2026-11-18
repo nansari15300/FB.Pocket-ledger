@@ -8,7 +8,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { AppFreshInfoButton } from "@/components/ui/AppFreshInfoButton";
 import { useCompany } from "@/hooks/useCompany";
 import { cn } from "@/lib/utils";
-import { AUTO_POST_SECONDS_MAX, AUTO_POST_SECONDS_MIN, clampAutoPostSeconds, setOcrPrefs, useOcrPrefs, type OcrConnectorStyle, type OcrNarrationStyle } from "./prefs";
+import { AUTO_POST_SECONDS_MAX, AUTO_POST_SECONDS_MIN, clampAutoPostSeconds, setOcrPrefs, useOcrPrefs, type OcrConnectorStyle, type OcrNarrationStyle, type OcrPrefs } from "./prefs";
+import { useManualOcrProfile } from "./manualProfile";
 import { useOcrPlanAllowed } from "./gate";
 import { ocrCloud, ocrCloudErrorText, useOcrCloudStatus } from "./cloud/ocrCloudClient";
 import { invalidateOcrOwnAliases } from "./ownAliases";
@@ -747,9 +748,11 @@ function GoogleOcrSection({ companyId, open }: { companyId: string | null; open:
 }
 
 function OcrSettingsGear({
-  connectorStyle, narrationStyle, switchOn, switchSeconds, translateToEnglish, aiCopilot, embedded = false,
+  connectorStyle, narrationStyle, switchOn, switchSeconds, translateToEnglish, aiCopilot, embedded = false, onPrefs,
 }: {
   embedded?: boolean;
+  /** Draft mode (Voucher Post Setting): changes go here and are saved on Save / Apply instead of instantly. */
+  onPrefs?: (patch: Partial<OcrPrefs>) => void;
   connectorStyle: OcrConnectorStyle;
   narrationStyle: OcrNarrationStyle;
   switchOn: boolean;
@@ -759,8 +762,10 @@ function OcrSettingsGear({
   /** aiCopilot pref — "Live chat for voucher fill" switch. */
   aiCopilot: boolean;
 }) {
+  const applyPrefs = onPrefs ?? setOcrPrefs;
   const [swDraft, setSwDraft] = useState(String(switchSeconds));
-  const commitSw = () => { const v = clampAutoPostSeconds(swDraft); setOcrPrefs({ autoSwitchSeconds: v }); setSwDraft(String(v)); };
+  useEffect(() => { setSwDraft(String(switchSeconds)); }, [switchSeconds]);
+  const commitSw = () => { const v = clampAutoPostSeconds(swDraft); applyPrefs({ autoSwitchSeconds: v }); setSwDraft(String(v)); };
   const settingsBody = (
         <div className={cn("pl-ocr-body pl-ocr-stack px-3 py-3", !embedded && "min-h-0 flex-1 overflow-y-auto overscroll-contain")}>
           <style>{OCR_CARD_CSS}</style>
@@ -770,7 +775,7 @@ function OcrSettingsGear({
             <RadioRow
               name="pl-ocr-connector"
               value={connectorStyle}
-              onChange={(v) => setOcrPrefs({ connectorStyle: v })}
+              onChange={(v) => applyPrefs({ connectorStyle: v })}
               options={[["tail", "Speech-bubble tail"], ["line", "Straight arrow line"]] as const}
             />
           </Section>
@@ -778,12 +783,12 @@ function OcrSettingsGear({
             <RadioRow
               name="pl-ocr-narration"
               value={narrationStyle}
-              onChange={(v) => setOcrPrefs({ narrationStyle: v })}
+              onChange={(v) => applyPrefs({ narrationStyle: v })}
               options={[["full", "Full", "With item names"], ["short", "Short", "Bill no, party, date"]] as const}
             />
           </Section>
           <Section title="Voucher type" hint={switchOn ? "Wrong voucher type: switches automatically after the countdown." : "Off: shows a plain Switch button, no auto change."}>
-            <SwitchRow id="pl-ocr-autoswitch" label="Auto voucher change" checked={switchOn} onChange={(v) => setOcrPrefs({ autoSwitchVoucher: v })} />
+            <SwitchRow id="pl-ocr-autoswitch" label="Auto voucher change" checked={switchOn} onChange={(v) => applyPrefs({ autoSwitchVoucher: v })} />
             <SecondsRow id="pl-ocr-autoswitch-secs" label="Switch countdown (seconds)" draft={swDraft} setDraft={setSwDraft} onCommit={commitSw} onOk={commitSw} disabled={!switchOn} />
           </Section>
           <Section title="Translation" hint="Gemini can translate local-language text in voucher fields.">
@@ -792,7 +797,7 @@ function OcrSettingsGear({
               label="Translate to English"
               sub="Item names, party and narration in English (numbers, PAN, dates untouched)"
               checked={translateToEnglish}
-              onChange={(v) => setOcrPrefs({ translateToEnglish: v })}
+              onChange={(v) => applyPrefs({ translateToEnglish: v })}
             />
           </Section>          {/* Pocket AI: turns the OCR panel into a split view — live form on the left, Gemini chat on
               the right. OFF = the classic flow (fill + bubbles + popup AI chat), untouched. */}
@@ -805,7 +810,7 @@ function OcrSettingsGear({
               label="Live chat for voucher fill"
               sub="Split view: form (left) + Gemini chat (right), updates applied instantly"
               checked={aiCopilot}
-              onChange={(v) => setOcrPrefs({ aiCopilot: v })}
+              onChange={(v) => applyPrefs({ aiCopilot: v })}
             />
           </Section>
           </div>
@@ -826,9 +831,10 @@ function OcrSettingsGear({
 }
 
 /** Reuse the voucher OCR preferences inside Voucher Post Setting → Manual Runner. */
-export function VoucherOcrSettingsPanel() {
+export function VoucherOcrSettingsPanel({ draft, onDraftChange }: { draft?: Partial<OcrPrefs>; onDraftChange?: (patch: Partial<OcrPrefs>) => void } = {}) {
   const allowed = useOcrPlanAllowed();
-  const p = useOcrPrefs();
+  const saved = useOcrPrefs();
+  const p = draft ? { ...saved, ...draft } : saved;
   if (!allowed) return <p className="text-xs text-muted-foreground">OCR settings are unavailable for this plan.</p>;
   return (
     <OcrSettingsGear
@@ -839,6 +845,7 @@ export function VoucherOcrSettingsPanel() {
       switchSeconds={clampAutoPostSeconds(p.autoSwitchSeconds)}
       translateToEnglish={p.translateToEnglish === true}
       aiCopilot={p.aiCopilot === true}
+      onPrefs={onDraftChange}
     />
   );
 }
@@ -901,6 +908,9 @@ function useHeaderCrowding() {
 export function VoucherOcrHeaderToggles({ className }: { className?: string }) {
   const allowed = useOcrPlanAllowed();
   const p = useOcrPrefs();
+  const { company, companyId } = useCompany();
+  // Decision 2: hand-opened vouchers follow the Manual Runner profile; the pill shows it and opens that setting.
+  const manualProfile = useManualOcrProfile(String((company as { authoritativeCompanyId?: string } | null)?.authoritativeCompanyId || companyId || ""));
   const { rowRef: crowdRef, hideOverwrite } = useHeaderCrowding();
   if (!allowed) return null;
   const style: OcrConnectorStyle = p.connectorStyle === "line" ? "line" : "tail";
@@ -925,7 +935,7 @@ export function VoucherOcrHeaderToggles({ className }: { className?: string }) {
             aiCopilot={p.aiCopilot === true}
           />
           {hideOverwrite ? null : (
-            <Pill id="pl-ocr-overwrite" label="Overwrite edited" checked={p.overwriteEdited} onChange={(v) => setOcrPrefs({ overwriteEdited: v })} title="Refresh re-fills fields you edited by hand too" />
+            <Pill id="pl-ocr-overwrite" label="Overwrite edited" checked={manualProfile.overwriteEdited} onChange={() => window.dispatchEvent(new Event("pl:voucher-post-setting-open"))} title="Refresh re-fills fields you edited by hand too (Voucher Post Setting → Manual Runner)" />
           )}
         </>
       ) : null}

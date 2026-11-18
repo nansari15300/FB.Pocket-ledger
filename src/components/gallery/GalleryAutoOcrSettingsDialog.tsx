@@ -32,7 +32,8 @@ import { pbListAppDocs } from "@/lib/pocketbaseData/pbSync";
 import { DEFAULT_GALLERY_QUEUE_SEQUENCE, DEFAULT_GALLERY_SORT_ORDER, normalizeGalleryQueueSequence, normalizeGallerySortOrder, type GalleryQueueSequence, type GallerySortOrder } from "@/components/gallery/galleryQueueSequence";
 import { SCAN_RUN_LIMIT_DEFAULT, scanRunLimitValue } from "@/components/gallery/scanRunLimit";
 import { exclusiveScanTriggers, isManualStartTrigger, normalizeDefaultDueDayValue, normalizeExclusiveTriggers, normalizeRunLocation } from "@/components/gallery/autoPostRunPolicy";
-import { activeRunnerFromSettings, runnerModePersistFields, withExclusiveRunnerProfiles } from "@/components/gallery/autoPostMode";
+import { activeRunnerFromSettings, buildRunnerSettingsSave, copyRunnerProfileFields, enforceProfileRules, pickProfileRules, withExclusiveRunnerProfiles } from "@/components/gallery/autoPostMode";
+import { setOcrPrefs, type OcrPrefs } from "@/modules/ocr/prefs";
 import { AUTO_POST_UI, useAutoPostUiCopy } from "@/components/gallery/autoPostUiCopy";
 import { setOcrDefaultDueDays } from "@/modules/ocr/dueDate";
 
@@ -238,6 +239,24 @@ const MISSING_RULE_LABELS = {
   ne: { help: "Debit र Credit side का master (party, bank/cash, staff, ledger/account) का लागि छुट्टाछुट्टै नियम छान्नुहोस्। Item master भेटिएन भने अरू fields पूरा भएको अवस्थामा item बिना voucher save गर्न सकिन्छ।", debitMaster: "Debit-side master (party / bank / staff / account)", creditMaster: "Credit-side master (party / bank / staff / account)", item: "Item master", rowMismatch: "Bill र voucher को item row count नमिलेमा", amountMismatch: "Bill amount र item rows को total नमिलेमा", date: "Date", tax: "Tax / VAT / TDS", other: "अन्य आवश्यक विवरण", pause: "रोक्नुहोस् र review गर्नुहोस्", fail: "Auto post failed मा पठाएर अगाडि बढ्नुहोस्", saveWithout: "Item बिना save गर्नुहोस्" },
 } as const;
 
+const FULL_AUTO_RULE_NOTE = {
+  en: "Full Auto Post never pauses: missing information always moves the document to Auto post failed (an unmatched item may still be saved without the item).",
+  hi: "Full Auto Post कभी नहीं रुकता: ज़रूरी जानकारी न मिले तो document हमेशा Auto post failed में जाता है (item न मिले तो item के बिना save हो सकता है)।",
+  ne: "Full Auto Post कहिल्यै रोकिँदैन: आवश्यक विवरण नभेटिए document सधैं Auto post failed मा जान्छ (item नभेटिए item बिना save हुन सक्छ)।",
+} as const;
+
+const FULL_AUTO_SAVE_NOTE = {
+  en: "Full Auto Post saves directly (unapproved) without opening the voucher window or a countdown.",
+  hi: "Full Auto Post voucher window या countdown खोले बिना सीधे save (unapproved) करता है।",
+  ne: "Full Auto Post ले voucher window वा countdown नखोली सिधै save (unapproved) गर्छ।",
+} as const;
+
+const COMMON_SETTING_NOTE = {
+  en: "Duplicate check, default due days and bank-name matching are shared by Full Auto Post, Semi Automatic and Manual Runner. Missing-information rules are set inside each runner.",
+  hi: "Duplicate जाँच, default due days और bank-name matching तीनों runner (Full Auto Post, Semi Automatic, Manual Runner) में common हैं। ज़रूरी जानकारी न मिलने के नियम हर runner में अलग से set होते हैं।",
+  ne: "Duplicate जाँच, default due days र bank-name matching तीनै runner (Full Auto Post, Semi Automatic, Manual Runner) मा साझा छन्। आवश्यक विवरण नभेटिँदाका नियम हरेक runner भित्र छुट्टै set हुन्छन्।",
+} as const;
+
 const DUPLICATE_COPY = {
   en: {
     title: "Check for duplicate vouchers",
@@ -341,13 +360,20 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
   const { company, companyId } = useCompany();
   const { user } = useAuth();
   const localDeviceId = useMemo(() => getOrCreateDeviceId(), []);
-  const [settings, setSettings] = useState<AutoOcrSettings>(DEFAULT_SETTINGS);
   const [runnerSettings, setRunnerSettings] = useState<AutoOcrSettings>(DEFAULT_SETTINGS);
   const [profiles, setProfiles] = useState<RunnerProfiles>(DEFAULT_PROFILES);
   const [savedProfiles, setSavedProfiles] = useState<RunnerProfiles>(DEFAULT_PROFILES);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("full");
   const [activeRunnerMode, setActiveRunnerMode] = useState<RunnerMode>("full");
   const [savedRunnerMode, setSavedRunnerMode] = useState<RunnerMode>("full");
+  /* Decision 1 (2026-11-18): the tab being viewed never becomes the active runner. `activeRunnerMode` is the
+   * Select Runner draft (saved on Save / Apply); `settings` is the profile shown on screen. */
+  const viewMode: RunnerMode = isRunnerMode(settingsSection) ? settingsSection : activeRunnerMode;
+  const settings = profiles[viewMode];
+  /** Decision 10: Full Auto Post never pauses for review and has no voucher window / countdown. */
+  const fullAutoRules = viewMode === "full" && isRunnerMode(settingsSection);
+  /* Decision 8: the embedded Voucher OCR panel is a draft too (device prefs written on Save / Apply). */
+  const [ocrPrefsDraft, setOcrPrefsDraft] = useState<Partial<OcrPrefs>>({});
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [commonSettingExpanded, setCommonSettingExpanded] = useState(false);
   const [settingsLoadedFor, setSettingsLoadedFor] = useState("");
@@ -371,10 +397,12 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
 
   useEffect(() => {
     if (!open || !initialSection || settingsLoadedFor !== fsId) return;
+    // Only show that tab; the active runner stays as saved.
     setSettingsSection(initialSection);
-    setActiveRunnerMode(initialSection);
-    setSettings((current) => current === profiles[initialSection] ? current : profiles[initialSection]);
   }, [open, initialSection, settingsLoadedFor, fsId]);
+  useEffect(() => {
+    if (open) setOcrPrefsDraft({});
+  }, [open]);
   const scheduleDateAD = useMemo(() => parseLocalDate(settings.scheduleDate), [settings.scheduleDate]);
   const scheduleDateLabel = scheduleDateAD
     ? dateSystem === "AD" ? formatDate(scheduleDateAD)
@@ -397,7 +425,10 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
         ? visionEngineStatus.providers.includes(provider)
         : visionEngineStatus.hasKey && visionEngineStatus.provider === provider);
     };
-    return { gemini: aiReady, google: visionReady("google"), azure: visionReady("azure"), auto: true };
+    const google = visionReady("google");
+    const azure = visionReady("azure");
+    // Decision 6: Auto only picks an engine that has a saved key; with no key at all it is unavailable.
+    return { gemini: aiReady, google, azure, auto: aiReady || google || azure };
   }, [aiEngineStatus, visionEngineStatus]);
 
   useEffect(() => {
@@ -427,17 +458,19 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
         autoSaveEnabled: typeof manualProfileData.autoSaveEnabled === "boolean" ? manualProfileData.autoSaveEnabled : false,
         manualScan: typeof manualProfileData.manualScan === "boolean" ? manualProfileData.manualScan : true,
       };
-      // Rules are shared by all runner profiles; legacy settings remain the migration source.
+      // Missing-info rules are per profile (2026-11-18). A profile saved before that keeps the old Common
+      // values as its own defaults. Duplicate check and default due days stay common (top level wins).
       for (const mode of ["full", "semi", "manual"] as const) {
-        nextProfiles[mode] = { ...nextProfiles[mode], missingFieldRules: legacy.missingFieldRules, itemRowMismatchAction: legacy.itemRowMismatchAction, amountMismatchAction: legacy.amountMismatchAction, checkDuplicateVouchers: legacy.checkDuplicateVouchers, duplicateVoucherAction: legacy.duplicateVoucherAction, defaultDueDaysSale: legacy.defaultDueDaysSale, defaultDueDaysPurchase: legacy.defaultDueDaysPurchase };
+        const rules = pickProfileRules(savedProfiles[mode], nextProfiles[mode], legacy);
+        nextProfiles[mode] = enforceProfileRules(mode, { ...nextProfiles[mode], ...rules as Pick<AutoOcrSettings, "missingFieldRules" | "itemRowMismatchAction" | "amountMismatchAction">, checkDuplicateVouchers: legacy.checkDuplicateVouchers, duplicateVoucherAction: legacy.duplicateVoucherAction, defaultDueDaysSale: legacy.defaultDueDaysSale, defaultDueDaysPurchase: legacy.defaultDueDaysPurchase });
       }
       const activeMode: RunnerMode = activeRunnerFromSettings(raw);
-      setProfiles(nextProfiles);
       setSavedProfiles(nextProfiles);
-      setActiveRunnerMode(activeMode);
+      setSavedRunnerMode(activeMode);
+      // While the dialog is open, keep the user's unsaved drafts (Select Runner, profile edits).
       if (isInitialSnapshot || !openRef.current) {
-        setSavedRunnerMode(activeMode);
-        setSettings(activeMode === "manual" ? nextProfiles.manual : nextProfiles[activeMode]);
+        setProfiles(nextProfiles);
+        setActiveRunnerMode(activeMode);
         if (isInitialSnapshot) setSettingsSection(activeMode);
       }
       setRunnerSettings(nextProfiles[activeMode]);
@@ -446,7 +479,6 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
       setLoading(false);
     }, (err) => {
       if (cancelled) return;
-      setSettings(DEFAULT_PROFILES.full);
       setRunnerSettings(DEFAULT_SETTINGS);
       setProfiles(DEFAULT_PROFILES);
       setSavedProfiles(DEFAULT_PROFILES);
@@ -497,7 +529,6 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
       };
       setProfiles(nextProfiles);
       setSavedProfiles(nextProfiles);
-      setSettings((s) => ({ ...s, runOnSchedule: false }));
       setRunnerSettings((s) => ({ ...s, runOnSchedule: false }));
       void setDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID), {
         runOnSchedule: false,
@@ -597,7 +628,13 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
         }]);
       }
       setAdminDevices((current) => current.filter((device) => device.id !== target.id));
-      if (settings.localRunnerDeviceId === target.id) patch({ localRunnerUid: "", localRunnerDeviceId: "" });
+      setProfiles((items) => {
+        const next = { ...items };
+        for (const mode of ["full", "semi", "manual"] as const) {
+          if (next[mode].localRunnerDeviceId === target.id) next[mode] = { ...next[mode], localRunnerUid: "", localRunnerDeviceId: "" };
+        }
+        return next;
+      });
       setDeviceActionTarget(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not remove this device.");
@@ -614,66 +651,38 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
       updated.runOnUpload = exclusive.runOnUpload;
       updated.runOnSchedule = exclusive.runOnSchedule;
     }
-    if (settingsSection === "full" || settingsSection === "semi") updated.manualScan = false;
+    if (viewMode === "full" || viewMode === "semi") updated.manualScan = false;
     if (next.runLocation === "server") updated.runLocation = "local-pc";
-    setSettings(updated);
-    if (isRunnerMode(settingsSection)) setProfiles((items) => ({ ...items, [settingsSection]: updated }));
-    if ("missingFieldRules" in next || "itemRowMismatchAction" in next || "amountMismatchAction" in next || "checkDuplicateVouchers" in next || "duplicateVoucherAction" in next || "defaultDueDaysSale" in next || "defaultDueDaysPurchase" in next) {
-      setProfiles((items) => ({
-        full: { ...items.full, missingFieldRules: updated.missingFieldRules, itemRowMismatchAction: updated.itemRowMismatchAction, amountMismatchAction: updated.amountMismatchAction, checkDuplicateVouchers: updated.checkDuplicateVouchers, duplicateVoucherAction: updated.duplicateVoucherAction, defaultDueDaysSale: updated.defaultDueDaysSale, defaultDueDaysPurchase: updated.defaultDueDaysPurchase },
-        semi: { ...items.semi, missingFieldRules: updated.missingFieldRules, itemRowMismatchAction: updated.itemRowMismatchAction, amountMismatchAction: updated.amountMismatchAction, checkDuplicateVouchers: updated.checkDuplicateVouchers, duplicateVoucherAction: updated.duplicateVoucherAction, defaultDueDaysSale: updated.defaultDueDaysSale, defaultDueDaysPurchase: updated.defaultDueDaysPurchase },
-        manual: { ...items.manual, missingFieldRules: updated.missingFieldRules, itemRowMismatchAction: updated.itemRowMismatchAction, amountMismatchAction: updated.amountMismatchAction, checkDuplicateVouchers: updated.checkDuplicateVouchers, duplicateVoucherAction: updated.duplicateVoucherAction, defaultDueDaysSale: updated.defaultDueDaysSale, defaultDueDaysPurchase: updated.defaultDueDaysPurchase },
-      }));
-    }
+    // Common fields (duplicate check, default due days) are shared by every profile.
+    const commonChanged = "checkDuplicateVouchers" in next || "duplicateVoucherAction" in next || "defaultDueDaysSale" in next || "defaultDueDaysPurchase" in next;
+    setProfiles((items) => {
+      const out: RunnerProfiles = { ...items, [viewMode]: enforceProfileRules(viewMode, updated) };
+      if (!commonChanged) return out;
+      const common = { checkDuplicateVouchers: updated.checkDuplicateVouchers, duplicateVoucherAction: updated.duplicateVoucherAction, defaultDueDaysSale: updated.defaultDueDaysSale, defaultDueDaysPurchase: updated.defaultDueDaysPurchase };
+      return { full: { ...out.full, ...common }, semi: { ...out.semi, ...common }, manual: { ...out.manual, ...common } };
+    });
   };
 
+  /** Select Runner is a draft (Decision 8): applied on Save / Apply, reverted by Cancel. One runner is always selected;
+   * turning Semi / Full off falls back to Manual Runner (no automatic runner). */
   const setRunnerEnabled = (mode: RunnerMode, enabled: boolean) => {
-    const nextMode: RunnerMode = enabled ? mode : activeRunnerMode;
-    const nextProfiles: RunnerProfiles = enabled
-      ? withExclusiveRunnerProfiles(profiles, mode) as RunnerProfiles
-      : {
-          full: { ...profiles.full, enabled: false },
-          semi: { ...profiles.semi, enabled: false },
-          manual: { ...profiles.manual, manualScan: false },
-        };
-    setProfiles(nextProfiles);
-    if (enabled) {
-      setActiveRunnerMode(mode);
-      setSettings(nextProfiles[mode]);
-    } else if (activeRunnerMode === mode) {
-      setSettings(nextProfiles[mode]);
-    }
-    if (!fsId || !user?.uid || !isCompanyAdmin) return;
-    const persist = enabled ? runnerModePersistFields(mode) : { enabled: false, processingMode: nextMode === "full" ? "full" as const : "semi" as const, activeRunnerMode: nextMode };
-    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId: fsId, held: true } }));
-    void setDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID), {
-      ...persist,
-      runnerProfiles: nextProfiles,
-      updatedAt: serverTimestamp(),
-      updatedBy: user.uid,
-    }, { merge: true }).then(() => {
-      setSavedProfiles(nextProfiles);
-      if (enabled) setSavedRunnerMode(mode);
-    }).catch((err) => {
-      setError(err instanceof Error ? err.message : "Could not change runner.");
-    });
+    const nextMode: RunnerMode = enabled ? mode : mode === activeRunnerMode ? "manual" : activeRunnerMode;
+    if (nextMode === activeRunnerMode) return;
+    setProfiles((items) => withExclusiveRunnerProfiles(items, nextMode) as RunnerProfiles);
+    setActiveRunnerMode(nextMode);
   };
 
   const selectSection = (section: SettingsSection) => {
     if (section === "voucher-settings") setCommonSettingExpanded(true);
-    if (isRunnerMode(section)) {
-      setSettings({ ...profiles[section], missingFieldRules: settings.missingFieldRules, itemRowMismatchAction: settings.itemRowMismatchAction, amountMismatchAction: settings.amountMismatchAction, checkDuplicateVouchers: settings.checkDuplicateVouchers, duplicateVoucherAction: settings.duplicateVoucherAction, defaultDueDaysSale: settings.defaultDueDaysSale, defaultDueDaysPurchase: settings.defaultDueDaysPurchase });
-      setActiveRunnerMode(section);
-    }
     setSettingsSection(section);
     setError(null);
   };
 
+  /** Decision 4: copy only engine, Auto Post, countdown, Overwrite edited, file limit and missing-info rules. */
   const copyProfileFrom = (sourceMode: RunnerMode) => {
-    if (!isRunnerMode(settingsSection) || settingsSection === "manual" || sourceMode === "manual") return;
-    const copied = { ...profiles[sourceMode], missingFieldRules: settings.missingFieldRules, itemRowMismatchAction: settings.itemRowMismatchAction, amountMismatchAction: settings.amountMismatchAction, checkDuplicateVouchers: settings.checkDuplicateVouchers, duplicateVoucherAction: settings.duplicateVoucherAction, defaultDueDaysSale: settings.defaultDueDaysSale, defaultDueDaysPurchase: settings.defaultDueDaysPurchase };
-    setSettings(copied);
-    setProfiles((current) => ({ ...current, [settingsSection]: copied }));
+    if (!isRunnerMode(settingsSection) || settingsSection === "manual" || sourceMode === settingsSection) return;
+    const target = settingsSection;
+    setProfiles((current) => ({ ...current, [target]: copyRunnerProfileFields(current[target], current[sourceMode], target) }));
   };
 
   const handleDialogOpenChange = (nextOpen: boolean) => {
@@ -681,7 +690,7 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
       setProfiles(savedProfiles);
       setActiveRunnerMode(savedRunnerMode);
       setSettingsSection(savedRunnerMode);
-      setSettings(savedProfiles[savedRunnerMode]);
+      setOcrPrefsDraft({});
       setError(null);
     }
     onOpenChange(nextOpen);
@@ -691,72 +700,71 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
     if (!fsId || !user?.uid || !isCompanyAdmin) return;
     const sectionToKeep = settingsSection;
     const scrollTopToKeep = settingsScrollRef.current?.scrollTop ?? 0;
-    const mode = isRunnerMode(settingsSection) ? settingsSection : activeRunnerMode;
-    const runnerEnabled = mode === "manual" ? false : settings.enabled;
-    if (runnerEnabled && settings.runLocation === "local-pc" && !selectedAdminDevice) {
-      setError(LOCAL_DEVICE_COPY[introLang].required);
+    // Decision 1: the active runner is the Select Runner / slider choice, never the viewed tab.
+    const mode = activeRunnerMode;
+    const activeProfile = profiles[mode];
+    const runnerEnabled = mode !== "manual";
+    const activeDevice = selectableAdminDevices.find((device) => device.id === activeProfile.localRunnerDeviceId);
+    const modeLabel = mode === "full" ? "Full Auto Post" : "Semi Automatic";
+    if (runnerEnabled && activeProfile.runLocation === "local-pc" && !activeDevice) {
+      setError(`${modeLabel}: ${LOCAL_DEVICE_COPY[introLang].required}`);
       return;
     }
-    if (runnerEnabled && settings.runLocation === "local-pc" && !scanEngineAvailable[settings.scanEngine]) {
-      setError("The selected scan engine has no configured key or access for this company.");
+    if (runnerEnabled && !scanEngineAvailable[activeProfile.scanEngine]) {
+      setError(`${modeLabel}: the selected scan engine has no configured key or access for this company.`);
       return;
     }
-    if (runnerEnabled && settings.runOnSchedule && settings.scheduleMode === "date-time" && (!settings.scheduleDate || !settings.scheduleTime)) {
-      setError("Choose both a date and time for the scheduled scan.");
-      return;
+    for (const m of ["semi", "full"] as const) {
+      const p = profiles[m];
+      if (p.runOnSchedule && p.scheduleMode === "date-time" && (!p.scheduleDate || !p.scheduleTime) && (m === mode || m === viewMode)) {
+        setError("Choose both a date and time for the scheduled scan.");
+        return;
+      }
     }
     setSaving(true);
     setError(null);
     try {
+      const prepared = {} as RunnerProfiles;
+      for (const m of ["full", "semi", "manual"] as const) {
+        const p = profiles[m];
+        const device = selectableAdminDevices.find((d) => d.id === p.localRunnerDeviceId);
+        prepared[m] = {
+          ...p,
+          runLocation: "local-pc",
+          localRunnerUid: device ? device.userId : p.localRunnerUid,
+          scheduleMinutes: Math.max(1, Math.min(1440, Math.round(Number(p.scheduleMinutes) || DEFAULT_SETTINGS.scheduleMinutes))),
+          maxCallsPerMinute: Math.max(1, Math.min(15, Math.round(Number(p.maxCallsPerMinute) || DEFAULT_SETTINGS.maxCallsPerMinute))),
+          maxVouchersPerRun: scanRunLimitValue(p.maxVouchersPerRun),
+          defaultDueDaysSale: normalizeDefaultDueDayValue(p.defaultDueDaysSale),
+          defaultDueDaysPurchase: normalizeDefaultDueDayValue(p.defaultDueDaysPurchase),
+          ...({ provider: SCAN_ENGINES[p.scanEngine].provider, providerLabel: SCAN_ENGINES[p.scanEngine].name } as object),
+        } as AutoOcrSettings;
+      }
+      const built = buildRunnerSettingsSave(prepared, mode);
+      const savedProfilesNext = built.runnerProfiles as RunnerProfiles;
       const settingsToSave = {
-        ...settings,
-        enabled: runnerEnabled,
-        processingMode: mode === "full" ? "full" as const : "semi" as const,
-        activeRunnerMode: mode,
-        runnerProfiles: {
-          ...profiles,
-          [mode]: {
-            ...settings,
-            enabled: mode === "manual" ? false : settings.enabled,
-            manualScan: mode === "manual" ? settings.manualScan : false,
-            processingMode: mode === "full" ? "full" as const : "semi" as const,
-            localRunnerUid: settings.runLocation === "local-pc" && selectedAdminDevice ? selectedAdminDevice.userId : settings.localRunnerUid,
-            localRunnerDeviceId: settings.runLocation === "local-pc" && selectedAdminDevice ? selectedAdminDevice.id : settings.localRunnerDeviceId,
-            scheduleMinutes: Math.max(1, Math.min(1440, Math.round(Number(settings.scheduleMinutes) || DEFAULT_SETTINGS.scheduleMinutes))),
-            maxCallsPerMinute: Math.max(1, Math.min(15, Math.round(Number(settings.maxCallsPerMinute) || DEFAULT_SETTINGS.maxCallsPerMinute))),
-            maxVouchersPerRun: scanRunLimitValue(settings.maxVouchersPerRun),
-            provider: SCAN_ENGINES[settings.scanEngine].provider,
-            providerLabel: SCAN_ENGINES[settings.scanEngine].name,
-          },
-        },
-        localRunnerUid: runnerEnabled && settings.runLocation === "local-pc" && selectedAdminDevice ? selectedAdminDevice.userId : settings.localRunnerUid,
-        localRunnerDeviceId: runnerEnabled && settings.runLocation === "local-pc" && selectedAdminDevice ? selectedAdminDevice.id : settings.localRunnerDeviceId,
-        scheduleMinutes: Math.max(1, Math.min(1440, Math.round(Number(settings.scheduleMinutes) || DEFAULT_SETTINGS.scheduleMinutes))),
-        maxVouchersPerRun: scanRunLimitValue(settings.maxVouchersPerRun),
+        ...built,
         scheduleTimeZone: typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC",
-        maxCallsPerMinute: Math.max(1, Math.min(15, Math.round(Number(settings.maxCallsPerMinute) || DEFAULT_SETTINGS.maxCallsPerMinute))),
         failOnMissingFields: true,
-        checkDuplicateVouchers: settings.checkDuplicateVouchers,
-        defaultDueDaysSale: normalizeDefaultDueDayValue(settings.defaultDueDaysSale),
-        defaultDueDaysPurchase: normalizeDefaultDueDayValue(settings.defaultDueDaysPurchase),
         updatedAt: serverTimestamp(),
         updatedBy: user.uid,
-        provider: SCAN_ENGINES[settings.scanEngine].provider,
-        providerLabel: SCAN_ENGINES[settings.scanEngine].name,
         saveApproved: false,
       };
+      const runnerChanged = mode !== savedRunnerMode;
+      if (runnerChanged) window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId: fsId, held: true } }));
       await setDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, SETTINGS_DOC_ID), settingsToSave, { merge: true });
-      setOcrDefaultDueDays(fsId, { sale: settingsToSave.defaultDueDaysSale, purchase: settingsToSave.defaultDueDaysPurchase });
-      setProfiles(settingsToSave.runnerProfiles as RunnerProfiles);
-      setSavedProfiles(settingsToSave.runnerProfiles as RunnerProfiles);
+      if (Object.keys(ocrPrefsDraft).length) setOcrPrefs(ocrPrefsDraft);
+      setOcrPrefsDraft({});
+      setOcrDefaultDueDays(fsId, { sale: savedProfilesNext[mode].defaultDueDaysSale, purchase: savedProfilesNext[mode].defaultDueDaysPurchase });
+      setProfiles(savedProfilesNext);
+      setSavedProfiles(savedProfilesNext);
       setActiveRunnerMode(mode);
       setSavedRunnerMode(mode);
-      setSettings({ ...settings, enabled: runnerEnabled, manualScan: mode === "manual" ? settings.manualScan : false, processingMode: mode === "full" ? "full" : "semi" });
-      setRunnerSettings(settingsToSave);
+      setRunnerSettings(settingsToSave as unknown as AutoOcrSettings);
       setSettingsLoadedFor(fsId);
       if (closeAfterSave) {
         onOpenChange(false);
-        setSavePrompt(priorRunActiveRef.current || settingsToSave.runOnSchedule || settingsToSave.enabled ? "continue-stop" : "start-now");
+        setSavePrompt(priorRunActiveRef.current || savedProfilesNext[mode].runOnSchedule || runnerEnabled ? "continue-stop" : "start-now");
       } else {
         setSettingsSection(sectionToKeep);
         window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
@@ -967,23 +975,24 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
             </section>}
             {isRunnerMode(settingsSection) && <section className="full-auto-post-card space-y-3 p-3">
               <h3 className="flex items-center gap-2 border-b border-indigo-200 pb-2 text-base font-semibold"><Gauge className="h-4 w-4" />Auto save</h3>
-              <SettingToggle title="Auto Post" checked={settings.autoSaveEnabled} onChange={(autoSaveEnabled) => patch({ autoSaveEnabled })} disabled={!isCompanyAdmin || loading || saving} />
+              <SettingToggle title="Auto Post" checked={fullAutoRules ? true : settings.autoSaveEnabled} onChange={(autoSaveEnabled) => patch({ autoSaveEnabled })} disabled={!isCompanyAdmin || loading || saving || fullAutoRules} />
               <SettingToggle title="Overwrite edited" checked={settings.overwriteEdited} onChange={(overwriteEdited) => patch({ overwriteEdited })} disabled={!isCompanyAdmin || loading || saving} />
-              <NumberSetting label="Auto save countdown (seconds)" value={settings.autoSaveSeconds} min={1} max={60} onChange={(autoSaveSeconds) => patch({ autoSaveSeconds })} disabled={!isCompanyAdmin || loading || saving || !settings.autoSaveEnabled} />
+              {fullAutoRules
+                ? <p className="text-xs text-muted-foreground">{FULL_AUTO_SAVE_NOTE[introLang]}</p>
+                : <NumberSetting label="Auto save countdown (seconds)" value={settings.autoSaveSeconds} min={1} max={60} onChange={(autoSaveSeconds) => patch({ autoSaveSeconds })} disabled={!isCompanyAdmin || loading || saving || !settings.autoSaveEnabled} />}
             </section>}
-            {settingsSection === "rules" && <section className="space-y-3">
-              <h3 className="mb-3 flex items-center gap-2 border-b pb-2 text-base font-semibold">
-                <Bot className="h-4 w-4" />Common Setting
+            {isRunnerMode(settingsSection) && <section className="full-auto-post-card space-y-3 p-3">
+              <h3 className="flex items-center gap-2 border-b border-indigo-200 pb-2 text-base font-semibold">
+                <AlertCircle className="h-4 w-4" />{MISSING_FIELD_ACTION_COPY[introLang].label}
                 <Popover>
-                  <PopoverTrigger asChild><button type="button" aria-label="Common Setting information" className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-sky-100 hover:text-foreground"><Info className="h-4 w-4" /></button></PopoverTrigger>
+                  <PopoverTrigger asChild><button type="button" aria-label="Missing information rule help" className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-sky-100 hover:text-foreground"><Info className="h-4 w-4" /></button></PopoverTrigger>
                   <PopoverContent align="start" data-pl-intro="" className={`max-w-sm text-xs font-normal leading-relaxed ${showRunner ? "" : "!z-[2147483003]"}`}>
-                    These rules and the bank-name matching below are shared by Full Auto Post, Semi Automatic, and Manual Runner.
-                    <p className="mt-2">{MISSING_RULE_LABELS[introLang].help}</p>
+                    <p>{MISSING_RULE_LABELS[introLang].help}</p>
+                    {fullAutoRules ? <p className="mt-2">{FULL_AUTO_RULE_NOTE[introLang]}</p> : null}
                   </PopoverContent>
                 </Popover>
               </h3>
               <div className="space-y-3">
-                <div className="text-sm font-semibold">{MISSING_FIELD_ACTION_COPY[introLang].label}</div>
                 <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
                   {(["debitMaster", "creditMaster", "item", "date", "tax", "other"] as const).map((ruleKey) => {
                     const options = ruleKey === "item"
@@ -1000,8 +1009,9 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
                         >
                           {options.map((action) => {
                             const label = action === "pause-and-hold" ? MISSING_RULE_LABELS[introLang].pause : action === "fail-and-continue" ? MISSING_RULE_LABELS[introLang].fail : MISSING_RULE_LABELS[introLang].saveWithout;
-                            const id = `auto-ocr-${ruleKey}-${action}`;
-                            return <label key={action} htmlFor={id} className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs transition-all duration-150 hover:-translate-y-0.5 hover:shadow-sm"><RadioGroupItem id={id} value={action} className="mt-0.5" /><span>{label}</span></label>;
+                            const id = `auto-ocr-${viewMode}-${ruleKey}-${action}`;
+                            const off = fullAutoRules && action === "pause-and-hold";
+                            return <label key={action} htmlFor={id} aria-disabled={off || undefined} className={`flex items-start gap-2 rounded border bg-background p-1.5 text-xs transition-all duration-150 ${off ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:-translate-y-0.5 hover:shadow-sm"}`}><RadioGroupItem id={id} value={action} disabled={off} className="mt-0.5" /><span>{label}</span></label>;
                           })}
                         </RadioGroup>
                       </div>
@@ -1010,18 +1020,31 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
                   <div className="full-auto-post-card p-2">
                     <div className="mb-1.5 text-sm font-semibold">{MISSING_RULE_LABELS[introLang].rowMismatch}</div>
                     <RadioGroup value={settings.itemRowMismatchAction} onValueChange={(action) => patch({ itemRowMismatchAction: action as AutoOcrSettings["itemRowMismatchAction"] })} disabled={!isCompanyAdmin || loading || saving} className="space-y-1.5">
-                      <label htmlFor="auto-ocr-item-row-count-pause" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-row-count-pause" value="pause-and-hold" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].pause}</span></label>
-                      <label htmlFor="auto-ocr-item-row-count-fail" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-row-count-fail" value="fail-and-continue" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].fail}</span></label>
+                      <label htmlFor={`auto-ocr-${viewMode}-item-row-count-pause`} aria-disabled={fullAutoRules || undefined} className={`flex items-start gap-2 rounded border bg-background p-1.5 text-xs ${fullAutoRules ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}><RadioGroupItem id={`auto-ocr-${viewMode}-item-row-count-pause`} value="pause-and-hold" disabled={fullAutoRules} className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].pause}</span></label>
+                      <label htmlFor={`auto-ocr-${viewMode}-item-row-count-fail`} className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id={`auto-ocr-${viewMode}-item-row-count-fail`} value="fail-and-continue" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].fail}</span></label>
                     </RadioGroup>
                   </div>
                   <div className="full-auto-post-card p-2">
                     <div className="mb-1.5 text-sm font-semibold">{MISSING_RULE_LABELS[introLang].amountMismatch}</div>
                     <RadioGroup value={settings.amountMismatchAction} onValueChange={(action) => patch({ amountMismatchAction: action as AutoOcrSettings["amountMismatchAction"] })} disabled={!isCompanyAdmin || loading || saving} className="space-y-1.5">
-                      <label htmlFor="auto-ocr-item-amount-pause" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-amount-pause" value="pause-and-hold" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].pause}</span></label>
-                      <label htmlFor="auto-ocr-item-amount-fail" className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id="auto-ocr-item-amount-fail" value="fail-and-continue" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].fail}</span></label>
+                      <label htmlFor={`auto-ocr-${viewMode}-item-amount-pause`} aria-disabled={fullAutoRules || undefined} className={`flex items-start gap-2 rounded border bg-background p-1.5 text-xs ${fullAutoRules ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}><RadioGroupItem id={`auto-ocr-${viewMode}-item-amount-pause`} value="pause-and-hold" disabled={fullAutoRules} className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].pause}</span></label>
+                      <label htmlFor={`auto-ocr-${viewMode}-item-amount-fail`} className="flex cursor-pointer items-start gap-2 rounded border bg-background p-1.5 text-xs"><RadioGroupItem id={`auto-ocr-${viewMode}-item-amount-fail`} value="fail-and-continue" className="mt-0.5" /><span>{MISSING_RULE_LABELS[introLang].fail}</span></label>
                     </RadioGroup>
                   </div>
                 </div>
+              </div>
+            </section>}
+            {settingsSection === "rules" && <section className="space-y-3">
+              <h3 className="mb-3 flex items-center gap-2 border-b pb-2 text-base font-semibold">
+                <Bot className="h-4 w-4" />Common Setting
+                <Popover>
+                  <PopoverTrigger asChild><button type="button" aria-label="Common Setting information" className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-sky-100 hover:text-foreground"><Info className="h-4 w-4" /></button></PopoverTrigger>
+                  <PopoverContent align="start" data-pl-intro="" className={`max-w-sm text-xs font-normal leading-relaxed ${showRunner ? "" : "!z-[2147483003]"}`}>
+                    {COMMON_SETTING_NOTE[introLang]}
+                  </PopoverContent>
+                </Popover>
+              </h3>
+              <div className="space-y-3">
                 <div className="full-auto-post-card space-y-2 p-2.5">
                   <SettingToggle
                     title={DUPLICATE_COPY[introLang].title}
@@ -1133,7 +1156,7 @@ export function GalleryAutoOcrSettingsDialog({ open, onOpenChange, showRunner = 
             </section>}
             {settingsSection === "voucher-settings" && <section className="full-auto-post-card space-y-3 p-3">
               <h3 className="border-b pb-2 text-base font-semibold">Voucher OCR Settings</h3>
-              <VoucherOcrSettingsPanel />
+              <VoucherOcrSettingsPanel draft={ocrPrefsDraft} onDraftChange={(patch) => setOcrPrefsDraft((current) => ({ ...current, ...patch }))} />
             </section>}
 
             {isRunnerMode(settingsSection) && <section className="full-auto-post-card space-y-3 p-3">

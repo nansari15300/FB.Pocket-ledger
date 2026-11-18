@@ -11,7 +11,7 @@ import { useVouchers } from "@/hooks/useVouchers";
 import { getOrCreateDeviceId } from "@/lib/writeGateway/legacy/deviceLimitClient";
 import { claimDuplicateAutoMove, releaseDuplicateAutoMove } from "@/lib/galleryDuplicateMove";
 import { OCR_SWITCH_EVENT, queueOcrHandoff } from "@/modules/ocr/handoff";
-import { activeRunnerFromSettings, type AutoPostMode } from "@/components/gallery/autoPostMode";
+import { activeRunnerFromSettings, enforceProfileRules, type AutoPostMode } from "@/components/gallery/autoPostMode";
 import {
   AUTO_POST_FORM_VALUES_CHANGED,
   AUTO_POST_PAUSE_CAUSE_RESOLVED,
@@ -40,6 +40,9 @@ import {
   shouldBeginNewBudget,
   shouldSkipScheduleTick,
   startBudgetReason,
+  resetRunCounterState,
+  shouldHoldWhenQueueEmpty,
+  shouldRestoreRunOnLoad,
 } from "@/components/gallery/autoPostRunPolicy";
 import { AUTO_POST_UI, useAutoPostUiCopy } from "@/components/gallery/autoPostUiCopy";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -398,6 +401,15 @@ export function GalleryLocalAutoPostRunner({
     if (!wantRestoreRunningRef.current || runnerHeld) return;
     if (!canRun || masters.loading) return;
     wantRestoreRunningRef.current = false;
+    // Decision 5: Start-only mode never starts by itself after a reload — it waits for Start.
+    if (!shouldRestoreRunOnLoad(settingsRefValue.current, false)) {
+      runnerHeldRef.current = true;
+      runnerStartedRef.current = false;
+      drainQueueRef.current = false;
+      try { window.localStorage.setItem(runnerHoldStorageKey, "held"); } catch { /* persistence is best-effort */ }
+      setRunnerHeld(true);
+      return;
+    }
     startAttemptRef.current = true;
     beginScanRun();
     busyRef.current = false;
@@ -536,9 +548,11 @@ export function GalleryLocalAutoPostRunner({
     const enginePref = scanEngine === "gemini" ? "ai" as const
       : scanEngine === "auto" ? "auto" as const
         : "online" as const;
+    // Decision 6: always the profile's engine; "auto" is resolved to a keyed engine inside the OCR engine.
     const cloudProvider = scanEngine === "google" ? "google" as const
       : scanEngine === "azure" ? "azure" as const
         : undefined;
+    const fullAuto = activeRunnerFromSettings(settingsRefValue.current) === "full";
     // Open the detected voucher type when one is known; otherwise fall back to Sale.
     // The runner no longer pre-scans here (server OCR path classifies in the form).
     const tab = normalizeRunnerVoucherTab(voucherType);
@@ -550,7 +564,10 @@ export function GalleryLocalAutoPostRunner({
     });
     callTimesRef.current = recordRateLimitCall(callTimesRef.current);
     queueOcrHandoff(tab, [url], {
-      autoPost: settingsRefValue.current.autoSaveEnabled,
+      runnerJob: true,
+      // Decision 10: Full saves directly (no window, no countdown); Semi shows the window and countdown.
+      autoPost: fullAuto ? true : settingsRefValue.current.autoSaveEnabled,
+      autoPostImmediate: fullAuto,
       autoPostSeconds: settingsRefValue.current.autoSaveSeconds,
       overwriteEdited: settingsRefValue.current.overwriteEdited,
       allowSaveWithoutItems: settingsRefValue.current.missingFieldRules.item === "save-without",
@@ -628,7 +645,7 @@ export function GalleryLocalAutoPostRunner({
     lastMissingRef.current = null;
     autoResumeArmedRef.current = true;
     savedJobRef.current = false;
-    setProcessDialogVisible(settingsRefValue.current.processingMode === "semi" || !settingsRefValue.current.autoSaveEnabled);
+    setProcessDialogVisible(activeRunnerFromSettings(settingsRefValue.current) !== "full" || !settingsRefValue.current.autoSaveEnabled);
     setActiveProcess({ id: row.id, name: row.name || "Document" });
     ocrRetryCountRef.current = 0;
 
@@ -819,6 +836,8 @@ export function GalleryLocalAutoPostRunner({
       if (!rowsReadyRef.current) return;
       drainQueueRef.current = false;
       reportStartBlocked(AUTO_POST_UI.startBlockedNoFiles);
+      // Decision 5: in Start-only mode an empty queue ends the run (stopped / idle, saved for reloads).
+      if (shouldHoldWhenQueueEmpty(settingsRefValue.current) && !runnerHeldRef.current) holdRunner();
       return;
     }
     if (staleRetryTimerRef.current != null) {
@@ -866,7 +885,7 @@ export function GalleryLocalAutoPostRunner({
       busyRef.current = false;
       window.setTimeout(() => void processPendingRef.current(), 500);
     }
-  }, [canRun, deferForServerRateLimit, deviceId, fsId, isCompanyAdmin, isOwnOrphanClaim, masters.loading, processOne, releaseToUnassigned, runnerHoldLoadedFor, runnerHoldStorageKey, settings.gallerySortOrder, settings.queueSequence, settings.runOnUpload, settingsDialogOpen, settingsReady, tUi, user?.uid]);
+  }, [canRun, deferForServerRateLimit, deviceId, fsId, isCompanyAdmin, isOwnOrphanClaim, masters.loading, processOne, releaseToUnassigned, runnerHoldLoadedFor, runnerHoldStorageKey, settings.gallerySortOrder, settings.queueSequence, settings.runOnUpload, settingsDialogOpen, settingsReady, tUi, user?.uid, holdRunner]);
   processPendingRef.current = processPending;
 
   useEffect(() => {
@@ -1123,17 +1142,17 @@ export function GalleryLocalAutoPostRunner({
     const onResetCounter = (event: Event) => {
       const detail = (event as CustomEvent<{ companyId?: string }>).detail;
       if (String(detail?.companyId || "") !== fsId) return;
-      beginScanRun();
+      // Decision 11: Reset only refills the file counter. It never starts or resumes processing.
+      const next = resetRunCounterState(initialRunRemaining(normalizeScanRunLimit(settingsRefValue.current.maxVouchersPerRun)), { draining: drainQueueRef.current });
+      runRemainingRef.current = next.remaining;
+      scannedThisRunRef.current = next.scanned;
+      budgetExhaustedToastRef.current = false;
       const remaining = runRemainingRef.current;
       toast.message(
         remaining == null
           ? tUi(AUTO_POST_UI.scanCounterResetAll)
           : tUi(AUTO_POST_UI.scanCounterReset).replace("{count}", String(remaining)),
       );
-      if (!runnerHeldRef.current) {
-        startAttemptRef.current = true;
-        window.setTimeout(() => void processPendingRef.current(), 0);
-      }
     };
     const onScheduleDisabled = (event: Event) => {
       const detail = (event as CustomEvent<{ companyId?: string; ok?: boolean }>).detail;
@@ -1148,28 +1167,31 @@ export function GalleryLocalAutoPostRunner({
       const missing = Array.isArray(detail.missing) ? detail.missing.map((field) => String(field || "").trim()).filter(Boolean) : [];
       const fieldKeys = Array.isArray(detail.fieldKeys) ? detail.fieldKeys.map((key) => String(key || "").trim()).filter(Boolean) : [];
       const typePending = isTypeSwitchPendingMissing(missing, fieldKeys);
+      // Decision 10: rules come from the active runner profile; Full Auto Post never pauses for review.
+      const runnerMode = activeRunnerFromSettings(settingsRefValue.current);
+      const rules = enforceProfileRules(runnerMode, { ...settingsRefValue.current, missingFieldAction: runnerMode === "full" ? "fail-and-continue" as const : settingsRefValue.current.missingFieldAction });
       const message = `Required information is missing: ${missing.join(", ") || "review the highlighted fields"}.`;
       const actions: Array<"pause-and-hold" | "fail-and-continue" | "save-without"> = [];
-      if (detail.itemRowCountMismatch || missing.some(isItemRowCountMismatchField)) actions.push(settingsRefValue.current.itemRowMismatchAction);
-      if (detail.itemAmountMismatch || missing.some(isAmountMismatchField)) actions.push(settingsRefValue.current.amountMismatchAction);
+      if (detail.itemRowCountMismatch || missing.some(isItemRowCountMismatchField)) actions.push(rules.itemRowMismatchAction);
+      if (detail.itemAmountMismatch || missing.some(isAmountMismatchField)) actions.push(rules.amountMismatchAction);
       const genericMissing = missing.filter((field) => !isItemRowCountMismatchField(field) && !isAmountMismatchField(field));
       const isMissingItem = (field: string) => isMissingItemMasterField(field);
       const saveWithoutOnlyItemIssue = genericMissing.length > 0 &&
         genericMissing.every(isMissingItem) &&
-        settingsRefValue.current.missingFieldRules.item === "save-without" &&
+        rules.missingFieldRules.item === "save-without" &&
         saveWithoutRetryJobIdRef.current !== job.id;
       for (const field of genericMissing) {
         if (isMissingItem(field)) {
-          const itemAction = settingsRefValue.current.missingFieldRules.item;
+          const itemAction = rules.missingFieldRules.item;
           if (itemAction !== "save-without") actions.push(itemAction);
           continue;
         }
-        const rule = settingsRefValue.current.missingFieldRules?.[missingFieldRuleKey(field, detail.voucherType)];
+        const rule = rules.missingFieldRules?.[missingFieldRuleKey(field, detail.voucherType)];
         if (rule) actions.push(rule);
       }
       const useLegacyFallback = !actions.length && !saveWithoutOnlyItemIssue;
-      const shouldPause = typePending || actions.includes("pause-and-hold") || (useLegacyFallback && settingsRefValue.current.missingFieldAction === "pause-and-hold");
-      const shouldFail = !typePending && (actions.includes("fail-and-continue") || (useLegacyFallback && settingsRefValue.current.missingFieldAction === "fail-and-continue"));
+      const shouldPause = typePending || actions.includes("pause-and-hold") || (useLegacyFallback && rules.missingFieldAction === "pause-and-hold");
+      const shouldFail = !typePending && (actions.includes("fail-and-continue") || (useLegacyFallback && rules.missingFieldAction === "fail-and-continue"));
       if (saveWithoutOnlyItemIssue) {
         // Re-run the current form once with the already-carried Save without item override.
         // A persistent validation error then falls through to the configured review fallback.

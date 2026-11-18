@@ -360,3 +360,21 @@ Migration के बिना AI वाले endpoints साफ़ संद�
 - AI scan अब voucher प्रकार (`aiDocTypeForVoucher`) भेजता है, server उस प्रकार के सिखाए नियम जोड़ता है; «Read by» tooltip में «taught rules N»।
 - Settings: «AI (Gemini)» key box अब «Online OCR» section के अंदर (Azure box के नीचे, company switch के ऊपर)। Switch बंद हो तो hint।
 - Server: `lib/ocr_ai_training.js` + ai-chat / ai-rules routes; नियम `C:\PocketLedger-AI-Training` में। पूरा विवरण: `_handoff/ai-plan.md` खंड 12।
+
+## Gallery runner rules (2026-11-18, OCR_BUILD 2026-11-18.1)
+
+Ansari Ji ने 11 audit fixes approve किए; सब OCR Master ने किए (Gallery Master को बताया गया)।
+
+- **Active runner** = Select Runner / ribbon slider का चुनाव। Voucher Post Setting में जो tab सिर्फ़ खुला है वह कभी active नहीं बनता। Save / Apply `buildRunnerSettingsSave` (`autoPostMode.ts`) से सारे profiles + top-level `enabled / activeRunnerMode / processingMode` एक साथ लिखता है।
+- **Draft**: Select Runner switches और embedded Voucher OCR panel अब draft हैं (Save / Apply पर लागू, Cancel पर revert)। Key Setting add/delete instant save ही है।
+- **Manual voucher** (हाथ से खोला गया): engine, Auto Post, countdown, Overwrite edited, item rule → `runnerProfiles.manual` (`src/modules/ocr/manualProfile.ts`, pure part `manualProfileCore.ts`)। Device prefs (`pl.ocr.prefs.v1`) में अब सिर्फ़ display prefs (popup style, narration, auto voucher change, translate, AI chat)। Header का «Overwrite edited» pill Manual profile दिखाता है और click पर Voucher Post Setting खोलता है। Switch Engine card वापस नहीं लाया गया।
+- **Engine**: runner हमेशा profile का engine explicit भेजता है। `engine.ts` में `getOcrPrefs().onlineProvider` fallback हटाया। `auto` = पहला engine जिसकी key है (Gemini → Google → Azure, `engineKeys.ts`); कोई key नहीं तो `OcrRunError` code `no_key`। Settings में Auto भी तभी selectable जब कम से कम एक key हो। Fail popup पहले से सिर्फ़ keyed engines दिखाता है।
+- **Slider**: Semi / Full पर जाने से पहले उस profile के engine की key check (`scanEngineHasKey`); नहीं तो «इस engine की key नहीं है, settings में दूसरा engine चुनें» (en/ne भी) और mode नहीं बदलता।
+- **Missing-info rules** अब हर runner profile में (Manual, Semi, Full): debit/credit master, item, date, tax, other, row count mismatch, amount mismatch। पुराने Common values migration में हर profile में default बने (`pickProfileRules`)। Full में «Pause and review» disabled, हमेशा «Move to Auto post failed» (`enforceProfileRules`); «Save without the item» allowed। Duplicate check + default due days Common में ही।
+- **Semi** = voucher window + countdown, unapproved save। **Full** = कोई window / countdown नहीं (`autoPostImmediate`), Auto Post forced on, unapproved save। दोनों auto-approve नहीं करते। Auto-create masters नहीं।
+- **Copy settings from**: सिर्फ़ engine, Auto Post, countdown, Overwrite edited, file limit, missing-info rules (`COPYABLE_PROFILE_KEYS`)। Target का on/off, triggers, schedule, device वही रहते हैं।
+- **Queue खाली** (Start-only mode): runner held/stopped state में जाता है (localStorage `pl.gallery.auto-post.runner-hold.v1:*` = held); page reload पर Start-only खुद start नहीं होता। On-arrival / schedule पहले की तरह auto चलते हैं।
+- **Reset** = सिर्फ़ file counter refill; processing start नहीं करता (Start दबाएँ)।
+- **Voucher type हाथ से बदला** (runner job): सारी runner settings साथ जाती हैं (`runnerJob` flag handoff में), Auto Post ON हो या OFF।
+- Tests: `tests/ocr/galleryRunnerRules.selftest.mts` (decisions 1, 2, 4, 5, 6/7, 10, 11)।
+- Open: Common का duplicate «Pause and open for review» Full में अभी भी रोकता है; voucher-type-switch pending Full में भी pause करता है; auto voucher-type change countdown अभी device pref है।

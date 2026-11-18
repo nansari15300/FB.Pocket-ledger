@@ -268,3 +268,23 @@ export function fatalOcrMessage(kind: OcrFailureKind, source: string): string | 
 }
 
 export const OCR_UNAVAILABLE_MESSAGE = "Gemini/OCR not available now, Start later";
+
+/* ---- Gallery runner rules (2026-11-18) ---- */
+
+/** Queue emptied: Start-only mode goes to the stopped (held) state so a reload never auto-starts it. */
+export function shouldHoldWhenQueueEmpty(settings: ExclusiveScanTriggers): boolean {
+  return isManualStartTrigger(settings);
+}
+
+/** Page load: resume a saved "running" state only for on-arrival / schedule modes. Start-only always waits for Start. */
+export function shouldRestoreRunOnLoad(settings: ExclusiveScanTriggers, held: boolean): boolean {
+  return !held && !isManualStartTrigger(settings);
+}
+
+/** Reset only refills the file counter; it never starts processing (Start does that). */
+export function resetRunCounterState(
+  remainingLimit: number | null,
+  state: { draining: boolean },
+): { remaining: number | null; scanned: number; draining: boolean; startProcessing: false } {
+  return { remaining: remainingLimit, scanned: 0, draining: state.draining, startProcessing: false };
+}
