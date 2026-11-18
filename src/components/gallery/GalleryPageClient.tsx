@@ -46,6 +46,11 @@ import { AUTO_POST_UI, useAutoPostUiCopy } from "@/components/gallery/autoPostUi
 import { useVouchersByIds } from "@/modules/ocr/useVouchersByIds";
 import { useLocalMasterNames } from "@/modules/ocr/useLocalMasterNames";
 import { recentOcrUserLabel, recentOcrUserLines } from "@/modules/ocr/recentOcrUserLabel";
+import {
+  collectRecentOcrPostedCalendarDates,
+  filterRecentOcrByPostedDay,
+  recentOcrDateFilterIntro,
+} from "@/modules/ocr/recentOcrPostedDate";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -86,11 +91,12 @@ import {
 import type { DateRange } from "@/components/ui/ad-calendar";
 import AdCalendar from "@/components/ui/ad-calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AppFreshInfoButton } from "@/components/ui/AppFreshInfoButton";
 import { useVouchers } from "@/hooks/useVouchers";
 import { DAYBOOK_TRANSACTIONS_ENTITY, useTransactions } from "@/hooks/use-transactions";
 import { useDate } from "@/hooks/useDate";
 import BsDatePicker from "@/components/ui/BsDatePicker";
-import { collectVoucherCalendarDates, parseFirestoreDateFieldToJsDate } from "@/lib/voucherDateNormalize";
+import { parseFirestoreDateFieldToJsDate } from "@/lib/voucherDateNormalize";
 import { cn } from "@/lib/utils";
 import { addDays, format, startOfDay, endOfDay, startOfMonth, endOfMonth, subDays } from "date-fns";
 import { FilePreview, prewarmPdfThumbnailsForGallery } from "@/components/vouchers/FilePreview";
@@ -780,6 +786,59 @@ function GalleryTabSwitch({
   );
 }
 
+function RecentOcrPostedDateFilterInfo() {
+  const i18n = usePlI18nOptional();
+  const note = recentOcrDateFilterIntro(introTabLang(i18n?.intro));
+  const [open, setOpen] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelClose = useCallback(() => {
+    if (closeTimer.current != null) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  }, []);
+  const scheduleClose = useCallback(() => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setOpen(false), 150);
+  }, [cancelClose]);
+  useEffect(() => () => cancelClose(), [cancelClose]);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <AppFreshInfoButton
+          size="xs"
+          data-pl-recent-ocr-posted-date-info=""
+          aria-label={note}
+          aria-expanded={open}
+          onMouseEnter={() => {
+            cancelClose();
+            setOpen(true);
+          }}
+          onMouseLeave={scheduleClose}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            cancelClose();
+            setOpen((value) => !value);
+          }}
+        />
+      </PopoverTrigger>
+      <PopoverContent
+        side="bottom"
+        align="start"
+        collisionPadding={12}
+        className="z-[10050] max-w-[min(22rem,calc(100vw-2rem))] p-3 text-xs leading-relaxed"
+        data-pl-intro=""
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onMouseEnter={cancelClose}
+        onMouseLeave={scheduleClose}
+      >
+        {note}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 /** Recent-style table scoped to vouchers completed by this Gallery Auto OCR runner. */
 function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: any) => void }) {
   const { company, companyId } = useCompany();
@@ -860,11 +919,12 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
     () => Object.fromEntries(Object.entries(unapprovedOnly ? {} : columnFilters).filter(([key]) => key !== "user")),
     [columnFilters, unapprovedOnly],
   );
+  // Date pill, Today, calendar dots and Total Vouchers use posted date (createdAt), not voucher date.
   const runnerTransactionDates = useMemo(
-    () => collectVoucherCalendarDates(runnerVouchers),
+    () => collectRecentOcrPostedCalendarDates(runnerVouchers),
     [runnerVouchers],
   );
-  const transactionDateFilter = recentMode ? undefined : { from: selectedDay, to: selectedDay };
+  const transactionDateFilter = undefined;
   const effectiveColumnFilters = unapprovedOnly ? {} : columnFilters;
   const { daybookTransactions = [] } = useTransactions(
     DAYBOOK_TRANSACTIONS_ENTITY,
@@ -898,8 +958,9 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
       [row.voucherNumber, row.type, row.narration, row.accountName, row.partyName, row.userName]
         .some((value) => String(value ?? "").toLowerCase().includes(q))),
     );
+    const scoped = recentMode ? filtered : filterRecentOcrByPostedDay(filtered, selectedDay, runnerVoucherById);
     if (recentMode) {
-      return [...filtered].sort((a: any, b: any) => {
+      return [...scoped].sort((a: any, b: any) => {
         const aVoucher = runnerVoucherById.get(String(a.id || ""));
         const bVoucher = runnerVoucherById.get(String(b.id || ""));
         const aAdded = parseFirestoreDateFieldToJsDate(a.createdAt)?.getTime()
@@ -909,8 +970,8 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
         return bAdded - aAdded;
       });
     }
-    return sortTransactions(filtered, sortBy, sortOrder, { tieBreakCreatedAtDesc: true });
-  }, [daybookTransactions, effectiveColumnFilters.user, includeNotesInTable, recentMode, runnerVoucherById, runnerVoucherModes, runnerVoucherProviders, search, sortBy, sortOrder, unapprovedOnly]);
+    return sortTransactions(scoped, sortBy, sortOrder, { tieBreakCreatedAtDesc: true });
+  }, [daybookTransactions, effectiveColumnFilters.user, includeNotesInTable, recentMode, runnerVoucherById, runnerVoucherModes, runnerVoucherProviders, search, selectedDay, sortBy, sortOrder, unapprovedOnly]);
   const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / rowsPerPage));
   const safePage = Math.min(currentPage, totalPages);
   const pageStart = (safePage - 1) * rowsPerPage;
@@ -1030,7 +1091,10 @@ function RecentOcrTransactionsTab({ onEditVoucher }: { onEditVoucher: (voucher: 
               </PopoverContent>
             </Popover>
           )}
-          <Button type="button" variant={!recentMode && selectedDay.getTime() === startOfDay(new Date()).getTime() ? "default" : "outline"} size="sm" className="h-8 min-h-8" onClick={() => selectSingleDay(new Date())}>Today</Button>
+          <span className="inline-flex items-center gap-1">
+            <Button type="button" variant={!recentMode && selectedDay.getTime() === startOfDay(new Date()).getTime() ? "default" : "outline"} size="sm" className="h-8 min-h-8" onClick={() => selectSingleDay(new Date())}>Today</Button>
+            <RecentOcrPostedDateFilterInfo />
+          </span>
           <span className="text-sm font-medium text-muted-foreground">Total Vouchers: {filteredTransactions.length}</span>
           </div>
           <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5">
