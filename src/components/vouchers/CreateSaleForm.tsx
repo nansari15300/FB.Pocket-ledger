@@ -2397,6 +2397,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
             )}
           >
             <div
+              data-pl-sp-desktop-body={isMobile ? undefined : ""}
               className={cn(
                 "space-y-6 bg-slate-100 px-[2px]",
                 isMobile
@@ -2406,7 +2407,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
             >
               {/* Main voucher info section: Invoice/Date/Party/Sales A/c in one consistent container color. */}
               {/* Main voucher info block: deepen blue so it is not dim compared to green item section. */}
-              <div className={cn("rounded-lg border border-sky-400 bg-sky-100 p-1", !isMobile && "w-full")}>
+              <div className={cn("rounded-lg border border-sky-400 bg-sky-100 p-1", !isMobile && "w-full [contain:inline-size]")}>
               {isMobile ? (
                 <>
                   {/* Mobile: Prefix + Invoice + Date एक row में; `date` को `voucherNumber` के अंदर nest नहीं — वरना RHF में date submit तक bind नहीं होती */}
@@ -2777,7 +2778,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
               {/* Item section ribbon: keep one consistent green tone so this category is visually clear. */}
               <div className={cn(
                 "border border-emerald-300/80 rounded-lg relative bg-emerald-50 p-1 [&_input:not([readonly]):not(:disabled)]:!bg-white",
-                isMobile ? "w-[calc(100%-4px)] mx-auto px-[2px] overflow-hidden min-w-0" : "w-full px-[2px] overflow-visible"
+                isMobile ? "w-[calc(100%-4px)] mx-auto px-[2px] overflow-hidden min-w-0" : "w-max max-w-full px-[2px] overflow-visible"
               )}>
                 {/* Keep item/service selector inside the same item section container for unified color grouping. */}
                 <div className={cn("mb-2", isMobile && "flex justify-start")}>
@@ -4361,7 +4362,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                   </div>
                 </div>
               ) : (
-                <div className="flex w-full flex-col items-stretch gap-6 xl:grid xl:w-max xl:min-w-full xl:grid-cols-[minmax(0,1fr)_minmax(min(32vw,600px),max-content)] xl:items-stretch xl:gap-x-6 xl:gap-y-4">
+                <div className="flex w-full max-w-full [contain:inline-size] flex-col items-stretch gap-6 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(min(32vw,600px,50%),max-content)] xl:items-stretch xl:gap-x-6 xl:gap-y-4">
                   {/* Desktop: Left: Narration + Due Date + Files */}
                   <div className="flex w-full min-w-0 flex-col gap-4 xl:contents">
                     {/* Desktop grouping: narration + due date in one colored container for same section identity. */}
@@ -4580,7 +4581,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                             )}
                           </VoucherAttachmentPcDropRow>
                         </RestrictedFileUploader>
-                        <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} fitContent />
+                        <VoucherOcrRefreshBar ocr={ocr} copilot={copilot} />
                       </FormItem>
                     </div>
                   </div>

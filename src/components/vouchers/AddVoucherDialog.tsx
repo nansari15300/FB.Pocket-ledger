@@ -1377,8 +1377,44 @@ function VoucherDialogContent({
     interCompanyDisabled,
   ]);
 
+  // PC Sale/Purchase: voucher tabs strip item table (form body) ki chaudai tak hi; mobile untouched.
+  const voucherFrameRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const frame = voucherFrameRef.current;
+    if (!frame) return;
+    const clear = () => frame.style.removeProperty("--pl-voucher-content-w");
+    if (isMobile || (activeTab !== "sale" && activeTab !== "purchase") || typeof ResizeObserver === "undefined") {
+      clear();
+      return;
+    }
+    let observed: Element | null = null;
+    const apply = () => {
+      const w = observed ? Math.ceil(observed.getBoundingClientRect().width) : 0;
+      if (w > 0) frame.style.setProperty("--pl-voucher-content-w", `${w}px`);
+      else clear();
+    };
+    const ro = new ResizeObserver(apply);
+    const attach = () => {
+      const el = frame.querySelector("[data-pl-sp-desktop-body]");
+      if (el === observed) return;
+      if (observed) ro.unobserve(observed);
+      observed = el;
+      if (el) ro.observe(el);
+      apply();
+    };
+    // Form lazy (Suspense) load hota hai - body aane par observe karo.
+    const mo = new MutationObserver(attach);
+    mo.observe(frame, { childList: true, subtree: true });
+    attach();
+    return () => {
+      mo.disconnect();
+      ro.disconnect();
+      clear();
+    };
+  }, [isMobile, activeTab]);
+
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div ref={voucherFrameRef} className="flex-1 flex flex-col min-h-0">
       {/* Mobile: vertical padding ta voucher-type Select blue header / niche border se chipke na — chhota trigger = clear box */}
       <div
         className={cn(
@@ -1458,6 +1494,7 @@ function VoucherDialogContent({
               if (restrictedEnabledTabs === null || restrictedEnabledTabs.includes(next)) changeVoucherTab(next);
             }}
             className="w-full"
+            style={{ maxWidth: "var(--pl-voucher-content-w, 100%)" }}
           >
             <TabsList data-ocr-field="voucher-type" className="h-auto flex-wrap justify-start bg-transparent p-0 gap-1 py-1">
               {tabKeys.map((key) => {

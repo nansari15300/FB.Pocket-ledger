@@ -179,7 +179,7 @@ function salePurchaseAmountColTrack(labels: Required<SalePurchaseLineColumnLabel
 }
 
 /** Tailwind class only — column tracks runtime inline style se (JIT dynamic arbitrary class break karta tha). */
-export const SALE_PURCHASE_DESKTOP_LINE_GRID_CLASS = "grid w-full max-w-full min-w-0 gap-0";
+export const SALE_PURCHASE_DESKTOP_LINE_GRID_CLASS = "grid w-max max-w-none min-w-0 gap-0";
 
 export function buildSalePurchaseDesktopLineGridTemplateColumns(
   labels: Required<SalePurchaseLineColumnLabels>,
@@ -221,8 +221,9 @@ export function getSalePurchaseDesktopLineGridStyle(
 ): { gridTemplateColumns: string; width: string; maxWidth: string; minWidth: number } {
   return {
     gridTemplateColumns: buildSalePurchaseDesktopLineGridTemplateColumns(labels, withDeleteColumn),
-    width: "100%",
-    maxWidth: "100%",
+    // PC: grid sirf Amount (+ trash) column tak; dialog chhota ho to TABLE_INNER / form scroll.
+    width: "max-content",
+    maxWidth: "none",
     minWidth: 0,
   };
 }
@@ -231,7 +232,7 @@ export function getSalePurchaseDesktopLineGridStyle(
 export const SALE_PURCHASE_DESKTOP_LINE_TABLE_INNER = "w-full max-w-full min-w-0 overflow-x-auto";
 
 /** Header + line grid + narration/totals — same combined width; form body scrolls once. */
-export const SALE_PURCHASE_VOUCHER_DESKTOP_BODY = "w-max min-w-full max-w-none";
+export const SALE_PURCHASE_VOUCHER_DESKTOP_BODY = "w-max min-w-0 max-w-none";
 
 /** Rough intrinsic min for dialog min-width hints (ch-based grid). */
 export const SALE_PURCHASE_DESKTOP_LINE_GRID_MIN_PX = 720;
