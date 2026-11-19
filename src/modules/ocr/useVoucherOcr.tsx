@@ -57,6 +57,7 @@ import { billVatPercent, cleanItemName, partyNamePrefill, findVat13, isOwnCompan
 import { OcrAiError, ocrAiErrorCode, ocrAiErrorText, ocrAiFailKind, type OcrAiModelOption, type OcrAiMasterProposal, type OcrAiVoucherPatch } from "./ai/aiClient";
 import { getBlobFromLocalFileRef, isLocalFileRef } from "@/lib/localPendingFiles";
 import { fetchPbAttachmentBlob } from "@/lib/pocketbaseData/pbAttachments";
+import { normalizeAttachmentUrlForDevicePreview } from "@/lib/attachmentHoldClipboard";
 import { useCompany } from "@/hooks/useCompany";
 import { useAuth } from "@/hooks/useAuth";
 import { useVouchers } from "@/hooks/useVouchers";
@@ -139,7 +140,7 @@ function billShowsVat(text: string | undefined, vatAmount?: number): boolean {
 
 async function loadFirstFile(f: File | string, companyId?: string | null): Promise<{ blob: Blob; mime: string } | null> {
   if (typeof f !== "string") return { blob: f, mime: f.type };
-  const url = f.trim();
+  const url = normalizeAttachmentUrlForDevicePreview(f.trim());
   const asSrc = (blob: Blob | null): { blob: Blob; mime: string } | null => {
     if (!blob || blob.size === 0) return null;
     const mime = blob.type || (/\.pdf(\?|$)/i.test(url) ? "application/pdf" : "image/jpeg");

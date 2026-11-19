@@ -11,6 +11,8 @@ import {
 } from "@/lib/offlineAttachmentUrlCache";
 import { getBlobFromAttachmentRefPreferLocalFirst } from "@/lib/attachmentPreviewResolve";
 import { tryGetStoragePathFromFirebaseDownloadUrl } from "@/lib/firebaseStorageDownloadUrl";
+import { rewriteLoopbackPocketBaseFileUrlForDisplay } from "@/lib/pendingPocketBaseAttachmentSyncLogic";
+import { getPocketBaseServerUrl } from "@/lib/pocketbaseData/pbClient";
 export const ATTACHMENT_HOLD_CLIPBOARD_PREFIX = "PL_ATTACH_V1:";
 
 export type AttachmentHoldPayloadV1 = {
@@ -195,13 +197,34 @@ function encodePayload(p: AttachmentHoldPayloadV1): string {
   return `${ATTACHMENT_HOLD_CLIPBOARD_PREFIX}${b64}`;
 }
 
-/** Voucher / hover preview: clipboard marker ko asli `local:` / `drive:` / https ref me karo. */
-export function normalizeAttachmentUrlForDevicePreview(raw: string): string {
+function pocketBaseDisplayBaseUrl(explicit?: string): string {
+  const given = String(explicit || "").trim();
+  if (given) return given;
+  try {
+    return String(getPocketBaseServerUrl() || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+/** Clipboard marker ko asli `local:` / `drive:` / https ref me kholo. Stored URL rewrite nahi. */
+export function unwrapAttachmentHoldClipboardRef(raw: string): string {
   const s = String(raw || "").trim();
   if (!s.startsWith(ATTACHMENT_HOLD_CLIPBOARD_PREFIX)) return s;
-  const payload = parseAttachmentHoldClipboardText(s);
-  const src = String(payload?.src || "").trim();
+  const src = String(parseAttachmentHoldClipboardText(s)?.src || "").trim();
   return src || s;
+}
+
+/** Voucher / hover preview: clipboard marker ko asli `local:` / `drive:` / https ref me karo.
+ * Display-only: stored `http://127.0.0.1:8090/api/files/...` URLs are mapped to the current
+ * PocketBase base (LAN host or same-origin `/pb` proxy). Does not change stored data.
+ * `pbBaseUrl` is for tests; the app omits it and uses `getPocketBaseServerUrl()`.
+ */
+export function normalizeAttachmentUrlForDevicePreview(raw: string, pbBaseUrl?: string): string {
+  const unwrapped = unwrapAttachmentHoldClipboardRef(raw);
+  const base = pocketBaseDisplayBaseUrl(pbBaseUrl);
+  if (!base) return unwrapped;
+  return rewriteLoopbackPocketBaseFileUrlForDisplay(unwrapped, base);
 }
 
 export function parseAttachmentHoldClipboardText(raw: string): AttachmentHoldPayloadV1 | null {
@@ -453,7 +476,7 @@ export function blobToFile(blob: Blob, fileName: string, contentType: string): F
 export function persistableAttachmentRefFromHoldPayload(
   payload: AttachmentHoldPayloadV1
 ): string | null {
-  const src = normalizeAttachmentUrlForDevicePreview(String(payload.src || "").trim());
+  const src = unwrapAttachmentHoldClipboardRef(String(payload.src || "").trim());
   if (src && !src.startsWith("blob:")) return src;
   const path = String(payload.p || "").trim();
   if (path && !path.includes("://")) return path;

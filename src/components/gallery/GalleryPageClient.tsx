@@ -128,8 +128,9 @@ import { introTabLang } from "@/lib/i18n/introLangTab";
 import { loadOcrEngineOptions } from "@/modules/ocr/engineChoices";
 import { ENGINE_NO_KEY_COPY, scanEngineHasKey } from "@/modules/ocr/engineKeys";
 import { compressImageForCompany, attachmentImageStillTooLargeToastFields } from "@/lib/attachmentCompressionUi";
-import { uploadFileClient, deleteFileFromStorageClient } from "@/lib/storageClient";
+import { deleteFileFromStorageClient } from "@/lib/storageClient";
 import { uploadUnassignedFileToPocketLedgerServer } from "@/lib/uploadUnassignedFileToPocketLedgerServer";
+import { decideUnassignedUploadPersist } from "@/modules/ocr/unassignedUploadPersist";
 import { hardDeleteUnassignedDoc, hardDeleteUnassignedDocsBatch } from "@/lib/unassignedDocHardDelete";
 import { checkStorageLimit, incrementCompanyStorage, decrementCompanyStorage } from "@/lib/storageUsageClient";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -3488,14 +3489,10 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
           file: compressedFile,
           fileName: compressedFile.name,
         });
-        const uploadResult = serverUpload
-          ? ({ success: true as const, url: serverUpload.url, path: serverUpload.path })
-          : await uploadFileClient(
-              { name: compressedFile.name, type: compressedFile.type, arrayBuffer: await compressedFile.arrayBuffer() },
-              fsId,
-              company?.name,
-              new Date()
-            );
+        const persist = decideUnassignedUploadPersist(serverUpload);
+        const uploadResult = persist.action === "store"
+          ? ({ success: true as const, url: persist.url, path: persist.path })
+          : ({ success: false as const, error: "server_upload_failed" });
         if (uploadResult.success) {
           if (!serverUpload) {
             // Firebase Storage quota only — server uploads do not count against it.
@@ -3628,14 +3625,10 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
           file: compressed,
           fileName: compressed.name,
         });
-        const uploadResult = serverUpload
-          ? ({ success: true as const, url: serverUpload.url, path: serverUpload.path })
-          : await uploadFileClient(
-              { name: compressed.name, type: compressed.type, arrayBuffer: await compressed.arrayBuffer() },
-              fsId,
-              company?.name,
-              new Date()
-            );
+        const persist = decideUnassignedUploadPersist(serverUpload);
+        const uploadResult = persist.action === "store"
+          ? ({ success: true as const, url: persist.url, path: persist.path })
+          : ({ success: false as const, error: "server_upload_failed" });
         if (!uploadResult.success) {
           toast.error("Edit upload failed", { description: (uploadResult as any).error || "Try again." });
           return;

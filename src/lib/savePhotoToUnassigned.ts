@@ -21,6 +21,7 @@ import { incrementCompanyStorage } from "@/lib/storageUsageClient";
 import { isPocketBaseCompany, isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { uploadUnassignedFileToPocketLedgerServer } from "@/lib/uploadUnassignedFileToPocketLedgerServer";
 import { saveGalleryOfflinePendingFile } from "@/modules/ocr/galleryOfflinePendingStore";
+import { decideUnassignedUploadPersist } from "@/modules/ocr/unassignedUploadPersist";
 
 /** Same rule as the gallery: PocketBase-backed companies write to their authoritative id. */
 function firestoreCompanyIdForGallery(
@@ -68,15 +69,19 @@ export async function savePhotoToUnassigned(opts: {
     const serverUpload = useServer
       ? await uploadUnassignedToPocketLedgerServer({ companyId: fsId, file })
       : null;
-    const uploadResult = serverUpload
-      ? ({ success: true as const, url: serverUpload.url, path: serverUpload.path })
-      : await uploadFileClient(
-          { name: file.name, type: file.type, arrayBuffer: await file.arrayBuffer() },
-          fsId,
-          companyName,
-          new Date()
-        );
-    if (uploadResult.success === true) {
+    const serverDecision = useServer ? decideUnassignedUploadPersist(serverUpload) : null;
+    const uploadResult =
+      serverDecision?.action === "store"
+        ? ({ success: true as const, url: serverDecision.url, path: serverDecision.path })
+        : useServer
+          ? null
+          : await uploadFileClient(
+              { name: file.name, type: file.type, arrayBuffer: await file.arrayBuffer() },
+              fsId,
+              companyName,
+              new Date()
+            );
+    if (uploadResult && uploadResult.success === true) {
       // uploaded — continue below
     } else {
       const pending = await saveGalleryOfflinePendingFile({
@@ -88,7 +93,7 @@ export async function savePhotoToUnassigned(opts: {
       return { ok: true, docId: pending.id, offlinePending: true };
     }
 
-    if (!serverUpload) {
+    if (!useServer) {
       // Firebase Storage only: those bytes count against the Firebase quota. A Pocket Ledger
       // Server upload must not inflate it.
       try {

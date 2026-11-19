@@ -483,3 +483,15 @@ Live destinations:
 Then **restart PocketBase**.
 
 **Client files:** `src/modules/ocr/galleryServerCountParse.ts` (new), `plGalleryServerApi.ts`, `tests/ocr/galleryCounts.selftest.mts`.
+
+### Loopback file URL preview + pbatt: save path (19 Nov 2026, uncommitted)
+
+Ansari Ji approved (t161u): wire the display-only loopback URL rewrite so a file stored as `http://127.0.0.1:8090/api/files/...` previews on any PC, and hand pending OCR changes to Git Master.
+
+**Display (no stored-data rewrite):** `rewriteLoopbackPocketBaseFileUrlForDisplay` is now called from `normalizeAttachmentUrlForDevicePreview`, which already feeds gallery tiles (`GalleryTilePreview` → `fetchAttachmentRefBlob`), voucher `FilePreview` / hover thumbnails, and `openAttachmentInApp`. Stored `127.0.0.1` / `localhost` PocketBase file URLs are mapped to the current PocketBase base (LAN host or same-origin `/pb` proxy via `getPocketBaseServerUrl()`). Clipboard paste still keeps the original stored ref (`unwrapAttachmentHoldClipboardRef`) so a preview rewrite is never written back. OCR `loadFirstFile` also uses the display normalizer before fetching.
+
+**Save path:** Gallery add/edit (`GalleryPageClient`) and `savePhotoToUnassigned` (server companies) could still fall back to `uploadFileClient` / `getDownloadURL`, which stores `${auth.url}/api/files/pl_stored_files/...`. On the Server PC that `auth.url` is often `http://127.0.0.1:8090`, so a new file was invisible on the other PC. Those paths now persist only a `pbatt:` ref (`decideUnassignedUploadPersist`). If the server upload fails, the file stays offline-pending on that PC (edit shows an error) instead of writing a loopback URL. `GalleryLocalAutoPostRunner` does not upload; it copies the unassigned row's existing URL onto the voucher.
+
+**Tests:** `tests/ocr/loopbackFileUrlDisplay.selftest.mts`.
+
+**Note:** The 19 Nov gallery-count parse client files (`galleryServerCountParse.ts`, `plGalleryServerApi.ts`, `tests/ocr/galleryCounts.selftest.mts`, this handoff) were already committed in `79e05c54` (auto-sync DESKTOP-M4HAJE9 2026-11-19 08:55 Asia/Kathmandu). Server hook sources on the laptop are still uncommitted: `PocketLedger-Server/sub-server/pb_hooks/company_file_count.pb.js` and `lib/company_file_count.js`.
