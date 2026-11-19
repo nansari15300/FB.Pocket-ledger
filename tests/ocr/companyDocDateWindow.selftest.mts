@@ -4,6 +4,7 @@ import {
   COMPANY_DOC_DATE_FILTER_INTRO,
   COMPANY_DOC_MIN_VISIBLE_FILES,
   companyDocDateFilterIntro,
+  companyDocDatePillRange,
   countCompanyDocFilesByMonthWindow,
   defaultCompanyDocMonthRange,
   endOfLocalDay,
@@ -251,5 +252,106 @@ assert.match(COMPANY_DOC_DATE_FILTER_INTRO.en, /20/);
 assert.match(COMPANY_DOC_DATE_FILTER_INTRO.hi, /20/);
 assert.match(COMPANY_DOC_DATE_FILTER_INTRO.ne, /२०/);
 assert.match(COMPANY_DOC_DATE_FILTER_INTRO.en, /kept exactly|pick yourself/i);
+assert.match(COMPANY_DOC_DATE_FILTER_INTRO.en, /date pill shows the date range/i);
+assert.match(COMPANY_DOC_DATE_FILTER_INTRO.hi, /गोली/);
+assert.match(COMPANY_DOC_DATE_FILTER_INTRO.ne, /दायरा/);
+
+// Pill range: no backfill keeps this month, even if selected files are a subset.
+{
+  const thisMonth = Array.from({ length: 20 }, (_, i) =>
+    file(`nov-${String(i + 1).padStart(2, "0")}`, new Date(2026, 10, 1 + i, 10, 0, 0)),
+  );
+  const range = companyDocDatePillRange({
+    filledFromEarlier: false,
+    selected: thisMonth,
+    monthFrom: adMonth.from,
+    monthTo: adMonth.to,
+  });
+  assert.equal(range.from.getTime(), adMonth.from.getTime());
+  assert.equal(range.to.getTime(), adMonth.to.getTime());
+}
+
+// Pill range: backfill shows oldest shown file day through newest shown file day, not the month.
+{
+  const thisMonth = [
+    file("nov-19", nov19),
+    file("nov-18", nov18),
+    file("nov-05", nov5),
+    file("nov-05b", nov5),
+    file("nov-05c", new Date(2026, 10, 5, 9, 0, 0)),
+  ];
+  const result = selectCompanyDocFilesByDateRule([...thisMonth, ...earlier30, file("future", dec1)], {
+    mode: "default-month",
+    monthFromMs,
+    monthToMs,
+  });
+  const range = companyDocDatePillRange({
+    filledFromEarlier: result.filledFromEarlier,
+    selected: result.selected,
+    monthFrom: adMonth.from,
+    monthTo: adMonth.to,
+  });
+  assert.equal(result.filledFromEarlier, true);
+  // earlier30[14] is old-15 = 16 Oct 2026.
+  assert.equal(range.from.getTime(), startOfLocalDay(new Date(2026, 9, 16)).getTime());
+  assert.equal(range.to.getTime(), endOfLocalDay(nov19).getTime());
+  assert.notEqual(range.from.getTime(), adMonth.from.getTime());
+  assert.notEqual(range.to.getTime(), adMonth.to.getTime());
+}
+
+// Pill range: this month empty, only earlier files — min to max of those shown.
+{
+  const result = selectCompanyDocFilesByDateRule(earlier30.slice(0, 10), {
+    mode: "default-month",
+    monthFromMs,
+    monthToMs,
+  });
+  const range = companyDocDatePillRange({
+    filledFromEarlier: true,
+    selected: result.selected,
+    monthFrom: adMonth.from,
+    monthTo: adMonth.to,
+  });
+  // old-01 = 30 Oct, old-10 = 21 Oct.
+  assert.equal(range.from.getTime(), startOfLocalDay(new Date(2026, 9, 21)).getTime());
+  assert.equal(range.to.getTime(), endOfLocalDay(new Date(2026, 9, 30)).getTime());
+}
+
+// Pill range: all 16 including other FY — oldest other-FY date to newest this-month date.
+{
+  const files = [
+    file("nov-only", nov19),
+    ...Array.from({ length: 11 }, (_, i) => file(`fy-now-${i + 1}`, new Date(2026, 9, 20 - i, 8, 0, 0))),
+    file("PUR-80-81-001", jul2023),
+    file("Sale-80-81-002", new Date(2023, 8, 1, 9, 0, 0)),
+    file("Sale-80-81-003", new Date(2023, 8, 2, 9, 0, 0)),
+    file("PUR-81-82-001", new Date(2024, 7, 10, 9, 0, 0)),
+  ];
+  const result = selectCompanyDocFilesByDateRule(files, {
+    mode: "default-month",
+    monthFromMs,
+    monthToMs,
+  });
+  const range = companyDocDatePillRange({
+    filledFromEarlier: result.filledFromEarlier,
+    selected: result.selected,
+    monthFrom: adMonth.from,
+    monthTo: adMonth.to,
+  });
+  assert.equal(range.from.getTime(), startOfLocalDay(jul2023).getTime());
+  assert.equal(range.to.getTime(), endOfLocalDay(nov19).getTime());
+}
+
+// Pill range: backfill with no valid dates falls back to this month.
+{
+  const range = companyDocDatePillRange({
+    filledFromEarlier: true,
+    selected: [{ dateMs: Number.NaN }],
+    monthFrom: adMonth.from,
+    monthTo: adMonth.to,
+  });
+  assert.equal(range.from.getTime(), adMonth.from.getTime());
+  assert.equal(range.to.getTime(), adMonth.to.getTime());
+}
 
 console.log("companyDocDateWindow selftest: OK");

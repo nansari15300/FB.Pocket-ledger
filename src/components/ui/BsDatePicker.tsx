@@ -38,6 +38,11 @@ type BsDatePickerBaseProps = {
   hideRangePresets?: boolean;
   /** With master presets: footer rows/page → 10 on "Last 10". */
   ledgerPaginationReset?: import("@/lib/ledgerLast10View").LedgerPaginationResetHandlers | null;
+  /**
+   * Optional control rendered visually inside the date pill (e.g. an intro (i)).
+   * Kept outside the calendar trigger so clicking it does not open the picker.
+   */
+  trailing?: React.ReactNode;
 };
 
 type BsDatePickerConditionalProps =
@@ -86,6 +91,7 @@ export default function BsDatePicker({
   masterLedgerDatePresets = false,
   hideRangePresets = false,
   ledgerPaginationReset,
+  trailing,
 }: BsDatePickerProps) {
   const [open, setOpen] = React.useState(false);
   const { formatDateBS } = useDate();
@@ -158,27 +164,50 @@ export default function BsDatePicker({
     return formatDateBS(singleDate);
   }
 
+  const triggerButton = (
+    <Button
+      variant="outline"
+      className={cn(
+        "w-auto justify-start text-left h-[27px] min-h-[27px] px-2 gap-1 min-w-0",
+        hideTriggerIcon && "gap-0",
+        masterLedgerDatePresets
+          ? "font-semibold text-blue-900"
+          : cn("font-normal", !valueAD && "text-muted-foreground"),
+        className,
+        trailing && "pr-6",
+      )}
+      disabled={disabled}
+      onClick={() => setOpen(true)}
+      {...(skipDateRangeThemeDetail ? {} : { "data-theme-detail": "date-range" })}
+    >
+      {!hideTriggerIcon && <Icon className="h-3.5 w-3.5 shrink-0" />}
+      <span className="truncate min-w-0">{displayValue()}</span>
+    </Button>
+  );
+
   return (
     <Popover open={open} onOpenChange={setOpen} modal={true}>
-      <PopoverTrigger asChild>
-        <Button 
-          variant="outline" 
+      {trailing ? (
+        <div
           className={cn(
-            "w-auto justify-start text-left h-[27px] min-h-[27px] px-2 gap-1 min-w-0",
-            hideTriggerIcon && "gap-0",
-            masterLedgerDatePresets
-              ? "font-semibold text-blue-900"
-              : cn("font-normal", !valueAD && "text-muted-foreground"),
-            className
+            "relative inline-flex min-w-0",
+            typeof className === "string" && className.includes("w-full") && "w-full",
           )}
-          disabled={disabled}
-          onClick={() => setOpen(true)}
-          {...(skipDateRangeThemeDetail ? {} : { "data-theme-detail": "date-range" })}
         >
-            {!hideTriggerIcon && <Icon className="h-3.5 w-3.5 shrink-0" />}
-            <span className="truncate min-w-0">{displayValue()}</span>
-        </Button>
-      </PopoverTrigger>
+          <PopoverTrigger asChild>{triggerButton}</PopoverTrigger>
+          <div
+            className="absolute right-1.5 top-1/2 z-10 flex -translate-y-1/2 items-center"
+            data-pl-date-pill-trailing=""
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {trailing}
+          </div>
+        </div>
+      ) : (
+        <PopoverTrigger asChild>{triggerButton}</PopoverTrigger>
+      )}
       <PopoverContent
         side={popoverSide}
         align={popoverAlign ?? "start"}

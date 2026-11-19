@@ -62,6 +62,7 @@ import {
 } from "@/modules/ocr/recentOcrPostedDate";
 import {
   companyDocDateFilterIntro,
+  companyDocDatePillRange,
   defaultCompanyDocMonthRange,
   parseCompanyDocVoucherDate,
   selectCompanyDocFilesByDateRule,
@@ -2141,7 +2142,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
       }
     }
     if (showAvatarsOnly || voucherNumberSearch.trim() || dateRangeUserTouchedRef.current || !dateRange?.from) {
-      return { rows, filledFromEarlier: false };
+      return { rows, filledFromEarlier: false, pillRange: undefined as { from: Date; to: Date } | undefined };
     }
     const candidates = rows.map((row, index) => ({
       id: `${String(row.item?.id || "row")}:${row.fileIndex}:${index}`,
@@ -2156,10 +2157,23 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
     return {
       rows: picked.selected.map((file) => rows[file.index]),
       filledFromEarlier: picked.filledFromEarlier,
+      // Display-only: never write this into dateRange / dateRangeUserTouchedRef,
+      // or the min-20 default rule would be treated as a custom range.
+      pillRange: picked.filledFromEarlier
+        ? companyDocDatePillRange({
+            filledFromEarlier: true,
+            selected: picked.selected,
+            monthFrom: dateRange.from,
+            monthTo: dateRange.to ?? dateRange.from,
+          })
+        : undefined,
     };
   }, [displayItems, showAvatarsOnly, voucherNumberSearch, dateRange]);
   const companyFlatRows = companyFlatSelection.rows;
   const companyDocFilledFromEarlier = companyFlatSelection.filledFromEarlier;
+  const companyDocDatePickerValue = companyDocFilledFromEarlier && companyFlatSelection.pillRange
+    ? companyFlatSelection.pillRange
+    : dateRange;
   const filteredFilesCount = companyFlatRows.length;
 
 
@@ -2631,10 +2645,12 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                 {showAvatarsOnly ? "Voucher" : "Avatars"}
               </Button>
               {mounted && (
-                <div className="flex shrink-0 items-center gap-1">
-                  <BsDatePicker valueAD={dateRange} onChangeAD={handleCompanyDateRangeChange as any} className="h-8 min-h-8 shrink-0 px-2 text-xs" />
-                  {!showAvatarsOnly && <CompanyDocDateFilterInfo />}
-                </div>
+                <BsDatePicker
+                  valueAD={companyDocDatePickerValue}
+                  onChangeAD={handleCompanyDateRangeChange as any}
+                  className="h-8 min-h-8 shrink-0 px-2 text-xs"
+                  trailing={!showAvatarsOnly ? <CompanyDocDateFilterInfo /> : undefined}
+                />
               )}
               {!mounted && <Skeleton className="h-8 w-[180px] shrink-0 rounded-md" />}
               {mounted ? (
@@ -2888,21 +2904,21 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                 </Button>
                 {mounted &&
                   (isMobile ? (
-                    <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-                      <div className="min-w-0 flex-1 overflow-hidden">
-                        <BsDatePicker
-                          valueAD={dateRange}
-                          onChangeAD={handleCompanyDateRangeChange as any}
-                          className="h-8 min-h-8 w-full min-w-0 px-2 text-xs"
-                        />
-                      </div>
-                      {!showAvatarsOnly && <CompanyDocDateFilterInfo />}
+                    <div className="min-w-0 flex-1 overflow-hidden">
+                      <BsDatePicker
+                        valueAD={companyDocDatePickerValue}
+                        onChangeAD={handleCompanyDateRangeChange as any}
+                        className="h-8 min-h-8 w-full min-w-0 px-2 text-xs"
+                        trailing={!showAvatarsOnly ? <CompanyDocDateFilterInfo /> : undefined}
+                      />
                     </div>
                   ) : (
-                    <div className="flex shrink-0 items-center gap-1">
-                      <BsDatePicker valueAD={dateRange} onChangeAD={handleCompanyDateRangeChange as any} className="h-8 min-h-8 px-2 text-xs" />
-                      {!showAvatarsOnly && <CompanyDocDateFilterInfo />}
-                    </div>
+                    <BsDatePicker
+                      valueAD={companyDocDatePickerValue}
+                      onChangeAD={handleCompanyDateRangeChange as any}
+                      className="h-8 min-h-8 px-2 text-xs"
+                      trailing={!showAvatarsOnly ? <CompanyDocDateFilterInfo /> : undefined}
+                    />
                   ))}
                 {!mounted && <Skeleton className="h-8 w-[180px] shrink-0 rounded-md" />}
                 {!showAvatarsOnly && mounted && (

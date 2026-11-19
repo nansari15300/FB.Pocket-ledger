@@ -563,3 +563,28 @@ Ansari Ji: date filter should show at least 20 files. If this month already has 
 - this handoff
 
 **Tests:** `npx tsx tests/ocr/companyDocDateWindow.selftest.mts` and `npm run typecheck`.
+
+## Company Doc date pill: shown-file range + (i) inside the pill (2026-11-19 10:19 Asia/Kathmandu, OCR Master)
+
+Ansari Ji (t165u): when the min-20 rule adds earlier-dated files, the date pill must show the date range of the files in the grid, not this month. Also move the (i) intro icon inside the date pill.
+
+**Date pill range (display only)**
+- Default view, this month already has 20 or more files: the pill still shows this month (1st through last day), as before.
+- Default view, earlier files were added to reach 20: the pill shows the oldest shown file date through the newest shown file date (start of the oldest day to end of the newest day). It does not use the month end if the newest file is earlier than that, and it does not stay on this month only.
+- A date range the user picks themselves is unchanged: the pill still shows that custom range.
+- This displayed range is not written into `dateRange` and does not set `dateRangeUserTouchedRef`. Refresh keeps the min-20 default rule.
+- Clicking the pill to edit opens the calendar on the range currently shown on the pill (the shown-file span when backfilled, otherwise this month or the custom range). The default rule stays active until the user actually picks or applies a range.
+
+**(i) icon**
+- The intro (i) is now inside the date pill, on the right, in PC and mobile footers.
+- It is not part of the calendar trigger: clicking the icon opens the intro popover and does not open the date picker.
+- Intro text stays in en / hi / ne and now also mentions the pill range rule.
+
+**Files (laptop, uncommitted, no commit/push/build)**
+- `src/modules/ocr/companyDocDateWindow.ts` (`companyDocDatePillRange`, intro text)
+- `tests/ocr/companyDocDateWindow.selftest.mts`
+- `src/components/ui/BsDatePicker.tsx` (optional `trailing` slot inside the pill)
+- `src/components/gallery/GalleryPageClient.tsx` (display range + icon placement)
+- this handoff
+
+**Tests:** `npx tsx tests/ocr/companyDocDateWindow.selftest.mts` and `npm run typecheck`. Both passed on the laptop (2026-11-19 10:22 Asia/Kathmandu).

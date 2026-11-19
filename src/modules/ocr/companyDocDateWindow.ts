@@ -4,6 +4,9 @@
  * files (newest first, any FY) are added until 20, or until every file is shown.
  * If this month already has 20 or more, only this month is shown.
  * A user-picked custom range is kept exactly — no backfill.
+ * When earlier files are added to reach 20, the date pill shows the
+ * oldest-to-newest dates of the files in the grid (display only; it is
+ * not treated as a user-picked custom range).
  */
 
 import { adToBs, bsToAd, getBSMonthDays } from "@/lib/bs-date";
@@ -11,9 +14,9 @@ import { adToBs, bsToAd, getBSMonthDays } from "@/lib/bs-date";
 export const COMPANY_DOC_MIN_VISIBLE_FILES = 20;
 
 export const COMPANY_DOC_DATE_FILTER_INTRO = {
-  en: "Company Doc’s default date window is this month. If this month has fewer than 20 files, earlier files are added (newest first, including other fiscal years) until 20 are shown, or until every file is shown if the company has fewer than 20. If this month already has 20 or more files, only this month’s files are shown. A date range you pick yourself is kept exactly, with no extra files added.",
-  hi: "Company Doc की डिफ़ॉल्ट तारीख इस महीने की है। अगर इस महीने में 20 से कम फाइलें हैं, तो पुरानी तारीख की फाइलें (नयी पहले, दूसरे वित्तीय वर्ष भी) जोड़कर 20 तक दिखाई जाती हैं। कुल फाइलें 20 से कम हों तो सभी दिखती हैं। अगर इस महीने में 20 या उससे अधिक फाइलें हैं, तो केवल इसी महीने की सभी फाइलें दिखती हैं। आपने खुद चुनी हुई तारीख की सीमा ज्यों की त्यों रहती है, उसमें अतिरिक्त फाइलें नहीं जुड़तीं।",
-  ne: "Company Doc को डिफल्ट मिति यो महिनाको हो। यो महिनामा २० भन्दा कम फाइल भए पुराना मितिका फाइलहरू (नयाँ पहिले, अन्य वित्तीय वर्ष पनि) थपेर २० वटा देखाइन्छ। जम्मा फाइल २० भन्दा कम भए सबै देखिन्छन्। यो महिनामा २० वा सोभन्दा बढी फाइल भए यही महिनाका सबै मात्र देखिन्छन्। तपाईंले आफैं रोजेको मिति सीमा जस्ताको तस्तै राखिन्छ, थप फाइल जोडिँदैन।",
+  en: "Company Doc’s default date window is this month. If this month has fewer than 20 files, earlier files are added (newest first, including other fiscal years) until 20 are shown, or until every file is shown if the company has fewer than 20. If this month already has 20 or more files, only this month’s files are shown. A date range you pick yourself is kept exactly, with no extra files added. When earlier files are added to reach 20, the date pill shows the date range of the files in the grid, not just this month.",
+  hi: "Company Doc की डिफ़ॉल्ट तारीख इस महीने की है। अगर इस महीने में 20 से कम फाइलें हैं, तो पुरानी तारीख की फाइलें (नयी पहले, दूसरे वित्तीय वर्ष भी) जोड़कर 20 तक दिखाई जाती हैं। कुल फाइलें 20 से कम हों तो सभी दिखती हैं। अगर इस महीने में 20 या उससे अधिक फाइलें हैं, तो केवल इसी महीने की सभी फाइलें दिखती हैं। आपने खुद चुनी हुई तारीख की सीमा ज्यों की त्यों रहती है, उसमें अतिरिक्त फाइलें नहीं जुड़तीं। जब 20 तक पहुँचाने के लिए पुरानी तारीख की फाइलें जोड़ी जाती हैं, तो तारीख की गोली ग्रिड में दिख रही फाइलों का तारीख-सीमा दिखाती है, सिर्फ़ इसी महीने का नहीं।",
+  ne: "Company Doc को डिफल्ट मिति यो महिनाको हो। यो महिनामा २० भन्दा कम फाइल भए पुराना मितिका फाइलहरू (नयाँ पहिले, अन्य वित्तीय वर्ष पनि) थपेर २० वटा देखाइन्छ। जम्मा फाइल २० भन्दा कम भए सबै देखिन्छन्। यो महिनामा २० वा सोभन्दा बढी फाइल भए यही महिनाका सबै मात्र देखिन्छन्। तपाईंले आफैं रोजेको मिति सीमा जस्ताको तस्तै राखिन्छ, थप फाइल जोडिँदैन। २० पुर्‍याउन अघिल्ला मितिका फाइल थपिएमा, मिति बटनमा यो महिना मात्र होइन, ग्रिडमा देखिएका फाइलको मिति दायरा देखिन्छ।",
 } as const;
 
 export function companyDocDateFilterIntro(introLang?: string | null): string {
@@ -204,4 +207,36 @@ export function selectCompanyDocFilesByDateRule<T extends CompanyDocDatedFile>(
     earlierFilledCount: fill.length,
     filledFromEarlier: fill.length > 0,
   };
+}
+
+/**
+ * Date range shown on the Company Doc date pill.
+ * Default month with no backfill: this month (monthFrom..monthTo).
+ * Default month with backfill: oldest shown file date (start of day) through
+ * newest shown file date (end of day) — the actual span of files in the grid,
+ * not the whole current month. This is display-only; it does not change the
+ * default-month rule or become a user-picked custom range.
+ */
+export function companyDocDatePillRange(
+  options: {
+    filledFromEarlier: boolean;
+    selected: ReadonlyArray<{ dateMs: number }>;
+    monthFrom: Date;
+    monthTo: Date;
+  },
+): { from: Date; to: Date } {
+  if (!options.filledFromEarlier) {
+    return { from: options.monthFrom, to: options.monthTo };
+  }
+  let minMs = Infinity;
+  let maxMs = -Infinity;
+  for (const file of options.selected) {
+    if (!isValidMs(file.dateMs)) continue;
+    if (file.dateMs < minMs) minMs = file.dateMs;
+    if (file.dateMs > maxMs) maxMs = file.dateMs;
+  }
+  if (!Number.isFinite(minMs) || !Number.isFinite(maxMs)) {
+    return { from: options.monthFrom, to: options.monthTo };
+  }
+  return { from: startOfLocalDay(new Date(minMs)), to: endOfLocalDay(new Date(maxMs)) };
 }
