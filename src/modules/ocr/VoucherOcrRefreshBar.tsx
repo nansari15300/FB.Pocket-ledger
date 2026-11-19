@@ -7,21 +7,38 @@ import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 /* Same stacking as Add New master from a voucher: above AddVoucherDialog (overlay z-80 / content z-81). */
 import { NESTED_VOUCHER_OCR_DEBUG_CONTENT_CN, NESTED_VOUCHER_OCR_DEBUG_OVERLAY_CN } from "@/lib/dialogShellChrome";
+import { usePlI18nOptional } from "@/contexts/PlI18nContext";
+import { introTabLang } from "@/lib/i18n/introLangTab";
 import type { VoucherOcrApi } from "./useVoucherOcr";
 import { AiChatButton, AiPanelToggle } from "./ai/AiChatDialog";
 import { CopilotMissingBar, type AiCopilotLayout } from "./ai/AiCopilotSplit";
+import { isNonManualRunnerMode, shouldGateManualOcrAction } from "./manualOcrRunnerGate";
+import { manualOcrRunnerGateMessage } from "./manualOcrRunnerGateIntro";
+import { ManualOcrRunnerGateDialog } from "./ManualOcrRunnerGateDialog";
+import { useManualOcrRunnerGate } from "./useManualOcrRunnerGate";
 
 /** Shared pill style for OCR actions across every voucher form. */
 const OCR_BAR_PILL_CN = "h-7 shrink-0 gap-1 text-xs";
 
 export function VoucherOcrRefreshBar({ ocr, copilot, fitContent = false }: { ocr: VoucherOcrApi; copilot?: AiCopilotLayout; fitContent?: boolean }) {
   const [dbgOpen, setDbgOpen] = useState(false);
+  const [gateOpen, setGateOpen] = useState(false);
+  const i18n = usePlI18nOptional();
+  const lang = introTabLang(i18n?.intro);
+  const { mode, switchToManual, switching, canSwitch } = useManualOcrRunnerGate();
+  const gated = shouldGateManualOcrAction({
+    runnerMode: mode,
+    runnerOpenedVoucher: ocr.runnerOpenedVoucher === true,
+  });
   if (!ocr.visible) return null;
   const d = ocr.debugInfo;
   const rb = ocr.readBy;
   const readByLabel = rb ? (rb.engine === "gemini" ? "AI (Gemini)" : rb.engine === "google" ? "Google" : rb.engine === "azure" ? "Azure" : "Local") : null;
   // Tooltip: why the engine fell back (e.g. "AI failed (...) -> Azure"), or AI model + tokens used
   const readByNote = rb && rb.note ? rb.note : undefined;
+  const refreshTitle = gated && isNonManualRunnerMode(mode)
+    ? manualOcrRunnerGateMessage(lang, mode)
+    : "Re-run OCR on the first attached file";
   return (
     <div className={cn("mt-2", fitContent ? "w-fit max-w-full" : "flex w-full flex-wrap items-center gap-2")} data-pl-ocr-refresh-bar="">
       {ocr.preReading ? (
@@ -34,7 +51,23 @@ export function VoucherOcrRefreshBar({ ocr, copilot, fitContent = false }: { ocr
         className={cn(fitContent && "grid w-fit max-w-none grid-cols-2 items-center gap-2", !fitContent && "contents")}
         style={fitContent ? { gridTemplateColumns: "repeat(4, max-content)" } : undefined}
       >
-      <Button type="button" size="sm" variant="outline" className={OCR_BAR_PILL_CN} disabled={!ocr.hasFile || ocr.running} onClick={ocr.refresh} title="Re-run OCR on the first attached file">
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className={cn(OCR_BAR_PILL_CN, gated && "opacity-50")}
+        disabled={!ocr.hasFile || ocr.running}
+        aria-disabled={!ocr.hasFile || ocr.running || gated}
+        data-pl-ocr-refresh-gated={gated ? "true" : "false"}
+        onClick={() => {
+          if (gated) {
+            setGateOpen(true);
+            return;
+          }
+          ocr.refresh();
+        }}
+        title={refreshTitle}
+      >
         {ocr.running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
         Refresh OCR
       </Button>
@@ -75,6 +108,14 @@ export function VoucherOcrRefreshBar({ ocr, copilot, fitContent = false }: { ocr
       ) : null}
       </div>
       {ocr.panel}
+      <ManualOcrRunnerGateDialog
+        open={gateOpen}
+        onClose={() => setGateOpen(false)}
+        mode={mode}
+        onSwitchToManual={switchToManual}
+        switching={switching}
+        canSwitch={canSwitch}
+      />
       {d ? (
         <Dialog open={dbgOpen} onOpenChange={setDbgOpen}>
           <DialogContent

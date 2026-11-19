@@ -326,6 +326,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
   const handoffAutoPostOverrideRef = useRef<boolean | undefined>(undefined);
   /** Voucher opened by the Gallery runner (Semi / Full): its profile settings travel with every type switch. */
   const handoffRunnerJobRef = useRef(false);
+  /** Reactive copy of runnerJob: a Semi/Full auto run opened this voucher (paused or in review). */
+  const [runnerOpenedVoucher, setRunnerOpenedVoucher] = useState(false);
   /** Full Auto Post: save right after autofill, no countdown. */
   const handoffAutoPostImmediateRef = useRef(false);
   const handoffAutoPostSecondsRef = useRef<number | undefined>(undefined);
@@ -2163,6 +2165,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     if (h?.files.length) {
       handoffRunRef.current = { raw: h.raw, selectedIds: h.selectedIds, autoPost: h.autoPost, autoPostSeconds: h.autoPostSeconds, overwriteEdited: h.overwriteEdited, allowSaveWithoutItems: h.allowSaveWithoutItems, manualTypeSwitch: h.manualTypeSwitch, enginePref: h.enginePref, cloudProvider: h.cloudProvider };
       handoffRunnerJobRef.current = h.runnerJob === true;
+      setRunnerOpenedVoucher(h.runnerJob === true);
       handoffAutoPostImmediateRef.current = h.runnerJob === true && h.autoPostImmediate === true;
       handoffAutoPostRef.current = h.autoPost === true;
       handoffAutoPostOverrideRef.current = h.autoPost;
@@ -2921,6 +2924,8 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
     visible,
     running,
     hasFile: o.files.length > 0,
+    /** True when the Gallery Semi/Full runner opened this voucher; Resume/Stop/Refresh OCR stay ungated. */
+    runnerOpenedVoucher,
     /** Original being read before compression (file not attached yet). */
     preReading: null,
     refresh: () => void run("refresh"),

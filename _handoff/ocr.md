@@ -693,3 +693,31 @@ Ansari Ji (t168u): Gemini (`gemini-3.5-flash-lite`, OCR build 2026-11-18.1) on a
 - this handoff
 
 **Tests:** px tsx tests/ocr/kharchaVoucherWordsDate.selftest.mts ALL PASS. All 44 	ests/ocr/*.selftest.mts were run on the laptop (2026-11-19 13:26 Asia/Kathmandu): 39 passed (including the new one). 5 already failed on current git HEAD with the same errors, unrelated to this change (iGeminiPratik.selftest.mts 3, illPaymentOut.selftest.mts 1, partyAlias.selftest.mts 2, partyMatch.selftest.mts 1, sampleDocs.selftest.mts 1). pm run typecheck passed.
+
+## Manual OCR gate when runner is not Manual (2026-11-19 13:55 Asia/Kathmandu, OCR Master)
+
+Ansari Ji (t169u): if Select Runner is not Manual, Refresh OCR (and a manual OCR run) should look disabled, and a click should show a centered message: "Runner mode is on Semi Automatic or Full Auto Post mode. Do you want to change to Manual?" with a switch to set Manual Runner. Exception: a voucher opened by Semi Automatic / Full Auto Post that paused or stuck must keep Resume, Stop, Skip and Refresh OCR working. The gate applies only to files the user added on a voucher (Add File / Reuse file) or attached from Gallery via Attach to a voucher type.
+
+**Behaviour**
+
+- Distinction: GalleryLocalAutoPostRunner already queues the voucher with `runnerJob: true`. `useVoucherOcr` now exposes that as `runnerOpenedVoucher` (set when the form takes that handoff, including remount and a type switch that keeps the runner job). Hand-opened vouchers (New Trxn + Add File / Reuse, or Gallery Attach to ...) do not set `runnerJob`, so they are gated.
+- When the selected runner is Semi Automatic or Full Auto Post and `runnerOpenedVoucher` is false, Refresh OCR is dimmed (`opacity-50`) but still clickable. Clicking it does not run OCR. A centered dialog (intro language en/hi/ne) stays until OK, with a switch "Switch to Manual Runner". The switch writes the same `companies/{id}/auto_ocr_settings/server_auto_ocr` doc as Select Runner / the gallery ribbon (`enabled: false`, `activeRunnerMode: "manual"`, exclusive `runnerProfiles` flags). It also holds the auto runner (`pl:gallery:auto-post-runner-hold`). After a successful switch the button is enabled and Refresh OCR works; OCR is not auto-started.
+- If the user is not a company admin, the message still shows and the switch is disabled, with a short admin-only note.
+- Wrong-PC rules are unchanged: they still apply only to the gallery header Start runner.
+
+**Start runner choice (gallery header)**
+
+- The gallery header Start runner button is left as it is. It starts/stops the Semi Automatic / Full Auto Post queue, not a manual OCR run on one attached file. In Manual mode it is already disabled (`enabled === false`). In Semi/Full it must keep working, and the existing wrong-PC dialog still runs. Resume / Stop / Skip in the runner footer are also unchanged, because those belong to a runner-opened voucher.
+
+**Files (laptop, uncommitted, no commit/push/build)**
+
+- `src/modules/ocr/manualOcrRunnerGate.ts` (new, pure helper)
+- `src/modules/ocr/manualOcrRunnerGateIntro.ts` (new)
+- `src/modules/ocr/useManualOcrRunnerGate.ts` (new)
+- `src/modules/ocr/ManualOcrRunnerGateDialog.tsx` (new)
+- `src/modules/ocr/VoucherOcrRefreshBar.tsx`
+- `src/modules/ocr/useVoucherOcr.tsx`
+- `tests/ocr/manualOcrRunnerGate.selftest.mts` (new)
+- this handoff
+
+**Tests:** `npx tsx tests/ocr/manualOcrRunnerGate.selftest.mts` and `npm run typecheck`. Both passed on the laptop (2026-11-19 13:56 Asia/Kathmandu).
