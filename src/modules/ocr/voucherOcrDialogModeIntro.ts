@@ -75,6 +75,17 @@ export const VOUCHER_OCR_MODE_SAVE_RETRY: Record<IntroTabLang, string> = {
   ne: "कृपया फेरि प्रयास गर्नुहोस्।",
 };
 
+export const VOUCHER_POST_SETTING_LABEL: Record<IntroTabLang, string> = {
+  en: "Voucher Post Setting",
+  hi: "वाउचर पोस्ट सेटिंग",
+  ne: "वाउचर पोस्ट सेटिङ",
+};
+
+export const VOUCHER_OCR_MODE_START_BLOCKED_OFF: Record<IntroTabLang, string> = {
+  en: "Turn OCR on to start the runner.",
+  hi: "रनर चालू करने के लिए पहले OCR चालू करें।",
+  ne: "रनर चालू गर्न पहिले OCR चालू गर्नुहोस्।",
+};
 export function voucherOcrModeShort(introLang: string | null | undefined, mode: VoucherOcrDialogMode): string {
   return VOUCHER_OCR_MODE_SHORT[introTabLang(introLang)][mode];
 }
@@ -111,6 +122,13 @@ export function voucherOcrModeSaveRetry(introLang?: string | null): string {
   return VOUCHER_OCR_MODE_SAVE_RETRY[introTabLang(introLang)];
 }
 
+export function voucherPostSettingLabel(introLang?: string | null): string {
+  return VOUCHER_POST_SETTING_LABEL[introTabLang(introLang)];
+}
+
+export function voucherOcrModeStartBlockedOff(introLang?: string | null): string {
+  return VOUCHER_OCR_MODE_START_BLOCKED_OFF[introTabLang(introLang)];
+}
 /** Full runner label (Manual Runner / Semi Automatic / Full Auto Post) in intro language. */
 export function voucherOcrRunnerFullLabel(introLang: string | null | undefined, mode: AutoPostMode): string {
   return RUNNER_MODE_FULL_LABEL[introTabLang(introLang)][mode];

@@ -748,3 +748,29 @@ Ansari Ji (t171u): the New Trxn voucher dialog header had an OCR on/off pill, a 
 - this handoff
 
 **Tests:** `npx tsx tests/ocr/voucherOcrDialogMode.selftest.mts` and `npx tsx tests/ocr/manualOcrRunnerGate.selftest.mts` and `npm run typecheck`. All passed on the laptop (2026-11-19 14:14 Asia/Kathmandu).
+
+## Gallery: same 4-position OCR pill, gear-only settings, visible hover label (2026-11-19 14:35 Asia/Kathmandu, OCR Master)
+
+Ansari Ji (t173u–t175u): use the same New Trxn OCR switch on the Gallery ribbon; remove the “Voucher Post Setting” text button and keep only a settings gear with a hover label; keep the switch in a white pill like the dialog; and raise the hover label so it is not clipped.
+
+**Off in Gallery (choice):** Off is the same voucher-dialog OCR pref (`setOcrPrefs({ enabled: false })`). The selected runner (Manual / Semi / Full Auto) is not changed, so turning OCR back on restores that mode in both the dialog and Gallery. Off is not the same as Manual Runner. Start runner is disabled while OCR is Off (tooltip in intro language), because the runner would have nothing useful to scan. Reset and the rest of the ribbon stay as they were.
+
+**Behaviour (laptop, uncommitted, no commit/push/build)**
+- Gallery’s old 3-position Manual/Semi/Full ribbon slider is replaced by `VoucherOcrModeSwitch` (Off / Manual / Semi / Full Auto), sharing `useVoucherOcrDialogMode` with the voucher dialog.
+- Same admin, Local PC device, and saved-engine-key rules as before.
+- Same widths: mobile 16.5rem, PC/desktop (`md+`) 20.625rem (25% longer). Off still collapses to the small on/off switch.
+- The 4-position slider sits in a white rounded pill (same `bg-white/70` container as the dialog), not the bare green gallery-ribbon track.
+- The “Voucher Post Setting” text button is gone. A settings gear (same look as the dialog) opens the existing Gallery Voucher Post Setting (`pl:gallery:auto-ocr-settings`). Hover/aria label is “Voucher Post Setting” in intro language (en / hi / ne).
+- The hover label above the slider is rendered with `createPortal` on `document.body`, `position: fixed`, `z-index: 4000`, so dialog/gallery `overflow: hidden` no longer clips it.
+
+**Files (laptop, uncommitted, no commit/push/build)**
+- `src/modules/ocr/VoucherOcrModeSwitch.tsx` — white pill; portaled hover label
+- `src/modules/ocr/voucherOcrDialogMode.ts` — `voucherOcrHoverLabelPosition`
+- `src/modules/ocr/voucherOcrDialogModeIntro.ts` — settings + start-blocked-off copy
+- `src/modules/ocr/useVoucherOcrDialogMode.ts` (shared by dialog and Gallery)
+- `src/components/gallery/GalleryPageClient.tsx` — ribbon slider, gear, Start runner OCR-off guard
+- `src/modules/ocr/VoucherOcrHeaderToggles.tsx` (dialog header, earlier in this work)
+- `tests/ocr/voucherOcrDialogMode.selftest.mts`
+- this handoff
+
+**Tests:** `npx tsx tests/ocr/voucherOcrDialogMode.selftest.mts` and `npx tsx tests/ocr/manualOcrRunnerGate.selftest.mts` and `npm run typecheck`. All passed on the laptop (2026-11-19 14:36 Asia/Kathmandu).

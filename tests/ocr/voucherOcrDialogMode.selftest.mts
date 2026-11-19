@@ -8,6 +8,7 @@ import {
   runnerModeAfterOcrOn,
   runnerNeedsLocalDevice,
   runnerProfileForMode,
+  voucherOcrHoverLabelPosition,
   VOUCHER_OCR_DIALOG_MODE_INDEX,
   VOUCHER_OCR_DIALOG_MODES,
 } from "../../src/modules/ocr/voucherOcrDialogMode";
@@ -23,6 +24,8 @@ import {
   voucherOcrModeFull,
   voucherOcrModeOffPill,
   voucherOcrModeShort,
+  voucherPostSettingLabel,
+  voucherOcrModeStartBlockedOff,
 } from "../../src/modules/ocr/voucherOcrDialogModeIntro";
 
 assert.deepEqual([...VOUCHER_OCR_DIALOG_MODES], ["off", "manual", "semi", "full"]);
@@ -145,5 +148,17 @@ assert.equal(voucherOcrModeFull("en", "manual"), "Manual Runner");
 assert.equal(voucherOcrModeOffPill("en"), "OCR Off");
 assert.equal(voucherOcrModeOffPill("hi"), VOUCHER_OCR_MODE_OFF_PILL.hi);
 assert.equal(VOUCHER_OCR_MODE_FULL.en.off, "OCR Off");
+
+
+const hover = voucherOcrHoverLabelPosition({ left: 100, top: 80, width: 200 }, "semi", 8);
+assert.equal(hover.left, 100 + ((2 + 0.5) / 4) * 200);
+assert.equal(hover.top, 72);
+assert.equal(voucherOcrHoverLabelPosition({ left: 0, top: 40, width: 400 }, "off").left, 50);
+assert.equal(voucherOcrHoverLabelPosition({ left: 0, top: 40, width: 400 }, "full").left, 350);
+
+assert.equal(voucherPostSettingLabel("en"), "Voucher Post Setting");
+assert.equal(voucherPostSettingLabel("hi"), "वाउचर पोस्ट सेटिंग");
+assert.equal(voucherPostSettingLabel("ne"), "वाउचर पोस्ट सेटिङ");
+assert.equal(voucherOcrModeStartBlockedOff("en"), "Turn OCR on to start the runner.");
 
 console.log("voucherOcrDialogMode.selftest ok");

@@ -104,3 +104,15 @@ export function runnerNeedsLocalDevice(profile: unknown, mode: AutoPostMode): bo
 export function dialogRunnerModeFromSettings(raw: unknown): AutoPostMode {
   return runnerModeFromSettings(raw);
 }
+/** Viewport (fixed) position for the hover label above a track segment, so it can be portaled. */
+export function voucherOcrHoverLabelPosition(
+  rect: { left: number; top: number; width: number },
+  mode: VoucherOcrDialogMode,
+  gapPx = 8,
+): { left: number; top: number } {
+  const index = VOUCHER_OCR_DIALOG_MODE_INDEX[mode];
+  return {
+    left: rect.left + ((index + 0.5) / VOUCHER_OCR_DIALOG_MODES.length) * rect.width,
+    top: rect.top - gapPx,
+  };
+}

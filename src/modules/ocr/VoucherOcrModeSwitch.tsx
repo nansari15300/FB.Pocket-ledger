@@ -7,6 +7,7 @@
  * Visual treatment follows the gallery Auto post ribbon slider.
  */
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
@@ -20,6 +21,7 @@ import { introTabLang } from "@/lib/i18n/introLangTab";
 import {
   VOUCHER_OCR_DIALOG_MODE_INDEX,
   VOUCHER_OCR_DIALOG_MODES,
+  voucherOcrHoverLabelPosition,
   type AutoPostMode,
   type VoucherOcrDialogMode,
 } from "./voucherOcrDialogMode";
@@ -72,6 +74,7 @@ export function VoucherOcrModeSwitch({
   const i18n = usePlI18nOptional();
   const lang = introTabLang(i18n?.intro);
   const [hoveredMode, setHoveredMode] = React.useState<VoucherOcrDialogMode | null>(null);
+  const [tipPos, setTipPos] = React.useState<{ left: number; top: number } | null>(null);
   const turnOnMode: AutoPostMode = restoreMode === "semi" || restoreMode === "full" ? restoreMode : "manual";
 
   if (collapsed || mode === "off") {
@@ -112,7 +115,9 @@ export function VoucherOcrModeSwitch({
   const updateHoveredMode = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (event.pointerType === "touch") return;
     const rect = event.currentTarget.getBoundingClientRect();
-    setHoveredMode(modeAtTrackIndex(Math.floor(((event.clientX - rect.left) / rect.width) * MODE_COUNT)));
+    const next = modeAtTrackIndex(Math.floor(((event.clientX - rect.left) / rect.width) * MODE_COUNT));
+    setHoveredMode(next);
+    setTipPos(voucherOcrHoverLabelPosition(rect, next));
   };
 
   const runnerLocked = runnerPositionsDisabled;
@@ -121,7 +126,10 @@ export function VoucherOcrModeSwitch({
 
   return (
     <div
-      className={cn("relative inline-flex shrink-0 flex-col items-stretch", className)}
+      className={cn(
+        "relative inline-flex shrink-0 flex-col items-stretch rounded-full border border-slate-400/50 bg-white/70 px-2 py-1 dark:border-slate-500/50 dark:bg-slate-900/60",
+        className,
+      )}
       data-pl-ocr-dialog-mode={mode}
       title={voucherOcrModeOnTitle(lang)}
     >
@@ -133,7 +141,7 @@ export function VoucherOcrModeSwitch({
         aria-disabled={disabled}
         onClick={chooseFromTrack}
         onPointerMove={updateHoveredMode}
-        onPointerLeave={() => setHoveredMode(null)}
+        onPointerLeave={() => { setHoveredMode(null); setTipPos(null); }}
         data-pl-ocr-dialog-mode-track=""
         className={cn(
           "relative block h-full cursor-pointer rounded-full border shadow-sm outline-none transition-colors",
@@ -185,14 +193,16 @@ export function VoucherOcrModeSwitch({
           );
         })}
       </div>
-      {hoveredMode ? (
+      {hoveredMode && tipPos && typeof document !== "undefined" ? createPortal(
         <span
           role="tooltip"
-          className="pointer-events-none absolute z-20 -translate-x-1/2 whitespace-nowrap rounded-full border border-blue-300 bg-white px-2 py-1 text-[10px] font-semibold leading-none text-blue-900 shadow-md"
-          style={{ left: `${((VOUCHER_OCR_DIALOG_MODE_INDEX[hoveredMode] + 0.5) / MODE_COUNT) * 100}%`, top: "-1.15rem" }}
+          data-pl-ocr-dialog-mode-tooltip=""
+          className="pointer-events-none fixed z-[4000] -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-full border border-blue-300 bg-white px-2 py-1 text-[10px] font-semibold leading-none text-blue-900 shadow-md dark:border-blue-400 dark:bg-slate-900 dark:text-blue-100"
+          style={{ left: tipPos.left, top: tipPos.top }}
         >
           {runnerPositionsDisabled && hoveredMode !== "off" ? manualOcrRunnerGateAdmin(lang) : voucherOcrModeFull(lang, hoveredMode)}
-        </span>
+        </span>,
+        document.body,
       ) : null}
     </div>
   );

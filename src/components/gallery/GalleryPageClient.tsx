@@ -68,6 +68,10 @@ import {
   selectCompanyDocFilesByDateRule,
 } from "@/modules/ocr/companyDocDateWindow";
 import { useCompanyDocExtraVouchers } from "@/modules/ocr/useCompanyDocExtraVouchers";
+import { VoucherOcrModeSwitch } from "@/modules/ocr/VoucherOcrModeSwitch";
+import { useVoucherOcrDialogMode } from "@/modules/ocr/useVoucherOcrDialogMode";
+import { useOcrPrefs } from "@/modules/ocr/prefs";
+import { voucherPostSettingLabel, voucherOcrModeStartBlockedOff } from "@/modules/ocr/voucherOcrDialogModeIntro";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -133,8 +137,6 @@ import { onSnapshot, getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { toast } from "sonner";
 import { usePlI18nOptional } from "@/contexts/PlI18nContext";
 import { introTabLang } from "@/lib/i18n/introLangTab";
-import { loadOcrEngineOptions } from "@/modules/ocr/engineChoices";
-import { ENGINE_NO_KEY_COPY, scanEngineHasKey } from "@/modules/ocr/engineKeys";
 import { compressImageForCompany, attachmentImageStillTooLargeToastFields } from "@/lib/attachmentCompressionUi";
 import { deleteFileFromStorageClient } from "@/lib/storageClient";
 import { uploadUnassignedFileToPocketLedgerServer } from "@/lib/uploadUnassignedFileToPocketLedgerServer";
@@ -171,8 +173,6 @@ import type { TransactionColumnKey } from "@/components/vouchers/TransactionsTab
 import { COLUMN_LABELS, useShowNotes, useTransactionVisibleColumns } from "@/components/vouchers/transactionColumnVisibility";
 import { LedgerFooterCheckboxPill } from "@/components/vouchers/ledgerFooterChrome";
 import { LedgerFooterColumnsMenu } from "@/components/vouchers/LedgerFooterColumnsMenu";
-import { AutoPostModeSwitch, type AutoPostMode } from "@/components/gallery/AutoPostModeSwitch";
-import { activeRunnerFromSettings, runnerModePersistFields, withExclusiveRunnerProfiles } from "@/components/gallery/autoPostMode";
 import { DEFAULT_GALLERY_QUEUE_SEQUENCE, DEFAULT_GALLERY_SORT_ORDER, GALLERY_QUEUE_SEQUENCES, normalizeGalleryQueueSequence, normalizeGallerySortOrder, orderGalleryQueue, sortGalleryFiles, type GalleryQueueSequence, type GallerySortOrder } from "@/components/gallery/galleryQueueSequence";
 
 
@@ -425,6 +425,9 @@ function claimStartBlockedToast(companyId: string, seq: number): boolean {
 }
 
 function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
+  const i18n = usePlI18nOptional();
+  const ocrPrefs = useOcrPrefs();
+  const ocrOn = ocrPrefs.enabled === true;
   const { company, companyId } = useCompany();
   const { user } = useAuth();
   const { t } = useAutoPostUiCopy();
@@ -485,8 +488,8 @@ function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
       size="sm"
       variant="outline"
       aria-pressed={!held}
-      disabled={!isCompanyAdmin || !fsId || !autoPostEnabled}
-      title={!autoPostEnabled ? t(AUTO_POST_UI.enableAutoPostToStart) : held ? "Start the selected Auto post mode and keep watching for documents" : "Stop the Auto post runner"}
+      disabled={!isCompanyAdmin || !fsId || !autoPostEnabled || !ocrOn}
+      title={!ocrOn ? voucherOcrModeStartBlockedOff(introTabLang(i18n?.intro)) : !autoPostEnabled ? t(AUTO_POST_UI.enableAutoPostToStart) : held ? "Start the selected Auto post mode and keep watching for documents" : "Stop the Auto post runner"}
       onClick={() => {
         const starting = held || !autoPostEnabled;
         const seqAtClick = Math.max(lastBlockedSeqRef.current, lastStartBlockedToast.companyId === fsId ? lastStartBlockedToast.seq : 0);
@@ -550,65 +553,19 @@ function GalleryRunnerResetButton({ inline = false }: { inline?: boolean }) {
 }
 
 function GalleryAutoPostModeRibbon({ inline = false }: { inline?: boolean }) {
-  const i18n = usePlI18nOptional();
-  const { company, companyId } = useCompany();
-  const { user } = useAuth();
-  const fsId = String((company as any)?.authoritativeCompanyId || companyId || "").trim();
-  const uid = String(user?.uid || "");
-  const isCompanyAdmin = !!uid && !!company && (
-    String((company as any).ownerId || (company as any).owner || "") === uid ||
-    (Array.isArray((company as any).sharedWith) && (company as any).sharedWith.some((member: any) =>
-      String(member?.uid || member?.userId || "") === uid && ["admin", "CompanyAdmin", "SuperAdmin"].includes(String(member?.role || ""))))
+  const { dialogMode, runnerMode, ocrEnabled, chooseMode, choosing, canChangeRunner } = useVoucherOcrDialogMode();
+  return (
+    <div className={cn("flex shrink-0 items-center gap-1", inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0")}>
+      <VoucherOcrModeSwitch
+        mode={dialogMode}
+        collapsed={!ocrEnabled}
+        restoreMode={runnerMode}
+        onModeChange={(next) => { void chooseMode(next); }}
+        runnerPositionsDisabled={!canChangeRunner}
+        disabled={choosing}
+      />
+    </div>
   );
-  const [savedSettings, setSavedSettings] = useState<Record<string, unknown>>({});
-  const [mode, setMode] = useState<AutoPostMode>("manual");
-  const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    if (!fsId) return;
-    return onSnapshot(doc(firestore, `companies/${fsId}/auto_ocr_settings`, "server_auto_ocr"), (snapshot) => {
-      const value = snapshot.exists() ? snapshot.data() as Record<string, unknown> : {};
-      setSavedSettings(value);
-      setMode(activeRunnerFromSettings(value));
-    });
-  }, [fsId]);
-  const chooseMode = async (next: AutoPostMode) => {
-    if (!fsId || !uid || !isCompanyAdmin || saving || next === mode) return;
-    const profiles = savedSettings.runnerProfiles && typeof savedSettings.runnerProfiles === "object" ? savedSettings.runnerProfiles as Record<string, unknown> : {};
-    const profile = profiles[next] && typeof profiles[next] === "object" ? profiles[next] as Record<string, unknown> : savedSettings;
-    if (next !== "manual" && profile.runLocation === "local-pc" && (!profile.localRunnerUid || !profile.localRunnerDeviceId)) {
-      toast.error("Select an admin device in Auto post settings before enabling the runner.");
-      window.dispatchEvent(new Event("pl:gallery:auto-ocr-settings"));
-      return;
-    }
-    // Decision 7: never switch to a runner whose engine has no saved key.
-    if (next !== "manual") {
-      const keyed = await loadOcrEngineOptions(fsId).catch(() => null);
-      if (!keyed || !scanEngineHasKey(profile.scanEngine || "auto", keyed)) {
-        const lang = introTabLang(i18n?.intro);
-        toast.error(ENGINE_NO_KEY_COPY[lang === "hi" || lang === "ne" ? lang : "en"]);
-        return;
-      }
-    }
-    const previous = mode;
-    window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-hold", { detail: { companyId: fsId, held: true } }));
-    setMode(next);
-    setSaving(true);
-    try {
-      await setDoc(doc(firestore, `companies/${fsId}/auto_ocr_settings`, "server_auto_ocr"), {
-        ...profile,
-        ...runnerModePersistFields(next),
-        runnerProfiles: withExclusiveRunnerProfiles(profiles, next),
-        updatedAt: serverTimestamp(),
-        updatedBy: uid,
-      }, { merge: true });
-    } catch (error) {
-      setMode(previous);
-      toast.error("Could not change Auto post mode", { description: error instanceof Error ? error.message : "Please try again." });
-    } finally {
-      setSaving(false);
-    }
-  };
-  return <AutoPostModeSwitch mode={mode} onModeChange={(next) => void chooseMode(next)} disabled={!isCompanyAdmin || saving || !fsId} className={cn(inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0")} />;
 }
 
 function GalleryQueueSequenceRibbon({ inline = false }: { inline?: boolean }) {
@@ -698,6 +655,25 @@ type GalleryTabCounts = {
   autoFailed: number;
   companyFiles: number;
 };
+
+function GalleryVoucherPostSettingGear({ inline = false }: { inline?: boolean }) {
+  const i18n = usePlI18nOptional();
+  const label = voucherPostSettingLabel(introTabLang(i18n?.intro));
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={() => typeof window !== "undefined" && window.dispatchEvent(new Event("pl:gallery:auto-ocr-settings"))}
+      className={cn(
+        "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-400/50 bg-white/70 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-700",
+        inline && "hidden max-sm:inline-flex"
+      )}
+    >
+      <Settings className="h-3.5 w-3.5" aria-hidden />
+    </button>
+  );
+}
 
 function GalleryTabSwitch({
   activeTab,
@@ -796,22 +772,7 @@ function GalleryTabSwitch({
       <GalleryRunnerHoldButton inline={inline} />
       <GalleryRunnerResetButton inline={inline} />
       <GalleryQueueSequenceRibbon inline={inline} />
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        title="Voucher Post Setting"
-        aria-label="Voucher Post Setting"
-        onClick={() => typeof window !== "undefined" && window.dispatchEvent(new Event("pl:gallery:auto-ocr-settings"))}
-        className={cn(
-          "h-8 w-auto shrink-0 gap-1.5 rounded-full px-3 text-xs",
-          GALLERY_TAB_IDLE_CN,
-          inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0 max-sm:px-2"
-        )}
-      >
-        <Settings className="h-4 w-4 shrink-0" aria-hidden />
-        <span className="truncate">Voucher Post Setting</span>
-      </Button>
+      <GalleryVoucherPostSettingGear inline={inline} />
     </>
   );
 
