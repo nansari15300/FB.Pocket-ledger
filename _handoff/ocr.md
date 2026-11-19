@@ -530,3 +530,36 @@ Live destinations:
 Then **restart PocketBase**. After restart, Company Doc should show 16.
 
 **Client files:** `src/modules/ocr/companyFileCountCore.ts` (comment only), `tests/ocr/galleryCountSqlNull.selftest.mts` (new), this handoff. Left uncommitted for Git Master.
+## Company Doc default date window: this month, minimum 20 files (2026-11-19, OCR Master)
+
+Ansari Ji: date filter should show at least 20 files. If this month already has 20 or more, show all of this month only. If this month has fewer than 20, add earlier-dated files (newest first, including other FYs) until 20, or show every file when the company has fewer than 20 in total.
+
+**Default / this-month view**
+- The Company Doc date pill default is now this calendar month (not the last 30 days).
+- BS and Both date systems use the current Bikram Sambat month; AD uses the Gregorian month.
+- File-level rule lives in the pure helper `src/modules/ocr/companyDocDateWindow.ts` (`selectCompanyDocFilesByDateRule`).
+- Existing newest-first grid order still applies after selection (top left to right).
+- The previous "empty default window falls back to all dates" behaviour is replaced by this rule.
+- If earlier files were added to reach 20, the footer shows " · + earlier to 20".
+- An intro (i) next to the date pill explains the rule in en / hi / ne (`COMPANY_DOC_DATE_FILTER_INTRO`).
+
+**Custom range**
+- If the user picks a date range themselves, that range is kept exactly: no min-20 backfill, no cap when the month has more than 20 files, and an empty range stays empty.
+- Voucher-number search still skips the date window (all matching files).
+- Avatars view uses the date range only (no min-20 fill).
+- Clear All still clears the date pill (all dates), as before.
+
+**Other-FY files**
+- Company Doc files are attachments on alive vouchers, all FYs.
+- `useCompanyDocExtraVouchers` lists older vouchers with files from the local all-FY store (`listOlderCompanyDocVoucherIds`) and loads any that are missing from the FY-scoped `useVouchers()` list via `useVouchersByIds` / `POST /api/pl/vouchers-by-ids`.
+- No new server list endpoint was added. Files that are not in the local store and have no known id cannot be listed yet.
+
+**Files (laptop, uncommitted, no commit/push/build)**
+- `src/modules/ocr/companyDocDateWindow.ts` (new)
+- `src/modules/ocr/listCompanyDocOlderVouchers.ts` (new)
+- `src/modules/ocr/useCompanyDocExtraVouchers.ts` (new)
+- `tests/ocr/companyDocDateWindow.selftest.mts` (new)
+- `src/components/gallery/GalleryPageClient.tsx` (Company Files tab default window, helper wiring, intro, footer note)
+- this handoff
+
+**Tests:** `npx tsx tests/ocr/companyDocDateWindow.selftest.mts` and `npm run typecheck`.

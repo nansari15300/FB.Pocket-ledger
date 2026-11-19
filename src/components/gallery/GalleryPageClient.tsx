@@ -60,6 +60,13 @@ import {
   filterRecentOcrByPostedDay,
   recentOcrDateFilterIntro,
 } from "@/modules/ocr/recentOcrPostedDate";
+import {
+  companyDocDateFilterIntro,
+  defaultCompanyDocMonthRange,
+  parseCompanyDocVoucherDate,
+  selectCompanyDocFilesByDateRule,
+} from "@/modules/ocr/companyDocDateWindow";
+import { useCompanyDocExtraVouchers } from "@/modules/ocr/useCompanyDocExtraVouchers";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -107,7 +114,7 @@ import { useDate } from "@/hooks/useDate";
 import BsDatePicker from "@/components/ui/BsDatePicker";
 import { parseFirestoreDateFieldToJsDate } from "@/lib/voucherDateNormalize";
 import { cn } from "@/lib/utils";
-import { addDays, format, startOfDay, endOfDay, startOfMonth, endOfMonth, subDays } from "date-fns";
+import { addDays, format, startOfDay, endOfDay } from "date-fns";
 import { FilePreview, prewarmPdfThumbnailsForGallery } from "@/components/vouchers/FilePreview";
 import {
   tryGetStoragePathFromFirebaseDownloadUrl,
@@ -836,6 +843,59 @@ function RecentOcrPostedDateFilterInfo() {
         <AppFreshInfoButton
           size="xs"
           data-pl-recent-ocr-posted-date-info=""
+          aria-label={note}
+          aria-expanded={open}
+          onMouseEnter={() => {
+            cancelClose();
+            setOpen(true);
+          }}
+          onMouseLeave={scheduleClose}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            cancelClose();
+            setOpen((value) => !value);
+          }}
+        />
+      </PopoverTrigger>
+      <PopoverContent
+        side="bottom"
+        align="start"
+        collisionPadding={12}
+        className="z-[10050] max-w-[min(22rem,calc(100vw-2rem))] p-3 text-xs leading-relaxed"
+        data-pl-intro=""
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onMouseEnter={cancelClose}
+        onMouseLeave={scheduleClose}
+      >
+        {note}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function CompanyDocDateFilterInfo() {
+  const i18n = usePlI18nOptional();
+  const note = companyDocDateFilterIntro(introTabLang(i18n?.intro));
+  const [open, setOpen] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelClose = useCallback(() => {
+    if (closeTimer.current != null) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  }, []);
+  const scheduleClose = useCallback(() => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setOpen(false), 150);
+  }, [cancelClose]);
+  useEffect(() => () => cancelClose(), [cancelClose]);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <AppFreshInfoButton
+          size="xs"
+          data-pl-company-doc-date-filter-info=""
           aria-label={note}
           aria-expanded={open}
           onMouseEnter={() => {
@@ -1685,16 +1745,15 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
   const { vouchers, loading, journalAccountNames, processedParties, processedPartiesForSelection, processedStaff, processedAccounts, processedItems, expenseAccounts, processedTaxes, userNames: vouchersUserNames } = useVouchers();
   const { dateSystem, formatDate, formatDateBS } = useDate();
   /**
-   * Default: last 30 days. Lekin agar us window me 0 files hain aur company me files maujood hain,
-   * `displayItems` khud ko "all dates" par fallback karta hai (aur footer me batata hai) — warna user ko
-   * "4 files" count par khaali grid dikhta tha jo filter ka bug lagta hai.
+   * Default: this calendar month (BS month when the date system is BS/Both).
+   * If this month has fewer than 20 files, earlier files are filled in at the
+   * grid (newest first, other FYs too) until 20, or until every file is shown.
+   * A date range the user picks is kept exactly — no backfill.
    */
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
-    const today = new Date();
-    const thirtyDaysAgo = subDays(today, 30);
-    return { from: thirtyDaysAgo, to: today };
-  });
-  /** User ne date pill khud chhua to auto-fallback band — warna unka filter override ho jata. */
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() =>
+    defaultCompanyDocMonthRange(new Date(), dateSystem),
+  );
+  /** User ne date pill khud chhua to this-month / min-20 rule band — warna unka filter override ho jata. */
   const dateRangeUserTouchedRef = useRef(false);
   const handleCompanyDateRangeChange = useCallback((next: DateRange | undefined) => {
     dateRangeUserTouchedRef.current = true;
@@ -1955,10 +2014,46 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
     return allAvatars;
   }, [processedParties, processedStaff, processedAccounts]);
 
+  const companyDocMonthRange = useMemo(
+    () => defaultCompanyDocMonthRange(new Date(), dateSystem),
+    [dateSystem],
+  );
+  const companyDocMonthFromMs = startOfDay(dateRange?.from ?? companyDocMonthRange.from).getTime();
+  const companyDocMonthToMs = endOfDay(dateRange?.to ?? companyDocMonthRange.to).getTime();
+  const companyDocDefaultDateActive =
+    !showAvatarsOnly && !voucherNumberSearch.trim() && !dateRangeUserTouchedRef.current;
+  const extraCompanyDocVouchers = useCompanyDocExtraVouchers(
+    String(companyId || ""),
+    String((company as { authoritativeCompanyId?: unknown } | null)?.authoritativeCompanyId || companyId || "").trim(),
+    (vouchers || []) as Array<Record<string, unknown>>,
+    {
+      enabled: companyDocDefaultDateActive,
+      monthFromMs: companyDocMonthFromMs,
+      monthToMs: companyDocMonthToMs,
+    },
+  );
+  const companyDocVouchers = useMemo(() => {
+    if (showAvatarsOnly) return vouchers;
+    const seen = new Set<string>();
+    const merged: typeof vouchers = [];
+    for (const voucher of vouchers || []) {
+      const id = String((voucher as { id?: unknown })?.id || "");
+      if (id) seen.add(id);
+      merged.push(voucher);
+    }
+    for (const voucher of extraCompanyDocVouchers.values()) {
+      const id = String(voucher.id || "");
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      merged.push(voucher as (typeof vouchers)[number]);
+    }
+    return merged;
+  }, [showAvatarsOnly, vouchers, extraCompanyDocVouchers]);
+
   const displayItems = useMemo(() => {
       let itemsToFilter = showAvatarsOnly
         ? avatarFiles.map(a => ({ ...a, fileUrls: [a.url], voucherNumber: a.name, type: a.type, isAvatar: true }))
-        : vouchers
+        : companyDocVouchers
             .map((voucher) => ({ ...voucher, fileUrls: getVoucherAttachmentUrlsForUi(voucher) }))
             .filter((voucher) => voucher.fileUrls.length > 0);
       // Apply common filters
@@ -1975,26 +2070,14 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
           return nos.some((n) => n != null && String(n).toLowerCase().replace(/[\s\-]/g, "").includes(q));
         });
       }
-       if (dateRange?.from && !voucherNumberSearch.trim()) {
+      if (!voucherNumberSearch.trim() && dateRange?.from && (dateRangeUserTouchedRef.current || showAvatarsOnly)) {
         const fromDate = startOfDay(dateRange.from);
         const toDate = dateRange.to ? endOfDay(dateRange.to) : endOfDay(fromDate);
-        const within = (item: any) => {
-            const itemDate = item.date?.toDate ? item.date.toDate() : new Date();
-            return itemDate >= fromDate && itemDate <= toDate;
-        };
-        const filtered = itemsToFilter.filter(within);
-        /**
-         * Default 30-day window me kuch nahi mila par company me files hain → window drop karo.
-         * Warna footer "4 files" bolta hai aur grid khaali dikhta, jo filter ka bug lagta.
-         * User ne date pill khud badla ho to uska intent respect karo (fallback nahi).
-         */
-        const wouldBeEmpty = filtered.length === 0;
-        const companyHasFiles = vouchers.some((v) => getVoucherAttachmentUrlsForUi(v).length > 0);
-        if (wouldBeEmpty && companyHasFiles && !dateRangeUserTouchedRef.current && !selectedEntityId.includes("-") && selectedVoucherTypes.includes('all') && selectedUserId === 'all') {
-          // no-op: itemsToFilter unchanged (all dates)
-        } else {
-          itemsToFilter = filtered;
-        }
+        itemsToFilter = itemsToFilter.filter((item) => {
+          const itemDate = parseCompanyDocVoucherDate(item.date);
+          if (!itemDate) return false;
+          return itemDate.getTime() >= fromDate.getTime() && itemDate.getTime() <= toDate.getTime();
+        });
       }
       if (selectedVoucherTypes.length > 0 && !selectedVoucherTypes.includes('all')) {
         itemsToFilter = itemsToFilter.filter(item => {
@@ -2036,37 +2119,20 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
         });
     }
 
-      return itemsToFilter.sort((a,b) => (b.date?.toDate ? b.date.toDate().getTime() : 0) - (a.date?.toDate ? a.date.toDate().getTime() : 0));
-    }, [showAvatarsOnly, avatarFiles, vouchers, selectedUserId, voucherNumberSearch, dateRange, selectedVoucherTypes, selectedEntityId, selectedAccountType]);
-
-  /** True = default window khaali thi aur grid all-dates par fallback hua (badge ise dikhata hai). */
-  const companyDatesAutoExpanded = useMemo(() => {
-    if (showAvatarsOnly) return false;
-    if (dateRangeUserTouchedRef.current) return false;
-    if (!dateRange?.from) return false;
-    if (voucherNumberSearch.trim()) return false;
-    const base = vouchers.filter((v) => getVoucherAttachmentUrlsForUi(v).length > 0);
-    if (base.length === 0) return false;
-    const fromDate = startOfDay(dateRange.from);
-    const toDate = dateRange.to ? endOfDay(dateRange.to) : endOfDay(fromDate);
-    const inWindow = base.filter((item) => {
-      const d = item.date?.toDate ? item.date.toDate() : new Date();
-      return d >= fromDate && d <= toDate;
-    });
-    return inWindow.length === 0 && displayItems.length > 0;
-  }, [showAvatarsOnly, vouchers, dateRange, voucherNumberSearch, displayItems]);
-
+      return itemsToFilter.sort((a,b) => {
+        const aMs = parseCompanyDocVoucherDate(a.date)?.getTime() ?? 0;
+        const bMs = parseCompanyDocVoucherDate(b.date)?.getTime() ?? 0;
+        return bMs - aMs;
+      });
+    }, [showAvatarsOnly, avatarFiles, companyDocVouchers, selectedUserId, voucherNumberSearch, dateRange, selectedVoucherTypes, selectedEntityId, selectedAccountType]);
 
   const allFilesCount = useMemo(() => {
-    return vouchers.reduce((acc, v) => acc + getVoucherAttachmentUrlsForUi(v).length, 0);
-  }, [vouchers]);
+    return companyDocVouchers.reduce((acc, v) => acc + getVoucherAttachmentUrlsForUi(v).length, 0);
+  }, [companyDocVouchers]);
 
-  const filteredFilesCount = useMemo(() => {
-    return displayItems.reduce((acc, v) => acc + (v.fileUrls?.length || 0), 0);
-  }, [displayItems]);
-
-  // Har tile ek row — pagination flat list (voucher × fileUrls)
-  const companyFlatRows = useMemo(() => {
+  // Har tile ek row — pagination flat list (voucher x fileUrls).
+  // Default Company Doc view applies the this-month / min-20 file rule here.
+  const companyFlatSelection = useMemo(() => {
     const rows: { item: (typeof displayItems)[number]; url: string; fileIndex: number }[] = [];
     for (const item of displayItems) {
       const urls = item.fileUrls || [];
@@ -2074,8 +2140,28 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
         rows.push({ item, url: urls[fileIndex], fileIndex });
       }
     }
-    return rows;
-  }, [displayItems]);
+    if (showAvatarsOnly || voucherNumberSearch.trim() || dateRangeUserTouchedRef.current || !dateRange?.from) {
+      return { rows, filledFromEarlier: false };
+    }
+    const candidates = rows.map((row, index) => ({
+      id: `${String(row.item?.id || "row")}:${row.fileIndex}:${index}`,
+      dateMs: parseCompanyDocVoucherDate(row.item?.date)?.getTime() ?? Number.NaN,
+      index,
+    }));
+    const picked = selectCompanyDocFilesByDateRule(candidates, {
+      mode: "default-month",
+      monthFromMs: startOfDay(dateRange.from).getTime(),
+      monthToMs: endOfDay(dateRange.to ?? dateRange.from).getTime(),
+    });
+    return {
+      rows: picked.selected.map((file) => rows[file.index]),
+      filledFromEarlier: picked.filledFromEarlier,
+    };
+  }, [displayItems, showAvatarsOnly, voucherNumberSearch, dateRange]);
+  const companyFlatRows = companyFlatSelection.rows;
+  const companyDocFilledFromEarlier = companyFlatSelection.filledFromEarlier;
+  const filteredFilesCount = companyFlatRows.length;
+
 
   const companyTotalPages = Math.max(1, Math.ceil(companyFlatRows.length / companyFilesPerPage));
   const companyPageClamped = Math.min(Math.max(1, companyFilesPage), companyTotalPages);
@@ -2230,7 +2316,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
       onShowAvatarsOnlyChange(false);
   };
 
-  // Pehli baar jo default 30-day range load hoti hai usse match = "no filter"; tabhi Clear All chhupa rahein
+  // Pehli baar jo default this-month range load hoti hai usse match = "no filter"; tabhi Clear All chhupa rahein
   const baselineDateRangeRef = useRef<{ from: number; to: number } | null>(null);
   useEffect(() => {
     if (baselineDateRangeRef.current === null && dateRange?.from && dateRange?.to) {
@@ -2545,7 +2631,10 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                 {showAvatarsOnly ? "Voucher" : "Avatars"}
               </Button>
               {mounted && (
-                <BsDatePicker valueAD={dateRange} onChangeAD={handleCompanyDateRangeChange as any} className="h-8 min-h-8 shrink-0 px-2 text-xs" />
+                <div className="flex shrink-0 items-center gap-1">
+                  <BsDatePicker valueAD={dateRange} onChangeAD={handleCompanyDateRangeChange as any} className="h-8 min-h-8 shrink-0 px-2 text-xs" />
+                  {!showAvatarsOnly && <CompanyDocDateFilterInfo />}
+                </div>
               )}
               {!mounted && <Skeleton className="h-8 w-[180px] shrink-0 rounded-md" />}
               {mounted ? (
@@ -2695,7 +2784,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                 {companyFlatRows.length === 0
                   ? `0 of ${allFilesCount} files`
                   : `${companySliceStart + 1}–${Math.min(companySliceStart + companyFilesPerPage, companyFlatRows.length)} / ${filteredFilesCount} files`}
-                {companyDatesAutoExpanded ? " · all dates" : ""}
+                {companyDocFilledFromEarlier ? " · + earlier to 20" : ""}
               </Badge>
             </div>
           </div>
@@ -2728,7 +2817,7 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                     {companyFlatRows.length === 0
                       ? `Showing 0 of ${allFilesCount} files`
                       : `Showing ${companySliceStart + 1}–${Math.min(companySliceStart + companyFilesPerPage, companyFlatRows.length)} of ${filteredFilesCount} files (${allFilesCount} in company)`}
-                    {companyDatesAutoExpanded ? " · all dates" : ""}
+                    {companyDocFilledFromEarlier ? " · + earlier to 20" : ""}
                   </Badge>
                   <Button
                     type="button"
@@ -2799,15 +2888,21 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                 </Button>
                 {mounted &&
                   (isMobile ? (
-                    <div className="min-w-0 flex-1 overflow-hidden">
-                      <BsDatePicker
-                        valueAD={dateRange}
-                        onChangeAD={handleCompanyDateRangeChange as any}
-                        className="h-8 min-h-8 w-full min-w-0 px-2 text-xs"
-                      />
+                    <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <BsDatePicker
+                          valueAD={dateRange}
+                          onChangeAD={handleCompanyDateRangeChange as any}
+                          className="h-8 min-h-8 w-full min-w-0 px-2 text-xs"
+                        />
+                      </div>
+                      {!showAvatarsOnly && <CompanyDocDateFilterInfo />}
                     </div>
                   ) : (
-                    <BsDatePicker valueAD={dateRange} onChangeAD={handleCompanyDateRangeChange as any} className="h-8 min-h-8 px-2 text-xs" />
+                    <div className="flex shrink-0 items-center gap-1">
+                      <BsDatePicker valueAD={dateRange} onChangeAD={handleCompanyDateRangeChange as any} className="h-8 min-h-8 px-2 text-xs" />
+                      {!showAvatarsOnly && <CompanyDocDateFilterInfo />}
+                    </div>
                   ))}
                 {!mounted && <Skeleton className="h-8 w-[180px] shrink-0 rounded-md" />}
                 {!showAvatarsOnly && mounted && (
