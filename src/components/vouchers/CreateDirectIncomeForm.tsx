@@ -874,7 +874,7 @@ export function CreatePaymentInForm({
                   control={form.control}
                   name="accountId"
                   render={({ field }: any) => (
-                    <FormItem data-ocr-field="account">
+                    <FormItem data-ocr-field="account" data-ocr-anchor="account-from">
                        <div className="flex justify-between items-baseline">
                         <FormLabel>To Bank/Cash Account</FormLabel>
                         {accountBalance !== null && accountBalance !== undefined && <FormLabel className="text-xs text-muted-foreground">Balance: {formatCurrency(accountBalance)}</FormLabel>}

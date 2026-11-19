@@ -33,29 +33,14 @@ function ocrCoveredByModal(): Element | null {
   return null;
 }
 import { shouldDrawOcrBubbleTail, stretchOcrTailTip } from "./bubbleTail";
+import { ocrFieldForSuggestion } from "./ocrFieldAnchors";
+
+export { ocrFieldForSuggestion } from "./ocrFieldAnchors";
 
 export const OCR_BUBBLE_Z_CN = "z-[85]";
 const RING = ["ring-2", "ring-pink-500", "ring-offset-1", "rounded-md", "transition-shadow"];
 const HAS_NON_ENGLISH_SCRIPT = /[\u0370-\u052F\u0530-\u058F\u0590-\u08FF\u0900-\u0DFF\u0E00-\u0EFF\u0F00-\u11FF\u1780-\u18AF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]/;
 
-/** Suggestion id -> form field anchor key. */
-export function ocrFieldForSuggestion(id: string): string {
-  if (id === "switch" || id.startsWith("switch-")) return "voucher-type";
-  if (id === "create-party" || id === "find-party" || id === "use-party") return "party";
-  if (id === "create-expense-account" || id === "open-expense-account-picker" || id.startsWith("use-expense-account-")) return "party";
-  if (id === "date") return "date";
-  if (id === "due") return "due-date";
-  if (id === "create-vat" || id === "vat") return "tax";
-  if (id === "create-ledger" || id === "ledger") return "ledger";
-  if (id === "disc") return "discount";
-  if (id.startsWith("amount")) return "amount";
-  if (id === "billno") return "bill-no";
-  if (id === "account" || id.startsWith("account-")) return "account";
-  if (id === "cannot-detect" || id === "status-failed" || id === "duplicate-ref") return "voucher-type";
-  /** Reading-language / translate options attach to the OCR bar, not a form field. */
-  if (id === "ocr-language" || id.startsWith("ocr-lang-") || id.startsWith("ocr-translate")) return "ocr-language";
-  return "lines"; // lines, create-item-*, tds, drcr
-}
 
 /** Missing-field label (from the hook) -> anchor key. */
 export { ocrMissingFieldKey as ocrFieldForMissing } from "./reactiveBubbles";

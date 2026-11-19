@@ -2564,7 +2564,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                       control={form.control}
                       name="accountId"
                       render={({ field }: any) => (
-                        <FormItem data-ocr-field="account" className="min-w-0">
+                        <FormItem data-ocr-field="account" data-ocr-anchor="account-from" className="min-w-0">
                           <div className="flex justify-between items-baseline mb-1 min-w-0 gap-1">
                             <FormLabel
                               className={cn(
@@ -2824,7 +2824,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                   control={form.control}
                   name="accountId"
                   render={({ field }: any) => (
-                    <FormItem data-ocr-field="account">
+                    <FormItem data-ocr-field="account" data-ocr-anchor="account-from">
                        <div className="flex justify-between items-baseline gap-2 min-w-0">
                         <FormLabel className={cn(highlightBankLabelCopyMismatch && "font-semibold text-red-600")}>
                           To Bank/Cash Account

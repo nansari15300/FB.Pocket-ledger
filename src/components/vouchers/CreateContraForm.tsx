@@ -2095,7 +2095,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                       control={form.control} 
                       name="fromAccountId" 
                       render={({ field }: any) => (
-                        <FormItem className="min-w-0">
+                        <FormItem className="min-w-0" data-ocr-field="account" data-ocr-anchor="account-from">
                           <div className="flex justify-between items-baseline mb-1 min-w-0">
                             <FormLabel className={cn("text-xs truncate", showCopyFromAccountFromSource && "text-red-600 font-semibold")}>Pay from (From account)</FormLabel>
                             {fromAccountBalance !== null && <FormLabel className="text-[10px] text-muted-foreground shrink-0">Bal: {formatCurrencyForPrint(fromAccountBalance, { noSuffix: true, noAnimation: true })}</FormLabel>}
@@ -2154,7 +2154,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                       control={form.control} 
                       name="toAccountId" 
                       render={({ field }: any) => (
-                        <FormItem className="min-w-0">
+                        <FormItem className="min-w-0" data-ocr-field="account-to" data-ocr-anchor="account-to">
                           <div className="flex justify-between items-baseline mb-1 min-w-0">
                             <FormLabel className={cn("text-xs truncate", showCopyToAccountFromSource && "text-red-600 font-semibold")}>To Account</FormLabel>
                             <div className="flex items-center gap-1 shrink-0">
@@ -2416,7 +2416,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                   <div className="rounded-lg border border-emerald-300/80 bg-emerald-50/70 p-3 space-y-3">
                   <div className={cn("grid gap-6 min-w-0 items-stretch", showOtherChargeCard ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1 md:grid-cols-2")}>
                     <div className="h-full min-h-0 rounded-lg border bg-muted/20 p-3 flex flex-col">
-                    <FormField control={form.control} name="fromAccountId" render={({ field }: any) => (<FormItem className="flex flex-col flex-1 min-h-0">
+                    <FormField control={form.control} name="fromAccountId" render={({ field }: any) => (<FormItem className="flex flex-col flex-1 min-h-0" data-ocr-field="account" data-ocr-anchor="account-from">
                         <div className="flex justify-between items-baseline">
                             <FormLabel className={cn(showCopyFromAccountFromSource && "text-red-600 font-semibold")}>Pay from (From account)</FormLabel>
                             {fromAccountBalance !== null && <FormLabel className={cn("text-xs font-semibold", fromAccountBalance >= 0 ? 'text-green-600' : 'text-red-600')}>{`Balance: ${formatCurrencyForPrint(fromAccountBalance, { showDrCr: true, noAnimation: true })}`}</FormLabel>}
@@ -2500,7 +2500,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
                             </div>
                         </div>
                         <div className="mt-auto grid grid-cols-[minmax(0,1fr)_minmax(12ch,max-content)] gap-3 items-end pt-4">
-                          <FormField control={form.control} name="toAccountId" render={({ field }: any) => (<FormItem className="min-w-0">
+                          <FormField control={form.control} name="toAccountId" render={({ field }: any) => (<FormItem className="min-w-0" data-ocr-field="account-to" data-ocr-anchor="account-to">
                         <div className="min-w-0 w-full flex items-center gap-1">
                           <div className="min-w-0 flex-1 overflow-hidden">
                             <Combobox

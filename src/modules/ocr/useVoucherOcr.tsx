@@ -1043,7 +1043,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                     const toIds = toHit.candidates;
                     (toHit.candidateNames ?? []).forEach((name, i) => {
                       const id = toIds[i];
-                      if (id) rExtra.push({ id: `account-${id}`, label: `Use ${name} (to)`, value: name, reason: toHit.reason, apply: () => write(toPath, id) });
+                      if (id) rExtra.push({ id: `account-to-${id}`, label: `Use ${name} (to)`, value: name, reason: toHit.reason, apply: () => write(toPath, id) });
                     });
                     const toName = rc.parsed?.beneficiary?.accountName || rc.parsed?.beneficiary?.bankName || "";
                     rExtra.push({
@@ -2394,6 +2394,10 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               : `${b.items.length} suggestions for this field`;
         const ci = b.items.find((x) => x.id.startsWith("create-item-"));
         const createExpense = b.items.find((x) => x.id === "create-expense-account");
+        const createAccountTo = b.items.find((x) => x.id === "create-account-to" || x.id === "account-to" || x.id.startsWith("account-to-"));
+        const createAccountFrom = b.items.find((x) => x.id === "create-account-from" || x.id === "account" || (x.id.startsWith("account-") && !x.id.startsWith("account-to") && !x.id.startsWith("account-payee-")));
+        if (createAccountTo) b.anchor = "account-to";
+        else if (createAccountFrom) b.anchor = "account-from";
         if (createExpense) {
           const existingExpense = b.items.find((x) => x.id.startsWith("use-expense-account-"));
           b.title = `${existingExpense ? "Confirm expense account" : "Expense account not found"} — choose or create “${createExpense.value}”?`;

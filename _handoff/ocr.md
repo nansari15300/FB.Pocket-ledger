@@ -588,3 +588,32 @@ Ansari Ji (t165u): when the min-20 rule adds earlier-dated files, the date pill 
 - this handoff
 
 **Tests:** `npx tsx tests/ocr/companyDocDateWindow.selftest.mts` and `npm run typecheck`. Both passed on the laptop (2026-11-19 10:22 Asia/Kathmandu).
+
+## OCR suggestion bubble direction: Direct Expense From Bank/Cash (2026-11-19 12:30 Asia/Kathmandu, OCR Master)
+
+Ansari Ji (t166u): in New Trxn, Direct Expense, Gemini OCR showed "Create bank account (From)? (field not on screen)" floating near Attach Files, with no arrow pointing at the visible From Bank/Cash field. He asked whether pointing is missing for all voucher types.
+
+**Root cause**
+- Pointing already exists for every voucher type that marks its fields with `data-ocr-field` / `data-ocr-anchor`. The bubble tail is drawn only when that field is found; otherwise the bubble falls back to the OCR bar (`data-pl-ocr-refresh-bar`, near Attach Files) and shows "(field not on screen)".
+- `ocrFieldForSuggestion("create-account-from")` did not map that id. The old rule was `id === "account" || id.startsWith("account-")`, and `create-account-from` matches neither, so it fell through to `"lines"`. Direct Expense has no item-lines field, so the bubble treated the field as missing even though From Bank/Cash was on screen (`data-ocr-field="account"`).
+- The same gap affected `create-account-to` (Contra To) and `choose-vat` (fell through to lines). `account-payee-*` was incorrectly mapped to Bank/Cash (`account`) instead of `party`.
+- Contra From/To account comboboxes had no `data-ocr-field` at all, so even a correct mapping could not point at them.
+
+**Fix (laptop, uncommitted, no commit/push/build)**
+- New pure helper `src/modules/ocr/ocrFieldAnchors.ts`: `create-account-from` -> `account` (anchor `account-from`); `create-account-to` / `account-to-*` -> `account-to`; `account-payee-*` -> `party`; `choose-vat` -> `tax`.
+- `OcrFieldBubbles.tsx` now imports / re-exports that helper. "(field not on screen)" still appears only when the target field is truly not found (absent or zero-size / not rendered). If the field is present, the tail points at it.
+- `useVoucherOcr.tsx` sets `b.anchor` to `account-from` / `account-to`, and Contra To candidate ids are now `account-to-${id}` so they do not collide with From candidates.
+- Direct Expense "To (Expense)" was already `data-ocr-field="party"` + `data-ocr-anchor="expense-account"` (no form change needed for that side).
+
+**Minimal form attribute adds (other bots' voucher forms; only data attributes)**
+- `CreatePaymentOutForm.tsx` (Payment + Direct Expense): `data-ocr-anchor="account-from"` on existing From Bank/Cash `data-ocr-field="account"` (mobile + desktop).
+- `CreatePaymentInForm.tsx` and `CreateDirectIncomeForm.tsx`: same `data-ocr-anchor="account-from"` on the Bank/Cash field.
+- `CreateContraForm.tsx`: added `data-ocr-field="account"` + `data-ocr-anchor="account-from"` on From, and `data-ocr-field="account-to"` + `data-ocr-anchor="account-to"` on To (mobile + desktop). This form previously had no account anchors.
+
+**Already had field anchors (no form edit)**
+- Sale / Purchase: party, ledger, lines, tax, discount, total, date, bill-no, due-date.
+- Payment Out / Direct Expense: party (To / To Expense), date, amount, other-charge, bill-no. From Bank/Cash already had `data-ocr-field="account"`.
+- Payment In / Direct Income: party, account, date, amount, bill-no.
+- Journal / Adjustment / Note / Add Salary / Production: date (and bill-no / amount / tax where those forms have them). They have no Bank/Cash From/To fields, so this suggestion type does not apply.
+
+**Tests:** `npx tsx tests/ocr/fieldBubbleAnchors.selftest.mts` and `npx tsx tests/ocr/bubbleTail.selftest.mts` and `npm run typecheck`. All passed on the laptop (2026-11-19 12:31 Asia/Kathmandu).
