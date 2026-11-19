@@ -40,7 +40,7 @@ import { shouldUseLocalCloudSync, isEligibleLocalDriveSyncCompanyRow } from "@/l
 import { resolveAuthoritativeFirestoreCompanyId } from "@/lib/resolveAuthoritativeFirestoreCompanyId";
 import { apkEmbeddedSqliteFirstWritesPreferred } from "@/lib/apkOnlineFirestoreWritePolicy";
 import { isFirebaseLedgerDataSyncDisabled } from "@/lib/firebaseLedgerDataSyncDisabled";
-import { isFirebaseLedgerCompanyAttachmentUploadEnabled } from "@/lib/firebaseLedgerCompanySyncPrefs";
+import { isFirebaseLedgerCompanyAttachmentUploadEnabled, isPocketBaseCompanyAttachmentSyncEnabled } from "@/lib/firebaseLedgerCompanySyncPrefs";
 import {
   companyIdFromStoragePathPrefix,
   buildPendingAttachmentStorageObjectPath,
@@ -1609,9 +1609,13 @@ export async function syncOnePendingFile(
     const pendingCompanyId = resolvePendingPayloadCompanyId(item);
     const registryCompanyId =
       (pendingCompanyId ? await resolveRegistryCompanyIdForPendingItem(item) : null) ?? pendingCompanyId;
-    // Pocket Ledger Server (PocketBase) company: the outbox push uploads its files (never Firebase Storage).
+    // Pocket Ledger Server (PocketBase) company: never Firebase Storage.
+    // Outbox push converts local: -> pbatt:, but if that push already finished with the
+    // file still local: (reload emptied the in-memory /__pl_attachment queue), retry
+    // the normal voucher/doc save path so the blob uploads and other PCs get pbatt:.
     if (registryCompanyId && isPocketBaseCompanyId(registryCompanyId)) {
-      return { success: false, uploaded: false, error: "Pocket Ledger Server company: file uploads with its data sync." };
+      const { syncOnePendingPocketBaseAttachment } = await import("@/lib/pendingPocketBaseAttachmentSync");
+      return syncOnePendingPocketBaseAttachment(item);
     }
     const driveSync = registryCompanyId
       ? (await resolvePendingAttachmentCloudSyncProvider(registryCompanyId)) === "google_drive"
@@ -1958,7 +1962,13 @@ export async function syncPendingFiles(options?: {
   let lastError: string | undefined;
   const syncOne = async (item: (typeof pending)[number]) => {
     const itemCompanyId = resolvePendingPayloadCompanyId(item);
-    if (itemCompanyId && !isFirebaseLedgerCompanyAttachmentUploadEnabled(itemCompanyId)) return;
+    if (
+      itemCompanyId &&
+      !isPocketBaseCompanyAttachmentSyncEnabled(itemCompanyId) &&
+      !isFirebaseLedgerCompanyAttachmentUploadEnabled(itemCompanyId)
+    ) {
+      return;
+    }
     const result = await syncOnePendingFile(item);
     if (result.success) {
       synced++;
@@ -2050,7 +2060,11 @@ export async function syncPendingFilesForCompany(
   if (!driveSync && isFirebaseLedgerDataSyncDisabled()) {
     return { synced: 0, uploaded: 0, failed: 0 };
   }
-  if (!driveSync && !isFirebaseLedgerCompanyAttachmentUploadEnabled(cid)) {
+  if (
+    !driveSync &&
+    !isPocketBaseCompanyAttachmentSyncEnabled(cid) &&
+    !isFirebaseLedgerCompanyAttachmentUploadEnabled(cid)
+  ) {
     return { synced: 0, uploaded: 0, failed: 0 };
   }
   const items = await listPendingFilesForCompany(cid);

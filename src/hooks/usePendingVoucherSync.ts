@@ -35,13 +35,14 @@ export function usePendingVoucherSync({ enabled = true }: UsePendingVoucherSyncO
       const masterResult = await syncPendingMasterMutations();
       const voucherResult = await syncPendingVoucherMutations();
       const fileResult = await syncPendingFiles();
+      const galleryResult = await flushGalleryOfflinePendingUploads();
       const recycleResult = await syncPendingRecycleBinMutations({
         userId: user?.uid,
         deleteCompanyComplete,
       });
       const result = {
-        synced: voucherResult.synced + masterResult.synced + fileResult.synced + recycleResult.synced,
-        failed: voucherResult.failed + masterResult.failed + fileResult.failed + recycleResult.failed,
+        synced: voucherResult.synced + masterResult.synced + fileResult.synced + galleryResult.uploaded + recycleResult.synced,
+        failed: voucherResult.failed + masterResult.failed + fileResult.failed + galleryResult.failed + recycleResult.failed,
       };
       setLastResult(result);
       return result;
