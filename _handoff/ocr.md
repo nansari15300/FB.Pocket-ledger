@@ -463,3 +463,23 @@ Copy onto ServerWin10 at:
 Then **restart PocketBase**. No migration. Left uncommitted.
 
 **Client files:** `galleryDocVisibility.ts`, `galleryOfflinePending.ts`, `galleryOfflinePendingIntro.ts`, `galleryOfflinePendingStore.ts`, `useGalleryServerCounts.ts`, `useGalleryOfflinePending.ts`, `plGalleryServerApi.ts`, `GalleryPageClient.tsx`, `savePhotoToUnassigned.ts`, `usePendingVoucherSync.ts`. Selftest: `tests/ocr/galleryCounts.selftest.mts`.
+### Gallery badge counts showing 0 (19 Nov 2026, uncommitted, hook not redeployed)
+
+After the first gallery-counts deploy, laptopdev Gallery for New parsa Engineering WorkShop Demo Compnany showed Unassigned 0, Duplicate 0, Auto post failed 0, Company Doc 0, while the Company Doc grid listed 12 files.
+
+**Cause:** Authenticated `GET /api/pl/gallery-counts?company=demo-compnany_f21b7bb6` returned 200 (65 times; last around 08:42 Asia/Kathmandu). The client treated those numbers as truth, including 0, and never fell back to the local voucher file count. Read-only SQLite on live `data.db` (same hook SQL, PocketBase company id `h353ic0cdqa2qof`) gives Unassigned 9, Duplicate 4, Auto post failed 1, Company Doc 16. Rows use the PB id in the `company` column and the app id in `data.companyId`. The hook looked up the company by app_id correctly, then `sqlAll` swallowed query errors and returned an empty list, so the hook answered `{ ok: true, ...: 0 }`. Likely trigger: `json_extract` of arrays / ints (fileUrls, isDeleted, uploadedAt objects) scanned into DynamicModel string fields. `pb_data/logs.db` does not exist; `auxiliary.db` `_logs` was empty; stdout after the 08:13 restart was not captured in `pocketbase.out.log`.
+
+**Fix (laptop only, left uncommitted):**
+- Hook: resolve company by app id or PocketBase id; count rows stored under either id (`company` column or `data.companyId`); `CAST(... AS TEXT)` on extracted JSON; SQL errors now return 500 (not ok:true zeros).
+- Client: trust server numbers only when `ok === true` and every field is a real non-negative integer (reject null / "" / missing `ok`). 401/403/500 fall back to local counts.
+
+**Deploy (Server master — copy from the laptop sources below, then restart PocketBase; do not edit live files from Server PC, no migration, no Cloudflared change):**
+Laptop sources:
+`C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\company_file_count.pb.js`
+`C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\lib\company_file_count.js`
+Live destinations:
+`C:\Project Next.js Balgram\PocketLedger-Server\sub-server\pb_hooks\company_file_count.pb.js`
+`C:\Project Next.js Balgram\PocketLedger-Server\sub-server\pb_hooks\lib\company_file_count.js`
+Then **restart PocketBase**.
+
+**Client files:** `src/modules/ocr/galleryServerCountParse.ts` (new), `plGalleryServerApi.ts`, `tests/ocr/galleryCounts.selftest.mts`.

@@ -18,6 +18,11 @@ import {
   galleryOfflinePendingIntro,
   galleryOfflinePendingMark,
 } from "../../src/modules/ocr/galleryOfflinePendingIntro";
+import {
+  asTrustedCount,
+  parseCompanyFileCount,
+  parseGalleryServerCounts,
+} from "../../src/modules/ocr/galleryServerCountParse";
 
 assert.equal(hasGalleryUploadedAt(undefined), false);
 assert.equal(hasGalleryUploadedAt(null), false);
@@ -77,5 +82,70 @@ assert.match(GALLERY_OFFLINE_PENDING_INTRO.ne, /\u0907\u0928\u094d\u091f\u0930\u
 assert.equal(galleryOfflinePendingMark("en"), "Offline");
 assert.equal(galleryOfflinePendingMark("hi"), GALLERY_OFFLINE_PENDING_MARK.hi);
 assert.equal(galleryOfflinePendingMark("ne"), GALLERY_OFFLINE_PENDING_MARK.ne);
+
+assert.equal(asTrustedCount(0), 0);
+assert.equal(asTrustedCount(16), 16);
+assert.equal(asTrustedCount(9.7), 9);
+assert.equal(asTrustedCount("4"), 4);
+assert.equal(asTrustedCount(" 1 "), 1);
+assert.equal(asTrustedCount(null), null);
+assert.equal(asTrustedCount(undefined), null);
+assert.equal(asTrustedCount(""), null);
+assert.equal(asTrustedCount("   "), null);
+assert.equal(asTrustedCount(false), null);
+assert.equal(asTrustedCount(true), null);
+assert.equal(asTrustedCount(-1), null);
+assert.equal(asTrustedCount(NaN), null);
+
+assert.deepEqual(
+  parseGalleryServerCounts({
+    ok: true,
+    company: "demo-compnany_f21b7bb6",
+    unassigned: 9,
+    duplicate: 4,
+    autoPostFailed: 1,
+    companyFiles: 16,
+  }),
+  { unassigned: 9, duplicate: 4, autoPostFailed: 1, companyFiles: 16 }
+);
+assert.deepEqual(
+  parseGalleryServerCounts({
+    ok: true,
+    unassigned: 0,
+    duplicate: 0,
+    autoPostFailed: 0,
+    companyFiles: 0,
+  }),
+  { unassigned: 0, duplicate: 0, autoPostFailed: 0, companyFiles: 0 }
+);
+assert.throws(() => parseGalleryServerCounts(null), /invalid gallery counts/);
+assert.throws(() => parseGalleryServerCounts({}), /invalid gallery counts/);
+assert.throws(
+  () => parseGalleryServerCounts({ unassigned: 0, duplicate: 0, autoPostFailed: 0, companyFiles: 0 }),
+  /invalid gallery counts/
+);
+assert.throws(
+  () => parseGalleryServerCounts({ ok: false, unassigned: 9, duplicate: 4, autoPostFailed: 1, companyFiles: 16 }),
+  /invalid gallery counts/
+);
+assert.throws(
+  () => parseGalleryServerCounts({ ok: true, unassigned: null, duplicate: 4, autoPostFailed: 1, companyFiles: 16 }),
+  /invalid gallery counts/
+);
+assert.throws(
+  () => parseGalleryServerCounts({ ok: true, unassigned: "", duplicate: 4, autoPostFailed: 1, companyFiles: 16 }),
+  /invalid gallery counts/
+);
+assert.throws(
+  () => parseGalleryServerCounts({ ok: true, unassigned: 9, duplicate: 4, autoPostFailed: 1 }),
+  /invalid gallery counts/
+);
+
+assert.equal(parseCompanyFileCount({ ok: true, fileCount: 16 }), 16);
+assert.equal(parseCompanyFileCount({ ok: true, fileCount: 0 }), 0);
+assert.throws(() => parseCompanyFileCount({ fileCount: 16 }), /invalid file count/);
+assert.throws(() => parseCompanyFileCount({ ok: true, fileCount: null }), /invalid file count/);
+assert.throws(() => parseCompanyFileCount({ ok: true, fileCount: "" }), /invalid file count/);
+assert.throws(() => parseCompanyFileCount({ ok: false, fileCount: 16 }), /invalid file count/);
 
 console.log("galleryCounts selftest: OK");

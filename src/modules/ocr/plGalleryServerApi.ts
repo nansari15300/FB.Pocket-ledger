@@ -3,12 +3,24 @@
 import { PocketBaseNotSignedInError, PocketBaseRequestError, pbRequest } from "@/lib/pocketbaseData/pbClient";
 import type { RecentOcrLink } from "@/modules/ocr/recentOcrLinks";
 import { normalizeRecentOcrLink } from "@/modules/ocr/recentOcrLinks";
+import {
+  parseCompanyFileCount,
+  parseGalleryServerCounts,
+  type GalleryServerCounts,
+} from "@/modules/ocr/galleryServerCountParse";
 
 export type CompanyFileCountResponse = {
   ok: true;
   company: string;
   fileCount: number;
 };
+
+export {
+  asTrustedCount,
+  parseCompanyFileCount,
+  parseGalleryServerCounts,
+  type GalleryServerCounts,
+} from "@/modules/ocr/galleryServerCountParse";
 
 export async function fetchCompanyFileCount(companyId: string): Promise<number> {
   const cid = String(companyId || "").trim();
@@ -17,9 +29,7 @@ export async function fetchCompanyFileCount(companyId: string): Promise<number> 
     `/api/pl/company-file-count?company=${encodeURIComponent(cid)}`,
     { method: "GET", timeoutMs: 15_000 }
   );
-  const count = Number((raw as { fileCount?: unknown } | null)?.fileCount);
-  if (!Number.isFinite(count) || count < 0) throw new Error("invalid file count");
-  return Math.floor(count);
+  return parseCompanyFileCount(raw);
 }
 
 export async function fetchRecentOcrLinks(companyId: string): Promise<RecentOcrLink[]> {
@@ -82,39 +92,28 @@ export type GalleryServerCountsResponse = {
   companyFiles: number;
 };
 
-function asNonNegInt(value: unknown): number | null {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return Math.floor(n);
-}
-
-export async function fetchGalleryServerCounts(companyId: string): Promise<{
-  unassigned: number;
-  duplicate: number;
-  autoPostFailed: number;
-  companyFiles: number;
-}> {
+export async function fetchGalleryServerCounts(companyId: string): Promise<GalleryServerCounts> {
   const cid = String(companyId || "").trim();
   if (!cid) throw new Error("company required");
   const raw = await pbRequest(
     `/api/pl/gallery-counts?company=${encodeURIComponent(cid)}`,
     { method: "GET", timeoutMs: 15_000 }
   );
-  const row = raw as Partial<GalleryServerCountsResponse> | null;
-  const unassigned = asNonNegInt(row?.unassigned);
-  const duplicate = asNonNegInt(row?.duplicate);
-  const autoPostFailed = asNonNegInt(row?.autoPostFailed);
-  const companyFiles = asNonNegInt(row?.companyFiles);
-  if (unassigned == null || duplicate == null || autoPostFailed == null || companyFiles == null) {
-    throw new Error("invalid gallery counts");
-  }
-  return { unassigned, duplicate, autoPostFailed, companyFiles };
+  return parseGalleryServerCounts(raw);
 }
 
 export function isGalleryServerApiUnavailable(error: unknown): boolean {
   if (error instanceof PocketBaseNotSignedInError) return true;
   if (error instanceof PocketBaseRequestError) {
-    return error.status === 404 || error.status === 501 || error.status === 502 || error.status === 503;
+    return (
+      error.status === 401 ||
+      error.status === 403 ||
+      error.status === 404 ||
+      error.status === 500 ||
+      error.status === 501 ||
+      error.status === 502 ||
+      error.status === 503
+    );
   }
   return false;
 }
