@@ -1,5 +1,5 @@
 "use client";
-/** Add Voucher header: OCR / Overwrite pills + one OCR-settings gear (dialog, when OCR is on). */
+/** Add Voucher header: 4-position OCR mode pill (Off / Manual / Semi / Full Auto) + settings gear. */
 import React, { useEffect, useState } from "react";
 import { Pencil, Plus, Settings, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -9,23 +9,14 @@ import { AppFreshInfoButton } from "@/components/ui/AppFreshInfoButton";
 import { useCompany } from "@/hooks/useCompany";
 import { cn } from "@/lib/utils";
 import { AUTO_POST_SECONDS_MAX, AUTO_POST_SECONDS_MIN, clampAutoPostSeconds, setOcrPrefs, useOcrPrefs, type OcrConnectorStyle, type OcrNarrationStyle, type OcrPrefs } from "./prefs";
-import { useManualOcrProfile } from "./manualProfile";
 import { useOcrPlanAllowed } from "./gate";
+import { VoucherOcrModeSwitch } from "./VoucherOcrModeSwitch";
+import { useVoucherOcrDialogMode } from "./useVoucherOcrDialogMode";
 import { ocrCloud, ocrCloudErrorText, useOcrCloudStatus } from "./cloud/ocrCloudClient";
 import { invalidateOcrOwnAliases } from "./ownAliases";
 import { deleteOcrAiKey, invalidateOcrAiStatus, listOcrAiAliases, looksLikeGeminiKeyInput, ocrAiErrorText, removeOcrAiAlias, saveOcrAiAliases, saveOcrAiKey, useOcrAiStatus, type OcrAiAliasKind, type OcrAiAliasesList } from "./ai/aiClient";
 import { AiChatButton } from "./ai/AiChatDialog";
 import { useAiChatStrings } from "./ai/aiChatStrings";
-
-function Pill({ id, label, checked, onChange, title, extra }: { id: string; label: string; checked: boolean; onChange: (v: boolean) => void; title: string; extra?: React.ReactNode }) {
-  return (
-    <label htmlFor={id} title={title} className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-slate-400/50 bg-white/70 px-2 text-xs font-medium text-slate-800 dark:bg-slate-900/60 dark:text-slate-100">
-      <span className="whitespace-nowrap">{label}</span>
-      <Switch id={id} checked={checked} onCheckedChange={(v) => onChange(v === true)} className="scale-75" />
-      {extra}
-    </label>
-  );
-}
 
 function SecondsRow({ id, label, draft, setDraft, onCommit, onOk, disabled }: { id: string; label: string; draft: string; setDraft: (v: string) => void; onCommit: () => void; onOk: () => void; disabled?: boolean }) {
   return (
@@ -864,81 +855,32 @@ export function VoucherOcrKeySettingsPanel() {
   );
 }
 
-/**
- * Desktop header narrows as the voucher dialog shrinks. The overwrite pill hides first when space is tight.
- *
- * Measured, not guessed: the row compares its own clientWidth with the width its pills actually need
- * (scrollWidth). If they fit → nothing hides. That works at any zoom, font and pill wording, where a
- * hardcoded breakpoint always hid things on wide screens.
- */
-function useHeaderCrowding() {
-  const rowRef = React.useRef<HTMLDivElement | null>(null);
-  /**
-   * 0 = wide. Each extra step hides one more pill. `overflow-hidden` keeps the row from growing, so
-   * clientWidth stays the available space and scrollWidth stays the wanted space.
-   */
-  const [tightness, setTightness] = React.useState(0);
-
-  React.useEffect(() => {
-    const el = rowRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const measure = () => {
-      setTightness((cur) => {
-        /* Space still left after the currently visible pills (clientWidth includes the hidden slack). */
-        const overflow = el.scrollWidth - el.clientWidth;
-        /* One more pill fits once the overflow is negative by ~half a pill. */
-        if (overflow <= 0 && cur !== 0) return 0;
-        if (overflow > 0) return Math.min(2, cur + 1);
-        return cur;
-      });
-    };
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    /* Pill content also changes (OCR / OCR Off), so watch children too. */
-    measure();
-    return () => ro.disconnect();
-  }, []);
-
-  return {
-    rowRef,
-    hideOverwrite: tightness >= 1,
-  };
-}
 
 export function VoucherOcrHeaderToggles({ className }: { className?: string }) {
   const allowed = useOcrPlanAllowed();
   const p = useOcrPrefs();
-  const { company, companyId } = useCompany();
-  // Decision 2: hand-opened vouchers follow the Manual Runner profile; the pill shows it and opens that setting.
-  const manualProfile = useManualOcrProfile(String((company as { authoritativeCompanyId?: string } | null)?.authoritativeCompanyId || companyId || ""));
-  const { rowRef: crowdRef, hideOverwrite } = useHeaderCrowding();
+  const { dialogMode, runnerMode, ocrEnabled, chooseMode, choosing, canChangeRunner } = useVoucherOcrDialogMode();
   if (!allowed) return null;
   const style: OcrConnectorStyle = p.connectorStyle === "line" ? "line" : "tail";
   const narrationStyle: OcrNarrationStyle = p.narrationStyle === "short" ? "short" : "full";
   return (
-    <div ref={crowdRef} className={cn("flex min-w-0 flex-1 items-center gap-1 overflow-hidden", className)} data-pl-ocr-header-toggles="">
-      <Pill
-        id="pl-ocr-enabled"
-        label={p.enabled ? "OCR" : "OCR Off"}
-        checked={p.enabled}
-        onChange={(v) => setOcrPrefs({ enabled: v })}
-        title={p.enabled ? "OCR Enabled - bill is read when the first file is attached" : "OCR Disabled"}
+    <div className={cn("flex min-w-0 flex-1 items-center gap-1 overflow-hidden", className)} data-pl-ocr-header-toggles="">
+      <VoucherOcrModeSwitch
+        mode={dialogMode}
+        collapsed={!ocrEnabled}
+        restoreMode={runnerMode}
+        onModeChange={(next) => { void chooseMode(next); }}
+        runnerPositionsDisabled={!canChangeRunner}
+        disabled={choosing}
       />
-      {p.enabled ? (
-        <>
-          <OcrSettingsGear
-            connectorStyle={style}
-            narrationStyle={narrationStyle}
-            switchOn={p.autoSwitchVoucher !== false}
-            switchSeconds={clampAutoPostSeconds(p.autoSwitchSeconds)}
-            translateToEnglish={p.translateToEnglish === true}
-            aiCopilot={p.aiCopilot === true}
-          />
-          {hideOverwrite ? null : (
-            <Pill id="pl-ocr-overwrite" label="Overwrite edited" checked={manualProfile.overwriteEdited} onChange={() => window.dispatchEvent(new Event("pl:voucher-post-setting-open"))} title="Refresh re-fills fields you edited by hand too (Voucher Post Setting → Manual Runner)" />
-          )}
-        </>
-      ) : null}
+      <OcrSettingsGear
+        connectorStyle={style}
+        narrationStyle={narrationStyle}
+        switchOn={p.autoSwitchVoucher !== false}
+        switchSeconds={clampAutoPostSeconds(p.autoSwitchSeconds)}
+        translateToEnglish={p.translateToEnglish === true}
+        aiCopilot={p.aiCopilot === true}
+      />
     </div>
   );
 }

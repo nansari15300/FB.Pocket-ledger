@@ -721,3 +721,30 @@ Ansari Ji (t169u): if Select Runner is not Manual, Refresh OCR (and a manual OCR
 - this handoff
 
 **Tests:** `npx tsx tests/ocr/manualOcrRunnerGate.selftest.mts` and `npm run typecheck`. Both passed on the laptop (2026-11-19 13:56 Asia/Kathmandu).
+
+## New Trxn header: 4-position OCR mode pill (2026-11-19 14:14 Asia/Kathmandu, OCR Master)
+
+Ansari Ji (t171u): the New Trxn voucher dialog header had an OCR on/off pill, a settings gear, and an "Overwrite edited" pill. He wanted Overwrite edited removed from this header (it stays in Voucher Post Setting, and still works there), and one long switch inside a single pill: Off, Manual, Semi, Full Auto. When Off, collapse to a small on/off switch and hide the other positions; the settings icon stays visible.
+
+**Behaviour (laptop, uncommitted, no commit/push/build)**
+- Off = voucher-dialog OCR pref off (`setOcrPrefs({ enabled: false })`). The selected runner is not changed.
+- Manual / Semi / Full Auto = OCR pref on, and the selected runner is written to the same `companies/{id}/auto_ocr_settings/server_auto_ocr` doc as Voucher Post Setting → Select Runner, the gallery ribbon, and the Manual OCR runner gate (`activeRunnerMode`, exclusive `runnerProfiles`, `enabled` / `processingMode`).
+- Turning the collapsed Off switch on restores the four-position slider at the **last selected runner mode** (not Off).
+- Settings gear stays visible in both Off and On states, and still opens Voucher Post Setting.
+- "Overwrite edited" is no longer shown in this header. The setting and its effect remain in Voucher Post Setting (Manual Runner / the other profiles).
+- Non-admin: Off/on still works. Manual / Semi / Full Auto positions are disabled, with the existing admin-only tooltip (intro language).
+- Switching to Semi / Full Auto still uses the gallery ribbon rules: Local PC runner needs a selected admin device (toast + opens Auto post settings); the chosen engine must have a saved key. The auto runner is held (`pl:gallery:auto-post-runner-hold`) when the runner mode actually changes.
+- Labels (Off / Manual / Semi / Full Auto and tooltips) are in intro language (en / hi / ne). The slider look follows the gallery Manual/Semi/Full ribbon switch. On PC/desktop widths (`md` and up) the 4-position slider is 25% longer than the first cut (16.5rem → 20.625rem). Mobile width stays 16.5rem.
+
+**Files (laptop, uncommitted, no commit/push/build)**
+- `src/modules/ocr/voucherOcrDialogMode.ts` (new, pure mapping)
+- `src/modules/ocr/voucherOcrDialogModeIntro.ts` (new)
+- `src/modules/ocr/VoucherOcrModeSwitch.tsx` (new)
+- `src/modules/ocr/useVoucherOcrDialogMode.ts` (new)
+- `src/modules/ocr/manualOcrRunnerGate.ts` — `buildSwitchToRunnerModePatch`, `isCompanyAdminUser`; `buildSwitchToManualPatch` now uses the shared patch
+- `src/modules/ocr/useManualOcrRunnerGate.ts` — uses shared `isCompanyAdminUser`
+- `src/modules/ocr/VoucherOcrHeaderToggles.tsx`
+- `tests/ocr/voucherOcrDialogMode.selftest.mts` (new)
+- this handoff
+
+**Tests:** `npx tsx tests/ocr/voucherOcrDialogMode.selftest.mts` and `npx tsx tests/ocr/manualOcrRunnerGate.selftest.mts` and `npm run typecheck`. All passed on the laptop (2026-11-19 14:14 Asia/Kathmandu).

@@ -12,20 +12,9 @@ import { firestore } from "@/lib/plClientSession";
 import { setDoc } from "@/lib/writeGateway/pbWrites";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
-import { runnerModeFromSettings, buildSwitchToManualPatch, type AutoPostMode } from "./manualOcrRunnerGate";
+import { runnerModeFromSettings, buildSwitchToManualPatch, isCompanyAdminUser, type AutoPostMode } from "./manualOcrRunnerGate";
 
 const SETTINGS_DOC_ID = "server_auto_ocr";
-
-function isCompanyAdminUser(company: unknown, uid: string): boolean {
-  if (!uid || !company || typeof company !== "object") return false;
-  const row = company as { ownerId?: unknown; owner?: unknown; sharedWith?: unknown; authoritativeCompanyId?: unknown };
-  if (String(row.ownerId || row.owner || "") === uid) return true;
-  return Array.isArray(row.sharedWith) && row.sharedWith.some((member: unknown) => {
-    const item = member && typeof member === "object" ? member as { uid?: unknown; userId?: unknown; role?: unknown } : {};
-    return String(item.uid || item.userId || "") === uid
-      && ["admin", "CompanyAdmin", "SuperAdmin"].includes(String(item.role || ""));
-  });
-}
 
 export function useManualOcrRunnerGate(): {
   mode: AutoPostMode;
