@@ -495,3 +495,38 @@ Ansari Ji approved (t161u): wire the display-only loopback URL rewrite so a file
 **Tests:** `tests/ocr/loopbackFileUrlDisplay.selftest.mts`.
 
 **Note:** The 19 Nov gallery-count parse client files (`galleryServerCountParse.ts`, `plGalleryServerApi.ts`, `tests/ocr/galleryCounts.selftest.mts`, this handoff) were already committed in `79e05c54` (auto-sync DESKTOP-M4HAJE9 2026-11-19 08:55 Asia/Kathmandu). Server hook sources on the laptop are still uncommitted: `PocketLedger-Server/sub-server/pb_hooks/company_file_count.pb.js` and `lib/company_file_count.js`.
+
+### Company Doc badge still 12, server has 16 (19 Nov 2026 09:38 Asia/Kathmandu, hook undeployed)
+
+Ansari Ji reported (t162u) after Git Master synced app commits `3c7ea7f4` + `79e05c54` and server repo `005f5b1`: grey previews work, but Gallery Company Doc still shows 12 (expected 16) for New parsa Engineering WorkShop Demo Compnany. Other badges: Unassigned 10, Duplicate 4, Auto post failed 1. Company Doc tab showed 1 file because of the date filter.
+
+**Company:** PocketBase id `h353ic0cdqa2qof`, app id `demo-compnany_f21b7bb6`. Live `data.db` (read-only, same hook SQL) confirms Company Doc **16 is the correct all-FY total**: 16 alive vouchers, one attachment each, all via `fileUrls`. Kinds: 10 `pbatt:`, 5 `http://127.0.0.1:8090/api/files/...`, 1 `local:`. Unassigned 10, Auto post failed 1, Duplicate 4 match the screenshot. No extra unassigned/duplicate files belong in Company Doc (those badges stay separate). The 4 files that local FY-scoped `useVouchers()` does not include are:
+
+- PUR-80-81-001
+- Sale Inv-80-81-002
+- Sale Inv-80-81-003
+- PUR-81-82-001
+
+The other 12 are current-FY / unscoped numbers such as PUR-83-84-*, Sale Inv-83-84-*, DEXP-83-84-002, PYMT-83-84-001, and CNTR Out-001.
+
+**Cause:** Deployed hook `005f5b1` (live files hash-matched the laptop copy; PocketBase restarted 19 Nov 2026 08:55:39 Asia/Kathmandu) still used `CAST(json_extract(...) AS TEXT)` into DynamicModel string fields. `CAST(NULL AS TEXT)` is still NULL when `isDeleted`, `_pbHardDeleted`, or `unassignedFile.url` is missing. Live `pocketbase.out.log` (08:52-08:55, before that restart) already showed `sql: Scan error ... converting NULL to string is unsupported` on `is_deleted`, `hard_deleted`, `uf_url`, and `mode`. `sqlAll` throws, `GET /api/pl/gallery-counts` returns 500, and the client correctly falls back to local counts: unassigned/duplicate/auto-failed happen to match the server, but Company Doc uses FY-scoped local vouchers (12), not the server all-FY 16.
+
+**Fix (laptop only, left uncommitted, do not deploy from this change):** Every hook SQL value scanned into a DynamicModel string now uses `COALESCE(CAST(json_extract/json_type(...) AS TEXT), '')`. Route file unchanged. Client already prefers `companyFiles` from gallery-counts when the hook returns `ok: true`; no badge-wiring change required. Comment added in `companyFileCountCore.ts`. Selftest: `tests/ocr/galleryCountSqlNull.selftest.mts`.
+
+**Deploy (Server master — copy from the laptop sources below, then restart PocketBase; do not edit live files from Server PC, no migration, no Cloudflared change):**
+
+Laptop sources:
+
+- `C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\lib\company_file_count.js`
+  SHA256 `B5393285679CCF21450595D6C0D6EB3C0807668100A204B50187ABAB1B643C92` (17123 bytes)
+- `C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\company_file_count.pb.js`
+  SHA256 `08CD494726251611BBBB9DFBBD65ACFCDE17AF2AE4A627A33E2C47E0831D2900` (1391 bytes, unchanged from `005f5b1`)
+
+Live destinations:
+
+- `C:\Project Next.js Balgram\PocketLedger-Server\sub-server\pb_hooks\lib\company_file_count.js`
+- `C:\Project Next.js Balgram\PocketLedger-Server\sub-server\pb_hooks\company_file_count.pb.js`
+
+Then **restart PocketBase**. After restart, Company Doc should show 16.
+
+**Client files:** `src/modules/ocr/companyFileCountCore.ts` (comment only), `tests/ocr/galleryCountSqlNull.selftest.mts` (new), this handoff. Left uncommitted for Git Master.

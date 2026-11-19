@@ -1,6 +1,7 @@
 /**
  * Company Doc file-count rules, shared by the client fallback and tests.
  * Keep in sync with PocketLedger-Server sub-server/pb_hooks/lib/company_file_count.js
+ * Hook SQL must COALESCE(CAST(json_extract/json_type AS TEXT), '') so PocketBase DynamicModel can scan missing keys.
  *
  * Count = number of attachment URLs on ALIVE vouchers (manual + OCR), all FYs.
  * Same rule as getVoucherAttachmentUrlsForUi:
