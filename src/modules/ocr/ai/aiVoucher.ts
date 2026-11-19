@@ -14,6 +14,8 @@
  * Pure (no React / network) so the selftests can run it.
  */
 import { defaultVoucherDateWindow, resolveBillDate } from "@/lib/ocr/dates";
+import { hasCashWording } from "@/lib/ocr/receiptDetect/paymentAccountEvidence";
+import { digitConfusionExplains, parseAmountInWords } from "./amountWords";
 import { bestUniqueMatch, namesOf } from "../fuzzy";
 import { matchPartyIdentity } from "../masterMatch";
 import { normalizeName } from "../normalize";
@@ -95,6 +97,8 @@ export type OcrAiVoucher = {
   invoice_no: string | null;
   date_ad: string | null;
   date_bs: string | null;
+  /** Date line exactly as printed (original digits / separators). */
+  date_bs_raw: string | null;
   payment_mode: string | null;
   /** Printed due date (YYYY-MM-DD AD) - never computed by the AI. */
   due_date: string | null;
@@ -271,7 +275,7 @@ export function normalizeAiVoucher(raw: unknown): OcrAiVoucher {
     lines: normalizeLines(o.lines),
     item_columns: cols.length ? cols : null,
     doc_type: docType,
-    doc_kind: kind && DOC_KINDS.includes(kind) ? kind : null,
+    doc_kind: downgradeCashBankTransfer(kind && DOC_KINDS.includes(kind) ? kind : null, o),
     our_company_role: role === "buyer" || role === "seller" || role === "none" ? role : null,
     bank_flow: flow && BANK_FLOWS.includes(flow) ? flow : null,
     bank_flow_reason: str(o.bank_flow_reason),
@@ -291,6 +295,7 @@ export function normalizeAiVoucher(raw: unknown): OcrAiVoucher {
     invoice_no: str(o.invoice_no),
     date_ad: str(o.date_ad),
     date_bs: str(o.date_bs),
+    date_bs_raw: str(o.date_bs_raw),
     payment_mode: str(o.payment_mode),
     due_date: isoDate(o.due_date),
     credit_days: (() => { const n = aiNum(o.credit_days); return n != null && n > 0 && n <= 3650 ? Math.round(n) : null; })(),
@@ -371,51 +376,69 @@ export function aiFallbackText(d: OcrAiVoucher): string {
 
 /* ---------------- Amount cross-checks (Dr = Cr, Grand Total vs items vs words) ---------------- */
 
-const WORD_UNITS: Record<string, number> = {
-  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
-  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
-  twenty: 20, thirty: 30, forty: 40, fourty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
-};
-const WORD_SCALES: Record<string, number> = { hundred: 100, thousand: 1000, lakh: 100000, lakhs: 100000, lac: 100000, lacs: 100000, million: 1000000, crore: 10000000, crores: 10000000, billion: 1000000000 };
+export { parseAmountInWords, digitConfusionExplains, confusedYearAlternatives } from "./amountWords";
+
+const BANK_TRANSFER_HINT =
+  /(?:\b(?:connect\s*ips|rtgs|neft|imps|transaction\s*id|debit\s*status|beneficiary|cheque|account\s*(?:no\.?|number|#))\b|\u092c\u0948\u0902\u0915|\u092c\u0948\u0919\u094d\u0915|\u091a\u0947\u0915)/i;
 
 /**
- * "Rupees Ten Thousand Two Hundred Fifty and Paisa Fifty Only" -> 10250.5. Also "Rs. 10,250/- only" style digits
- * (Devanagari digits allowed). Returns null when the words cannot be read as one number.
+ * A cash / नगद / खर्च भौचर must not stay classified as bank_transfer when the paper
+ * has no bank-slip, cheque, wallet or account-number evidence.
  */
-export function parseAmountInWords(raw: string | null | undefined): number | null {
-  const t0 = devanagariDigitsToLatin(String(raw ?? "")).toLowerCase();
-  if (!t0.trim()) return null;
-  const digits = t0.replace(/,/g, "").match(/\d+(?:\.\d+)?/g);
-  if (digits && digits.length === 1 && !/[a-z]{3,}\s+(?:hundred|thousand|lakh|crore)/.test(t0)) return Number(digits[0]);
-  const parse = (s: string): number | null => {
-    const words = s.replace(/[^a-z\s-]/g, " ").replace(/-/g, " ").split(/\s+/).filter(Boolean);
-    let total = 0, cur = 0, seen = false;
-    for (const w of words) {
-      if (w in WORD_UNITS) { cur += WORD_UNITS[w]; seen = true; }
-      else if (w === "hundred") { cur = (cur || 1) * 100; seen = true; }
-      else if (w in WORD_SCALES) { total += (cur || 1) * WORD_SCALES[w]; cur = 0; seen = true; }
-      else if (/^(rupees?|rs|npr|nrs|only|and|nepali|indian|in|words?|amount|total|grand|the|of|sum|net)$/.test(w)) continue;
-      else return null;
-    }
-    return seen ? total + cur : null;
-  };
-  // In common invoice wording, the rupee amount ends with "and <digits> paisa"
-  // (e.g. "... Forty Nine and Three Paisa"). Split before that final conjunction;
-  // otherwise the trailing paisa count is incorrectly included as rupees.
-  const paisaMarker = /\b(?:paisa|paise)\b/.exec(t0);
-  if (paisaMarker?.index != null) {
-    const andIndex = t0.lastIndexOf(" and ", paisaMarker.index);
-    if (andIndex >= 0) {
-      const rupees = parse(t0.slice(0, andIndex));
-      const paisa = parse(t0.slice(andIndex + 5, paisaMarker.index));
-      if (rupees != null && paisa != null) return rupees + paisa / 100;
-    }
+export function downgradeCashBankTransfer(kind: OcrAiDocKind | null, o: Record<string, unknown>): OcrAiDocKind | null {
+  if (kind !== "bank_transfer") return kind;
+  const paymentMode = str(o.payment_mode);
+  const transferMode = str(o.transfer_mode);
+  const transferRef = str(o.transfer_reference);
+  const raw = rawText(o.raw_text);
+  const lines = Array.isArray(o.lines) ? o.lines : [];
+  const blob = [
+    paymentMode, transferMode, transferRef, raw,
+    str(o.debit_bank), str(o.credit_bank), str(o.debit_account), str(o.credit_account),
+    str(o.voucher_type_reason), str(o.bank_flow_reason),
+  ].filter(Boolean).join("\n");
+  const cash = hasCashWording(blob) || /\bcash\b/i.test(`${paymentMode ?? ""} ${transferMode ?? ""}`);
+  if (!cash) return kind;
+  if (transferRef) return kind;
+  const bankBits = [str(o.debit_bank), str(o.credit_bank), str(o.debit_account), str(o.credit_account)].filter(Boolean).join(" ");
+  if (BANK_TRANSFER_HINT.test(bankBits) || /\d{6,}/.test(bankBits.replace(/\s/g, ""))) return kind;
+  for (const ln of lines) {
+    if (!ln || typeof ln !== "object") continue;
+    const rec = ln as Record<string, unknown>;
+    const acc = str(rec.account_no);
+    const bank = str(rec.bank_name);
+    const kindLn = str(rec.kind);
+    if (acc && /\d{6,}/.test(acc.replace(/\s/g, ""))) return kind;
+    if (kindLn === "bank" && bank && !hasCashWording(bank) && !/^cash$/i.test(bank)) return kind;
   }
-  const [rupeePart, paisaPart] = t0.split(/\b(?:and\s+)?(?:paisa|paise|paisa\.)\b/);
-  const r = parse(rupeePart ?? "");
-  if (r == null) return null;
-  const p = paisaPart != null ? parse(paisaPart) : 0;
-  return r + (p ? p / 100 : 0);
+  if (BANK_TRANSFER_HINT.test(blob)) return kind;
+  return "other";
+}
+
+export type AiAmountResolve = { data: OcrAiVoucher; check: AiAmountCheck; preferredWords?: { from: number; to: number } };
+
+/**
+ * When the printed amount in words disagrees with Grand Total but a handwritten /
+ * Devanagari digit confusion (४↔८, १↔९, …) explains the gap, prefer the words
+ * value and correct line/item amounts that copied the wrong total. Otherwise the
+ * existing aiAmountCheck mismatch stands.
+ */
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const near = (a: number, b: number, tol = 1) => Math.abs(a - b) <= tol;
+
+export function resolveAiAmounts(d: OcrAiVoucher): AiAmountResolve {
+  const words = d.amount_in_words ? parseAmountInWords(d.amount_in_words) : null;
+  const grand = d.grand_total;
+  if (words == null || grand == null || near(words, grand) || !digitConfusionExplains(grand, words)) {
+    return { data: d, check: aiAmountCheck(d) };
+  }
+  const data: OcrAiVoucher = {
+    ...d,
+    grand_total: words,
+    items: d.items.map((it) => (it.amount != null && near(it.amount, grand) ? { ...it, amount: words } : it)),
+    lines: d.lines.map((ln) => (ln.amount != null && near(ln.amount, grand) ? { ...ln, amount: words } : ln)),
+  };
+  return { data, check: aiAmountCheck(data), preferredWords: { from: grand, to: words } };
 }
 
 export type AiAmountCheck = { ok: boolean; reasons: string[]; drTotal?: number; crTotal?: number; wordsAmount?: number | null };
@@ -519,8 +542,6 @@ export type AiApplyContext = {
   normUnit?: (raw?: string) => string | undefined;
 };
 
-const r2 = (n: number) => Math.round(n * 100) / 100;
-const near = (a: number, b: number, tol = 1) => Math.abs(a - b) <= tol;
 const f = <T,>(value: T, status: "fill" | "flag", confidence: number, note?: string): OcrField<T> => ({ value, status, confidence, ...(note ? { note } : {}) });
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -540,7 +561,8 @@ function bsDateText(s: string | null): string | null {
 
 /** Map + validate Gemini's answer onto the bill parsed from its raw_text. Mutates `bill`. */
 export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApplyContext): void {
-  const d = ai.data;
+  const resolvedAmt = resolveAiAmounts(ai.data);
+  const d = resolvedAmt.data;
   if (!bill.debug) bill.debug = [];
   const dbg = (m: string) => bill.debug!.push(m);
   const unsure = new Set(d.uncertain_fields.map((x) => x.toLowerCase().replace(/\s+/g, "")));
@@ -548,6 +570,7 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
   const unsureNote = "AI was not sure - please confirm";
   const u = ai.usage;
   dbg(`AI (gemini): model ${ai.model || "-"}; tokens in ${u.promptTokens} / out ${u.outputTokens}${u.thoughtsTokens ? ` / thinking ${u.thoughtsTokens}` : ""} / total ${u.totalTokens}`);
+  if (resolvedAmt.preferredWords) dbg(`AI amount: words ${resolvedAmt.preferredWords.to} preferred over digits ${resolvedAmt.preferredWords.from} (handwritten digit confusion)`);
 
   /* ---- Bill No ---- */
   if (d.invoice_no) {
@@ -561,16 +584,21 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
 
   /* ---- Date: AD must agree with the BS Miti (same resolver as printed bills).
    * A missing or unsure AD date never blocks a clear BS Miti (many Nepali bills print only the Miti). ---- */
-  if (d.date_ad || d.date_bs) {
+  if (d.date_ad || d.date_bs || d.date_bs_raw) {
     const bs = bsDateText(d.date_bs);
+    const bsRaw = d.date_bs_raw ? devanagariDigitsToLatin(d.date_bs_raw) : null;
     // Gemini often reports a generic "date" uncertainty when the AD format is ambiguous.
     // Treat that as uncertainty about AD, not the separately extracted Nepali Miti. A clear
     // Miti can disambiguate DD/MM vs MM/DD and should still populate the voucher date.
-    const bsUnsure = isUnsure("date_bs", "miti");
+    const bsUnsure = isUnsure("date_bs", "miti", "date_bs_raw");
     const adUnsure = isUnsure("date_ad", "date");
     const adDropped = !!d.date_ad && adUnsure && !!bs && !bsUnsure;
     const ad = adDropped ? null : toDmy(d.date_ad);
-    const text = [ad ? `INVOICE DATE : ${ad}` : "", bs ? `INVOICE MITI : ${bs}` : ""].filter(Boolean).join("\n");
+    const text = [
+      ad ? `INVOICE DATE : ${ad}` : "",
+      bs ? `INVOICE MITI : ${bs}` : "",
+      bsRaw && bsRaw !== bs ? `INVOICE MITI : ${bsRaw}` : "",
+    ].filter(Boolean).join("\n");
     const res = text ? resolveBillDate(text, defaultVoucherDateWindow()) : null;
     if (res) {
       const unsureHit = (bsUnsure && !!bs) || (adUnsure && !!ad && !bs);
@@ -699,10 +727,15 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
     if (d.discount != null) bill.discount = f(disc, "flag", 0.6, totalNote);
     if (taxable != null) bill.subTotal = f(taxable, "flag", 0.6, totalNote);
   }
-  if (parserTotal != null && grand != null && !near(parserTotal, grand) && bill.total) {
+  if (parserTotal != null && grand != null && !near(parserTotal, grand) && bill.total && !resolvedAmt.preferredWords) {
     bill.total = f(grand, "flag", 0.6, `AI Grand Total ${grand} vs text parser ${parserTotal}`);
     if (bill.amount) bill.amount = { ...bill.total };
     dbg(`AI Grand Total ${grand} disagrees with text parser ${parserTotal} - flagged`);
+  }
+  if (resolvedAmt.preferredWords && grand != null) {
+    const note = `Amount in words ${resolvedAmt.preferredWords.to} preferred over digits ${resolvedAmt.preferredWords.from}`;
+    bill.total = f(grand, "fill", 0.9, note);
+    bill.amount = f(grand, "fill", 0.9, note);
   }
 
   /* ---- Document type (relative to our company) ----
@@ -727,7 +760,7 @@ export function applyAiToBill(bill: OcrParsedBill, ai: OcrAiResult, ctx: AiApply
   }
 
   /* ---- Amount cross-checks: Dr = Cr, Grand Total vs items vs amount in words ---- */
-  const chk = aiAmountCheck(d);
+  const chk = resolvedAmt.check;
   bill.amountCheck = { ok: chk.ok, reasons: chk.reasons };
   if (!chk.ok) {
     /* Fields are left as they are: the runner applies the "amount mismatch" rule from bill.amountCheck. */

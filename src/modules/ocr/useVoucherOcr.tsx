@@ -25,7 +25,7 @@ import { OcrFindAccountDialog } from "./OcrFindAccountDialog";
 import type { OcrSuggestion } from "./OcrSuggestionsDialog";
 import { OcrFieldBubbles, ocrFieldForMissing, ocrFieldForSuggestion, useOcrTabBadge, type OcrBubble } from "./OcrFieldBubbles";
 import { cancelOcrHandoff, OCR_MANUAL_SWITCH_EVENT, parkOcrSession, queueOcrHandoff, requestOcrVoucherSwitch, resumeOcrSession, sameVoucherBucket, setRunnerDuplicateCheckOff, takeOcrHandoff, carriedValueWrites, collectOcrUserValues, type OcrCarriedValues } from "./handoff";
-import { aiAmountCheck } from "./ai/aiVoucher";
+import { resolveAiAmounts } from "./ai/aiVoucher";
 import { getOcrOwnAliases } from "./ownAliases";
 import { defaultDueDaysFor, partyCreditDaysOf, resolveOcrDueDate } from "./dueDate";
 import { mapAiJournalLines } from "./journalLines";
@@ -1220,7 +1220,7 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
             const dupCheckOff = reason === "handoff" && handoffDupCheckOffRef.current;
             const dup = dupCheckOff ? null : findDuplicateByRef(M.vouchers, rc.parsed?.txnId, rc.parsed?.referenceId, rc.parsed?.chequeNumber);
             /* Dr = Cr and Grand Total vs amount in words (AI): a failure is the runner's "amount mismatch". */
-            const moneyAmountCheck = raw.ai ? aiAmountCheck(raw.ai.data) : null;
+            const moneyAmountCheck = raw.ai ? resolveAiAmounts(raw.ai.data).check : null;
             const moneyAmountMismatch = !!moneyAmountCheck && !moneyAmountCheck.ok;
             if (moneyAmountMismatch && canFill) {
               const label = ocrRunStrings().amountMismatch;

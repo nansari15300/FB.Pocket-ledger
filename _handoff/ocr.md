@@ -650,3 +650,46 @@ Ansari Ji (t167u): a handwritten Nepali kharcha voucher (voucher 170, miti 18/04
 - this handoff
 
 **Tests:** `npx tsx tests/ocr/paymentAccountEvidence.selftest.mts` and `npx tsx tests/ocr/fieldBubbleAnchors.selftest.mts` and `npm run typecheck`. All passed on the laptop (2026-11-19 12:58 Asia/Kathmandu).
+
+
+## Handwritten खर्चा भौचर: amount-in-words cross-check + date year flag (2026-11-19 13:20 Asia/Kathmandu, OCR Master)
+
+Ansari Ji (t168u): Gemini (`gemini-3.5-flash-lite`, OCR build 2026-11-18.1) on a handwritten Nepali खर्च भौचर (न्यु पर्सा इन्जिनियरीङ वर्कशप, भौ. नं. 170) filled Amount 98200 and Date Man-18-2079 / 12-04-2022, while the printed अक्षरेपी is "चौध हजार दुई सय मात्र" (14200) and he said the date on the paper is clearly written (looks like 18/04/2073 or 18/08/2073, last year digit overwritten). An earlier run had given Man-18-2078 with amount 14200. Document family was bank_transfer (95%) even though payment mode is cash / नगद. He asked to fix the clear date and amount going wrong, without breaking existing OCR rules — only add improvements.
+
+**Root cause**
+
+- **Amount:** Gemini itself misread the handwritten Devanagari digits `१४२००` as `९८२००` (१→९, ४→८). It *did* return `amount_in_words: "चौध हजार दुई सय मात्र"` (14200) in the JSON and in the debug IN WORDS line. The client's `parseAmountInWords` only understood English words (Ten Thousand, lakh, …) and a digits-only Devanagari line; Nepali/Hindi words were stripped, so `aiAmountCheck` never saw the disagreement and 98200 was filled.
+- **Date:** Gemini returned `date_bs: 2079-08-18` and raw_text `मिति: १८/०८/२०७९` (year, and possibly month, misread; ३/८/९ and ४/८ are common handwritten confusions). The app's BS↔AD conversion is **correct**: 2079-08-18 is Mangsir (month 08, short label **Man**), which is AD **2022-12-04** (4 December 2022). "Man" is not a month-mapping bug, and 12-04-2022 is not 12 April. `resolveBillDate` then *silently filled* that unique BS date. The usual ~400-day voucher window was only used to break DD/MM vs MM/DD ties on AD dates, not to flag a unique out-of-range BS year, so 2079 (about four years before today, BS 2083-08-03) was written as if it were certain.
+- **doc_kind:** STEP 1 on the live Gemini prompt still allowed a cash खर्च भौचर to be labelled `bank_transfer`. Voucher type `direct_expense` was already right.
+
+**Fix (laptop, uncommitted, no commit/push/build). Additive only.**
+
+- New `src/modules/ocr/ai/amountWords.ts`: English parser behaviour kept; Nepali/Hindi words (हजार, सय, लाख, करोड, चौध, …) now parse; `digitConfusionExplains` / `confusedYearAlternatives` for ४↔८, १↔९, ३↔८/९, ०↔८, …
+- `parseAmountInWords` is re-exported from `aiVoucher.ts` (existing tests keep the same import). New `resolveAiAmounts`: when words disagree with Grand Total but a digit-confusion mapping explains it, prefer the words value and correct line/item amounts that copied the wrong total. Unexplained mismatches still fail `aiAmountCheck` as before (existing 90000 vs "Ten Thousand" + items 10000 test unchanged).
+- `applyAiToBill` uses the reconciled amounts, fills 14200 for this case, and skips the "AI vs text parser total" flag when the parser only saw the confused digits.
+- `dates.ts`: a unique date that is outside the existing voucher window (`defaultVoucherDateWindow`, last ~400 days through +7 days) is now `flag` (value still suggested, with a "please confirm the year" note and possible confused years such as 2073). In-window dates (e.g. 27/04/2083, 2083-08-03) still `fill`. Conversion and Mangsir/Man are unchanged.
+- `normalizeAiVoucher` / `downgradeCashBankTransfer`: `doc_kind: bank_transfer` becomes `other` when the paper has cash / नगद wording and no bank-slip, cheque, wallet or account-number evidence. Real connectIPS / bank slips are unchanged.
+- `date_bs_raw` is accepted on the client (optional). If it disagrees with `date_bs` after digit conversion, `resolveBillDate` sees two BS dates and flags.
+- `useVoucherOcr.tsx`: the runner's amount-mismatch check uses `resolveAiAmounts` so a corrected words amount does not pause as a mismatch.
+
+**Server (prepare, do not deploy)**
+
+- The laptop copy of `PocketLedger-Server/sub-server/pb_hooks/lib/ocr_cloud.js` was **stale** (83,091 B, sha256 `2F9AF43B…8BDF65`, 12 Nov, old bill-only schema). The **live** file on ServerWin10 (`C:\Project Next.js Balgram\PocketLedger-Server\...\ocr_cloud.js`) is the real schema (150,209 B, sha256 `8CCC2DA72B110D06B77D16562E311816A4996360D35B8F12938ABFB64C086E29`, 17 Nov 21:30). Prompt additions were applied on top of the **live** file, not the stale laptop copy.
+- Prepared laptop file (live + additive prompt/schema only; no other live behaviour changed):
+  - Path: `C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\lib\ocr_cloud.js`
+  - Size: 152,140 B
+  - sha256: `7D44A411B3C0C91FC7A09E5980A3116FBB8505568281190493948E67E5FD7600`
+- Additive prompt/schema: `date_bs_raw` (optional, not required); cash / नगद must not be `bank_transfer`; always return `amount_in_words` and the raw date string; handwritten ४↔८ / १↔९ / ३↔८/९ guidance; if the year digit is overwritten, leave `date_bs` null, keep `date_bs_raw`, and flag `uncertain_fields`. Existing number-check rules are kept.
+- `ocr_ai_training.js` is unchanged. **Do not deploy the old 83 KB laptop file over live.** Server master should deploy only this prepared file, after Ansari Ji's yes in their chat. Client-side amount/date/doc_kind fixes work even before that deploy (Gemini already returned `amount_in_words` and the wrong `date_bs` on this bill).
+
+**Files (laptop, uncommitted)**
+
+- `src/modules/ocr/ai/amountWords.ts` (new)
+- `src/modules/ocr/ai/aiVoucher.ts`
+- `src/lib/ocr/dates.ts`
+- `src/modules/ocr/useVoucherOcr.tsx`
+- `tests/ocr/kharchaVoucherWordsDate.selftest.mts` (new)
+- `C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\lib\ocr_cloud.js` (live + additive prompt)
+- this handoff
+
+**Tests:** px tsx tests/ocr/kharchaVoucherWordsDate.selftest.mts ALL PASS. All 44 	ests/ocr/*.selftest.mts were run on the laptop (2026-11-19 13:26 Asia/Kathmandu): 39 passed (including the new one). 5 already failed on current git HEAD with the same errors, unrelated to this change (iGeminiPratik.selftest.mts 3, illPaymentOut.selftest.mts 1, partyAlias.selftest.mts 2, partyMatch.selftest.mts 1, sampleDocs.selftest.mts 1). pm run typecheck passed.

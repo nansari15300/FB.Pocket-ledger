@@ -278,6 +278,42 @@ function uniqueDates(list: Interp[]): Date[] {
  * Year 20xx vs 207x/208x selects the calendar. DD/MM vs MM/DD is resolved by BS<->AD conversion
  * when both calendars are present; a lone date is converted or used as-is.
  */
+
+/** Handwritten / Devanagari year-digit confusions (४↔८, १↔९, ३↔८, ३↔९, ०↔८). */
+const YEAR_CONFUSABLE: Record<string, string> = {
+  "0": "8", "8": "034", "1": "79", "7": "19", "3": "89", "4": "8", "9": "137",
+};
+
+function confusedYears(year: number): number[] {
+  const s = String(Math.trunc(year));
+  if (!/^\d{4}$/.test(s)) return [];
+  const out: number[] = [];
+  // The handwritten year on these vouchers is usually uncertain in the last digit only.
+  const alts = YEAR_CONFUSABLE[s[3]] ?? "";
+  for (const d of alts) {
+    if (d === s[3]) continue;
+    const n = Number(s.slice(0, 3) + d);
+    if (n >= 2070 && n <= 2099 && !out.includes(n)) out.push(n);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+function applyVoucherWindow(res: ResolvedBillDate, opts?: DateParseOpts): ResolvedBillDate {
+  if (!opts || res.status !== "fill" || inRange(res.date, opts)) return res;
+  let extra = "Date is outside the usual voucher window — please confirm the year";
+  try {
+    const y = adToBs(res.date).y;
+    const alts = confusedYears(y);
+    if (alts.length) extra += ` (BS ${y} could be a handwritten mix-up with ${alts.join(" or ")})`;
+  } catch { /* ignore */ }
+  return {
+    ...res,
+    status: "flag",
+    confidence: Math.min(res.confidence, 0.55),
+    note: res.note ? `${res.note}; ${extra}` : extra,
+  };
+}
+
 export function resolveBillDate(text: string, opts?: DateParseOpts): ResolvedBillDate | null {
   const all = collectInterps(text);
   if (!all.length) return null;
@@ -304,7 +340,7 @@ export function resolveBillDate(text: string, opts?: DateParseOpts): ResolvedBil
   const uniqAgree = uniqueDates(agreeing.map((a) => ({ date: a.date } as Interp)));
   if (uniqAgree.length === 1) {
     const hit = agreeing.find((a) => sameCivilDay(a.date, uniqAgree[0]))!;
-    return {
+    return applyVoucherWindow({
       date: uniqAgree[0],
       status: "fill",
       confidence: 0.98,
@@ -312,7 +348,7 @@ export function resolveBillDate(text: string, opts?: DateParseOpts): ResolvedBil
       adSource: hit.ad?.source,
       bsSource: hit.bs?.source,
       note: `Invoice Date ${hit.ad?.source ?? ""} agrees with Miti ${hit.bs?.source ?? ""}`.trim(),
-    };
+    }, opts);
   }
   if (uniqAgree.length > 1) {
     return {
@@ -328,7 +364,7 @@ export function resolveBillDate(text: string, opts?: DateParseOpts): ResolvedBil
   if (bsHits.length && !adHits.length) {
     const uniq = uniqueDates(bsHits);
     if (uniq.length === 1) {
-      return { date: uniq[0], status: "fill", confidence: 0.95, via: "bs-only", bsSource: bsHits[0].source, note: `Miti ${bsHits[0].source}` };
+      return applyVoucherWindow({ date: uniq[0], status: "fill", confidence: 0.95, via: "bs-only", bsSource: bsHits[0].source, note: `Miti ${bsHits[0].source}` }, opts);
     }
     return { date: uniq[0], status: "flag", confidence: 0.5, via: "ambiguous", note: "Several BS dates without a matching AD date", bsSource: bsHits[0].source };
   }
@@ -336,11 +372,11 @@ export function resolveBillDate(text: string, opts?: DateParseOpts): ResolvedBil
   if (adHits.length && !bsHits.length) {
     const uniq = uniqueDates(adHits);
     if (uniq.length === 1) {
-      return { date: uniq[0], status: "fill", confidence: adHits.every((h) => !adHits.some((o) => o.source === h.source && !sameCivilDay(o.date, h.date))) ? 0.95 : 0.9, via: "ad-only", adSource: adHits[0].source };
+      return applyVoucherWindow({ date: uniq[0], status: "fill", confidence: adHits.every((h) => !adHits.some((o) => o.source === h.source && !sameCivilDay(o.date, h.date))) ? 0.95 : 0.9, via: "ad-only", adSource: adHits[0].source }, opts);
     }
     const inWin = uniq.filter((d) => inRange(d, opts));
     if (inWin.length === 1) {
-      return { date: inWin[0], status: "fill", confidence: 0.85, via: "ad-only", adSource: adHits.find((h) => sameCivilDay(h.date, inWin[0]))?.source, note: "Ambiguous AD date; only one interpretation is in range" };
+      return applyVoucherWindow({ date: inWin[0], status: "fill", confidence: 0.85, via: "ad-only", adSource: adHits.find((h) => sameCivilDay(h.date, inWin[0]))?.source, note: "Ambiguous AD date; only one interpretation is in range" }, opts);
     }
     return { date: uniq[0], status: "flag", confidence: 0.5, via: "ambiguous", note: "Ambiguous AD date (DD/MM vs MM/DD)", adSource: adHits[0].source };
   }
@@ -360,7 +396,7 @@ export function resolveBillDate(text: string, opts?: DateParseOpts): ResolvedBil
   const fallback = uniqueDates(pool);
   if (!fallback.length) return null;
   if (fallback.length === 1 && !labeled.length) {
-    return { date: fallback[0], status: "fill", confidence: 0.9, via: "unlabeled" };
+    return applyVoucherWindow({ date: fallback[0], status: "fill", confidence: 0.9, via: "unlabeled" }, opts);
   }
   return { date: fallback[0], status: "flag", confidence: 0.5, via: "ambiguous", note: "Several dates without a consistent label" };
 }
