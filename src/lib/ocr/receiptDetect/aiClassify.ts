@@ -69,17 +69,27 @@ export function classifyAiReceipt(d: OcrAiVoucher, o: ClassifyOptions): ReceiptD
   /* Gemini's JSON is the only place the payer name exists on a connectIPS slip (the compact text summary prints
    * it once as "connectIPS Account: X"). Handing it to the fill step is what lets a ledger named after the
    * company be found from the holder name alone (via its Alias Name, or a 50%+ name match + proof). */
+  const ownName = o.companyName;
+  const debitHasAccount = !!(d.debit_bank || d.debit_account);
+  const creditHasAccount = !!(d.credit_bank || d.credit_account);
+  const holderName = d.account_holder_name && ownName && companyNameMatches(d.account_holder_name, ownName) && !debitHasAccount
+    ? undefined
+    : (d.account_holder_name ?? undefined);
+  const beneName = d.beneficiary_name && ownName && companyNameMatches(d.beneficiary_name, ownName) && !creditHasAccount
+    ? undefined
+    : (d.beneficiary_name ?? undefined);
   const aiParsed = {
-    sender: { accountName: d.account_holder_name ?? undefined, bankName: d.debit_bank ?? undefined, accountMasked: d.debit_account ?? undefined },
+    sender: { accountName: holderName, bankName: d.debit_bank ?? undefined, accountMasked: d.debit_account ?? undefined },
     /* Only the printed beneficiary block names the receiver's account. Falling back to party_name here
      * is what made a supplier payment look like our own second account (-> contra). */
-    beneficiary: { accountName: d.beneficiary_name ?? undefined, bankName: d.credit_bank ?? undefined, accountMasked: d.credit_account ?? undefined },
+    beneficiary: { accountName: beneName, bankName: d.credit_bank ?? undefined, accountMasked: d.credit_account ?? undefined },
     date: d.date_ad ?? d.date_bs ?? undefined,
     amount: d.grand_total ?? undefined,
     charge: d.transfer_charges ?? undefined,
     referenceId: d.transfer_reference ?? undefined,
     chequeNumber: d.doc_kind === "cheque" ? d.transfer_reference ?? undefined : undefined,
     particulars: d.party_name ?? undefined,
+    paymentMode: d.payment_mode ?? undefined,
   };
 
   const base = {

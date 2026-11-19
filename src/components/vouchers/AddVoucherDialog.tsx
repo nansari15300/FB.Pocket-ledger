@@ -1615,17 +1615,16 @@ function readStoredDialogBounds(storageKey: string, vw: number, vh: number): Dia
     ) {
       return null;
     }
-    // Keep old saved sizes from stretching the voucher across almost the whole screen.
-    // The 80vw default is also the desktop restore ceiling; sale/purchase may then grow
-    // to their 940px form minimum in the existing voucherFormActiveTab effect.
-    const maxW = Math.max(MIN_DIALOG_W, Math.min(vw * DIALOG_VIEWPORT_W_RATIO, vw));
-    const widthWasClamped = saved.w > maxW;
+    // User ka resize kiya size wapas wahi khule; sirf screen ke 99% tak clamp (window se bahar na jaye).
+    // Sale/purchase 940px form minimum existing voucherFormActiveTab effect me lagta hai.
+    const maxW = Math.max(MIN_DIALOG_W, vw * 0.99);
+    const maxH = Math.max(MIN_DIALOG_H, vh * 0.99);
     const w = Math.max(MIN_DIALOG_W, Math.min(saved.w, maxW));
-    const h = Math.max(MIN_DIALOG_H, Math.min(saved.h, vh));
+    const h = Math.max(MIN_DIALOG_H, Math.min(saved.h, maxH));
     return {
       w,
       h,
-      x: widthWasClamped ? Math.max(0, (vw - w) / 2) : Math.max(0, Math.min(saved.x, vw - w)),
+      x: Math.max(0, Math.min(saved.x, vw - w)),
       y: Math.max(0, Math.min(saved.y, vh - h)),
     };
   } catch {

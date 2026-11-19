@@ -617,3 +617,36 @@ Ansari Ji (t166u): in New Trxn, Direct Expense, Gemini OCR showed "Create bank a
 - Journal / Adjustment / Note / Add Salary / Production: date (and bill-no / amount / tax where those forms have them). They have no Bank/Cash From/To fields, so this suggestion type does not apply.
 
 **Tests:** `npx tsx tests/ocr/fieldBubbleAnchors.selftest.mts` and `npx tsx tests/ocr/bubbleTail.selftest.mts` and `npm run typecheck`. All passed on the laptop (2026-11-19 12:31 Asia/Kathmandu).
+
+## Direct Expense: do not suggest Create bank account when the doc names no payment account (2026-11-19 12:57 Asia/Kathmandu, OCR Master)
+
+Ansari Ji (t167u): a handwritten Nepali kharcha voucher (voucher 170, miti 18/04/2078, description includes नगद दिइएको, amount 14200) correctly opened as Direct Expense, but then showed "Create bank account (From)?" with the company display name prefilled ("New parsa Engineering WorkShop Demo Compnany") and the orange note "OCR could not find: Bank / cash account (no own Bank/Cash account matches the sender/receiver)". The document names no bank or cash account. He wanted a plain note "No payment account on doc" (intro language), no name, and From left empty.
+
+**Root cause**
+- After From/To failed to match an own Bank/Cash ledger, `useVoucherOcr.tsx` always pushed `create-account-from` / `create-account-to`.
+- The prefill name was `sender.accountName || sender.bankName || own.name`. When Gemini left debit bank / account holder empty, the fallback was the company's own display name, which is letterhead, not a bank account.
+- `classifyAiReceipt` also did not copy `payment_mode` onto the parsed receipt, so cash wording such as नगद / "nagd" / "cash" was ignored in the money-fill path.
+- Info-only "OCR could not find" bubbles are hidden unless an item is attached, so the create-bank action was what made the From bubble appear.
+
+**Fix (laptop, uncommitted, no commit/push/build, no server deploy)**
+- New pure helper `src/lib/ocr/receiptDetect/paymentAccountEvidence.ts`: create-bank is offered only when the document has explicit bank / wallet / cheque / account-number evidence. The company name alone is never a bank account and is never used as the prefill.
+- Cash wording (नगद, nagd, cash, payment_mode Cash, etc.) offers existing Cash ledgers ("Use …"), and does not offer "Create bank account". If no Cash ledger exists, only the info note is shown.
+- When there is no payment-account evidence, a non-action (blocked) bubble uses intro-language copy from `src/modules/ocr/paymentAccountIntro.ts`: en "No payment account on doc", hi "दस्तावेज़ पर कोई भुगतान खाता नहीं है", ne "कागजातमा कुनै भुक्तानी खाता छैन". The bubble title has no question mark. From / To stay empty for the user to choose.
+- `classifyAiReceipt` now sets `paymentMode` from Gemini `payment_mode`, and drops `account_holder_name` / `beneficiary_name` when they are only the company name and that side has no debit/credit bank or account number.
+- Merging Gemini JSON with the text parser no longer lets undefined AI account fields wipe a text-detected Cash side, and keeps `paymentMode` / `chequeNumber`.
+- `ocrFieldAnchors.ts`: `no-payment-account` points at From Bank/Cash; `no-payment-account-to` points at Contra To.
+
+**Server**
+- No `ocr_cloud.js` prompt change was prepared. The laptop server copy of `ocr_cloud.js` still has the older bill-only Gemini schema (no `debit_bank` / `account_holder_name` fields), and this bug is fixed entirely on the client. No server deploy is needed.
+
+**Files (laptop, uncommitted)**
+- `src/lib/ocr/receiptDetect/paymentAccountEvidence.ts` (new)
+- `src/modules/ocr/paymentAccountIntro.ts` (new)
+- `tests/ocr/paymentAccountEvidence.selftest.mts` (new)
+- `src/modules/ocr/useVoucherOcr.tsx`
+- `src/lib/ocr/receiptDetect/aiClassify.ts`
+- `src/modules/ocr/ocrFieldAnchors.ts`
+- `tests/ocr/fieldBubbleAnchors.selftest.mts`
+- this handoff
+
+**Tests:** `npx tsx tests/ocr/paymentAccountEvidence.selftest.mts` and `npx tsx tests/ocr/fieldBubbleAnchors.selftest.mts` and `npm run typecheck`. All passed on the laptop (2026-11-19 12:58 Asia/Kathmandu).

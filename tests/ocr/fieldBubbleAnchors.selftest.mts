@@ -10,6 +10,10 @@ const eq = (label: string, got: unknown, want: unknown) => {
 
 eq("create-account-from points at Bank/Cash (account), not lines", ocrFieldForSuggestion("create-account-from"), "account");
 eq("create-account-from has account-from anchor", ocrSuggestionFieldAnchor("create-account-from"), "account-from");
+eq("no-payment-account points at Bank/Cash (account)", ocrFieldForSuggestion("no-payment-account"), "account");
+eq("no-payment-account has account-from anchor", ocrSuggestionFieldAnchor("no-payment-account"), "account-from");
+eq("no-payment-account-to points at Contra To", ocrFieldForSuggestion("no-payment-account-to"), "account-to");
+eq("no-payment-account-to has account-to anchor", ocrSuggestionFieldAnchor("no-payment-account-to"), "account-to");
 eq("create-account-to points at Contra To (account-to), not lines or account", ocrFieldForSuggestion("create-account-to"), "account-to");
 eq("create-account-to has account-to anchor", ocrSuggestionFieldAnchor("create-account-to"), "account-to");
 eq("account (confirm From) stays on account", ocrFieldForSuggestion("account"), "account");

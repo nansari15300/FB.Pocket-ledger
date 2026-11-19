@@ -30,9 +30,9 @@ export function ocrFieldForSuggestion(id: string): string {
   if (id.startsWith("amount")) return "amount";
   if (id === "billno") return "bill-no";
   // Contra "To" bank account — check before the generic account- prefix.
-  if (id === "create-account-to" || id === "account-to" || id.startsWith("account-to-")) return "account-to";
+  if (id === "create-account-to" || id === "no-payment-account-to" || id === "account-to" || id.startsWith("account-to-")) return "account-to";
   // From / Bank-Cash, including create-account-from (does not start with "account-").
-  if (id === "account" || id === "create-account-from" || id.startsWith("account-")) return "account";
+  if (id === "account" || id === "create-account-from" || id === "no-payment-account" || id.startsWith("account-")) return "account";
   if (id === "cannot-detect" || id === "status-failed" || id === "duplicate-ref") return "voucher-type";
   /** Reading-language / translate options attach to the OCR bar, not a form field. */
   if (id === "ocr-language" || id.startsWith("ocr-lang-") || id.startsWith("ocr-translate")) return "ocr-language";
@@ -41,8 +41,8 @@ export function ocrFieldForSuggestion(id: string): string {
 
 /** Precise `data-ocr-anchor` for bank-account suggestions, when the form has one. */
 export function ocrSuggestionFieldAnchor(id: string): string | undefined {
-  if (id === "create-account-to" || id === "account-to" || id.startsWith("account-to-")) return "account-to";
-  if (id === "create-account-from" || id === "account") return "account-from";
+  if (id === "create-account-to" || id === "no-payment-account-to" || id === "account-to" || id.startsWith("account-to-")) return "account-to";
+  if (id === "create-account-from" || id === "no-payment-account" || id === "account") return "account-from";
   if (id.startsWith("account-") && !id.startsWith("account-to") && !id.startsWith("account-payee-")) return "account-from";
   return undefined;
 }

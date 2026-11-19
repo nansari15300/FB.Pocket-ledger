@@ -63,6 +63,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { useVouchers } from "@/hooks/useVouchers";
 import { detectReceipt, AUTO_SWITCH_MIN_CONF, type ReceiptDetection } from "@/lib/ocr/receiptDetect";
 import { accountDisplayLabel, buildMoneyVoucherFill, pickChargeAccount, receiptNarration, suggestMaskedPayees } from "@/lib/ocr/receiptDetect/fillPaymentOut";
+import { mergeReceiptAccountSide, paymentAccountEvidence, planMissingPaymentAccount } from "@/lib/ocr/receiptDetect/paymentAccountEvidence";
+import { noPaymentAccountOnDocIntro } from "./paymentAccountIntro";
+import { introTabLang } from "@/lib/i18n/introLangTab";
+import { readPlLangs } from "@/lib/i18n/plLangStorage";
 import type { ParsedReceipt } from "@/lib/ocr/receiptDetect/types";
 import { paymentAmountFromBill } from "./fillPaymentOut";
 import { devanagariDigitsToAscii, normalizeName } from "./normalize";
@@ -818,14 +822,16 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                   ? {
                       ...text,
                       ...ai,
-                      sender: { ...text.sender, ...ai.sender },
-                      beneficiary: { ...text.beneficiary, ...ai.beneficiary },
+                      sender: mergeReceiptAccountSide(text.sender, ai.sender),
+                      beneficiary: mergeReceiptAccountSide(text.beneficiary, ai.beneficiary),
                       amount: ai.amount ?? text.amount,
                       charge: ai.charge ?? text.charge,
                       date: ai.date ?? text.date,
                       txnId: ai.txnId ?? text.txnId,
                       referenceId: ai.referenceId ?? text.referenceId,
+                      chequeNumber: ai.chequeNumber ?? text.chequeNumber,
                       particulars: ai.particulars ?? text.particulars,
+                      paymentMode: ai.paymentMode ?? text.paymentMode,
                     }
                   : (ai ?? text);
                 return { ...aiRc, parsed: parsed ?? null, format: textRc.parsed ? textRc.format : aiRc.format, confidence: Math.max(aiRc.confidence, textRc.confidence) };
@@ -1015,22 +1021,50 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                   if (allowWrite && canWrite(accPath)) { write(accPath, fromHit.id); rFilled.push(`From: ${fromHit.name}`); }
                   else if (!allowWrite) rExtra.push({ id: "account", label: "Bank / cash account", value: fromHit.name, reason: "Low OCR confidence — confirm account", apply: () => write(accPath, fromHit.id) });
                 } else {
-                  rMissing.push(`Bank / cash account (${fromHit.reason})`);
-                  const fromIds = fromHit.candidates;
-                  (fromHit.candidateNames ?? []).forEach((name, i) => {
-                    const id = fromIds[i];
-                    if (id) rExtra.push({ id: `account-${id}`, label: `Use ${name}`, value: name, reason: fromHit.reason, apply: () => write(accPath, id) });
+                  const ourSide = direction === "payment_in" ? rc.parsed?.beneficiary : rc.parsed?.sender;
+                  const fromEvidence = paymentAccountEvidence({
+                    side: ourSide,
+                    parsed: rc.parsed,
+                    companyName: own.name,
+                    paymentMode: rc.parsed?.paymentMode ?? raw.ai?.data.payment_mode,
+                    transferMode: raw.ai?.data.transfer_mode,
+                    chequeNumber: rc.parsed?.chequeNumber ?? raw.ai?.data.transfer_reference,
+                    docKind: raw.ai?.data.doc_kind,
+                    text: [raw.text, raw.ai?.data.raw_text, raw.ai?.data.notes, rc.parsed?.particulars, rc.parsed?.remarks].filter(Boolean).join("\n"),
                   });
-                  // Neither bank is in Bank/Cash: let the user create the missing ledger prefilled from the slip.
-                  const accName = rc.parsed?.sender?.accountName || rc.parsed?.sender?.bankName || own.name || "";
-                  rExtra.push({
-                    id: "create-account-from", label: "Create bank account (From)", value: accName || "from this slip",
-                    confidence: 0.7, reason: "Opens Create Bank/Cash prefilled — you confirm Save, then it fills From", deferred: true,
-                    apply: (ctx) => {
-                      const accountName = ctx?.language === "english" ? ctx.englishValue ?? translatedOcrText(accName, raw.ai?.data.english_translations) ?? accName : accName;
-                      setCreateAccountFor({ side: "from", prefill: { accountName: accountName || undefined, accountType: "Bank" } });
-                    },
-                  });
+                  const fromPlan = planMissingPaymentAccount(fromEvidence, ownAcc);
+                  const noPayFrom = noPaymentAccountOnDocIntro(introTabLang(readPlLangs().intro));
+                  if (fromPlan.kind === "info-no-account") {
+                    rMissing.push("Bank / cash account");
+                    rExtra.push({
+                      id: "no-payment-account",
+                      label: noPayFrom,
+                      value: "",
+                      blocked: noPayFrom,
+                      apply: () => undefined,
+                    });
+                  } else if (fromPlan.kind === "use-cash") {
+                    rMissing.push("Bank / cash account");
+                    for (const a of fromPlan.accounts) {
+                      rExtra.push({ id: `account-${a.id}`, label: `Use ${a.name}`, value: a.name, reason: fromHit.reason, apply: () => write(accPath, a.id) });
+                    }
+                  } else {
+                    rMissing.push(`Bank / cash account (${fromHit.reason})`);
+                    const fromIds = fromHit.candidates;
+                    (fromHit.candidateNames ?? []).forEach((name, i) => {
+                      const id = fromIds[i];
+                      if (id) rExtra.push({ id: `account-${id}`, label: `Use ${name}`, value: name, reason: fromHit.reason, apply: () => write(accPath, id) });
+                    });
+                    const accName = fromPlan.name;
+                    rExtra.push({
+                      id: "create-account-from", label: "Create bank account (From)", value: accName || "from this slip",
+                      confidence: 0.7, reason: "Opens Create Bank/Cash prefilled — you confirm Save, then it fills From", deferred: true,
+                      apply: (ctx) => {
+                        const accountName = ctx?.language === "english" ? ctx.englishValue ?? translatedOcrText(accName, raw.ai?.data.english_translations) ?? accName : accName;
+                        setCreateAccountFor({ side: "from", prefill: { accountName: accountName || undefined, accountType: "Bank" } });
+                      },
+                    });
+                  }
                 }
                 if (direction === "contra" && pf.to) {
                   const toHit = pf.to;
@@ -1039,21 +1073,49 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
                     if (allowWrite && canWrite(toPath)) { write(toPath, toHit.id); rFilled.push(`To: ${toHit.name}`); }
                     else if (!allowWrite) rExtra.push({ id: `account-to`, label: "To account", value: toHit.name, apply: () => write(toPath, toHit.id) });
                   } else {
-                    rMissing.push(`To account (${toHit.reason})`);
-                    const toIds = toHit.candidates;
-                    (toHit.candidateNames ?? []).forEach((name, i) => {
-                      const id = toIds[i];
-                      if (id) rExtra.push({ id: `account-to-${id}`, label: `Use ${name} (to)`, value: name, reason: toHit.reason, apply: () => write(toPath, id) });
+                    const toEvidence = paymentAccountEvidence({
+                      side: rc.parsed?.beneficiary,
+                      parsed: rc.parsed,
+                      companyName: own.name,
+                      paymentMode: rc.parsed?.paymentMode ?? raw.ai?.data.payment_mode,
+                      transferMode: raw.ai?.data.transfer_mode,
+                      chequeNumber: rc.parsed?.chequeNumber ?? raw.ai?.data.transfer_reference,
+                      docKind: raw.ai?.data.doc_kind,
+                      text: [raw.text, raw.ai?.data.raw_text, raw.ai?.data.notes, rc.parsed?.particulars, rc.parsed?.remarks].filter(Boolean).join("\n"),
                     });
-                    const toName = rc.parsed?.beneficiary?.accountName || rc.parsed?.beneficiary?.bankName || "";
-                    rExtra.push({
-                      id: "create-account-to", label: "Create bank account (To)", value: toName || "from this slip",
-                      confidence: 0.7, reason: "Opens Create Bank/Cash prefilled — you confirm Save, then it fills To", deferred: true,
-                      apply: (ctx) => {
-                        const accountName = ctx?.language === "english" ? ctx.englishValue ?? translatedOcrText(toName, raw.ai?.data.english_translations) ?? toName : toName;
-                        setCreateAccountFor({ side: "to", prefill: { accountName: accountName || undefined, accountType: "Bank" } });
-                      },
-                    });
+                    const toPlan = planMissingPaymentAccount(toEvidence, ownAcc);
+                    const noPayTo = noPaymentAccountOnDocIntro(introTabLang(readPlLangs().intro));
+                    if (toPlan.kind === "info-no-account") {
+                      rMissing.push("To account");
+                      rExtra.push({
+                        id: "no-payment-account-to",
+                        label: noPayTo,
+                        value: "",
+                        blocked: noPayTo,
+                        apply: () => undefined,
+                      });
+                    } else if (toPlan.kind === "use-cash") {
+                      rMissing.push("To account");
+                      for (const a of toPlan.accounts) {
+                        rExtra.push({ id: `account-to-${a.id}`, label: `Use ${a.name} (to)`, value: a.name, reason: toHit.reason, apply: () => write(toPath, a.id) });
+                      }
+                    } else {
+                      rMissing.push(`To account (${toHit.reason})`);
+                      const toIds = toHit.candidates;
+                      (toHit.candidateNames ?? []).forEach((name, i) => {
+                        const id = toIds[i];
+                        if (id) rExtra.push({ id: `account-to-${id}`, label: `Use ${name} (to)`, value: name, reason: toHit.reason, apply: () => write(toPath, id) });
+                      });
+                      const toName = toPlan.name;
+                      rExtra.push({
+                        id: "create-account-to", label: "Create bank account (To)", value: toName || "from this slip",
+                        confidence: 0.7, reason: "Opens Create Bank/Cash prefilled — you confirm Save, then it fills To", deferred: true,
+                        apply: (ctx) => {
+                          const accountName = ctx?.language === "english" ? ctx.englishValue ?? translatedOcrText(toName, raw.ai?.data.english_translations) ?? toName : toName;
+                          setCreateAccountFor({ side: "to", prefill: { accountName: accountName || undefined, accountType: "Bank" } });
+                        },
+                      });
+                    }
                   }
                 }
               }
@@ -2394,10 +2456,12 @@ export function useVoucherOcr(o: UseVoucherOcrOptions) {
               : `${b.items.length} suggestions for this field`;
         const ci = b.items.find((x) => x.id.startsWith("create-item-"));
         const createExpense = b.items.find((x) => x.id === "create-expense-account");
-        const createAccountTo = b.items.find((x) => x.id === "create-account-to" || x.id === "account-to" || x.id.startsWith("account-to-"));
-        const createAccountFrom = b.items.find((x) => x.id === "create-account-from" || x.id === "account" || (x.id.startsWith("account-") && !x.id.startsWith("account-to") && !x.id.startsWith("account-payee-")));
+        const noPayment = b.items.find((x) => x.id === "no-payment-account" || x.id === "no-payment-account-to");
+        const createAccountTo = b.items.find((x) => x.id === "create-account-to" || x.id === "no-payment-account-to" || x.id === "account-to" || x.id.startsWith("account-to-"));
+        const createAccountFrom = b.items.find((x) => x.id === "create-account-from" || x.id === "no-payment-account" || x.id === "account" || (x.id.startsWith("account-") && !x.id.startsWith("account-to") && !x.id.startsWith("account-payee-")));
         if (createAccountTo) b.anchor = "account-to";
         else if (createAccountFrom) b.anchor = "account-from";
+        if (noPayment && b.items.every((x) => x.blocked || x.id === "no-payment-account" || x.id === "no-payment-account-to")) b.title = noPayment.label;
         if (createExpense) {
           const existingExpense = b.items.find((x) => x.id.startsWith("use-expense-account-"));
           b.title = `${existingExpense ? "Confirm expense account" : "Expense account not found"} — choose or create “${createExpense.value}”?`;
