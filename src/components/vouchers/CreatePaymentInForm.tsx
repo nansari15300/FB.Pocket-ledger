@@ -3301,7 +3301,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
 
           <div className={cn(
             "border-t min-w-0 max-w-full overflow-x-hidden",
-            isMobile ? "mt-[3px] pt-[3px] pb-[3px] space-y-0" : "shrink-0 mt-auto w-full bg-slate-100 pt-4 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4"
+            isMobile ? "mt-[3px] pt-[3px] pb-[3px] space-y-0" : "shrink-0 mt-auto w-full bg-slate-100 pt-4 pb-4 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4"
           )}>
             {isMobile ? (
               <div className={cn("grid grid-cols-3 gap-2 w-full min-w-0", VOUCHER_BUTTONS_CLASS)}>

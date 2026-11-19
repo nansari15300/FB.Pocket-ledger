@@ -142,7 +142,7 @@ export function InterCompanyVoucherFooter({
         <div
           className={cn(
             "border-t min-w-0 max-w-full overflow-x-hidden pt-4 flex flex-wrap items-center justify-center gap-2 md:justify-start",
-            inDialog ? "mt-[3px] pb-[3px]" : "",
+            inDialog ? "mt-[3px] pb-4" : "pb-4",
             VOUCHER_BUTTONS_CLASS
           )}
         >
@@ -240,7 +240,7 @@ export function InterCompanyVoucherFooter({
       <div
         className={cn(
           "border-t min-w-0 max-w-full overflow-x-hidden pt-4 flex flex-wrap items-center justify-between gap-2",
-          inDialog ? "mt-[3px] pb-[3px]" : "",
+          inDialog ? "mt-[3px] pb-4" : "pb-4",
           VOUCHER_BUTTONS_CLASS
         )}
       >

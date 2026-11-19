@@ -1431,7 +1431,7 @@ export function CreateAdjustmentForm({
         </div>
         <div className={cn(
           "mt-auto border-t min-w-0 max-w-full overflow-x-hidden shrink-0 bg-background",
-          isMobile ? "pt-[3px] pb-[max(6px,env(safe-area-inset-bottom,0px))]" : "w-full bg-slate-100 pt-4 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4"
+          isMobile ? "pt-[3px] pb-[max(6px,env(safe-area-inset-bottom,0px))]" : "w-full bg-slate-100 pt-4 pb-4 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4"
         )}>
           {isMobile ? (
             <div className={cn("grid grid-cols-3 gap-2 w-full", VOUCHER_BUTTONS_CLASS)}>

@@ -1233,7 +1233,7 @@ export function CreateNoteForm({
               </div>
             </div>
         </ScrollArea>
-        <div className={cn("border-t min-w-0 max-w-full overflow-x-hidden shrink-0 bg-background", isMobile ? "mt-[3px] pt-[3px] pb-[max(6px,env(safe-area-inset-bottom,0px))]" : "mt-auto w-full bg-slate-100 pt-4 flex flex-col md:flex-row items-stretch md:items-center gap-4", !isMobile && useCompactFooter && "justify-end", !isMobile && !useCompactFooter && "justify-between")}>
+        <div className={cn("border-t min-w-0 max-w-full overflow-x-hidden shrink-0 bg-background", isMobile ? "mt-[3px] pt-[3px] pb-[max(6px,env(safe-area-inset-bottom,0px))]" : "mt-auto w-full bg-slate-100 pt-4 pb-4 flex flex-col md:flex-row items-stretch md:items-center gap-4", !isMobile && useCompactFooter && "justify-end", !isMobile && !useCompactFooter && "justify-between")}>
             {isMobile ? (
               <div className={cn("grid grid-cols-3 gap-2 w-full min-w-0", VOUCHER_BUTTONS_CLASS)}>
                 {!useCompactFooter && (
