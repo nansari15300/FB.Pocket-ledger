@@ -398,7 +398,7 @@ function GalleryRunnerControls() {
     window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-process-visibility", { detail: { companyId: fsId, visible } }));
   };
   return (
-    <div className="flex min-w-0 shrink-0 flex-nowrap items-center gap-[10px] rounded-full border border-amber-300 bg-amber-50/80 px-2 py-1 text-[11px] text-amber-950" role="group" aria-label="Auto post runner controls">
+    <div className="flex min-w-0 shrink-0 flex-nowrap items-center gap-[10px] rounded-full border border-amber-300 bg-amber-50/80 px-2 py-1 text-[11px] text-amber-950 max-sm:order-2 max-sm:col-span-2 max-sm:w-full max-sm:justify-between" role="group" aria-label="Auto post runner controls">
       <span className="max-w-44 truncate font-medium" title={state.fileName}>
         {state.waitMessage ? <>{AUTO_POST_UI.limitReachedPrefix}<span data-pl-no-translate>{state.waitSeconds}</span>{AUTO_POST_UI.limitReachedSuffix}</> : state.held ? "Runner on hold" : state.fileName ? `Processing: ${state.fileName}` : "Auto post running"}
       </span>
@@ -509,7 +509,7 @@ function GalleryRunnerHoldButton({ inline = false }: { inline?: boolean }) {
           }, 500);
         }
       }}
-      className={cn("h-8 shrink-0 rounded-full border px-3 text-xs", held ? "!border-green-600 !bg-green-100 !text-green-950" : "!border-amber-500 !bg-amber-100 !text-amber-950", inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0 max-sm:px-2")}
+      className={cn("h-8 shrink-0 rounded-full border px-3 text-xs", held ? "!border-green-600 !bg-green-100 !text-green-950" : "!border-amber-500 !bg-amber-100 !text-amber-950", inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0 max-sm:px-2", !inline && "max-sm:w-full max-sm:min-w-0 max-sm:px-2")}
     >
       {held || !autoPostEnabled ? t(AUTO_POST_UI.startRunner) : t(AUTO_POST_UI.stopRunner)}
     </Button>
@@ -545,17 +545,17 @@ function GalleryRunnerResetButton({ inline = false }: { inline?: boolean }) {
       title={AUTO_POST_UI.resetTitle}
       aria-label={AUTO_POST_UI.reset}
       onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:auto-post-runner-reset", { detail: { companyId: fsId } }))}
-      className={cn("h-8 shrink-0 rounded-full border px-3 text-xs", inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0 max-sm:px-2")}
+      className={cn("h-8 shrink-0 rounded-full border px-3 text-xs", inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0 max-sm:px-2", !inline && "max-sm:w-full max-sm:min-w-0 max-sm:px-2")}
     >
       {AUTO_POST_UI.reset}
     </Button>
   );
 }
 
-function GalleryAutoPostModeRibbon({ inline = false }: { inline?: boolean }) {
+function GalleryAutoPostModeRibbon({ inline = false, mobileEndActions, onCollapseMobile }: { inline?: boolean; mobileEndActions?: React.ReactNode; onCollapseMobile?: () => void }) {
   const { dialogMode, runnerMode, ocrEnabled, chooseMode, choosing, canChangeRunner } = useVoucherOcrDialogMode();
   return (
-    <div className={cn("flex shrink-0 items-center gap-1", inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0")}>
+    <div className={cn("flex shrink-0 items-center gap-1", inline && "hidden max-sm:inline-flex max-sm:w-full max-sm:min-w-0", !inline && "max-sm:order-10 max-sm:col-span-3 max-sm:w-full max-sm:justify-between")}>
       <VoucherOcrModeSwitch
         mode={dialogMode}
         collapsed={!ocrEnabled}
@@ -563,7 +563,9 @@ function GalleryAutoPostModeRibbon({ inline = false }: { inline?: boolean }) {
         onModeChange={(next) => { void chooseMode(next); }}
         runnerPositionsDisabled={!canChangeRunner}
         disabled={choosing}
+        trailingAction={<GalleryVoucherPostSettingGear inline={inline} />}
       />
+      {mobileEndActions ? <div className="hidden shrink-0 items-center gap-1 max-sm:inline-flex">{mobileEndActions}</div> : null}
     </div>
   );
 }
@@ -617,7 +619,7 @@ function GalleryQueueSequenceRibbon({ inline = false }: { inline?: boolean }) {
   const sequenceLabel = GALLERY_QUEUE_SEQUENCES.find((option) => option.value === sequence)?.label || "Top left to right";
   const sortLabel = sortOrder === "newest-first" ? "Newest first" : "Oldest first";
   return (
-    <div className={cn("flex shrink-0 items-center gap-1.5", inline && "hidden max-sm:col-span-2 max-sm:flex max-sm:w-full")}>
+    <div className={cn("flex shrink-0 items-center gap-1.5", inline && "hidden max-sm:col-span-2 max-sm:flex max-sm:w-full", !inline && "max-sm:w-full")}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -626,7 +628,7 @@ function GalleryQueueSequenceRibbon({ inline = false }: { inline?: boolean }) {
             disabled={!isCompanyAdmin || saving || !fsId}
             aria-label="Post queue and sorting settings"
             title="Choose the Post queue direction and Gallery sorting order"
-            className="pl-chrome-btn-drop h-8 w-fit min-w-0 shrink-0 justify-between rounded-full border border-blue-300 bg-blue-100/80 px-3 text-[11px] text-blue-900 hover:border-blue-400 hover:bg-blue-200/80 max-sm:w-full"
+          className="pl-chrome-btn-drop h-8 w-fit min-w-0 shrink-0 justify-between rounded-full border border-blue-300 bg-blue-100/80 px-3 text-[11px] text-blue-900 hover:border-blue-400 hover:bg-blue-200/80 max-sm:w-full"
           >
             <span className="min-w-0 truncate">{sequenceLabel} · {sortLabel}</span>
             <ChevronDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden />
@@ -666,7 +668,7 @@ function GalleryVoucherPostSettingGear({ inline = false }: { inline?: boolean })
       aria-label={label}
       onClick={() => typeof window !== "undefined" && window.dispatchEvent(new Event("pl:gallery:auto-ocr-settings"))}
       className={cn(
-        "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-400/50 bg-white/70 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-700",
+        "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-600 hover:bg-slate-200/80 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-700",
         inline && "hidden max-sm:inline-flex"
       )}
     >
@@ -683,6 +685,8 @@ function GalleryTabSwitch({
   onShowCompanyVouchers,
   className,
   inline = false,
+  showMobileAddFile = false,
+  onCollapseMobile,
 }: {
   activeTab: "company-files" | "runner-entry" | "unassigned" | "duplicate" | "auto-failed";
   onTabChange: (tab: "company-files" | "runner-entry" | "unassigned" | "duplicate" | "auto-failed") => void;
@@ -692,6 +696,8 @@ function GalleryTabSwitch({
   className?: string;
   /** true: wrapper ke bina — parent grid ke direct children (full-width cells) */
   inline?: boolean;
+  showMobileAddFile?: boolean;
+  onCollapseMobile?: () => void;
 }) {
   const buttons = (
     <>
@@ -700,28 +706,30 @@ function GalleryTabSwitch({
         variant="secondary"
         size="sm"
         className={cn(
-          "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
+          "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150 max-sm:order-2 max-sm:w-full max-sm:min-w-0 max-sm:px-1",
           inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
           activeTab === "runner-entry" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
       >
         Recent OCR Trxn
       </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className={cn("h-8 w-auto shrink-0 rounded-full border px-3 text-xs", GALLERY_TAB_IDLE_CN)}
-        onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:open-ocr-history"))}
-      >
-        OCR History
-      </Button>
+      {!inline ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={cn("h-8 w-auto shrink-0 rounded-full border px-3 text-xs max-sm:order-4 max-sm:w-full max-sm:min-w-0 max-sm:px-1", GALLERY_TAB_IDLE_CN)}
+          onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:open-ocr-history"))}
+        >
+          OCR History
+        </Button>
+      ) : null}
       <Button
         onClick={() => onTabChange("unassigned")}
         variant="secondary"
         size="sm"
         className={cn(
-          "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
+          "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150 max-sm:order-1 max-sm:w-full max-sm:min-w-0 max-sm:px-1",
           inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
           activeTab === "unassigned" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
@@ -734,7 +742,7 @@ function GalleryTabSwitch({
         variant="secondary"
         size="sm"
         className={cn(
-          "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
+          "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150 max-sm:order-5 max-sm:w-full max-sm:min-w-0 max-sm:px-1",
           inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
           activeTab === "duplicate" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
@@ -746,7 +754,7 @@ function GalleryTabSwitch({
         variant="secondary"
         size="sm"
         className={cn(
-          "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
+          "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150 max-sm:order-6 max-sm:w-full max-sm:min-w-0 max-sm:px-1",
           inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
           activeTab === "auto-failed" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
@@ -761,25 +769,55 @@ function GalleryTabSwitch({
         variant="secondary"
         size="sm"
         className={cn(
-          "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150",
+          "h-8 w-auto shrink-0 rounded-full border px-3 text-xs transition-all duration-150 max-sm:order-7 max-sm:w-full max-sm:min-w-0 max-sm:px-1",
           inline && "hidden max-sm:inline-flex max-sm:h-8 max-sm:w-full max-sm:min-w-0 max-sm:px-2",
           activeTab === "company-files" ? GALLERY_TAB_ACTIVE_CN : GALLERY_TAB_IDLE_CN
         )}
       >
         {companyAvatarsOnly ? "Voucher" : "Company Doc"}{tabCounts ? <span className="ml-1 tabular-nums opacity-75">{tabCounts.companyFiles}</span> : null}
       </Button>
-      <GalleryAutoPostModeRibbon inline={inline} />
-      <GalleryRunnerHoldButton inline={inline} />
-      <GalleryRunnerResetButton inline={inline} />
-      <GalleryQueueSequenceRibbon inline={inline} />
-      <GalleryVoucherPostSettingGear inline={inline} />
+      <GalleryAutoPostModeRibbon
+        inline={inline}
+        onCollapseMobile={onCollapseMobile}
+        mobileEndActions={!inline ? <>
+          {showMobileAddFile ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:add-file"))}
+              className={cn("h-8 shrink-0 gap-1 rounded-full border px-2 text-[10px]", GALLERY_TAB_IDLE_CN)}
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Add File
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8 shrink-0 rounded-full border-blue-400/70 bg-background/90"
+            aria-expanded
+            aria-label="Hide gallery top panel"
+            title="Hide gallery top panel"
+            onClick={onCollapseMobile}
+          >
+            <ChevronUp className="h-4 w-4" aria-hidden />
+          </Button>
+        </> : null}
+      />
+      <div className={cn("flex items-center gap-1.5", !inline && "max-sm:order-9 max-sm:col-span-3 max-sm:grid max-sm:w-full max-sm:grid-cols-3 max-sm:gap-[5px]")}>
+        <GalleryRunnerHoldButton inline={inline} />
+        <GalleryRunnerResetButton inline={inline} />
+        <GalleryQueueSequenceRibbon inline={inline} />
+      </div>
     </>
   );
 
   if (inline) return buttons;
 
   return (
-    <div className={cn("min-w-0 flex flex-wrap items-center gap-[10px]", className)}>{buttons}</div>
+    <div className={cn("min-w-0 flex flex-wrap items-center gap-[10px] max-sm:grid max-sm:w-full max-sm:grid-cols-3 max-sm:gap-[5px]", className)}>{buttons}</div>
   );
 }
 
@@ -1403,7 +1441,7 @@ function GalleryOcrHistoryDialog({ open, onOpenChange }: { open: boolean; onOpen
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[88vh] w-[min(96vw,68rem)] max-w-[68rem] flex-col overflow-hidden p-0">
+      <DialogContent className="flex max-h-[88vh] w-[min(96vw,68rem)] max-w-[68rem] flex-col overflow-hidden p-0 max-sm:rounded-xl">
         <DialogHeader className="shrink-0 border-b border-blue-300 bg-blue-100 px-4 py-3 text-left dark:border-blue-800 dark:bg-blue-950">
           <DialogTitle>OCR History</DialogTitle>
           <DialogDescription>Auto OCR results grouped by the day each action completed.</DialogDescription>
@@ -2980,9 +3018,6 @@ function CompanyFilesTab({ previewColumns, onColumnsChange, onEditVoucher, onTab
                     />
                   </div>
                 )}
-                <div className={cn(isMobile ? "col-span-2 grid grid-cols-2 gap-[5px]" : "col-span-2 flex items-center justify-end gap-1.5")}>
-                  <GalleryTabSwitch activeTab="company-files" onTabChange={onTabChange} tabCounts={tabCounts} companyAvatarsOnly={showAvatarsOnly} onShowCompanyVouchers={() => onShowAvatarsOnlyChange(false)} inline />
-                </div>
               </>
             ) : (
               <>
@@ -4842,9 +4877,9 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
             className={cn(
               // Secondary box/border hataya — sab pills ek hi main card me.
               "w-full gap-[5px]",
-              // Mobile: 2 columns — left pills right se 10% bade, sab pills full cell width.
+              // Mobile: 3 columns × 2 rows, sab pills full cell width.
               // PC: pills natural (content) size par, narrow screen par wrap ho jayein.
-              isMobile ? "grid grid-cols-[1.1fr_1fr]" : "flex flex-wrap items-center justify-start"
+              isMobile ? "grid grid-cols-3" : "flex flex-wrap items-center justify-start"
             )}
           >
             {/* Date range + Add File */}
@@ -4984,16 +5019,6 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
               fullWidth={isMobile}
             />
 
-            {isMobile ? <div className="col-span-2 flex w-full justify-start"><GalleryRunnerControls /></div> : null}
-
-            {/* Tab switch — mobile par grid ki last row: dono buttons aadhi-aadhi full width */}
-            <GalleryTabSwitch
-              activeTab={mode === "auto-failed" ? "auto-failed" : "unassigned"}
-              onTabChange={onTabChange}
-              tabCounts={tabCounts}
-              inline
-              className="col-span-2 hidden max-sm:grid max-sm:w-full max-sm:grid-cols-2 max-sm:gap-[5px]"
-            />
           </div>
         </CardHeader>
       </Card>
@@ -5579,20 +5604,19 @@ export function GalleryPageContent() {
     <div
       data-pl-gallery-grey-shell
       className={cn(
-        "box-border flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-neutral-800 px-0 pt-2 pb-0 dark:bg-zinc-900 sm:px-2 sm:pt-3 sm:pb-4 md:px-3 md:pt-4 md:pb-5",
+        "box-border flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-neutral-800 px-0 pt-0 pb-0 dark:bg-zinc-900 sm:px-2 sm:pt-3 sm:pb-4 md:px-3 md:pt-4 md:pb-5",
         activeTab === "runner-entry" && "!p-0 !bg-transparent",
       )}
     >
-       {/* Mobile: tab buttons footer card ke andar. PC: yahan top me.
-           PC: "Add File" tab pills ke baayein (mobile me ye footer card ke andar hi rehta hai). */}
-       <div className={cn("shrink-0 w-full", isMobile ? "hidden" : "block")}>
+       {/* Keep the Gallery controls in the top ribbon on every screen size. */}
+       <div className="block w-full shrink-0">
         {galleryTopRibbonExpanded ? (
           <div className={cn(
-            "relative min-w-0 w-full rounded-xl border border-slate-300/80 bg-background/95 p-2 shadow-md",
+            "relative min-w-0 w-full border border-slate-300/80 bg-card p-2 shadow-md",
             activeTab === "runner-entry" && "!rounded-none border-b-0 pb-2",
-          )}>
-            <div className={cn("flex min-w-0 flex-wrap items-center gap-[10px]", activeTab === "unassigned" ? "pr-[190px]" : "pr-[82px]")}>
-              <GalleryTabSwitch activeTab={activeTab} onTabChange={setGalleryTab} tabCounts={galleryTabCounts} companyAvatarsOnly={companyAvatarsOnly} onShowCompanyVouchers={() => setCompanyAvatarsOnly(false)} className="min-w-0 flex-1 !w-auto justify-start" />
+          )} data-pl-gallery-top-ribbon>
+            <div className={cn("flex min-w-0 flex-wrap items-center gap-[10px] max-sm:grid max-sm:w-full max-sm:grid-cols-2 max-sm:gap-[5px] max-sm:pr-0", activeTab === "unassigned" ? "pr-[190px]" : "pr-[82px]")}>
+              <GalleryTabSwitch activeTab={activeTab} onTabChange={setGalleryTab} tabCounts={galleryTabCounts} companyAvatarsOnly={companyAvatarsOnly} onShowCompanyVouchers={() => setCompanyAvatarsOnly(false)} showMobileAddFile={activeTab === "unassigned"} onCollapseMobile={() => setGalleryTopRibbonExpanded(false)} className="min-w-0 flex-1 justify-start max-sm:order-1 max-sm:col-span-2 max-sm:w-full max-sm:grid-cols-3" />
               <GalleryRunnerControls />
             </div>
             <div className="absolute right-2 top-2 z-[2] flex shrink-0 items-center gap-1.5">
@@ -5601,7 +5625,7 @@ export function GalleryPageContent() {
                   type="button"
                   variant="outline"
                   onClick={() => window.dispatchEvent(new CustomEvent("pl:gallery:add-file"))}
-                  className={cn("h-8 shrink-0 gap-1.5 rounded-full px-3 text-xs", GALLERY_TAB_IDLE_CN)}
+                  className={cn("h-8 shrink-0 gap-1.5 rounded-full px-3 text-xs max-sm:hidden", GALLERY_TAB_IDLE_CN)}
                 >
                   <Plus className="h-3.5 w-3.5" aria-hidden />
                   Add File
@@ -5611,7 +5635,7 @@ export function GalleryPageContent() {
                 type="button"
                 variant="outline"
                 size="icon"
-                className="h-8 w-8 shrink-0 rounded-full border-blue-400/70 bg-background/90"
+                className="hidden h-8 w-8 shrink-0 rounded-full border-blue-400/70 bg-background/90 sm:inline-flex"
                 aria-expanded={pageExpanded}
                 aria-label={pageExpanded ? "Exit expanded page view" : "Expand page"}
                 title={pageExpanded ? "Exit expanded view" : "Expand page"}
@@ -5623,7 +5647,7 @@ export function GalleryPageContent() {
                 type="button"
                 variant="outline"
                 size="icon"
-                className="h-8 w-8 shrink-0 rounded-full border-blue-400/70 bg-background/90"
+                className="h-8 w-8 shrink-0 rounded-full border-blue-400/70 bg-background/90 max-sm:hidden"
                 aria-expanded
                 aria-label="Hide gallery top panel"
                 title="Hide gallery top panel"

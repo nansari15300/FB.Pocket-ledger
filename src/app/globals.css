@@ -16688,6 +16688,12 @@ html body .pl-card-3d.rounded-lg.border[data-pl-gallery-company-footer][data-pl-
   border-color: rgb(147 197 253) !important;
 }
 
+/* Gallery top control ribbon: keep the default Pro green card surface after its corners are squared. */
+body.theme-pro:not(.dark) main [data-pl-gallery-top-ribbon] {
+  background-color: #ecfdf5 !important;
+  background-image: none !important;
+}
+
 html body[class*="theme-"] main input.pl-input[data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill],
 html body[class*="theme-"] main input[data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill],
 html body[class*="theme-"] main input[data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill][data-pl-gallery-search-pill]:focus {

@@ -814,7 +814,7 @@ function OcrSettingsGear({
           title="Voucher Post Setting"
           aria-label="Voucher Post Setting"
           onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new Event("pl:voucher-post-setting-open")); }}
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-400/50 bg-white/70 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-700"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-600 hover:bg-slate-200/80 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-700"
         >
           <Settings className="h-3.5 w-3.5" />
         </button>
@@ -864,7 +864,7 @@ export function VoucherOcrHeaderToggles({ className }: { className?: string }) {
   const style: OcrConnectorStyle = p.connectorStyle === "line" ? "line" : "tail";
   const narrationStyle: OcrNarrationStyle = p.narrationStyle === "short" ? "short" : "full";
   return (
-    <div className={cn("flex min-w-0 flex-1 items-center gap-1 overflow-hidden", className)} data-pl-ocr-header-toggles="">
+    <div className={cn("flex min-w-0 flex-1 items-center gap-1", className)} data-pl-ocr-header-toggles="">
       <VoucherOcrModeSwitch
         mode={dialogMode}
         collapsed={!ocrEnabled}
@@ -872,14 +872,16 @@ export function VoucherOcrHeaderToggles({ className }: { className?: string }) {
         onModeChange={(next) => { void chooseMode(next); }}
         runnerPositionsDisabled={!canChangeRunner}
         disabled={choosing}
-      />
-      <OcrSettingsGear
-        connectorStyle={style}
-        narrationStyle={narrationStyle}
-        switchOn={p.autoSwitchVoucher !== false}
-        switchSeconds={clampAutoPostSeconds(p.autoSwitchSeconds)}
-        translateToEnglish={p.translateToEnglish === true}
-        aiCopilot={p.aiCopilot === true}
+        trailingAction={
+          <OcrSettingsGear
+            connectorStyle={style}
+            narrationStyle={narrationStyle}
+            switchOn={p.autoSwitchVoucher !== false}
+            switchSeconds={clampAutoPostSeconds(p.autoSwitchSeconds)}
+            translateToEnglish={p.translateToEnglish === true}
+            aiCopilot={p.aiCopilot === true}
+          />
+        }
       />
     </div>
   );

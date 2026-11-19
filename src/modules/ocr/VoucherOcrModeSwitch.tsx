@@ -7,6 +7,7 @@
  * Visual treatment follows the gallery Auto post ribbon slider.
  */
 import * as React from "react";
+import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -59,6 +60,7 @@ export function VoucherOcrModeSwitch({
   runnerPositionsDisabled = false,
   disabled = false,
   className,
+  trailingAction,
 }: {
   mode: VoucherOcrDialogMode;
   /** When OCR is off, hide the long slider and show a small on/off switch. */
@@ -70,6 +72,8 @@ export function VoucherOcrModeSwitch({
   runnerPositionsDisabled?: boolean;
   disabled?: boolean;
   className?: string;
+  /** Optional control (for example settings) grouped inside the switch capsule. */
+  trailingAction?: ReactNode;
 }) {
   const i18n = usePlI18nOptional();
   const lang = introTabLang(i18n?.intro);
@@ -79,25 +83,30 @@ export function VoucherOcrModeSwitch({
 
   if (collapsed || mode === "off") {
     return (
-      <label
-        htmlFor="pl-ocr-dialog-mode"
-        title={voucherOcrModeOffTitle(lang)}
-        data-pl-ocr-dialog-mode="off"
-        className={cn(
-          "inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-slate-400/50 bg-white/70 px-2 text-xs font-medium text-slate-800 dark:bg-slate-900/60 dark:text-slate-100",
-          disabled && "cursor-not-allowed opacity-60",
-          className,
-        )}
-      >
-        <span className="whitespace-nowrap">{voucherOcrModeOffPill(lang)}</span>
-        <Switch
-          id="pl-ocr-dialog-mode"
-          checked={false}
-          disabled={disabled}
-          onCheckedChange={(value) => { if (value === true) onModeChange(turnOnMode); }}
-          className="scale-75"
-        />
-      </label>
+      <div className={cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-full border border-blue-300 bg-blue-100/80 px-1 hover:bg-blue-200/80 dark:border-slate-500/50 dark:bg-slate-900/60",
+        className,
+      )}>
+        <label
+          htmlFor="pl-ocr-dialog-mode"
+          title={voucherOcrModeOffTitle(lang)}
+          data-pl-ocr-dialog-mode="off"
+          className={cn(
+            "inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full px-2 text-xs font-medium text-slate-800 dark:text-slate-100",
+            disabled && "cursor-not-allowed",
+          )}
+        >
+          <span className="whitespace-nowrap">{voucherOcrModeOffPill(lang)}</span>
+          <Switch
+            id="pl-ocr-dialog-mode"
+            checked={false}
+            disabled={disabled}
+            onCheckedChange={(value) => { if (value === true) onModeChange(turnOnMode); }}
+            className="scale-75"
+          />
+        </label>
+        {trailingAction ? <span className="flex h-9 shrink-0 items-center">{trailingAction}</span> : null}
+      </div>
     );
   }
 
@@ -127,12 +136,12 @@ export function VoucherOcrModeSwitch({
   return (
     <div
       className={cn(
-        "relative inline-flex shrink-0 flex-col items-stretch rounded-full border border-slate-400/50 bg-white/70 px-2 py-1 dark:border-slate-500/50 dark:bg-slate-900/60",
+        "inline-flex shrink-0 items-start gap-1 rounded-full border border-blue-300 bg-blue-100/80 px-2 py-1 hover:bg-blue-200/80 dark:border-slate-500/50 dark:bg-slate-900/60",
         className,
       )}
       data-pl-ocr-dialog-mode={mode}
-      title={voucherOcrModeOnTitle(lang)}
     >
+      <div className="relative inline-flex shrink-0 flex-col items-stretch" title={voucherOcrModeOnTitle(lang)}>
       <button
         type="button"
         role="radiogroup"
@@ -204,6 +213,8 @@ export function VoucherOcrModeSwitch({
         </span>,
         document.body,
       ) : null}
+      </div>
+      {trailingAction ? <span className="-ml-0.5 mt-0 flex shrink-0 items-center" style={{ height: TRACK_HEIGHT }}>{trailingAction}</span> : null}
     </div>
   );
 }

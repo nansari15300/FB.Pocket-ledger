@@ -50,13 +50,13 @@ import {
 
 /**
  * App ke andar ka camera trigger icon (dashboard FAB + gallery tabs) — user ki di hui
- * camera-lens image, bilkul waisi hi. Home-screen / APK launcher icon isse alag hai.
+ * camera-body image. Home-screen / APK launcher icon isse alag hai.
  */
 function CameraScanIcon({ className }: { className?: string }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element -- chhota static public icon
     <img
-      src={publicAssetUrl("/icons/camera-lens.png")}
+      src={publicAssetUrl("/icons/phone-in-jeans-pocket-camera-full.png")}
       alt=""
       aria-hidden
       draggable={false}
@@ -1583,7 +1583,7 @@ export function UnassignedCameraCapture({ onCapture, bottomClass, className, wra
           }
           style={wrapperStyle}
         >
-          <CameraScanIcon className="block !h-full !w-full shrink-0 object-contain" />
+          <CameraScanIcon className="block !h-full !w-full shrink-0 rounded-[22%] object-contain" />
         </Button>
       )}
     </>
