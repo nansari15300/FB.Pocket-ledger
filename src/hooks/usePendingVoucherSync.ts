@@ -9,6 +9,7 @@ import { deleteCompanyComplete } from "@/lib/actions/deleteCompanyAction";
 import { useOnlineStatus } from "./use-online-status";
 import { useAuth } from "./useAuth";
 import { isServerQuotaHoldActive, SERVER_QUOTA_HOLD_END_EVENT } from "@/lib/serverQuotaHold";
+import { flushGalleryOfflinePendingUploads } from "@/modules/ocr/galleryOfflinePendingStore";
 
 /** Phase 2 hotfix: background retry interval for pending (failed) attachment uploads. */
 const PENDING_SYNC_RETRY_MS = 2 * 60 * 1000;

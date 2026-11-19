@@ -429,3 +429,37 @@ Then **restart PocketBase** (hooks load at process start). No migration needed. 
 - Changed: `useVouchersByIds.ts`, `GalleryPageClient.tsx`, `GalleryLocalAutoPostRunner.tsx`
 - Selftests: `tests/ocr/companyFileCount.selftest.mts`, `recentOcrLinks.selftest.mts`, `runnerWrongPcIntro.selftest.mts`
 - Left uncommitted (and the server hook undeployed) for Git Master / Server master.
+
+### Gallery server counts + offline Unassigned mark (19 Nov 2026, undeployed)
+
+Ansari Ji approved: all four Gallery badges from the server, and a file that has not reached the server must show in that PC's Unassigned list, dimmed, with an offline mark, then auto-upload when internet returns.
+
+**Server (same hook files, still undeployed):**
+- New route `GET /api/pl/gallery-counts?company=<app company id>`
+- Response: `{ ok, company, unassigned, duplicate, autoPostFailed, companyFiles }`
+- Visibility matches the Gallery client: not deleted / `_pbHardDeleted`, `status !== 'ASSIGNED'`, skip stub rows with no `uploadedAt`. Unassigned = `autoOcrStatus !== 'failed'`; Auto post failed = `autoOcrStatus === 'failed'`; Duplicate from `pl_docs` `coll = 'duplicate_documents'`. Company Files reuses the existing all-FY voucher file count.
+- Auth unchanged: signed-in `pl_users` + active member/owner, generic 403.
+
+**Client:**
+- `useGalleryServerCounts` loads all four badges (cache + refresh on voucher/unassigned/duplicate mirror bumps and window focus). If the route is missing or offline, current local counts are used.
+- Unassigned badge on that PC = server (or local fallback) + this-PC pending files not yet on the server (no double count after upload).
+- New unassigned adds that cannot reach the server are stored only on that PC (`local:` blob + pending list). The tile is dimmed and shows an Offline mark (en/hi/ne). On `online`, every 30s while Gallery is open, and via the existing pending-sync retry, the file uploads and the unassigned row is written to the server; the mark goes away and the badge corrects.
+- Device-only companies still use the existing localStorage path.
+
+**Offline mark text:**
+- en: "This file is saved only on this PC because there was no internet; it will upload automatically when online."
+- hi / ne: same meaning in intro language (`galleryOfflinePendingIntro.ts`). Short label: Offline / ऑफलाइन / अफलाइन.
+
+**CNTR Out-001 / voucher `local:` gap (reported, not changed):**
+`DEXP`/`CNTR Out-001` style voucher attachments use a different uploader than unassigned docs. For PocketBase companies, `syncPendingFiles` / `syncOnePendingFile` explicitly skips upload ("file uploads with its data sync"). Bytes are supposed to go through the in-memory `plServerAttachmentUploadQueue` (`/__pl_attachment`). That queue is not persisted; after a reload it is only refilled on a voucher save (`ensurePlServerAttachmentsQueuedFromRecord`) or a host-bridge backfill that does not cover normal server-gate companies. `usePendingVoucherSync` retries `syncPendingFiles`, which no-ops for these companies, so a `local:` voucher file can stay on the creating PC. Fixing that voucher-attachment retry path is outside this Gallery/OCR change.
+
+**Deploy (Server master — do not copy from Server PC, do not restart from this change):**
+Laptop sources:
+`C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\company_file_count.pb.js`
+`C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\lib\company_file_count.js`
+Copy onto ServerWin10 at:
+`C:\Project Next.js Balgram\PocketLedger-Server\sub-server\pb_hooks\company_file_count.pb.js`
+`C:\Project Next.js Balgram\PocketLedger-Server\sub-server\pb_hooks\lib\company_file_count.js`
+Then **restart PocketBase**. No migration. Left uncommitted.
+
+**Client files:** `galleryDocVisibility.ts`, `galleryOfflinePending.ts`, `galleryOfflinePendingIntro.ts`, `galleryOfflinePendingStore.ts`, `useGalleryServerCounts.ts`, `useGalleryOfflinePending.ts`, `plGalleryServerApi.ts`, `GalleryPageClient.tsx`, `savePhotoToUnassigned.ts`, `usePendingVoucherSync.ts`. Selftest: `tests/ocr/galleryCounts.selftest.mts`.

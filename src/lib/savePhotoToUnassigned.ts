@@ -20,6 +20,7 @@ import { uploadFileClient } from "@/lib/storageClient";
 import { incrementCompanyStorage } from "@/lib/storageUsageClient";
 import { isPocketBaseCompany, isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
 import { uploadUnassignedFileToPocketLedgerServer } from "@/lib/uploadUnassignedFileToPocketLedgerServer";
+import { saveGalleryOfflinePendingFile } from "@/modules/ocr/galleryOfflinePendingStore";
 
 /** Same rule as the gallery: PocketBase-backed companies write to their authoritative id. */
 function firestoreCompanyIdForGallery(
@@ -45,7 +46,7 @@ async function uploadUnassignedToPocketLedgerServer(input: {
   });
 }
 
-export type SavedPhotoResult = { ok: true; docId: string } | { ok: false; error: string };
+export type SavedPhotoResult = { ok: true; docId: string; offlinePending?: boolean } | { ok: false; error: string };
 
 export async function savePhotoToUnassigned(opts: {
   companyId: string;
@@ -78,7 +79,13 @@ export async function savePhotoToUnassigned(opts: {
     if (uploadResult.success === true) {
       // uploaded — continue below
     } else {
-      return { ok: false, error: uploadResult.error || "upload_failed" };
+      const pending = await saveGalleryOfflinePendingFile({
+        companyId: fsId,
+        file,
+        fileName: file.name || "photo.jpg",
+        uploadedBy,
+      });
+      return { ok: true, docId: pending.id, offlinePending: true };
     }
 
     if (!serverUpload) {
@@ -132,7 +139,18 @@ export async function savePhotoToUnassigned(opts: {
 
     return { ok: true, docId: docRef.id };
   } catch (e) {
-    console.warn("[savePhotoToUnassigned] failed", e);
-    return { ok: false, error: e instanceof Error ? e.message : "unknown_error" };
+    try {
+      const fsId = firestoreCompanyIdForGallery(companyId, company);
+      const pending = await saveGalleryOfflinePendingFile({
+        companyId: fsId,
+        file,
+        fileName: file.name || "photo.jpg",
+        uploadedBy,
+      });
+      return { ok: true, docId: pending.id, offlinePending: true };
+    } catch (offlineError) {
+      console.warn("[savePhotoToUnassigned] failed", e, offlineError);
+      return { ok: false, error: e instanceof Error ? e.message : "unknown_error" };
+    }
   }
 }

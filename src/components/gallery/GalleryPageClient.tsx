@@ -45,8 +45,13 @@ import { Button } from "@/components/ui/button";
 import { AUTO_POST_UI, useAutoPostUiCopy } from "@/components/gallery/autoPostUiCopy";
 import { useVouchersByIds } from "@/modules/ocr/useVouchersByIds";
 import { useRecentOcrLinks } from "@/modules/ocr/useRecentOcrLinks";
-import { useCompanyFileCount } from "@/modules/ocr/useCompanyFileCount";
+import { useGalleryServerCounts } from "@/modules/ocr/useGalleryServerCounts";
 import { countCompanyVoucherFiles } from "@/modules/ocr/companyFileCountCore";
+import { isGalleryDocumentVisibleInMode, type GalleryDocumentListMode } from "@/modules/ocr/galleryDocVisibility";
+import { isOfflinePendingUnassignedFile, combineGalleryBadgeCount, mergeOfflinePendingIntoUnassigned } from "@/modules/ocr/galleryOfflinePending";
+import { galleryOfflinePendingIntro, galleryOfflinePendingMark } from "@/modules/ocr/galleryOfflinePendingIntro";
+import { removeGalleryOfflinePending, saveGalleryOfflinePendingFile } from "@/modules/ocr/galleryOfflinePendingStore";
+import { useGalleryOfflinePending } from "@/modules/ocr/useGalleryOfflinePending";
 import { RunnerWrongPcDialog } from "@/components/gallery/RunnerWrongPcDialog";
 import { useLocalMasterNames } from "@/modules/ocr/useLocalMasterNames";
 import { recentOcrUserLabel, recentOcrUserLines } from "@/modules/ocr/recentOcrUserLabel";
@@ -2969,15 +2974,9 @@ type UnassignedFile = {
     updatedAt?: unknown;
     autoPostIgnoreDuplicateOnce?: boolean;
     restoredFromDuplicateAtMs?: number;
-}
-
-type GalleryDocumentListMode = "unassigned" | "duplicate" | "auto-failed";
-
-function isGalleryDocumentVisibleInMode(file: Partial<UnassignedFile>, mode: GalleryDocumentListMode): boolean {
-  if (file.isDeleted || file.deleted || file._pbHardDeleted || file.status === "ASSIGNED") return false;
-  if (mode === "auto-failed") return file.autoOcrStatus === "failed";
-  if (mode === "unassigned") return file.autoOcrStatus !== "failed";
-  return true;
+    /** This PC only: file has not reached the server yet. */
+    offlinePending?: boolean;
+    uploadPending?: boolean;
 }
 
 type UploadingFile = {
@@ -3130,6 +3129,10 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
   const { user } = useAuth();
   const { company, companyId } = useCompany();
   const { vouchers } = useVouchers();
+  const i18n = usePlI18nOptional();
+  const offlinePendingIntroLang = introTabLang(i18n?.intro);
+  const galleryOfflineCompanyId = firestoreCompanyIdForGallery(companyId, company);
+  const offlinePendingRows = useGalleryOfflinePending(mode === "unassigned" ? galleryOfflineCompanyId : "");
   const [autoPostEnabled, setAutoPostEnabled] = useState<boolean | null>(null);
   const [queueSequence, setQueueSequence] = useState<GalleryQueueSequence>(DEFAULT_GALLERY_QUEUE_SEQUENCE);
   const [gallerySortOrder, setGallerySortOrder] = useState<GallerySortOrder>(DEFAULT_GALLERY_SORT_ORDER);
@@ -3533,14 +3536,30 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
             /* pagehide flush is the fallback */
           }
         } else {
-          toast.error(`Upload failed: ${uploadingFile.name}`, { description: (uploadResult as any).error || "Upload failed." });
+          await saveGalleryOfflinePendingFile({
+            companyId: fsId,
+            file: compressedFile,
+            fileName: compressedFile.name,
+            uploadedBy: user.uid,
+          });
+          toast.success(`Saved offline: ${uploadingFile.name}`, { description: galleryOfflinePendingIntro(offlinePendingIntroLang) });
         }
       } catch (error) {
-        const message = error instanceof Error && error.message?.includes("fetch")
-          ? "Check your internet connection and try again."
-          : "Something went wrong. Please try again.";
-        toast.error(`Upload failed: ${uploadingFile.name}`, { description: message });
-        console.error("Upload failed for file:", uploadingFile.name, error);
+        try {
+          await saveGalleryOfflinePendingFile({
+            companyId: fsId,
+            file: compressedFile,
+            fileName: compressedFile.name,
+            uploadedBy: user.uid,
+          });
+          toast.success(`Saved offline: ${uploadingFile.name}`, { description: galleryOfflinePendingIntro(offlinePendingIntroLang) });
+        } catch (offlineError) {
+          const message = error instanceof Error && error.message?.includes("fetch")
+            ? "Check your internet connection and try again."
+            : "Something went wrong. Please try again.";
+          toast.error(`Upload failed: ${uploadingFile.name}`, { description: message });
+          console.error("Upload failed for file:", uploadingFile.name, error, offlineError);
+        }
       } finally {
         setUploadingFiles(prev => prev.filter(f => f.id !== uploadingFile.id));
       }
@@ -3555,9 +3574,9 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
         toast.success("Upload complete", { description: `${batchOperationsCount} file(s) uploaded.` });
       }
     } else if (newUploadingFiles.length > 0) {
-      toast.error("Upload failed", { description: "Could not upload files. Check your connection and try again." });
+      // Offline pending toasts already shown per file; keep a short summary only when none were saved.
     }
-  }, [companyId, user, company]);
+  }, [companyId, user, company, offlinePendingIntroLang]);
   
   const { getRootProps, getInputProps, open: openFilePicker } = useDropzone({ onDrop, noClick: true });
   /** "Add File" button in the tab header opens the same picker the old dropzone did. */
@@ -3761,6 +3780,17 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
     if (!target || !companyId) return;
     setIsDeleting(true);
     try {
+        if (isOfflinePendingUnassignedFile(target)) {
+          await removeGalleryOfflinePending(firestoreCompanyIdForGallery(companyId, company), target.id);
+          setUnassignedFiles((prev) => prev.filter((f) => f.id !== target.id));
+          setSelectedFileIds((prev) => {
+            const copy = new Set(prev);
+            copy.delete(target.id);
+            return copy;
+          });
+          toast.success("File deleted successfully");
+          return;
+        }
         const deviceOnly =
           isLocalOnlyMode() && !(await canSyncCompanyToServer(companyId));
         if (deviceOnly) {
@@ -3814,7 +3844,9 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
   };
 
   const filteredFiles = useMemo(() => {
-    let filtered = [...unassignedFiles];
+    let filtered = mode === "unassigned"
+      ? mergeOfflinePendingIntoUnassigned(unassignedFiles, offlinePendingRows as UnassignedFile[])
+      : [...unassignedFiles];
     
     if (selectedUploaderId !== 'all') {
       filtered = filtered.filter(f => f.uploadedBy === selectedUploaderId);
@@ -3830,7 +3862,7 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
     }
     // Sorting changes the visible file order; queue direction then numbers/processes that grid.
     return mode === "unassigned" ? sortGalleryFiles(filtered, gallerySortOrder) : filtered;
-  }, [unassignedFiles, selectedUploaderId, dateRange, mode, gallerySortOrder]);
+  }, [unassignedFiles, offlinePendingRows, selectedUploaderId, dateRange, mode, gallerySortOrder]);
 
   // Keep every document visible in the grid, but only number documents that the
   // local runner can actually pick. Previously completed files kept a visible
@@ -4151,8 +4183,17 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
   const handleBatchDelete = async () => {
     if (selectedFileIds.size === 0 || !companyId) return;
     setIsBatchDeleting(true);
-    const toDeleteDocs = unassignedFiles.filter((f) => selectedFileIds.has(f.id));
+    const pendingDeletes = (mode === "unassigned" ? offlinePendingRows as UnassignedFile[] : []).filter((f) => selectedFileIds.has(f.id));
+    const toDeleteDocs = unassignedFiles.filter((f) => selectedFileIds.has(f.id) && !isOfflinePendingUnassignedFile(f));
     try {
+      for (const pending of pendingDeletes) {
+        await removeGalleryOfflinePending(firestoreCompanyIdForGallery(companyId, company), pending.id);
+      }
+      if (pendingDeletes.length > 0 && toDeleteDocs.length === 0) {
+        setSelectedFileIds(new Set());
+        toast.success(`${pendingDeletes.length} file(s) deleted successfully`);
+        return;
+      }
       const deviceOnly =
         isLocalOnlyMode() && !(await canSyncCompanyToServer(companyId));
       if (deviceOnly) {
@@ -4338,9 +4379,12 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
               };
 
               const isSelected = selectedFileIds.has(file.id);
+              const offlinePending = isOfflinePendingUnassignedFile(file);
+              const offlineLabel = galleryOfflinePendingMark(offlinePendingIntroLang);
+              const offlineHint = galleryOfflinePendingIntro(offlinePendingIntroLang);
 
               const tileEl = (
-                <div className="relative group flex flex-col gap-1" style={{ width: `${tileSize}px` }}>
+                <div className={cn("relative group flex flex-col gap-1", offlinePending && "opacity-60")} style={{ width: `${tileSize}px` }}>
                   <div
                     className={cn(
                       "relative overflow-hidden rounded-lg bg-muted/30 cursor-pointer transition-shadow",
@@ -4356,6 +4400,15 @@ function UnassignedDocumentsTab({ mode = "unassigned", handleAttachToVoucher, pr
                       fileSize={file.size}
                       size={Number(tileSize) || 120}
                     />
+                    {offlinePending ? (
+                      <span
+                        className="pointer-events-none absolute bottom-1.5 left-1.5 z-20 inline-flex max-w-[calc(100%-12px)] items-center rounded-full border border-amber-400/80 bg-amber-50/95 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-900 shadow-sm dark:bg-amber-950/90 dark:text-amber-100"
+                        title={offlineHint}
+                        aria-label={offlineHint}
+                      >
+                        {offlineLabel}
+                      </span>
+                    ) : null}
                     {mode === "unassigned" && sequenceNumber > 0 ? (
                       <span
                         className="pointer-events-none absolute bottom-1.5 right-1.5 z-20 inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-blue-300 bg-white/95 px-1.5 text-xs font-bold leading-none text-blue-900 shadow-sm"
@@ -5199,14 +5252,22 @@ export function GalleryPageContent() {
     () => countCompanyVoucherFiles((vouchers || []) as Record<string, unknown>[]),
     [vouchers]
   );
-  const companyFileCount = useCompanyFileCount(String(companyId || ""), localCompanyFileCount);
-  const tabCounts = useMemo<GalleryTabCounts>(() => ({
-    unassigned: 0,
-    duplicate: 0,
-    autoFailed: 0,
-    companyFiles: companyFileCount,
-  }), [companyFileCount]);
   const [documentTabCounts, setDocumentTabCounts] = useState({ unassigned: 0, duplicate: 0, autoFailed: 0 });
+  const galleryCountCompanyId = firestoreCompanyIdForGallery(companyId, company);
+  const offlinePendingForBadges = useGalleryOfflinePending(galleryCountCompanyId);
+  const localFallbackCounts = useMemo(() => ({
+    unassigned: documentTabCounts.unassigned,
+    duplicate: documentTabCounts.duplicate,
+    autoPostFailed: documentTabCounts.autoFailed,
+    companyFiles: localCompanyFileCount,
+  }), [documentTabCounts, localCompanyFileCount]);
+  const serverCounts = useGalleryServerCounts(String(companyId || ""), localFallbackCounts);
+  const tabCounts = useMemo<GalleryTabCounts>(() => ({
+    unassigned: combineGalleryBadgeCount(serverCounts.unassigned, offlinePendingForBadges.length),
+    duplicate: serverCounts.duplicate,
+    autoFailed: serverCounts.autoPostFailed,
+    companyFiles: serverCounts.companyFiles,
+  }), [serverCounts, offlinePendingForBadges.length]);
   const [ocrHistoryOpen, setOcrHistoryOpen] = useState(false);
   const galleryFirestoreCompanyId = firestoreCompanyIdForGallery(companyId, company as any);
   const galleryLocalOnly = isLocalOnlyMode();
@@ -5264,7 +5325,7 @@ export function GalleryPageContent() {
       stopDuplicate();
     };
   }, [galleryFirestoreCompanyId, galleryLocalOnly]);
-  const galleryTabCounts = useMemo<GalleryTabCounts>(() => ({ ...tabCounts, ...documentTabCounts }), [tabCounts, documentTabCounts]);
+  const galleryTabCounts = tabCounts;
   const [activeTab, setActiveTab] = useState<GalleryTab>(() => getTabFromSearchParams(searchParams));
   const [companyAvatarsOnly, setCompanyAvatarsOnly] = useState(false);
   useEffect(() => {

@@ -72,6 +72,45 @@ export async function fetchVouchersByAnyIds(
   return out;
 }
 
+
+export type GalleryServerCountsResponse = {
+  ok: true;
+  company: string;
+  unassigned: number;
+  duplicate: number;
+  autoPostFailed: number;
+  companyFiles: number;
+};
+
+function asNonNegInt(value: unknown): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.floor(n);
+}
+
+export async function fetchGalleryServerCounts(companyId: string): Promise<{
+  unassigned: number;
+  duplicate: number;
+  autoPostFailed: number;
+  companyFiles: number;
+}> {
+  const cid = String(companyId || "").trim();
+  if (!cid) throw new Error("company required");
+  const raw = await pbRequest(
+    `/api/pl/gallery-counts?company=${encodeURIComponent(cid)}`,
+    { method: "GET", timeoutMs: 15_000 }
+  );
+  const row = raw as Partial<GalleryServerCountsResponse> | null;
+  const unassigned = asNonNegInt(row?.unassigned);
+  const duplicate = asNonNegInt(row?.duplicate);
+  const autoPostFailed = asNonNegInt(row?.autoPostFailed);
+  const companyFiles = asNonNegInt(row?.companyFiles);
+  if (unassigned == null || duplicate == null || autoPostFailed == null || companyFiles == null) {
+    throw new Error("invalid gallery counts");
+  }
+  return { unassigned, duplicate, autoPostFailed, companyFiles };
+}
+
 export function isGalleryServerApiUnavailable(error: unknown): boolean {
   if (error instanceof PocketBaseNotSignedInError) return true;
   if (error instanceof PocketBaseRequestError) {
