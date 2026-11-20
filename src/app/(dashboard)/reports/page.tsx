@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { ReportList } from "@/components/reports/ReportList";
 import { reports, type Report } from "@/components/reports/report-data";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { PanelRight } from "lucide-react";
+import { PanelLeft, PanelRight } from "lucide-react";
 import { ReportRegisterListSearchRow } from "@/components/reports/ReportRegisterListSearchRow";
 import { PendingApprovalListFilterBadge } from "@/components/layout/PendingApprovalListFilterBadge";
 import { usePendingApprovalListFilter } from "@/hooks/usePendingApprovalListFilter";
@@ -131,7 +131,6 @@ function ReportsPageContent() {
         setSelectedReport(found);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- hasRestoredFromUrl ref prevents re-restore
   }, [loading, reportsForCompany, searchParams, normalizeReportSearchParam]);
 
   // Sync selection to URL when it changes (enables refresh to persist)
@@ -245,7 +244,13 @@ function ReportsPageContent() {
   const detailView = (
     selectedReport ? (
       /* key={id}: dubara render par purana search/filter state recycle na ho — SPA me report swap same component-type */
-      <ReportDetails key={selectedReport.id} report={selectedReport} />
+      /* 8px top gap (same as Financial Summary) + 10px gap from the report-list divider line.
+       * `flex`-based sizing keeps the inner report at the remaining height instead of overflowing. */
+      <div className="flex h-full min-h-0 flex-col pl-[10px] pt-2" data-pl-report-detail-root="">
+        <div className="min-h-0 flex-1">
+          <ReportDetails key={selectedReport.id} report={selectedReport} />
+        </div>
+      </div>
     ) : (
       <div className="flex items-center justify-center h-full text-muted-foreground">
         Select a report to view details
@@ -313,40 +318,74 @@ function ReportsPageContent() {
       onShowDesktopReportList={() => setIsDesktopReportListOpen(true)}
     >
       <div
-        className="grid h-full overflow-hidden"
+        className="grid h-full overflow-hidden transition-[grid-template-columns] duration-300"
         style={{
           gridTemplateColumns: isDesktopReportListOpen
             ? `${reportListWidthPx}px minmax(0, 1fr)`
-            : "0 minmax(0, 1fr)",
+            : "64px minmax(0, 1fr)",
         }}
       >
-        {/* Desktop report list behaves like collapsible app sidebar. */}
-        <div
-          className={cn(
-            "border-r overflow-hidden transition-all duration-300",
-            isDesktopReportListOpen ? "opacity-100" : "w-0 opacity-0"
-          )}
-          style={{ width: isDesktopReportListOpen ? reportListWidthPx : 0 }}
-        >
-          <div className="relative flex h-full min-w-0 flex-col">
-            <ResizeWidthHandle onPointerDown={beginReportListResize} title="Resize reports list" />
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b px-2 py-1">
-              <h1 className="min-w-0 flex-1 text-base font-bold font-headline leading-tight">Reports</h1>
+        {/* Desktop report list: expanded = full list, collapsed = main sidebar jaisa 64px icon rail. */}
+        {isDesktopReportListOpen ? (
+          <div
+            className="border-r border-r-[1px] overflow-hidden"
+            style={{ width: reportListWidthPx }}
+            data-pl-reports-panel-border=""
+          >
+            <div className="relative flex h-full min-w-0 flex-col">
+              <ResizeWidthHandle onPointerDown={beginReportListResize} title="Resize reports list" />
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-b-[1px] px-2 py-1">
+                <h1 className="min-w-0 flex-1 text-base font-bold font-headline leading-tight">Reports</h1>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 rounded-full border-blue-300/90 bg-blue-100 text-blue-900 shadow-sm hover:bg-blue-200 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-100 dark:hover:bg-blue-900/50"
+                  onClick={() => setIsDesktopReportListOpen(false)}
+                  title="Collapse report list"
+                  aria-label="Collapse report list"
+                  aria-expanded
+                >
+                  <PanelRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-hidden">{listView}</div>
+            </div>
+          </div>
+        ) : (
+          <div
+            className="flex h-full min-w-0 flex-col border-r border-r-[1px] bg-sidebar"
+            data-pl-reports-rail=""
+            data-pl-reports-panel-border=""
+          >
+            <div className="flex shrink-0 items-center justify-center border-b border-b-[1px] px-1 py-1">
               <Button
                 type="button"
                 variant="outline"
                 size="icon"
                 className="h-7 w-7 shrink-0 rounded-full border-blue-300/90 bg-blue-100 text-blue-900 shadow-sm hover:bg-blue-200 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-100 dark:hover:bg-blue-900/50"
-                onClick={() => setIsDesktopReportListOpen(false)}
-                title="Hide report list"
-                aria-label="Hide report list"
+                onClick={() => setIsDesktopReportListOpen(true)}
+                title="Show report list"
+                aria-label="Show report list"
+                aria-expanded={false}
               >
-                <PanelRight className="h-3.5 w-3.5" />
+                <PanelLeft className="h-3.5 w-3.5" />
               </Button>
             </div>
-            <div className="min-h-0 flex-1 overflow-hidden">{listView}</div>
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <ReportList
+                collapsed
+                pendingByReportId={reportsMenuPending.byReportId}
+                reports={filteredReports}
+                onSelectReport={(r) => {
+                  setSelectedReportWithUrl(r);
+                  setReportListOpen(false);
+                }}
+                selectedReport={selectedReport}
+              />
+            </div>
           </div>
-        </div>
+        )}
         <div className="min-w-0 flex flex-col overflow-hidden">
           <ReportsDesktopDetailTopBar
             isDesktopReportListOpen={isDesktopReportListOpen}

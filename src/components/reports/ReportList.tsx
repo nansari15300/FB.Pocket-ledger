@@ -21,6 +21,11 @@ interface ReportListProps {
   pendingByReportId?: Record<string, number>;
   /** Search box text - matching part of report name highlight. */
   searchTerm?: string;
+  /**
+   * Icon rail (main sidebar `w-16` jaisa): sirf report icons, koi label/category heading nahi.
+   * Selected/hover row par `title` tooltip se naam dikhta hai.
+   */
+  collapsed?: boolean;
 }
 
 export function ReportList({
@@ -29,6 +34,7 @@ export function ReportList({
   selectedReport,
   pendingByReportId,
   searchTerm,
+  collapsed = false,
 }: ReportListProps) {
   // Report-specific icon mapping keeps Party/Bill/Income P&L entries visually distinct in list.
   const getReportIcon = (reportId: string) => {
@@ -57,6 +63,61 @@ export function ReportList({
 
   const reportRowClassName = (isSelected: boolean) =>
     cn(masterListUnselectedCn, isSelected && masterListSelectedCn);
+
+  /* ---- Collapsed icon rail (main sidebar `w-16` jaisa) -------------------------------------
+   * Sirf icons, category headings nahi. Har row par `title`/`aria-label` se poora naam milta
+   * hai (main nav ke icon-only state jaisa). Pending badge icon par hi chipka rehta hai. */
+  if (collapsed) {
+    return (
+      <div className="flex-1 min-h-0" data-pl-master-list-chrome="">
+        <ScrollArea listChrome className="flex-1 min-h-0 h-full">
+          <ul className="flex flex-col items-center gap-1 p-1" data-pl-reports-list="">
+            {reports.map((report) => {
+              const isSelected = selectedReport?.id === report.id;
+              const ReportIcon = getReportIcon(report.id);
+              const iconTile = (
+                <div className="relative shrink-0">
+                  <div className={MASTER_LIST_GROUP_ICON_CN}>
+                    <ReportIcon className="h-4 w-4 shrink-0" />
+                  </div>
+                  <MasterListPendingBadge count={pendingByReportId?.[report.id] ?? 0} />
+                </div>
+              );
+              return (
+                <li key={report.id} className="flex w-full justify-center">
+                  {report.href ? (
+                    <Link
+                      href={report.href}
+                      className="block"
+                      title={report.name}
+                      aria-label={report.name}
+                    >
+                      <MasterListRow selected={isSelected} className={reportRowClassName(isSelected)}>
+                        {iconTile}
+                      </MasterListRow>
+                    </Link>
+                  ) : (
+                    <MasterListRow
+                      selected={isSelected}
+                      className={reportRowClassName(isSelected)}
+                      onClick={() => onSelectReport(report)}
+                      title={report.name}
+                      aria-label={report.name}
+                    >
+                      {iconTile}
+                    </MasterListRow>
+                  )}
+                </li>
+              );
+            })}
+            {reports.length === 0 && (
+              <li className="px-1 py-4 text-center text-[10px] text-muted-foreground">—</li>
+            )}
+          </ul>
+        </ScrollArea>
+      </div>
+    );
+  }
 
   return (
     <div className={cn(masterListShellCn, "flex-1 min-h-0")} data-pl-master-list-chrome="">

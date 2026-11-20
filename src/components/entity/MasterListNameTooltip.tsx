@@ -39,11 +39,15 @@ export function MasterListNameTooltip({
   measureKey,
 }: MasterListNameTooltipProps) {
   const triggerRef = React.useRef<HTMLButtonElement>(null);
-  const isTruncated = useIsTextTruncated(triggerRef, [measureKey, children]);
+  /* `children`/`tooltipContent` ko deps me mat daalo: ye har parent re-render par naye objects hote
+   * hain, jisse measure effect + `setOpen` baar-baar chal kar "Maximum update depth" de deta tha.
+   * `measureKey` hi label/layout badalne ka stable signal hai. */
+  const isTruncated = useIsTextTruncated(triggerRef, [measureKey]);
   const [open, setOpen] = React.useState(false);
 
   React.useEffect(() => {
-    if (!isTruncated) setOpen(false);
+    // Sirf tab band karo jab actually khula ho — warna har measure par state write hoti thi.
+    if (!isTruncated) setOpen((prev) => (prev ? false : prev));
   }, [isTruncated]);
 
   return (

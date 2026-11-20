@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ReportPageExpandButton } from "@/components/reports/ReportPageExpandButton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowUpDown, Search, Loader2, ChevronDown, ChevronRight, ChevronUp, Printer, ArrowLeft } from "lucide-react";
 import {
@@ -882,7 +883,7 @@ export function ProfitAndLossPage({
     <div
       className={cn(
         "w-full h-full overflow-hidden flex flex-col",
-        isMobile ? "min-h-0 pb-0" : "pb-[72px] p-0.5"
+        isMobile ? "min-h-0 pb-0" : "pb-[72px]"
       )}
     >
       <div className="p-0 min-h-0 flex-1 flex flex-col gap-[5px]">
@@ -964,20 +965,23 @@ export function ProfitAndLossPage({
             </div>
           </>
         ) : (
-        <div className="w-[98%] mx-auto pt-1">
-          {/* Ribbon-style title strip (desktop): keep heading + variant badge */}
-          <div className="flex items-center gap-2 min-w-0 rounded-md border border-indigo-300/70 bg-gradient-to-r from-indigo-50 via-white to-violet-100/70 px-2 py-1 dark:from-indigo-950/30 dark:via-card dark:to-violet-900/20">
-            <h1 className="text-[1.22rem] sm:text-[1.96rem] font-semibold truncate">Profit &amp; Loss Statement</h1>
+        <div className="w-full min-w-0 pt-1">
+          {/* Plain title row (no ribbon/gradient): heading + variant badge + fullscreen control */}
+          <div className="flex items-center gap-2 min-w-0">
+            <h1 className="min-w-0 truncate text-[1.22rem] font-semibold sm:text-[1.96rem]">Profit &amp; Loss Statement</h1>
             {reportLabel ? (
               <span className="rounded-full border border-orange-400/70 bg-gradient-to-r from-orange-50 to-amber-100 px-2 py-0.5 text-[11px] sm:text-xs font-semibold text-orange-700 whitespace-nowrap shrink-0 dark:from-orange-950/30 dark:to-amber-900/30">
                 {reportLabel}
               </span>
             ) : null}
+            <div className="ml-auto flex shrink-0 items-center">
+              <ReportPageExpandButton />
+            </div>
           </div>
         </div>
         )}
-        {/* Keep summary area almost full-width (98%) for mobile and desktop fit. */}
-        <div className="w-[98%] mx-auto space-y-[5px]">
+        {/* Summary area is full-width now that the outer card shell is gone. */}
+        <div className="w-full min-w-0 space-y-[5px]">
           <div className="grid grid-cols-2 gap-[5px]">
             <Card className="min-w-0 border-2 border-emerald-300/70 bg-gradient-to-r from-emerald-50 via-white to-emerald-100/70 dark:from-emerald-950/30 dark:via-card dark:to-emerald-900/20">
               <CardContent className="px-3 py-1 sm:px-4 sm:py-1.5">

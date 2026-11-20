@@ -29,6 +29,7 @@ import type { EntityListQuickFilter } from "@/components/entity/EntityListQuickF
 import type { Party, Group } from "@/components/party/types";
 import { ReportStatementHeaderAvatar } from "@/components/reports/ReportStatementHeaderAvatar";
 import { ReportEntityMobileHeader } from "@/components/reports/ReportEntityMobileHeader";
+import { ReportPageExpandButton } from "@/components/reports/ReportPageExpandButton";
 import { ReportLedgerTxnDetailPane } from "@/components/reports/ReportLedgerTxnDetailPane";
 import type { DateRange } from "@/components/ui/ad-calendar";
 import { startOfMonth, endOfMonth, format, isSameDay } from "date-fns";
@@ -1218,6 +1219,7 @@ export default function DesktopPartyStatementPage() {
         closingBalance={closingBalance}
         dateRangeLabel={dateRangeLabel}
         hasDateFilter={hasDateFilter}
+        action={<ReportPageExpandButton />}
         onBack={handleReportBack}
         onClearDate={() => setDateRange(undefined)}
         avatar={activeEntity?.name ? (

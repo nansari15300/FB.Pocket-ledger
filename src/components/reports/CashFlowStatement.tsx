@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ReportPageExpandButton } from "@/components/reports/ReportPageExpandButton";
 import { ArrowUpDown, Search, Loader2, Printer, CalendarIcon } from "lucide-react";
 import {
   Dialog,
@@ -211,7 +212,10 @@ export function CashFlowStatementPage() {
     <div className="pb-[72px] p-0.5 w-full h-full overflow-y-auto">
       <Card className="border-2 border-foreground/20">
         <CardHeader className="px-4 pt-4">
-          <CardTitle className="text-2xl">Cash Flow Statement</CardTitle>
+          <div className="flex items-start justify-between gap-2">
+            <CardTitle className="text-2xl">Cash Flow Statement</CardTitle>
+            <ReportPageExpandButton />
+          </div>
         </CardHeader>
         <CardContent className="px-4 pb-4">
           <div className={cn("flex items-center gap-2 py-3", isMobile && "overflow-x-auto min-w-0")}>

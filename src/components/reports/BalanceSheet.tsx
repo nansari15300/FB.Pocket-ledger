@@ -32,6 +32,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFyScopedVouchers } from "@/hooks/useFyScopedVouchers";
 import { useDate } from "@/hooks/useDate";
 import { BalanceSheetLedgerDetailMirror } from "@/components/reports/BalanceSheetLedgerDetailMirror";
+import { ReportPageExpandButton } from "@/components/reports/ReportPageExpandButton";
 import {
   NESTED_LEDGER_POPUP_ATTR,
   NESTED_LEDGER_POPUP_CONTENT_CN,
@@ -2932,6 +2933,7 @@ export function BalanceSheetPage() {
               <Button variant="outline" size="sm" onClick={() => setShowPrintDialog(true)} className="flex items-center gap-2">
                 <Printer className="h-4 w-4" /> Print
               </Button>
+              <ReportPageExpandButton />
             </div>
           </CardHeader>
           <CardContent className="p-4">

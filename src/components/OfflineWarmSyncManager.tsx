@@ -13,20 +13,14 @@ import type { Company } from "@/hooks/useCompany";
 import { useAuth } from "@/hooks/useAuth";
 import { useCompany } from "@/hooks/useCompany";
 import {
+  runEmbeddedCompanyDeltaSync,
   shouldPrefetchAttachmentsForCompany,
 } from "@/lib/offlineFullWarmSync";
-import {
-  EMBEDDED_FIRST_LOGIN_ATTACHMENT_PREFETCH,
-  runEmbeddedCompanyFullPreload,
-} from "@/lib/embeddedAccountOfflineWarm";
 import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
 import { isEmbeddedOfflinePreloadClient } from "@/lib/isEmbeddedOfflinePreloadClient";
 import { useFirstLoginWarmGate } from "@/contexts/FirstLoginWarmGateContext";
 import { isLocalOnlyMode } from "@/lib/localMode";
-import {
-  clearHeaderAttachmentPrefetchForCompany,
-  reportHeaderAttachmentPrefetchProgress,
-} from "@/contexts/EmbeddedAttachmentPrefetchContext";
+import { clearHeaderAttachmentPrefetchForCompany } from "@/contexts/EmbeddedAttachmentPrefetchContext";
 
 const WARM_DEBOUNCE_MS = 2_200;
 /** EXE: dashboard paint ke turant baad selected/company attachment warm start ho, 90s baad nahi. */
@@ -105,13 +99,12 @@ export function OfflineWarmSyncManager() {
       runAbortRef.current?.abort();
       const c = new AbortController();
       runAbortRef.current = c;
-      void runEmbeddedCompanyFullPreload({
+      /* Delta-only: unsynced (outbox) docs upload; kuch pending nahi to koi network call nahi.
+       * Pehle yahan `runEmbeddedCompanyFullPreload` tha — har refresh par poora data dobara load hota tha. */
+      void runEmbeddedCompanyDeltaSync({
         company,
         localCompanyId: companyId.trim(),
         signal: c.signal,
-        prefetchOverrides: EMBEDDED_FIRST_LOGIN_ATTACHMENT_PREFETCH,
-        onAttachmentProgressPercent: (pct) =>
-          reportHeaderAttachmentPrefetchProgress(companyId.trim(), pct),
       }).finally(() => {
         if (!c.signal.aborted) lastWarmCompletedAtRef.current = Date.now();
         else clearHeaderAttachmentPrefetchForCompany(companyId);
@@ -190,13 +183,10 @@ export function OfflineWarmSyncManager() {
           const rowId = String(row.id).trim();
           if (ac.signal.aborted || typeof navigator === "undefined" || !navigator.onLine) break;
           try {
-            await runEmbeddedCompanyFullPreload({
+            await runEmbeddedCompanyDeltaSync({
               company: row,
               localCompanyId: rowId,
               signal: ac.signal,
-              prefetchOverrides: EMBEDDED_FIRST_LOGIN_ATTACHMENT_PREFETCH,
-              onAttachmentProgressPercent: (pct) =>
-                reportHeaderAttachmentPrefetchProgress(rowId, pct),
             });
           } catch {
             /* per-row network failure: continue with next company */

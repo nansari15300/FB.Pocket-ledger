@@ -184,15 +184,19 @@ function FinancialSummaryPageBody({ country }: FinancialSummaryPageBodyProps) {
   };
 
   const scrollShellClass = cn(
-    "w-full h-full min-h-0 overflow-y-auto overflow-x-hidden pb-[72px] p-4 md:p-6 space-y-6"
+    /* No top padding and no `space-y` on the shell: the header wrapper below owns the single 8px
+     * gap to the pills, so no ancestor class can add to it. */
+    "w-full h-full min-h-0 overflow-y-auto overflow-x-hidden pb-[72px] px-4 md:px-6"
   );
+  /** Vertical rhythm between report sections (was `space-y-6` before the top-gap fix). */
+  const sectionGapClass = "mt-6";
 
   if (loading) {
     return (
       <div className={scrollShellClass}>
         <Skeleton className="h-10 w-64" />
-        <Skeleton className="h-24 w-full" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <Skeleton className="mt-6 h-24 w-full" />
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-28" />
           ))}
@@ -224,6 +228,7 @@ function FinancialSummaryPageBody({ country }: FinancialSummaryPageBodyProps) {
         generatedLabel={generatedLabel}
       />
 
+      {/* Top 8px gap comes from the reports detail wrapper, so the header sits flush here. */}
       <FinancialSummaryHeader
         onPrint={handlePrint}
         onExportPdf={handleExportPdf}
@@ -231,19 +236,21 @@ function FinancialSummaryPageBody({ country }: FinancialSummaryPageBodyProps) {
         printDisabled={!summary?.hasData}
       />
 
-      <FinancialSummaryFilters
-        draftRange={draftRange}
-        onDraftRangeChange={setDraftRange}
-        onApply={handleApply}
-        preset={preset}
-        onPresetChange={setPreset}
-        comparisonMode={comparisonMode}
-        onComparisonModeChange={setComparisonMode}
-        country={country}
-      />
+      <div className={sectionGapClass}>
+        <FinancialSummaryFilters
+          draftRange={draftRange}
+          onDraftRangeChange={setDraftRange}
+          onApply={handleApply}
+          preset={preset}
+          onPresetChange={setPreset}
+          comparisonMode={comparisonMode}
+          onComparisonModeChange={setComparisonMode}
+          country={country}
+        />
+      </div>
 
       {!summary?.hasData ? (
-        <div className="rounded-lg border-2 border-dashed border-muted-foreground/30 p-10 text-center">
+        <div className={cn(sectionGapClass, "rounded-lg border-2 border-dashed border-muted-foreground/30 p-10 text-center")}>
           <h2 className="text-lg font-semibold">No financial data for this period</h2>
           <p className="text-sm text-muted-foreground mt-2">
             Try selecting another date range or recording transactions.
@@ -251,7 +258,7 @@ function FinancialSummaryPageBody({ country }: FinancialSummaryPageBodyProps) {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className={cn(sectionGapClass, "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4")}>
             <FinancialSummaryKpiCard
               title="Revenue"
               value={summary.revenue.total}
@@ -296,29 +303,37 @@ function FinancialSummaryPageBody({ country }: FinancialSummaryPageBodyProps) {
             />
           </div>
 
-          <ProfitLossSummary
-            incomeRows={summary.profitLossIncomeRows}
-            expenseRows={summary.profitLossExpenseRows}
-            revenue={summary.revenue.total}
-            directCost={summary.directCost.total}
-            grossProfit={summary.grossProfit.total}
-            operatingExpenses={summary.operatingExpenses.total}
-            operatingProfit={summary.operatingProfit.total}
-            financeCost={summary.financeCost.total}
-            netProfit={summary.netProfit.total}
-          />
+          <div className={sectionGapClass}>
+            <ProfitLossSummary
+              incomeRows={summary.profitLossIncomeRows}
+              expenseRows={summary.profitLossExpenseRows}
+              revenue={summary.revenue.total}
+              directCost={summary.directCost.total}
+              grossProfit={summary.grossProfit.total}
+              operatingExpenses={summary.operatingExpenses.total}
+              operatingProfit={summary.operatingProfit.total}
+              financeCost={summary.financeCost.total}
+              netProfit={summary.netProfit.total}
+            />
+          </div>
 
-          <BalanceSheetSnapshot
-            assets={summary.assets}
-            liabilities={summary.liabilities}
-            equity={summary.equity}
-            isBalanced={summary.isBalanced}
-            balanceDifference={summary.balanceDifference}
-          />
+          <div className={sectionGapClass}>
+            <BalanceSheetSnapshot
+              assets={summary.assets}
+              liabilities={summary.liabilities}
+              equity={summary.equity}
+              isBalanced={summary.isBalanced}
+              balanceDifference={summary.balanceDifference}
+            />
+          </div>
 
-          <WorkingCapitalSummary workingCapital={summary.workingCapital} />
+          <div className={sectionGapClass}>
+            <WorkingCapitalSummary workingCapital={summary.workingCapital} />
+          </div>
 
-          <FinancialSummaryChart data={summary.monthlyChart} />
+          <div className={sectionGapClass}>
+            <FinancialSummaryChart data={summary.monthlyChart} />
+          </div>
         </>
       )}
     </div>

@@ -457,9 +457,51 @@ export async function runOfflineFullWarmSync(options: {
   return result;
 }
 
+/**
+ * Delta sync — **koi download nahi**.
+ *
+ * Refresh / background resweep par pehle "full warm" har subcollection ka poora `getDocs` chalata tha,
+ * isliye har baar saara data dobara load hota tha. Yahan sirf woh kaam hota hai jo actually pending hai:
+ *  - outbox me pade unsynced local docs server par upload (`flushVoucherOutbox`)
+ *  - outbox khaali ho to kuch bhi fetch/upload nahi
+ *
+ * `forceFull` sirf pehli-login / manual "refresh local cache" jaise explicit cases ke liye.
+ */
+export async function runEmbeddedCompanyDeltaSync(args: {
+  company: Company | null;
+  localCompanyId: string;
+  signal?: AbortSignal;
+}): Promise<{ pushed: number; failed: number; skipped: boolean }> {
+  const localId = args.localCompanyId?.trim();
+  if (!localId) return { pushed: 0, failed: 0, skipped: true };
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    return { pushed: 0, failed: 0, skipped: true };
+  }
+  if (!isCloudBackedCompanyShape(args.company)) return { pushed: 0, failed: 0, skipped: true };
+
+  try {
+    const { isOnlineCompanyLedgerCloudSyncAllowed } = await import("@/lib/onlineCompanySelectorSyncPolicy");
+    if (!isOnlineCompanyLedgerCloudSyncAllowed(localId, args.company)) {
+      return { pushed: 0, failed: 0, skipped: true };
+    }
+    if (args.signal?.aborted) return { pushed: 0, failed: 0, skipped: true };
+
+    const { countSyncOutboxRowsForCompany, flushVoucherOutbox } = await import("@/lib/localVoucherOutbox");
+    // Kuch bhi unsynced nahi → network call hi nahi. Yahi "har refresh par full load" ko rokta hai.
+    const pendingRows = await countSyncOutboxRowsForCompany(localId);
+    if (pendingRows <= 0) return { pushed: 0, failed: 0, skipped: true };
+    if (args.signal?.aborted) return { pushed: 0, failed: 0, skipped: true };
+
+    const flushed = await flushVoucherOutbox({ only: { companyId: localId } });
+    return { pushed: flushed.ok, failed: flushed.failed, skipped: false };
+  } catch (e) {
+    console.warn("[offlineFullWarmSync] delta sync failed", e);
+    return { pushed: 0, failed: 0, skipped: true };
+  }
+}
+
 /** SQLite mirror se scrape + HTTPS prefetch summary — data overlay ke baad background strip ke liye. */
-export type EmbeddedAttachmentPrefetchSummary = {
-  attachmentUrlsSeen: number;
+export type EmbeddedAttachmentPrefetchSummary = {  attachmentUrlsSeen: number;
   prefetchCachedNew: number;
   prefetchSkippedCache: number;
   prefetchFailures: number;

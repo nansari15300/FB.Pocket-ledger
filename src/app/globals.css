@@ -3496,7 +3496,7 @@ button.day_selected.is-today.has-transactions {
   /* 4K ma sabai borders moto ra pure black */
   .border:not(.border-0):not([data-tds-verify-badge]):not([data-pl-list-row]):not([data-pl-footer-drcr-balance-card]):not([data-pl-header-preview-switch]):not([data-pl-mlc-search-input]):not([data-pl-mobile-header-avatar-no-photo]):not([data-pl-mobile-header-avatar]):not(.pl-master-list-group-icon):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-manage-share-avatar]):not([data-pl-toolbar-field]):not([data-pl-online-trigger-table]):not([data-pl-online-trigger-log]),
   .border-t:not(.border-0):not([data-pl-list-row]):not([data-pl-footer-drcr-balance-card]):not([data-pl-header-preview-switch]):not([data-pl-mlc-search-input]):not([data-pl-mobile-header-avatar-no-photo]):not([data-pl-mobile-header-avatar]):not(.pl-master-list-group-icon):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-mobile-ledger-action-footer]):not([data-pl-mobile-txn-pager]):not([data-pl-mobile-txn-pager-strip]):not(.pl-mobile-txn-pager-host),
-  .border-r:not(.border-0):not([data-pl-list-row]):not([data-pl-footer-drcr-balance-card]):not([data-pl-header-preview-switch]):not([data-pl-mlc-search-input]):not(.pl-master-list-group-icon):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]),
+  .border-r:not(.border-0):not([data-pl-list-row]):not([data-pl-footer-drcr-balance-card]):not([data-pl-header-preview-switch]):not([data-pl-mlc-search-input]):not(.pl-master-list-group-icon):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-reports-panel-border]),
   .border-b:not(.border-0):not([data-pl-list-row]):not([data-pl-footer-drcr-balance-card]):not([data-pl-header-preview-switch]):not([data-pl-mlc-search-input]):not(.pl-master-list-group-icon):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-mobile-txn-toolbar-row]):not([data-pl-mobile-txn-toolbar-below-pager]),
   .border-l:not(.border-0):not([data-pl-list-row]):not([data-pl-footer-drcr-balance-card]):not([data-pl-header-preview-switch]):not([data-pl-mlc-search-input]):not(.pl-master-list-group-icon):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]),
   .border-x:not(.border-0):not([data-pl-list-row]):not([data-pl-footer-drcr-balance-card]):not([data-pl-header-preview-switch]):not([data-pl-mlc-search-input]):not(.pl-master-list-group-icon):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]),
@@ -16930,4 +16930,27 @@ svg.lucide-info:hover {
   [data-pl-admin-plans-page] .rounded-lg.border.bg-card {
     transition: none;
   }
+}
+
+/* ---- Reports list collapsed icon rail (same look as collapsed main sidebar `w-16`) ----
+   Rail me sirf report icons: row ka `p-1` hata kar icon ko 64px rail ke beech center karte hain,
+   aur group-icon box ka forced 2rem size neutralize karte hain taaki icon square tile rahe. */
+[data-pl-reports-rail] [data-pl-reports-list] > li > [data-pl-list-row],
+[data-pl-reports-rail] [data-pl-reports-list] > li > a > [data-pl-list-row] {
+  padding: 2px !important;
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+[data-pl-reports-rail] [data-pl-reports-list] [data-pl-list-row] .pl-master-list-group-icon {
+  width: 2rem !important;
+  height: 2rem !important;
+  flex: 0 0 2rem !important;
+  align-self: center !important;
+}
+/* Rail row hover/selected ko main nav icon jaisa subtle rakho — poora 64px block bhar na jaye. */
+[data-pl-reports-rail] [data-pl-reports-list] > li > a,
+[data-pl-reports-rail] [data-pl-reports-list] > li > [data-pl-list-row] {
+  max-width: 100%;
 }

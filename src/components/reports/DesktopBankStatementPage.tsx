@@ -18,6 +18,7 @@ import { cn, masterDetailBalanceToneClass } from "@/lib/utils";
 import { mergePaymentAndLedgerJournalContraFlows } from "@/lib/reportStatementMoneyInOutExtras";
 import { ReportStatementHeaderAvatar } from "@/components/reports/ReportStatementHeaderAvatar";
 import { ReportEntityMobileHeader } from "@/components/reports/ReportEntityMobileHeader";
+import { ReportPageExpandButton } from "@/components/reports/ReportPageExpandButton";
 import { useStatementReportMobilePaging } from "@/hooks/useStatementReportMobilePaging";
 import { MobileTransactionsPager } from "@/components/vouchers/MobileTransactionsPager";
 import { MobileDetailSummaryCollapsible } from "@/components/layout/MobileDetailSummaryCollapsible";
@@ -1095,19 +1096,24 @@ export default function DesktopBankStatementPage() {
         hasDateFilter={hasDateFilter}
         onBack={handleReportBack}
         onClearDate={() => setDateRange(undefined)}
-        action={isReportsHubMobile ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 flex-shrink-0"
-            onClick={() => setReportListOpen(true)}
-            aria-label="Open report list"
-            title="Report list"
-          >
-            <PanelRight className="h-4 w-4" />
-          </Button>
-        ) : undefined}
+        action={
+          <>
+            {isReportsHubMobile ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 flex-shrink-0"
+                onClick={() => setReportListOpen(true)}
+                aria-label="Open report list"
+                title="Report list"
+              >
+                <PanelRight className="h-4 w-4" />
+              </Button>
+            ) : null}
+            <ReportPageExpandButton />
+          </>
+        }
         avatar={activeEntity ? (
           selectedAccount ? (
             <ReportStatementHeaderAvatar

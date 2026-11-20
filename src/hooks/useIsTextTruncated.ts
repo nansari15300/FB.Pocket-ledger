@@ -31,7 +31,9 @@ export function useIsTextTruncated(
     }
 
     const update = () => {
-      setIsTruncated(measureTruncation(root));
+      const next = measureTruncation(root);
+      // Same value par setState call mat karo — observer/render loop se "Maximum update depth" bachta hai.
+      setIsTruncated((prev) => (prev === next ? prev : next));
     };
 
     update();

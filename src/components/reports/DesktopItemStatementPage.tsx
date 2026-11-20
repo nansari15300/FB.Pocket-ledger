@@ -24,6 +24,7 @@ import { format } from "date-fns";
 import { cn, masterDetailBalanceToneClass } from "@/lib/utils";
 import { ReportStatementHeaderAvatar } from "@/components/reports/ReportStatementHeaderAvatar";
 import { ReportEntityMobileHeader } from "@/components/reports/ReportEntityMobileHeader";
+import { ReportPageExpandButton } from "@/components/reports/ReportPageExpandButton";
 import { useStatementReportMobilePaging } from "@/hooks/useStatementReportMobilePaging";
 import { MobileTransactionsPager } from "@/components/vouchers/MobileTransactionsPager";
 import { MobileDetailSummaryCollapsible } from "@/components/layout/MobileDetailSummaryCollapsible";
@@ -901,6 +902,7 @@ export default function DesktopItemStatementPage() {
         closingBalance={closingBalance}
         dateRangeLabel={dateRangeLabel}
         hasDateFilter={hasDateFilter}
+        action={<ReportPageExpandButton />}
         onBack={handleReportBack}
         onClearDate={() => setDateRange(undefined)}
         avatar={activeEntity?.name ? (

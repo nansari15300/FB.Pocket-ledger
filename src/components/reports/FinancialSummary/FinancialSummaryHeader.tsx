@@ -4,6 +4,7 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { FileDown, Printer } from "lucide-react";
 import { financialSummaryPillCn } from "./financialSummaryCardStyles";
+import { ReportPageExpandButton } from "@/components/reports/ReportPageExpandButton";
 
 type FinancialSummaryHeaderProps = {
   onPrint: () => void;
@@ -35,6 +36,7 @@ export function FinancialSummaryHeader({
           <FileDown className="h-4 w-4 mr-2" />
           Export PDF
         </Button>
+        <ReportPageExpandButton />
       </div>
     </div>
   );

@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { ArrowUpDown, Search, Loader2, ChevronDown, ChevronRight, ChevronUp, Printer, Calendar as CalendarIcon, XCircle } from "lucide-react";
 import { PrintOptionsDialog } from "@/components/ui/PrintOptionsDialog";
+import { ReportPageExpandButton } from "@/components/reports/ReportPageExpandButton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
@@ -872,14 +873,17 @@ export function TrialBalancePage() {
               <CardTitle className="text-2xl">Trial Balance</CardTitle>
               <CardDescription>A summary of all ledger balances, grouped by their parent group.</CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setShowPrintDialog(true)}
-              className="flex-shrink-0"
-            >
-              <Printer className="h-4 w-4" />
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setShowPrintDialog(true)}
+                className="flex-shrink-0"
+              >
+                <Printer className="h-4 w-4" />
+              </Button>
+              <ReportPageExpandButton />
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0 flex-1 flex flex-col min-h-0">
