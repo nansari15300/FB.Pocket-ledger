@@ -53,6 +53,7 @@ import {
   type Context,
   type Transaction,
   TransactionRow,
+  getTransactionPostedDateSubline,
   MobileTransactionFilePreview,
   OpeningBalanceFileCellContent,
   getConversionFactor,
@@ -4093,6 +4094,12 @@ export function TransactionsTable({
         parseFirestoreDateFieldToJsDate(t.date) ??
         parseFirestoreDateFieldToJsDate((t as Record<string, unknown>).createdAt);
       const entryClock = formatVoucherEntryTimeLocal(t as Record<string, unknown>);
+      const postedDateSubline = getTransactionPostedDateSubline(
+        t as Record<string, unknown>,
+        dateSystem,
+        formatDate,
+        formatDateBS,
+      );
       const balanceSuffix = balance >= 0 ? "Dr" : "Cr";
       const balanceAbs = Math.abs(balance);
       const userName = resolveLedgerTransactionUserDisplayName(t, userNames, {
@@ -4528,6 +4535,11 @@ export function TransactionsTable({
                   }`
                 )}
               </p>
+              {postedDateSubline ? (
+                <p className="text-[10px] leading-tight text-muted-foreground">
+                  {hl(postedDateSubline)}
+                </p>
+              ) : null}
             </div>
             <div className="text-right shrink-0 flex flex-col items-end gap-0.5 flex-shrink-0">
               {showStatusInCard && !hideBalanceColumn && (

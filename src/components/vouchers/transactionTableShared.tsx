@@ -24,7 +24,7 @@ import {
 import { AttachmentHoverPortal } from "@/components/vouchers/AttachmentHoverPortal";
 import { NoFileAwareHoverPortal } from "@/components/vouchers/AttachmentNoFileEye";
 import { MultiAttachmentPortalPreview } from "@/components/vouchers/attachmentHoverPreviewBody";
-import { differenceInDays } from "date-fns";
+import { differenceInDays, format } from "date-fns";
 import { shouldAutoWarmAttachmentForLedgerRow } from "@/lib/fyPagination/attachmentFyAutoLoadPolicy";
 import { useDate } from "@/hooks/useDate";
 import { useCompany } from "@/hooks/useCompany";
@@ -121,6 +121,24 @@ import { formatVoucherEntryTimeLocal, parseFirestoreDateFieldToJsDate } from "@/
 import { getJournalVoucherLegs } from "@/lib/journalLedgerAmounts";
 import { highlightQueryInText } from "@/lib/highlightQueryInText";
 import { drCrChipKey, drCrOppositeKey, tdsBadgeHighlightQuery } from "@/lib/transactionColumnHeaderFilter";
+
+/** Posted/save timestamp shown beneath the voucher date in transaction lists. */
+export function getTransactionPostedDateSubline(
+  transaction: Record<string, unknown> | null | undefined,
+  dateSystem: string,
+  formatDate: (date: Date) => string,
+  formatDateBS: (date: Date) => string,
+): string {
+  if (!transaction) return "";
+  const explicit = typeof transaction._dateSubline === "string" ? transaction._dateSubline.trim() : "";
+  if (explicit) return explicit;
+  const postedAt =
+    parseFirestoreDateFieldToJsDate(transaction.createdAt) ??
+    parseFirestoreDateFieldToJsDate(transaction.postedAt);
+  if (!postedAt) return "";
+  const postedDate = dateSystem === "AD" ? formatDate(postedAt) : formatDateBS(postedAt);
+  return `Posted: ${postedDate} ${format(postedAt, "h:mm a")}`;
+}
 
 /** File column / attachment thumb — row dblclick se voucher edit na khule (EXE/web). */
 function stopTxnRowOpenFromFilePreview(e: React.SyntheticEvent): void {
@@ -1811,11 +1829,12 @@ export const TransactionRow = React.memo(
         : null;
     // Desktop table me bhi mobile card wali same entry-time priority dikhani hai: createdAt -> edited/updated -> voucher date.
     const entryClock = formatVoucherEntryTimeLocal(transaction as Record<string, unknown>);
-    /** Opt-in small second line under the date (Gallery Recent OCR: "Posted: ..."). */
-    const dateSubline =
-      typeof (transaction as { _dateSubline?: unknown })._dateSubline === "string"
-        ? String((transaction as { _dateSubline?: string })._dateSubline).trim()
-        : "";
+    const dateSubline = getTransactionPostedDateSubline(
+      transaction as Record<string, unknown>,
+      dateSystem,
+      formatDate,
+      formatDateBS,
+    );
     let debit = toLedgerAmount(transaction.debit);
     let credit = toLedgerAmount(transaction.credit);
     let balance = toLedgerAmount(transaction.balance);
