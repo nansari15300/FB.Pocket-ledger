@@ -137,6 +137,14 @@ function safeToDate(date: any): Date | null {
 
 /** Balance Sheet report tables — 1px grid lines (override ui/table 3px defaults). */
 const BS_CARD_SHELL_CLASS = "rounded-2xl border border-black w-full overflow-x-auto";
+/* Audit/notice cards (Opening Balance Mismatch, Not Balanced, Net Profit note) — black ki jagah
+ * blue outline. Shape rectangular hi rehta hai (`rounded-2xl`, pill nahi). Inner divider bhi blue. */
+const BS_ALERT_CARD_CLASS = cn(
+  BS_CARD_SHELL_CLASS,
+  "border-blue-300 dark:border-blue-700",
+  "[&_tr]:!border-blue-200 [&_tr]:dark:!border-blue-900",
+  "[&_.border-black]:!border-blue-300"
+);
 const BS_TABLE_CLASS =
   "[&_tr]:!border-b-[1px] [&_tr]:!border-t-0 [&_tr]:border-black [&_tbody_tr:last-child]:!border-b-0 [&_tfoot_tr:last-child]:!border-b-0 [&_tbody_tr:first-child]:!border-t-0";
 const BS_TABLE_FIXED_CLASS = "table-fixed w-full";
@@ -2910,9 +2918,10 @@ export function BalanceSheetPage() {
   }
 
   return (
-    <div className="pb-[72px] p-0.5 w-full h-full overflow-y-auto">
+    <div className="pb-[72px] p-0.5 w-full h-full overflow-y-auto" data-pl-balance-sheet-frame="">
       <div className="p-0 space-y-3">
-        <Card className="border-2 border-foreground/20">
+        {/* Report page main border hata diya — sirf cards ke blue outlines dikhein. */}
+        <Card className="border-0 shadow-none">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-2xl">Balance Sheet</CardTitle>
             <div className="flex items-center gap-2">
@@ -2937,7 +2946,7 @@ export function BalanceSheetPage() {
             </div>
           </CardHeader>
           <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4" data-pl-bs-toolbar="">
               <div className="flex items-center gap-2">
                 <Button 
                   variant="outline" 
@@ -3318,8 +3327,8 @@ export function BalanceSheetPage() {
               >
               {/* Opening Balance Audit Warning */}
               {!openingBalanceAudit.isBalanced && (
-                <div id="bs-opening-balance-mismatch" className={cn(BS_CARD_SHELL_CLASS, "min-w-0 w-full bg-orange-50/80")}>
-                  <div className="px-3 py-2 sm:px-4 sm:py-3 !border-b-[1px] border-black bg-orange-100/50">
+                <div id="bs-opening-balance-mismatch" data-pl-bs-blue-card="" className={cn(BS_ALERT_CARD_CLASS, "min-w-0 w-full bg-orange-50/80")}>
+                  <div className="px-3 py-2 sm:px-4 sm:py-3 !border-b-[1px] border-blue-300 bg-orange-100/50">
                     <h3 className="text-orange-800 font-bold flex items-center gap-2 text-sm sm:text-base">
                       <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
                       <span>Opening Balance Mismatch!</span>
@@ -3410,15 +3419,16 @@ export function BalanceSheetPage() {
               )}
 
               <div
+                data-pl-bs-blue-card=""
                 className={cn(
-                  BS_CARD_SHELL_CLASS,
+                  BS_ALERT_CARD_CLASS,
                   "min-w-0 w-full",
                   totals.isBalanced ? "bg-green-50/80" : "bg-orange-50/80"
                 )}
               >
                 <div
                   className={cn(
-                    "px-3 py-2 sm:px-4 sm:py-3 !border-b-[1px] border-black flex flex-wrap items-center justify-between gap-2",
+                    "px-3 py-2 sm:px-4 sm:py-3 !border-b-[1px] border-blue-300 flex flex-wrap items-center justify-between gap-2",
                     totals.isBalanced ? "bg-green-100/50" : "bg-orange-100/50"
                   )}
                 >
@@ -3518,7 +3528,7 @@ export function BalanceSheetPage() {
               </div>
 
               {netProfit !== 0 && (
-                <div className="text-sm space-y-1 p-2 bg-muted/30 rounded-md">
+                <div data-pl-bs-blue-card="" className="text-sm space-y-1 p-2 bg-muted/30 rounded-md border border-blue-300 dark:border-blue-700">
                   <p className="font-semibold">
                     {netProfit >= 0 ? '✓ Net Profit' : '⚠️ Net Loss'} Explanation:
                   </p>
@@ -3531,7 +3541,7 @@ export function BalanceSheetPage() {
                 </div>
               )}
 
-              <div id="bs-double-entry-check" className="text-sm space-y-2 p-3 bg-muted/30 rounded-md border">
+              <div id="bs-double-entry-check" data-pl-bs-blue-card="" className="text-sm space-y-2 p-3 bg-muted/30 rounded-md border border-blue-300 dark:border-blue-700">
                 <div className="flex items-center justify-between">
                   <p className="font-semibold">
                     {doubleEntryCheck.isBalanced ? '✓' : '⚠️'} Double-Entry Check:

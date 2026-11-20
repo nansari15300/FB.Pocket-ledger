@@ -16987,3 +16987,51 @@ html body [data-pl-reports-handle-host] > [role="separator"] {
   outline: 0 !important;
   box-shadow: none !important;
 }
+
+/* ---- Balance Sheet: main card border removed + notice cards blue --------------------------
+   Report page ka bada black frame hata diya (Card `border-0`), aur andar ke audit/notice cards
+   (Opening Balance Mismatch, Not Balanced, Net Profit note, Double-Entry check) ke black black
+   borders ki jagah blue outline — buttan jaisa colour, par shape rectangular hi rehta hai (pill nahi).
+   High specificity + !important, kyunki theme ke `.border-*` rules `!important` use karte hain. */
+html body [data-pl-balance-sheet-frame] > .border-0,
+html body [data-pl-balance-sheet-frame] > [class*="border-0"] {
+  border-width: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Audit/notice cards (Opening Balance Mismatch, Balance Sheet Not Balanced, Net Profit note,
+   Double-Entry check) — blue tone buttan ke jaisa, par shape rectangular (pill nahi).
+   Tailwind `border-blue-300` theme ke `!important` .border-black / .border rules se haar jata tha,
+   isliye high-specificity + !important yahan lagaya. Attribute marker `data-pl-bs-blue-card`. */
+html body [data-pl-bs-blue-card] {
+  border: 1px solid rgb(147 197 253) !important; /* blue-300 */
+  border-radius: 0.75rem !important; /* rectangular rounded, pill nahi */
+}
+html body [data-pl-bs-blue-card] > * {
+  border-color: rgb(191 219 254) !important; /* blue-200 inner divider */
+}
+html body [data-pl-bs-blue-card] [class*="border-black"],
+html body [data-pl-bs-blue-card] tr,
+html body [data-pl-bs-blue-card] td,
+html body [data-pl-bs-blue-card] th {
+  border-color: rgb(191 219 254) !important;
+}
+html body.theme-pro [data-pl-bs-blue-card],
+html body.theme-pl-light [data-pl-bs-blue-card],
+html body.theme-pl-gray [data-pl-bs-blue-card] {
+  border: 1px solid rgb(147 197 253) !important;
+}
+
+/* Balance Sheet toolbar (Search / All Entities / Sort by) — pure white background + blue border. */
+html body [data-pl-bs-toolbar] input,
+html body [data-pl-bs-toolbar] [role="combobox"],
+html body [data-pl-bs-toolbar] button[role="combobox"],
+html body [data-pl-bs-toolbar] select {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  border: 1px solid rgb(147 197 253) !important; /* blue-300 */
+  border-radius: 0.5rem !important;
+}
+html body [data-pl-bs-toolbar] input::placeholder {
+  color: rgb(148 163 184) !important; /* slate-400 */
+}
