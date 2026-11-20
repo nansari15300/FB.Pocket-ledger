@@ -1,4 +1,4 @@
-
+﻿
 "use client";
 
 import * as React from "react";
@@ -54,7 +54,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useDate } from "@/hooks/useDate";
-import { ScrollArea, ScrollBar } from "../ui/scroll-area";
+import { ScrollArea } from "../ui/scroll-area";
 import BsDatePicker from "@/components/ui/BsDatePicker";
 import {
   LEDGER_HEADER_RIBBON_WRAP_CN,
@@ -699,3 +699,4 @@ export function PayeeDetails({
     </>
   );
 }
+

@@ -865,8 +865,8 @@ export function TrialBalancePage() {
   }
 
   return (
-    <div className="p-4 space-y-4 h-full flex flex-col">
-      <Card className="border-0 shadow-none flex-1 flex flex-col min-h-0">
+    <div className="space-y-4 h-full flex flex-col" data-pl-trial-balance-frame="">
+      <Card className="border-0 shadow-none flex-1 flex flex-col min-h-0" data-pl-trial-balance-card="">
         <CardHeader className="p-0 px-4 pt-4">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
@@ -887,7 +887,7 @@ export function TrialBalancePage() {
           </div>
         </CardHeader>
         <CardContent className="p-0 flex-1 flex flex-col min-h-0">
-          <div className="flex items-center justify-between gap-2 py-3 px-4">
+          <div className="flex items-center justify-between gap-2 py-3 px-4" data-pl-tb-toolbar="">
             <div className="flex items-center gap-2">
               <Button 
                 variant="outline" 
@@ -949,7 +949,7 @@ export function TrialBalancePage() {
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 opacity-70" />
                 <Input
                   placeholder="Search account or group…"
-                  className="pl-8"
+                  className="h-9 min-h-9 max-h-9 py-0 pl-8 pr-2"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />

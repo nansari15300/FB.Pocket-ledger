@@ -91,12 +91,38 @@ function ReportsDesktopDetailTopBar({
   );
 }
 
+/** Reports ka pura page apne `h-full` skeleton me fit hai — bas ek 1-2px ka leak dashboard ke
+ *  `overflow-y-auto` main ko scroll kara deta hai, jisse PC par report list ke saath ek extra patla
+ *  OS scrollbar aa jata hai. Browser preview (app EXE/embedded shell nahi) me page ko kabhi scroll
+ *  na hone do — page ka apna `scrollbar-gutter: stable` bhi hata do, warna layout ke right edge par
+ *  ek khali 10px ki patti si patla bar jaisi dikhti hai. Embedded shell me list ki native scrollbar
+ *  hide hai, to wahan koi gutter chhed ki zaroorat nahi. */
+function useReportsPageNoDoubleScroll() {
+  React.useLayoutEffect(() => {
+    if (typeof document === "undefined") return;
+    const main = document.querySelector<HTMLElement>("main");
+    if (!main) return;
+    const styles = window.getComputedStyle(main);
+    if (styles.overflowY !== "auto" && styles.overflowY !== "scroll") return;
+    const prevY = main.style.overflowY;
+    const prevGutter = main.style.scrollbarGutter;
+    main.style.overflowY = "hidden";
+    main.style.scrollbarGutter = "auto";
+    main.scrollTop = 0;
+    return () => {
+      main.style.overflowY = prevY;
+      main.style.scrollbarGutter = prevGutter;
+    };
+  }, []);
+}
+
 function ReportsPageContent() {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isDesktopReportListOpen, setIsDesktopReportListOpen] = useState(true);
   const isMobile = useIsMobile();
   const [loading] = useState(false);
+  useReportsPageNoDoubleScroll();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -246,7 +272,7 @@ function ReportsPageContent() {
       /* key={id}: dubara render par purana search/filter state recycle na ho — SPA me report swap same component-type */
       /* 8px top gap (same as Financial Summary) + 10px gap from the report-list divider line.
        * `flex`-based sizing keeps the inner report at the remaining height instead of overflowing. */
-      <div className="flex h-full min-h-0 flex-col pl-[10px] pt-2" data-pl-report-detail-root="">
+      <div className="flex h-full min-h-0 flex-col pl-[10px] pt-2" data-pl-report-detail-root="" data-pl-report-emerald-bg="">
         <div className="min-h-0 flex-1">
           <ReportDetails key={selectedReport.id} report={selectedReport} />
         </div>
@@ -264,7 +290,7 @@ function ReportsPageContent() {
       <>
         {!selectedReport ? (
           // List full page
-          <div className="h-full w-full overflow-hidden bg-background flex flex-col">
+          <div className="h-full w-full overflow-hidden bg-background flex flex-col" data-pl-reports-page-fit="">
             <div className="flex-shrink-0 border-b px-2 py-1">
               <h1 className="text-sm font-bold font-headline">Reports</h1>
             </div>
@@ -283,7 +309,7 @@ function ReportsPageContent() {
               onTouchStart={reportListEdgeSwipe.onTouchStart}
               onTouchEnd={reportListEdgeSwipe.onTouchEnd}
             >
-              <div className="flex-1 min-h-0 overflow-hidden">{detailView}</div>
+              <div className="flex-1 min-h-0 overflow-hidden" data-pl-report-emerald-bg="">{detailView}</div>
             </div>
           </ReportPageProvider>
         )}
@@ -319,6 +345,7 @@ function ReportsPageContent() {
     >
       <div
         className="grid h-full overflow-hidden transition-[grid-template-columns] duration-300"
+        data-pl-reports-page-fit=""
         style={{
           gridTemplateColumns: isDesktopReportListOpen
             ? `${reportListWidthPx}px minmax(0, 1fr)`

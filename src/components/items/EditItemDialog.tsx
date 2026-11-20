@@ -1,4 +1,4 @@
-
+﻿
 "use client";
 
 import { DialogPlainOpener } from "@/components/ui/dialog-plain-opener";
@@ -43,7 +43,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
-import { ScrollArea, ScrollBar } from "../ui/scroll-area";
+import { ScrollArea } from "../ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "../ui/tabs";
 import { Checkbox } from "../ui/checkbox";
 import { CalendarIcon, Loader2, PlusCircle, Trash2, Printer, Upload, FileText, ArrowDownUp } from "lucide-react";
@@ -1455,7 +1455,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                             ))}
                         </div>
                     </div>
-                    <ScrollBar orientation="horizontal"/>
+                    
                 </ScrollArea>
                 <ItemMarginCard
                   isOpen={isOpen}
@@ -1498,7 +1498,7 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
                             ))}
                         </div>
                     </div>
-                    <ScrollBar orientation="horizontal"/>
+                    
                 </ScrollArea>
                 </div>
             </div>
@@ -1768,4 +1768,5 @@ export function EditItemDialog({ item, onItemUpdated, onItemDeleted, children, h
     </>
   );
 }
+
 

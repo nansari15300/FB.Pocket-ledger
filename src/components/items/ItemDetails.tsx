@@ -1,4 +1,4 @@
-
+﻿
 "use client";
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
@@ -140,7 +140,7 @@ import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { MobileTransactionsPager } from "@/components/vouchers/MobileTransactionsPager";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTransactions } from "@/hooks/use-transactions";
 import { getTransactionQuickSearchHaystack } from "@/components/vouchers/transactionTableShared";
 import usePermissions from "@/hooks/usePermissions";
@@ -1450,3 +1450,4 @@ export default function ItemDetails({
     </>
   );
 }
+

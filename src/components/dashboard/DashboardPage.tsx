@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { getDoc, getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { STAFF_ENTITY_LABEL } from "@/lib/staffEntityDisplayName";
@@ -55,7 +55,7 @@ import {
   TableCell,
   TableFooter,
 } from '@/components/ui/table';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { asCalendarRange, type DateRange } from "@/components/ui/ad-calendar";
 import BsDatePicker from '@/components/ui/BsDatePicker';
 import { Button } from '@/components/ui/button';
@@ -578,7 +578,7 @@ useEffect(() => {
                         </TableRow>
                     </TableBody>
                   </Table>
-                  <ScrollBar orientation="horizontal" />
+                  
                 </ScrollArea>
             </CardContent>
         </Card>
@@ -2509,3 +2509,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-
+﻿
 "use client";
 
 import { voucherTypeDisplayText } from "@/lib/voucherTypeDisplay";
@@ -80,7 +80,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useDate } from "@/hooks/useDate";
-import { ScrollArea, ScrollBar } from "../ui/scroll-area";
+import { ScrollArea } from "../ui/scroll-area";
 import { EditExpenseAccountDialog } from "./EditExpenseAccountDialog";
 import BsDatePicker from "@/components/ui/BsDatePicker";
 import {
@@ -1619,3 +1619,4 @@ export function ExpenseAccountDetails({
     </>
   );
 }
+

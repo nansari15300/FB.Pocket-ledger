@@ -69,9 +69,9 @@ export function ReportList({
    * hai (main nav ke icon-only state jaisa). Pending badge icon par hi chipka rehta hai. */
   if (collapsed) {
     return (
-      <div className="flex-1 min-h-0" data-pl-master-list-chrome="">
+      <div className="flex-1 min-h-0 flex flex-col" data-pl-master-list-chrome="">
         <ScrollArea listChrome className="flex-1 min-h-0 h-full">
-          <ul className="flex flex-col items-center gap-1 p-1" data-pl-reports-list="">
+          <ul className="flex flex-col items-center gap-1 p-1 pb-2" data-pl-reports-list="">
             {reports.map((report) => {
               const isSelected = selectedReport?.id === report.id;
               const ReportIcon = getReportIcon(report.id);

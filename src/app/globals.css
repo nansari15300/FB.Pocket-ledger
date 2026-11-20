@@ -5750,10 +5750,13 @@ body.theme-pro .pl-settings-list-shell {
 }
 
 /* Pro: saare main forms â€” gray field + black border (Company Profile jaisa) */
-body.theme-pro main input:not([type="checkbox"]):not([type="radio"]):not([data-pl-mlc-search-input]):not([placeholder="Search transactions"]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-gallery-search-pill]):not([data-pl-gallery-columns-input]),
+/* Balance Sheet toolbar (`[data-pl-bs-toolbar]`) yahan se excluded hai: uska pure-white bg + blue
+   border apne dedicated rule se aata hai (neeche "Balance Sheet toolbar ... sirf Pro theme").
+   Trial Balance toolbar (`[data-pl-tb-toolbar]`) bhi isi tarah excluded. */
+body.theme-pro main input:not([type="checkbox"]):not([type="radio"]):not([data-pl-bs-toolbar] *):not([data-pl-tb-toolbar] *):not([data-pl-mlc-search-input]):not([placeholder="Search transactions"]):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-gallery-search-pill]):not([data-pl-gallery-columns-input]),
 body.theme-pro main textarea:not(.pl-company-profile-field):not([data-pl-manage-share-field]),
-body.theme-pro main select:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-online-trigger-page-size]),
-body.theme-pro main button[role="combobox"]:not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-mobile-txn-pager-select]):not([data-pl-gallery-page-select]):not([data-pl-stock-top-select]),
+body.theme-pro main select:not([data-pl-bs-toolbar] *):not([data-pl-tb-toolbar] *):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-online-trigger-page-size]),
+body.theme-pro main button[role="combobox"]:not([data-pl-bs-toolbar] *):not([data-pl-tb-toolbar] *):not(.pl-company-profile-field):not([data-pl-manage-share-field]):not([data-pl-manage-share-perm-filter]):not([data-pl-manage-share-bank-select]):not([data-pl-toolbar-field]):not([data-pl-mobile-txn-pager-select]):not([data-pl-gallery-page-select]):not([data-pl-stock-top-select]),
 body.theme-pro main button[data-theme-detail="date-range"]:not(.pl-chrome-btn-drop):not(.pl-company-profile-field) {
   border-color: #000 !important;
   border-width: 1px !important;
@@ -16217,6 +16220,24 @@ html body input[data-pl-mlc-search-input]:not(#pl-theme-master-none):not(#pl-the
 }
 /* === end Theme Master: master list footer search dark text === */
 
+/* === Theme Master: SAARE search boxes — pure white background (ALL themes) ===
+   Theme `bg-background` / grey gradient deti hai; search ka maqsad clear input dikhana hai,
+   isliye background hamesha #fff. `data-pl-mlc-search-input` = Input list-chrome search hook. */
+html body input[data-pl-mlc-search-input]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3),
+html body input[placeholder*="search" i]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3),
+html body .pl-mlc-search-row input:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3),
+html body [data-pl-bs-toolbar] input:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body [data-pl-tb-toolbar] input:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  background-color: #ffffff !important;
+  background-image: none !important;
+}
+html body.dark input[data-pl-mlc-search-input]::placeholder,
+html body.dark input[placeholder*="search" i]::placeholder {
+  color: rgb(148 163 184) !important;
+  -webkit-text-fill-color: rgb(148 163 184) !important;
+}
+/* === end Theme Master: search boxes pure white === */
+
 /* === Theme Master: account list header = Pro (Default) style in all themes ===
    Overrides our old #25 pill (globals.css ~15113): full-width strip, title left, total right, bottom border. JSX same for all themes (ResponsiveMasterDetail.tsx 280-336, mobileListChrome.ts pageHeader). */
 html body:not(.theme-pro) [data-pl-master-list-chrome] .pl-mlc-page-header:not(#pl-theme-master-none):not(#pl-theme-master-none-2):not(#pl-theme-master-none-3) {
@@ -16988,50 +17009,342 @@ html body [data-pl-reports-handle-host] > [role="separator"] {
   box-shadow: none !important;
 }
 
-/* ---- Balance Sheet: main card border removed + notice cards blue --------------------------
-   Report page ka bada black frame hata diya (Card `border-0`), aur andar ke audit/notice cards
-   (Opening Balance Mismatch, Not Balanced, Net Profit note, Double-Entry check) ke black black
+/* ---- Reports page (PC): sirf EK scrollbar ----------------------------------
+   Reports page apne `h-full` skeleton me fit hai. Pehle sub-pixel overflow dashboard ke
+   `overflow-y-auto` main ko scroll kara deta tha, to hover par list ke apne (Radix, 8px) bar ke
+   bagal me doosra patla page scrollbar dikhta tha. `useReportsPageNoDoubleScroll` (reports/page.tsx)
+   hover ke waqt bhi page scroll off rakhta hai aur main ka stable gutter (right edge ki khali
+   10px patti) hata deta hai — yahan page ka overflow bhi band. Embedded shell (APK/EXE) me list ki
+   native scrollbar pehle se hidden hai, isliye koi layout effect nahi. */
+html body:not([data-pl-embedded-shell]) [data-pl-reports-page-fit] {
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+/* Native scroller ab Radix nahi (ScrollArea = native div): translucent thumb app ke uniform bar jaisa.
+   Handles ki jagah native bar par rehta hai, isliye list rows ke corner par baithta hai. */
+[data-pl-native-scroll] {
+  scrollbar-width: thin;
+}
+@media (hover: none), (pointer: coarse) {
+  [data-pl-native-scroll] { scrollbar-width: thin; scrollbar-color: var(--pl-sb-thumb) transparent; }
+}
+
+/* ---- Balance Sheet (sirf Pro theme) ------------------------------------------------------
+   Report page ka bada black frame Pro me hata diya hai (Card `border-0`), aur andar ke audit/notice
+   cards (Opening Balance Mismatch, Not Balanced, Net Profit note, Double-Entry check) ke black
    borders ki jagah blue outline — buttan jaisa colour, par shape rectangular hi rehta hai (pill nahi).
-   High specificity + !important, kyunki theme ke `.border-*` rules `!important` use karte hain. */
-html body [data-pl-balance-sheet-frame] > .border-0,
-html body [data-pl-balance-sheet-frame] > [class*="border-0"] {
+   High specificity + !important, kyunki theme ke `.border-*` rules `!important` use karte hain.
+   Baaki themes bilkul untouched. */
+html body.theme-pro [data-pl-balance-sheet-frame] > .border-0,
+html body.theme-pro [data-pl-balance-sheet-frame] > [class*="border-0"] {
   border-width: 0 !important;
   box-shadow: none !important;
 }
 
 /* Audit/notice cards (Opening Balance Mismatch, Balance Sheet Not Balanced, Net Profit note,
-   Double-Entry check) — blue tone buttan ke jaisa, par shape rectangular (pill nahi).
-   Tailwind `border-blue-300` theme ke `!important` .border-black / .border rules se haar jata tha,
-   isliye high-specificity + !important yahan lagaya. Attribute marker `data-pl-bs-blue-card`. */
-html body [data-pl-bs-blue-card] {
+   Double-Entry check) — **sirf Pro theme** me blue tone, shape rectangular (pill nahi).
+   Baaki themes bilkul untouched: unke apne border rules hi chalte hain.
+   Do `:not(#id)` = ID weight, so it beats Pro ke `.border-black` / `.border` !important rules. */
+html body.theme-pro [data-pl-bs-blue-card]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
   border: 1px solid rgb(147 197 253) !important; /* blue-300 */
-  border-radius: 0.75rem !important; /* rectangular rounded, pill nahi */
+  border-radius: 0.75rem !important; /* rounded rectangle, pill nahi */
 }
-html body [data-pl-bs-blue-card] > * {
+html body.theme-pro [data-pl-bs-blue-card] > * {
   border-color: rgb(191 219 254) !important; /* blue-200 inner divider */
 }
-html body [data-pl-bs-blue-card] [class*="border-black"],
-html body [data-pl-bs-blue-card] tr,
-html body [data-pl-bs-blue-card] td,
-html body [data-pl-bs-blue-card] th {
+html body.theme-pro [data-pl-bs-blue-card] [class*="border-black"],
+html body.theme-pro [data-pl-bs-blue-card] tr,
+html body.theme-pro [data-pl-bs-blue-card] td,
+html body.theme-pro [data-pl-bs-blue-card] th {
   border-color: rgb(191 219 254) !important;
 }
-html body.theme-pro [data-pl-bs-blue-card],
-html body.theme-pl-light [data-pl-bs-blue-card],
-html body.theme-pl-gray [data-pl-bs-blue-card] {
-  border: 1px solid rgb(147 197 253) !important;
+
+/* ---- Report hairline token ---------------------------------------------------------------
+   Report tables ki row lines ka colour — **fixed dim black**, koi CSS var nahi.
+   Financial Summary ki `border-foreground/20` jaisa hi tone. Fixed `rgb()` is liye ki
+   `--border` / `--foreground` theme ke andar alag-alag format (raw HSL triplet) me aate hain
+   aur `hsl(var(--x))` kisi bhi galat format par poora rule drop karwa deta tha. */
+html body.theme-pro {
+  --pl-report-hairline: rgba(0, 0, 0, 0.18);
+}
+html body.dark {
+  --pl-report-hairline: rgba(255, 255, 255, 0.22);
+}
+html body {
+  --pl-report-hairline: rgba(0, 0, 0, 0.18);
 }
 
-/* Balance Sheet toolbar (Search / All Entities / Sort by) — pure white background + blue border. */
-html body [data-pl-bs-toolbar] input,
-html body [data-pl-bs-toolbar] [role="combobox"],
-html body [data-pl-bs-toolbar] button[role="combobox"],
-html body [data-pl-bs-toolbar] select {
+/* Balance Sheet ke report tables (Group totals summary, expanded tree, TOTAL footer card) —
+   **sirf Pro theme**. Outer outline blue-300, andar ki grid lines **Financial Summary jaisi
+   dim-black hairline** (var(--pl-report-hairline), exactly 1px). */
+html body.theme-pro [data-pl-bs-table-card]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  border: 1px solid rgb(147 197 253) !important; /* blue-300 */
+  border-radius: 0.75rem !important;
+}
+
+/* Table ke andar ki rows: dim hairline. `td`/`th` par koi line nahi — sirf row ki neeche ki line.
+   NOTE 1: `*` universal mat lagao — wo table ke bahar wale wrapper tak border pahuncha deta tha.
+   NOTE 2: `border-bottom: 1px solid <colour>` shorthand use *nahi* kiya. Agar colour kabhi
+   invalid ho jaye to browser poora declaration drop kar deta hai (yahi baar-baar ho raha tha).
+   Longhand (`border-bottom-width` / `-style` / `-color`) alag-alag apply hote hain.
+   NOTE 3: `table > thead > tr` ke bajaye plain `tr` use kiya — expanded tree ka header ek alag
+   `<Table>` me hai (System Group row), jahan `TableHeader` apni `[&_tr]:border-b` class lagata hai. */
+html body.theme-pro [data-pl-bs-table-card] tr:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  border-top-width: 0 !important;
+  border-left-width: 0 !important;
+  border-right-width: 0 !important;
+  border-bottom-width: 1px !important;
+  border-bottom-style: solid !important;
+  border-bottom-color: var(--pl-report-hairline, rgba(0, 0, 0, 0.18)) !important;
+  background-image: none !important;
+}
+html body.theme-pro [data-pl-bs-table-card] table :is(td, th):not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  border-width: 0 !important;
+  background-image: none !important;
+}
+/* Expanded tree ka "System Group" header row — `TableHeader` apni `[&_tr]:border-b border-border`
+   + `BS_TABLE_ROW_CLASS` ka `border-black` lagata hai, isliye ye row alag se pin karta hoon
+   (top line bhi hata di, sirf ek hairline neeche). */
+html body.theme-pro [data-pl-bs-table-card] thead tr:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pro [data-pl-bs-table-card] thead tr:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > th,
+html body.theme-pro [data-pl-bs-table-card] thead tr:not(#pl-theme-master-none):not(#pl-theme-master-none-2) > td {
+  border-top-width: 0 !important;
+  border-top-style: none !important;
+  border-top-color: transparent !important;
+  border-left-width: 0 !important;
+  border-right-width: 0 !important;
+}
+html body.theme-pro [data-pl-bs-table-card] thead tr:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  border-bottom-width: 1px !important;
+  border-bottom-style: solid !important;
+  border-bottom-color: var(--pl-report-hairline, rgba(0, 0, 0, 0.18)) !important;
+}
+/* Footer (TOTAL) ke upar wali line bhi. */
+html body.theme-pro [data-pl-bs-table-card] table > tfoot > tr:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  border-top-width: 1px !important;
+  border-top-style: solid !important;
+  border-top-color: var(--pl-report-hairline, rgba(0, 0, 0, 0.18)) !important;
+}
+/* Last row par duplicate line na bane. */
+html body.theme-pro [data-pl-bs-table-card] table > tbody > tr:last-child,
+html body.theme-pro [data-pl-bs-table-card] table > tfoot > tr:last-child {
+  border-bottom-width: 0 !important;
+}
+
+/* Alert/notice cards (Opening Balance Mismatch, Balance Sheet Not Balanced, Net Profit note,
+   Double-Entry check) — outer outline blue-300, aur andar ki table lines **wahi dim hairline**
+   jo main table par hai (longhand + fallback: shorthand invalid hone par drop ho jata tha). */
+html body.theme-pro [data-pl-bs-blue-card] table > tbody > tr:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pro [data-pl-bs-blue-card] table > thead > tr:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pro [data-pl-bs-blue-card] table > tfoot > tr:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  border-top-width: 0 !important;
+  border-left-width: 0 !important;
+  border-right-width: 0 !important;
+  border-bottom-width: 1px !important;
+  border-bottom-style: solid !important;
+  border-bottom-color: var(--pl-report-hairline, rgba(0, 0, 0, 0.18)) !important;
+  background-image: none !important;
+}
+html body.theme-pro [data-pl-bs-blue-card] table :is(td, th):not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  border-width: 0 !important;
+  background-image: none !important;
+}
+html body.theme-pro [data-pl-bs-blue-card] table > tbody > tr:last-child {
+  border-bottom-width: 0 !important;
+}
+/* Card ke header ka neeche wala divider (h3 row) — wahi dim hairline, black/blue na rahe. */
+html body.theme-pro [data-pl-bs-blue-card] > div:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  border-bottom-style: solid !important;
+  border-bottom-color: var(--pl-report-hairline, rgba(0, 0, 0, 0.18)) !important;
+}
+
+/* Balance Sheet toolbar (Search / All Entities / Sort by) — **sirf Pro theme** pure white bg + blue
+   border. Do `:not(#id)` = ID weight, so it beats line ~5753 ka "Pro: saare main forms — black border"
+   (`body.theme-pro main input:not(...)x10 !important`) chahe wo rule baad me declare hua ho. */
+/* === Theme Master: App-wide scrollbars — exactly Server page (`html.pl-admin-route`) jaisa ===
+   Server page ka asli spec (globals.css ~2958):
+     scrollbar-color: rgba(0, 0, 0, 0.35) transparent;
+     width/height: 3px;  thumb: rgba(0, 0, 0, 0.28);  radius 2px;
+     hover thumb: rgba(0, 0, 0, 0.45);
+   Note: file ke aage `@media (hover:none)/(pointer:coarse)` wala "uniform scrollbar" block hai jo
+   `*::-webkit-scrollbar-thumb` par `var(--pl-sb-touch-thumb)` lagata hai. Isliye colours wahan ke
+   token `--pl-sb-*` se hi drive hote hain — yahan tokens remap kar diye, taaki dono blocks same dikhein. */
+:root {
+  --pl-sb-touch-thumb: rgba(0, 0, 0, 0.28);
+  --pl-sb-thumb: rgba(0, 0, 0, 0.28);
+  --pl-sb-thumb-hover: rgba(0, 0, 0, 0.45);
+}
+html body {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(0, 0, 0, 0.35) transparent !important;
+}
+html body * {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(0, 0, 0, 0.35) transparent !important;
+}
+html body *::-webkit-scrollbar {
+  width: 3px !important;
+  height: 3px !important;
+  background: transparent !important;
+}
+/* Slim variants — same look, same 3px (server page bhi 3px hi hai). */
+html body .scrollbar-slim-dim::-webkit-scrollbar,
+html body .scrollbar-slim-dim-extra::-webkit-scrollbar,
+html body .scrollbar-hover-dim::-webkit-scrollbar {
+  width: 3px !important;
+  height: 3px !important;
+}
+html body *::-webkit-scrollbar-track,
+html body *::-webkit-scrollbar-corner {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+html body *::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.28) !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+html body *::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.45) !important;
+}
+/* Dark UI: kaala thumb kaale par ghul jata — server page dark bhi light thumb dikhata hai. */
+html body.dark {
+  --pl-sb-touch-thumb: rgba(255, 255, 255, 0.28);
+  --pl-sb-thumb: rgba(255, 255, 255, 0.28);
+  --pl-sb-thumb-hover: rgba(255, 255, 255, 0.45);
+}
+html body.dark *::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.28) !important;
+}
+html body.dark *::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Search/select ka background: `bg-background` / `bg-input` jo bhi ho, locally `--background` aur
+   `--input` ko white kar dete hain — is tarah Tailwind `bg-background` bhi white hi render karta hai.
+   (Sirf `background-color` !important lagane se inner utility override nahi hoti thi.) */
+html body.theme-pro [data-pl-bs-toolbar]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pro [data-pl-tb-toolbar]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  --background: 0 0% 100%;
+  --card: 0 0% 100%;
+  --muted: 0 0% 100%;
+  --input: 0 0% 100%;
+  /* Search input ka wrapper bhi theme ki tone na le. */
+  background-color: transparent !important;
+  background-image: none !important;
+}
+/* Wrapper (Search icon ke sath wala relative div) — pure white, taaki icon ke peeche grey na dikhe. */
+html body.theme-pro [data-pl-bs-toolbar] .relative:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pro [data-pl-tb-toolbar] .relative:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
   background-color: #ffffff !important;
   background-image: none !important;
-  border: 1px solid rgb(147 197 253) !important; /* blue-300 */
   border-radius: 0.5rem !important;
 }
-html body [data-pl-bs-toolbar] input::placeholder {
+html body.theme-pro [data-pl-bs-toolbar] input:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pro [data-pl-bs-toolbar] [role="combobox"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pro [data-pl-bs-toolbar] button[role="combobox"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pro [data-pl-bs-toolbar] select:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: rgb(147 197 253) !important; /* blue-300 */
+  border-radius: 0.5rem !important;
+  box-shadow: none !important;
+  /* Height selects (`h-9`) ke barabar — search box lamba nahi dikhega. */
+  height: 2.25rem !important;
+  min-height: 2.25rem !important;
+  max-height: 2.25rem !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+html body.theme-pro [data-pl-bs-toolbar] input::placeholder {
   color: rgb(148 163 184) !important; /* slate-400 */
+}
+
+/* ---- Trial Balance: main container border + padding hata do (sirf Pro theme) --------------
+   Theme ka generic `body[class*="theme-"] main .rounded-lg.border` / `.rounded-xl.border`
+   card shell ko black frame deta hai. Do `:not(#id)` = ID weight, so ise harana mushkil nahi. */
+html body.theme-pro [data-pl-trial-balance-frame]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pro [data-pl-trial-balance-card]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+
+/* Trial Balance toolbar — Search box + Entity select: pure white bg + blue-300 border,
+   bilkul Balance Sheet toolbar jaisa. ID weight se Pro ke black-border rules override hote hain. */
+html body.theme-pro [data-pl-tb-toolbar] input:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pro [data-pl-tb-toolbar] [role="combobox"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pro [data-pl-tb-toolbar] button[role="combobox"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pro [data-pl-tb-toolbar] select:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: rgb(147 197 253) !important; /* blue-300 */
+  border-radius: 0.5rem !important;
+  box-shadow: none !important;
+  /* Height right wale selects (`h-9`) ke barabar. */
+  height: 2.25rem !important;
+  min-height: 2.25rem !important;
+  max-height: 2.25rem !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+html body.theme-pro [data-pl-tb-toolbar] input::placeholder {
+  color: rgb(148 163 184) !important; /* slate-400 */
+}
+
+/* Trial Balance table rows — Financial Summary jaisi dim hairline (longhand properties). */
+html body.theme-pro [data-pl-trial-balance-card] table > tbody > tr:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body.theme-pro [data-pl-trial-balance-card] table > thead > tr:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  border-top-width: 0 !important;
+  border-left-width: 0 !important;
+  border-right-width: 0 !important;
+  border-bottom-width: 1px !important;
+  border-bottom-style: solid !important;
+  border-bottom-color: var(--pl-report-hairline, rgba(0, 0, 0, 0.18)) !important;
+  background-image: none !important;
+}
+html body.theme-pro [data-pl-trial-balance-card] table :is(td, th):not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  border-width: 0 !important;
+  background-image: none !important;
+}
+html body.theme-pro [data-pl-trial-balance-card] table > tbody > tr:last-child {
+  border-bottom-width: 0 !important;
+}
+/* Table ka outer shell (rounded-lg border) yahan border na de — sirf hairline rows dikhein. */
+html body.theme-pro [data-pl-trial-balance-card] div.rounded-lg.border:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: var(--border) !important;
+}
+
+/* ---- Saare report pages ka background = Financial Summary cards ka emerald tone -----------
+   Exact wahi gradient jo KPI cards (`pl-dashboard-ribbon-emerald`) par hai:
+   #ecfdf5 -> #ffffff -> #d1fae5. `data-pl-report-emerald-bg` report detail shell par lagta hai
+   (desktop: reports/page.tsx detail view; mobile: full-page detail). Dark mode me original
+   dark surface hi rehta hai, warna text readability kharab hoti. */
+html body [data-pl-report-emerald-bg],
+html body [data-pl-report-emerald-bg] > [data-pl-report-detail-root] {
+  background-color: #ecfdf5 !important;
+  background-image: linear-gradient(
+    90deg,
+    rgba(236, 253, 245, 0.98) 0%,
+    #ffffff 50%,
+    rgba(209, 250, 229, 0.92) 100%
+  ) !important;
+  background-attachment: local !important;
+}
+html body.dark [data-pl-report-emerald-bg],
+html body.dark [data-pl-report-emerald-bg] > [data-pl-report-detail-root] {
+  background-color: transparent !important;
+  background-image: none !important;
 }

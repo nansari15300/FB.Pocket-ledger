@@ -138,6 +138,34 @@ export function WebAppOnlineAccessGate({ children }: { children: React.ReactNode
 
   const retry = useCallback(() => setCheckNonce((value) => value + 1), []);
 
+  // SSR/hydration safety: `useAuth()` server par hamesha `user=null` deta hai, lekin client par
+  // hydration ke waqt localStorage/session se user turant mil jata hai. Agar hum `isEmbeddedApp ||
+  // billingRoute` par seedha children render karein, to pehle client paint par app shell aa jata
+  // aur server ka gate (spinner) se mismatch → "Hydration failed". Isliye mount hone tak hamesha
+  // wahi gate render karte hain jo server ne bheja tha.
+  const [mounted, setMounted] = useState(false);
+  // `useLayoutEffect` SSR par warning deta hai — mount-only, isliye `useEffect` safe hai
+  // (gate pehle paint par bhi same rehta hai, mismatch nahi hota).
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <div
+        data-pl-web-auth-gate="1"
+        className="flex min-h-dvh items-center justify-center bg-background p-6"
+      >
+        <div className="flex flex-col items-center gap-3 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading session…
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (isEmbeddedApp || billingRoute) return <>{children}</>;
 
   if (!user) {

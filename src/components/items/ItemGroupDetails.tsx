@@ -1,4 +1,4 @@
-
+﻿
 'use client';
 
 import { getDoc } from "@/lib/pocketbaseData/pbReadSeam";
@@ -110,7 +110,7 @@ import {
   LEDGER_TXN_PAGE_ROOT_CN,
 } from "@/lib/ledgerHeaderChrome";
 import { LedgerTxnScrollColumn } from "@/components/vouchers/LedgerTxnScrollColumn";
-import { ScrollArea, ScrollBar } from "../ui/scroll-area";
+import { ScrollArea } from "../ui/scroll-area";
 import { useCompany } from "@/hooks/useCompany";
 import { useFyLoadOnDateRangeChange } from "@/hooks/useFyLoadOnDateRangeChange";
 import { useRowsPerPage } from "@/hooks/useRowsPerPage";
@@ -1359,3 +1359,4 @@ export function ItemGroupDetails({
     </>
   );
 }
+

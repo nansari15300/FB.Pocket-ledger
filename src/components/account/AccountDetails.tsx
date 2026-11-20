@@ -1,4 +1,4 @@
-
+﻿
 "use client";
 
 import { voucherTypeDisplayText, voucherTypeSearchText } from "@/lib/voucherTypeDisplay";
@@ -66,7 +66,7 @@ import { LedgerHeaderReminderButton, type LedgerReminderContext } from "@/compon
 import { LedgerReminderDialog } from "@/components/vouchers/LedgerReminderDialog";
 import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
 
-import { ScrollArea, ScrollBar } from "../ui/scroll-area";
+import { ScrollArea } from "../ui/scroll-area";
 import { EditAccountDialog } from "../bank-cash/EditAccountDialog";
 import BsDatePicker from "@/components/ui/BsDatePicker";
 import {
@@ -1210,7 +1210,7 @@ export function AccountDetails({
               disableLayoutAnimation={ledgerRowGate.suppress}
               {...statementCheck.tableProps}/>
           </div>
-          <ScrollBar orientation="horizontal" txnChrome />
+          
         </ScrollArea>
         {/* Footer — masters-style compact LedgerDesktopFooter */}
         <LedgerDesktopFooter
@@ -1320,4 +1320,5 @@ export function AccountDetails({
     </>
   );
 }
+
 

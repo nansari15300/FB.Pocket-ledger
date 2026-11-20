@@ -1,4 +1,4 @@
-
+﻿
 "use client";
 
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
@@ -7,7 +7,7 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { Info, XCircle, Calendar as CalendarIcon, Printer, Expand, Filter } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Account } from "@/components/bank-cash/types";
 import type { Item } from "@/components/items/types";
 import type { DateRange } from "@/components/ui/ad-calendar";
@@ -442,7 +442,7 @@ export function DaybookReport({ onFullScreenToggle }: DaybookReportProps) {
                                 isDateChange={isDateChange}
                            />
                         </div>
-                        <ScrollBar orientation="horizontal" />
+                        
                     </ScrollArea>
                 </div>
               ) : (
@@ -464,3 +464,4 @@ export function DaybookReport({ onFullScreenToggle }: DaybookReportProps) {
       </div>
     );
 }
+

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useReconciledPointGuard } from "@/components/vouchers/ReconciledPointGuardContext";
 import { addDoc, updateDoc } from "@/lib/writeGateway/pbWrites";
@@ -43,7 +43,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
-import { ScrollArea, ScrollBar } from "../ui/scroll-area";
+import { ScrollArea } from "../ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "../ui/tabs";
 import { Checkbox } from "../ui/checkbox";
 import { SalePurchaseTdsVerifyTick, TdsVerifyTickBox } from "@/components/vouchers/SalePurchaseTdsVerifyTick";
@@ -3619,3 +3619,4 @@ try {
     </>
   );
 }
+

@@ -30,9 +30,7 @@ export const financialSummaryRowClass = cn(
 export const financialSummaryHairlineRowClass = cn(
   "flex items-center justify-between gap-2 border-t border-t-[color:var(--border)]",
   "[border-top-width:1px] [border-top-style:solid]"
-);
-
-/** Subtotal / total row */
+);/** Subtotal / total row */
 export const financialSummaryTotalRowClass = cn(
   "flex items-center justify-between py-2.5 text-sm font-semibold border-t border-foreground/30"
 );
