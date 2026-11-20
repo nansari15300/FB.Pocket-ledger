@@ -16954,3 +16954,36 @@ svg.lucide-info:hover {
 [data-pl-reports-rail] [data-pl-reports-list] > li > [data-pl-list-row] {
   max-width: 100%;
 }
+
+/* ---- Reports list divider: hamesha exactly 1px ----------------------------
+   Theme ke global `.border-r { border-width: 3px !important }` rules Tailwind ke
+   `border-r-[1px]` ko bhi harate hain (specificity + !important). Reports panel apne
+   `data-pl-reports-panel-border` marker se khud ko un sabse bahar rakh leta hai:
+   high-specificity + !important, isliye koi theme 3px/2px ise override nahi kar sakta. */
+html body :where(main) > * [data-pl-reports-panel-border],
+html body [data-pl-reports-panel-border] {
+  border-right-width: 1px !important;
+  border-right-style: solid !important;
+}
+html body :where(main) > * [data-pl-reports-panel-border] > div > .border-b,
+html body [data-pl-reports-panel-border] > div > .border-b {
+  border-bottom-width: 1px !important;
+}
+
+/* Reports list ka resize handle (ResizablePaneWidth.tsx) apni `w-px bg-border` line deta hai,
+   jo panel ke `border-r` (right edge) ke bagal me baith kar line ko 2–3px dikhata hai — Pro theme
+   ki hide-rule sirf `[data-pl-master-list-chrome]` ke andar lagti hai, reports panel ke andar nahi.
+   Yahan handle ki inner line transparent; hover/drag par highlight wapas aa jata hai. */
+html body [data-pl-reports-handle-host] > [role="separator"] > div {
+  background-color: transparent !important;
+}
+html body [data-pl-reports-handle-host] > [role="separator"]:hover > div,
+html body [data-pl-reports-handle-host] > [role="separator"]:active > div {
+  background-color: hsl(var(--primary)) !important;
+}
+/* Handle sirf hover area hai — apni koi border/outline na dikhaye. */
+html body [data-pl-reports-handle-host] > [role="separator"] {
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+}

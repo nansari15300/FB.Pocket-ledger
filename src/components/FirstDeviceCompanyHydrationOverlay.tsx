@@ -35,7 +35,7 @@ import {
   clearHeaderAttachmentPrefetchForCompany,
   reportHeaderAttachmentPrefetchProgress,
 } from "@/contexts/EmbeddedAttachmentPrefetchContext";
-import { shouldPrefetchAttachmentsForCompany } from "@/lib/offlineFullWarmSync";
+import { runEmbeddedCompanyDeltaSync, shouldPrefetchAttachmentsForCompany } from "@/lib/offlineFullWarmSync";
 import { isFirebaseLedgerLocalDeltaMode } from "@/lib/firebaseLedgerSyncMode";
 import {
   clearEmbeddedPendingCompanyDataWarm,
@@ -268,13 +268,24 @@ export function FirstDeviceCompanyHydrationOverlay() {
           const localId = String(row.id).trim();
 
           try {
-            await runEmbeddedCompanyFullPreload({
-              company: row,
-              localCompanyId: localId,
-              signal: accountAc.signal,
-              onAttachmentProgressPercent: (pct) =>
-                reportHeaderAttachmentPrefetchProgress(localId, pct),
-            });
+            /* Pehli baar sirf full mirror; baad ke har start par delta — sirf unsynced (outbox) docs
+             * server par jate hain, kuch pending nahi to koi download nahi. Isse "Server Data Syncing"
+             * har refresh/company-open par poora data dobara load nahi karta. */
+            if (accountWideFirstWarm) {
+              await runEmbeddedCompanyFullPreload({
+                company: row,
+                localCompanyId: localId,
+                signal: accountAc.signal,
+                onAttachmentProgressPercent: (pct) =>
+                  reportHeaderAttachmentPrefetchProgress(localId, pct),
+              });
+            } else {
+              await runEmbeddedCompanyDeltaSync({
+                company: row,
+                localCompanyId: localId,
+                signal: accountAc.signal,
+              });
+            }
           } catch {
             /* per-company network / abort */
           }

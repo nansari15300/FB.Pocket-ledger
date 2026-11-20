@@ -28,6 +28,12 @@ type MasterListNameTooltipProps = {
 /**
  * Master list naam hover — sirf jab text clip / ellipsis ho (…).
  * Web, Electron, Capacitor: ResizeObserver se measure.
+ *
+ * IMPORTANT (infinite loop fix): jab text truncate nahi hai, Radix `Tooltip` **mount hi nahi hota**.
+ * Pehle har row me `Tooltip`/`TooltipTrigger`/`PopperAnchor` mounted rehta tha aur Radix ke composed
+ * refs (`setRef` -> setState) commit ke waqt chain-reaction bana kar
+ * "Maximum update depth exceeded" dete the (Party Statement ke group tree me saaf dikhta tha).
+ * Ab non-truncated rows sirf ek plain `<button>` hain — koi Radix ref, koi state update nahi.
  */
 export function MasterListNameTooltip({
   children,
@@ -38,39 +44,33 @@ export function MasterListNameTooltip({
   align = "start",
   measureKey,
 }: MasterListNameTooltipProps) {
-  const triggerRef = React.useRef<HTMLButtonElement>(null);
-  /* `children`/`tooltipContent` ko deps me mat daalo: ye har parent re-render par naye objects hote
-   * hain, jisse measure effect + `setOpen` baar-baar chal kar "Maximum update depth" de deta tha.
+  const plainRef = React.useRef<HTMLButtonElement>(null);
+  /* `children` ko deps me mat daalo — ye har parent re-render par naya object hota hai.
    * `measureKey` hi label/layout badalne ka stable signal hai. */
-  const isTruncated = useIsTextTruncated(triggerRef, [measureKey]);
+  const isTruncated = useIsTextTruncated(plainRef, [measureKey]);
   const [open, setOpen] = React.useState(false);
 
-  React.useEffect(() => {
-    // Sirf tab band karo jab actually khula ho — warna har measure par state write hoti thi.
-    if (!isTruncated) setOpen((prev) => (prev ? false : prev));
-  }, [isTruncated]);
+  const triggerProps = {
+    type: "button" as const,
+    ref: plainRef,
+    "data-pl-list-name": "",
+    onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
+    className: cn(triggerClassName, className),
+  };
+
+  // Not clipped → no tooltip needed, and no Radix tree mounted at all.
+  if (!isTruncated) {
+    return <button {...triggerProps}>{children}</button>;
+  }
 
   return (
-    <Tooltip
-      open={isTruncated && open}
-      onOpenChange={(next) => {
-        if (isTruncated) setOpen(next);
-      }}
-    >
-      <TooltipTrigger
-        ref={triggerRef}
-        type="button"
-        data-pl-list-name=""
-        onPointerDown={(e) => e.stopPropagation()}
-        className={cn(triggerClassName, className)}
-      >
+    <Tooltip open={open} onOpenChange={setOpen}>
+      <TooltipTrigger ref={plainRef} {...triggerProps} data-pl-list-name="">
         {children}
       </TooltipTrigger>
-      {isTruncated ? (
-        <TooltipContent side={side} align={align}>
-          {tooltipContent}
-        </TooltipContent>
-      ) : null}
+      <TooltipContent side={side} align={align}>
+        {tooltipContent}
+      </TooltipContent>
     </Tooltip>
   );
 }

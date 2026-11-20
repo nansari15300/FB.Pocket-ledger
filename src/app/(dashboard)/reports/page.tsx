@@ -329,12 +329,20 @@ function ReportsPageContent() {
         {isDesktopReportListOpen ? (
           <div
             className="border-r border-r-[1px] overflow-hidden"
-            style={{ width: reportListWidthPx }}
+            /* Inline width: theme ka `!important` border rule isse nahi hara sakta — divider exactly 1px. */
+            style={{ width: reportListWidthPx, borderRightWidth: "1px", borderRightStyle: "solid" }}
             data-pl-reports-panel-border=""
           >
-            <div className="relative flex h-full min-w-0 flex-col">
-              <ResizeWidthHandle onPointerDown={beginReportListResize} title="Resize reports list" />
-              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-b-[1px] px-2 py-1">
+            <div className="relative flex h-full min-w-0 flex-col" data-pl-reports-handle-host="">
+              <ResizeWidthHandle
+                onPointerDown={beginReportListResize}
+                title="Resize reports list"
+                className="w-1 translate-x-0"
+              />
+              <div
+                className="flex shrink-0 items-center justify-between gap-2 border-b border-b-[1px] px-2 py-1"
+                style={{ borderBottomWidth: "1px" }}
+              >
                 <h1 className="min-w-0 flex-1 text-base font-bold font-headline leading-tight">Reports</h1>
                 <Button
                   type="button"
@@ -355,10 +363,14 @@ function ReportsPageContent() {
         ) : (
           <div
             className="flex h-full min-w-0 flex-col border-r border-r-[1px] bg-sidebar"
+            style={{ borderRightWidth: "1px", borderRightStyle: "solid" }}
             data-pl-reports-rail=""
             data-pl-reports-panel-border=""
           >
-            <div className="flex shrink-0 items-center justify-center border-b border-b-[1px] px-1 py-1">
+            <div
+              className="flex shrink-0 items-center justify-center border-b border-b-[1px] px-1 py-1"
+              style={{ borderBottomWidth: "1px" }}
+            >
               <Button
                 type="button"
                 variant="outline"
