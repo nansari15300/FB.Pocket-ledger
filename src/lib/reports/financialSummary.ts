@@ -8,6 +8,13 @@ import {
 import { computeRpLedgerAlignedBalance } from "@/lib/receivablesPayablesLedgerAmounts";
 import { getTransactionAmounts as getLedgerTransactionAmounts } from "@/hooks/use-transactions";
 import type { FinancialSummaryDateRange } from "@/lib/reports/financialSummaryPresets";
+import {
+  adToBs,
+  addBsMonths,
+  bsToAd,
+  getBSMonthDays,
+  NEPALI_MONTHS,
+} from "@/lib/bs-date";
 
 export type FinancialSummaryMetric = {
   total: number;
@@ -92,6 +99,7 @@ export type FinancialSummaryInput = {
   processedItems: any[];
   period: FinancialSummaryDateRange;
   comparisonPeriod?: FinancialSummaryDateRange;
+  dateSystem?: "AD" | "BS" | "Both";
 };
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -646,47 +654,121 @@ function buildBalanceSheetSnapshot(
   };
 }
 
+function clipToPeriod(
+  from: Date,
+  to: Date,
+  period: FinancialSummaryDateRange
+): FinancialSummaryDateRange | null {
+  const clippedFrom = from < period.from ? period.from : from;
+  const clippedTo = to > period.to ? period.to : to;
+  if (clippedFrom > clippedTo) return null;
+  return { from: clippedFrom, to: clippedTo };
+}
+
+function monthlyPointFromRange(
+  key: string,
+  label: string,
+  processedExpenseAccounts: any[],
+  processedExpenseGroups: any[],
+  vouchers: any[],
+  monthRange: FinancialSummaryDateRange,
+  processedTaxes: any[]
+): FinancialSummaryMonthlyPoint {
+  const totals = aggregatePlTotals(
+    processedExpenseAccounts,
+    processedExpenseGroups,
+    vouchers,
+    monthRange,
+    processedTaxes
+  );
+  return {
+    key,
+    label,
+    revenue: totals.revenue,
+    expense: round2(totals.directCost + totals.operatingExpenses + totals.financeCost),
+    netProfit: totals.netProfit,
+  };
+}
+
+function bsMonthAdBounds(y: number, m: number): { from: Date; to: Date } {
+  const days = getBSMonthDays(y)[m - 1] || 30;
+  return {
+    from: startOfDay(bsToAd({ y, m, d: 1 })),
+    to: endOfDay(bsToAd({ y, m, d: days })),
+  };
+}
+
+function bsMonthChartLabel(y: number, m: number, dateSystem: "BS" | "Both"): string {
+  const fullBs = NEPALI_MONTHS[m - 1] ?? "";
+  if (dateSystem === "BS") return fullBs;
+  const adStart = bsToAd({ y, m, d: 1 });
+  return `${fullBs} / ${format(adStart, "MMMM")}`;
+}
+
 function buildMonthlyChart(
   processedExpenseAccounts: any[],
   processedExpenseGroups: any[],
   vouchers: any[],
   period: FinancialSummaryDateRange,
-  processedTaxes: any[]
+  processedTaxes: any[],
+  dateSystem: "AD" | "BS" | "Both" = "AD"
 ): FinancialSummaryMonthlyPoint[] {
-  const months = new Map<string, FinancialSummaryMonthlyPoint>();
+  const useBsMonths = dateSystem === "BS" || dateSystem === "Both";
+  if (useBsMonths) {
+    const startBs = adToBs(period.from);
+    const endBs = adToBs(period.to);
+    const points: FinancialSummaryMonthlyPoint[] = [];
+    let y = startBs.y;
+    let m = startBs.m;
+    const endIdx = endBs.y * 12 + endBs.m - 1;
+    let guard = 0;
+    while (y * 12 + m - 1 <= endIdx && guard < 36) {
+      const bounds = bsMonthAdBounds(y, m);
+      const monthRange = clipToPeriod(bounds.from, bounds.to, period);
+      if (monthRange) {
+        points.push(
+          monthlyPointFromRange(
+            `${y}-${String(m).padStart(2, "0")}`,
+            bsMonthChartLabel(y, m, dateSystem),
+            processedExpenseAccounts,
+            processedExpenseGroups,
+            vouchers,
+            monthRange,
+            processedTaxes
+          )
+        );
+      }
+      const next = addBsMonths(y, m, 1);
+      y = next.y;
+      m = next.m;
+      guard += 1;
+    }
+    return points;
+  }
+
+  const points: FinancialSummaryMonthlyPoint[] = [];
   let cursor = startOfMonth(period.from);
   const end = startOfMonth(period.to);
-
   while (cursor <= end) {
-    const key = format(cursor, "yyyy-MM");
-    months.set(key, {
-      key,
-      label: format(cursor, "MMM"),
-      revenue: 0,
-      expense: 0,
-      netProfit: 0,
-    });
+    const monthStart = startOfMonth(cursor);
+    const monthEnd = endOfDay(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0));
+    const monthRange = clipToPeriod(monthStart, monthEnd, period);
+    if (monthRange) {
+      points.push(
+        monthlyPointFromRange(
+          format(cursor, "yyyy-MM"),
+          format(cursor, "MMMM"),
+          processedExpenseAccounts,
+          processedExpenseGroups,
+          vouchers,
+          monthRange,
+          processedTaxes
+        )
+      );
+    }
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
   }
-
-  for (const [key, bucket] of months) {
-    const [y, m] = key.split("-").map(Number);
-    const monthStart = startOfMonth(new Date(y, m - 1, 1));
-    const monthEnd = endOfDay(new Date(y, m, 0));
-    const monthRange = { from: monthStart, to: monthEnd };
-    const totals = aggregatePlTotals(
-      processedExpenseAccounts,
-      processedExpenseGroups,
-      vouchers,
-      monthRange,
-      processedTaxes
-    );
-    bucket.revenue = totals.revenue;
-    bucket.expense = round2(totals.directCost + totals.operatingExpenses + totals.financeCost);
-    bucket.netProfit = totals.netProfit;
-  }
-
-  return Array.from(months.values());
+  return points;
 }
 
 function hasAnyData(summary: Omit<FinancialSummary, "hasData">, vouchers: any[], period: FinancialSummaryDateRange): boolean {
@@ -713,6 +795,7 @@ export function computeFinancialSummary(input: FinancialSummaryInput): Financial
     processedTaxes,
     period,
     comparisonPeriod,
+    dateSystem,
   } = input;
 
   const currentTotals = aggregatePlTotals(
@@ -774,7 +857,8 @@ export function computeFinancialSummary(input: FinancialSummaryInput): Financial
     processedExpenseGroups,
     vouchers,
     period,
-    processedTaxes
+    processedTaxes,
+    dateSystem
   );
 
   const summary: FinancialSummary = {

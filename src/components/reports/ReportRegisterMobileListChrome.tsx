@@ -43,10 +43,11 @@ export function ReportRegisterMobileListChrome({
   listSectionTitle,
   children,
 }: ReportRegisterMobileListChromeProps) {
+  const reportTitle = /\breport\b/i.test(title) ? title : `${title} Report`;
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <header className={mdc.listHeader}>
-        <h1 className={mdc.listTitle}>{title}</h1>
+        <h1 className={mdc.listTitle}>{reportTitle}</h1>
         {/* Mobile: summary + search + section label collapse — txn list ke liye zyada jagah */}
         <MobileDetailSummaryCollapsible>
           <div className="flex justify-center">

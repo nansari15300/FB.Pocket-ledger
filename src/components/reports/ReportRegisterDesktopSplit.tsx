@@ -27,7 +27,7 @@ export function ReportRegisterDesktopSplit({
 
   return (
     <div
-      className="grid min-h-0 flex-1 overflow-hidden"
+      className="grid h-full min-h-0 flex-1 overflow-hidden"
       style={{ gridTemplateColumns: `${widthPx}px minmax(0, 1fr)` }}
     >
       <div

@@ -16,7 +16,8 @@ import { cn } from "@/lib/utils";
 import type { StockView, Item } from "@/components/items/types";
 import { useMemo, useCallback, useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Filter, MoreVertical } from "lucide-react";
+import { Filter } from "lucide-react";
+import { TxnRowMenuGrip } from "@/components/vouchers/TxnRowMenuGrip";
 import { txnTableIconBtnCn } from "@/lib/listSelectionChrome";
 import {
   DropdownMenu,
@@ -474,7 +475,7 @@ export function BillwiseTransactionTable({
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" data-pl-txn-icon-btn="" className={cn(txnTableIconBtnCn, "h-8 w-8 shrink-0")}>
-                          <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                          <TxnRowMenuGrip />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-40" />

@@ -22,7 +22,6 @@ import {
   FilePlus,
   FileText,
   XCircle,
-  MoreVertical,
   ArrowLeft,
   Search,
   Wrench,
@@ -33,6 +32,7 @@ import {
   Pencil,
   X,
 } from "lucide-react";
+import { TxnRowMenuGrip } from "@/components/vouchers/TxnRowMenuGrip";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { voucherMs } from "@/lib/fyPagination/scopeFilter";
 import { chromeProPillCn } from "@/lib/chromePillButton";
@@ -109,10 +109,10 @@ import {
   LEDGER_HEADER_PILL_CN,
   LEDGER_HEADER_PILL_ICON_CN,
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
-  LEDGER_HEADER_PILL_ROW_CN,
   LEDGER_TXN_PAGE_ROOT_CN,
 } from "@/lib/ledgerHeaderChrome";
 import { LedgerTxnScrollColumn } from "@/components/vouchers/LedgerTxnScrollColumn";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 import { ReportHeaderSummaryCards } from "@/components/reports/ReportStatementSummaryCards";
 import { ResolvedEntityAvatar } from "@/components/entity/ResolvedEntityAvatar";
 import { EntityFileAttachmentHover } from "@/components/entity/EntityFileAttachmentHover";
@@ -249,6 +249,8 @@ interface AccountDetailsProps {
   /** Reports the (anchored) opening for the selected day so the host can re-anchor when its window moves. */
   onLedgerOpeningResolved?: (dayStartMs: number, opening: number, closing: number) => void;
   reportSummaryCards?: import("@/components/reports/ReportStatementSummaryCards").ReportStatementSummaryCardData[];
+  /** Optional report-level voucher filter for the statement rows. */
+  reportTransactionFilter?: (transaction: any) => boolean;
 }
 
 const HiddenPresetRow = (_props: any) => null;
@@ -274,6 +276,7 @@ export function AccountDetails({
   ledgerOpeningAnchor = null,
   onLedgerOpeningResolved,
   reportSummaryCards,
+  reportTransactionFilter,
 }: AccountDetailsProps) {
   const nestedLedgerNoteDialogShell =
     ledgerPresentationMode === "nested-ledger"
@@ -619,15 +622,18 @@ export function AccountDetails({
       : includeNotesInTable
         ? processedTransactions
         : processedTransactions.filter((t: any) => t.type !== "note");
+    const reportFiltered = reportTransactionFilter
+      ? result.filter((transaction: any) => reportTransactionFilter(transaction))
+      : result;
     // Perf debug: note-filter step ka cost log karo when user enables perf tracing.
     perfDebugLog("bank.accountDetails.baseTransactions", perfStart, {
       processedCount: processedTransactions.length,
-      resultCount: result.length,
+      resultCount: reportFiltered.length,
       spendWiseView,
       includeNotesInTable,
     });
-    return result;
-  }, [processedTransactions, spendWiseView, includeNotesInTable]);
+    return reportFiltered;
+  }, [processedTransactions, spendWiseView, includeNotesInTable, reportTransactionFilter]);
   const displayTransactions = useMemo(() => {
     const perfStart = perfNow();
     if (!spendWiseView || !vouchers?.length) return baseTransactions;
@@ -859,8 +865,11 @@ export function AccountDetails({
       spendWiseView,
     });
     const stripped = stripSpendWiseSyntheticOpeningMaster(result) as typeof result;
-    return applySpendWiseStatementRunningBalances(stripped, openingBalanceForPeriod);
-  }, [spendWiseView, baseTransactions, spendWiseGroupingTransactions, vouchers, account.id, account.openingBalance, dateRange, openingBalanceForPeriod]);
+    const withRunningBalances = applySpendWiseStatementRunningBalances(stripped, openingBalanceForPeriod);
+    return reportTransactionFilter
+      ? withRunningBalances.filter((transaction: any) => transaction?._spendWiseSpacer || reportTransactionFilter(transaction))
+      : withRunningBalances;
+  }, [spendWiseView, baseTransactions, spendWiseGroupingTransactions, vouchers, account.id, account.openingBalance, dateRange, openingBalanceForPeriod, reportTransactionFilter]);
 
   const {
     unapprovedOnly,
@@ -2128,7 +2137,7 @@ export function AccountDetails({
               </div>
               )}
             </div>
-            <div className={LEDGER_HEADER_PILL_ROW_CN}>
+            <LedgerHeaderPillRow>
               <ReconciliationAccountButton accountId={account.id} />
               <LedgerHeaderPrintButton variant="outline" onClick={handlePrintStatement} />
               <LedgerHeaderReminderButton
@@ -2252,7 +2261,7 @@ export function AccountDetails({
                   <X className={LEDGER_HEADER_PILL_ICON_SIZE_CN} />
                 </Button>
               )}
-            </div>
+            </LedgerHeaderPillRow>
           </div>
         </div>
           }
@@ -2288,7 +2297,7 @@ export function AccountDetails({
                     hasTransactions={processedTransactions.length > 0}
                   >
                     <Button variant="ghost" size="icon" className="h-7 w-7">
-                      <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                      <TxnRowMenuGrip />
                     </Button>
                   </EditAccountDialog>
                 ) : null

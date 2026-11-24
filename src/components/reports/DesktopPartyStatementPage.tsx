@@ -21,7 +21,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertCircle, ArrowLeft, Calendar as CalendarIcon, ChevronDown, File, Printer, BarChart2, Search, User, Users, X } from "lucide-react";
 import { PartyList } from "@/components/party/PartyList";
 import { PartyGroupList } from "@/components/party/PartyGroupList";
-import { ReportShowListButton } from "@/components/reports/ReportShowListButton";
+
 import { ResponsiveMasterDetail } from "@/components/layout/ResponsiveMasterDetail";
 import { MasterListViewShell } from "@/components/layout/MasterListViewShell";
 import { mlc } from "@/lib/mobileListChrome";
@@ -1192,7 +1192,6 @@ export default function DesktopPartyStatementPage() {
                             {formatCurrency(reportListTotalBalance, { showDrCr: true })}
                         </span>
                     }
-                    listHeaderLeading={<ReportShowListButton />}
                     tabsRowClassName="!min-h-0 !border-b-0 !p-0"
                     tabs={isMobile ? undefined : reportListTabsRow}
                     listView={reportListView}

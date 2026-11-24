@@ -33,7 +33,6 @@ import {
   Filter,
   XCircle,
   ArrowLeft,
-  MoreVertical,
   Phone,
   MessageSquare,
   Gift,
@@ -42,6 +41,7 @@ import {
   ChevronDown,
   Pencil,
 } from "lucide-react";
+import { TxnRowMenuGrip } from "@/components/vouchers/TxnRowMenuGrip";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import type { DateRange } from "@/components/ui/ad-calendar";
 import { addDays, format, startOfDay, endOfDay, isSameDay } from "date-fns";
@@ -207,6 +207,10 @@ import {
 import { mergeLedgerUserDisplayNameMaps } from "@/lib/ledgerUserColumnDisplay";
 import { formatVoucherEntryTimeLocal } from "@/lib/voucherDateNormalize";
 import { useTransactions } from "@/hooks/use-transactions";
+import {
+  type Anusuchi13KindFilter,
+  ledgerRowMatchesAnusuchi13KindFilter,
+} from "@/lib/reports/anusuchi13Confirmation";
 import { useIsMobile, useCalendarMonths } from "@/hooks/use-mobile";
 import NepaliCalendar from "../ui/nepali-calendar";
 import { MasterLedgerDateRangePresetRow } from "@/components/ui/MasterLedgerDateRangePresetRow";
@@ -267,10 +271,10 @@ import {
   LEDGER_DATE_RANGE_PILL_CN,
   LEDGER_HEADER_PILL_ICON_CN,
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
-  LEDGER_HEADER_PILL_ROW_CN,
   LEDGER_TXN_PAGE_ROOT_CN,
 } from "@/lib/ledgerHeaderChrome";
 import { LedgerTxnScrollColumn } from "@/components/vouchers/LedgerTxnScrollColumn";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 const getInitials = (name: string) => {
   if (!name) return "NA";
   return name
@@ -333,6 +337,7 @@ export function PartyDetails({
   confirmationFyKey,
   confirmationFyRange,
   confirmationAllVouchers,
+  anusuchiKindFilter,
   ledgerPresentationMode = "default",
   /** Master shell merged header me period label ho to andar wali row mat dikhao (party mobile). */
   hideMobilePeriodLabelRow = false,
@@ -361,6 +366,8 @@ export function PartyDetails({
   confirmationFyKey?: string;
   confirmationFyRange?: { start: Date; end: Date };
   confirmationAllVouchers?: any[];
+  /** Anusuchi 13: hide Sale / Pur / Payment rows when the matching list tick is off. */
+  anusuchiKindFilter?: Anusuchi13KindFilter;
   ledgerPresentationMode?: MasterEditPresentationMode;
   hideMobilePeriodLabelRow?: boolean;
 }) {
@@ -1025,15 +1032,20 @@ export function PartyDetails({
   // PC: preference; mobile: hamesha notes (includeNotesInTable)
   const displayTransactions = useMemo(
     () => {
-      const base = includeNotesInTable ? processedTransactions : processedTransactions.filter((t: any) => t.type !== "note");
-      if (context !== "report" || !reportCardFilter || reportTdsFilterSide(reportCardFilter)) return base;
-      return base.filter((t: any) =>
-        reportCardFilter.startsWith("summary:")
-          ? reportVoucherMatchesSummaryCard(t, reportCardFilter.slice(8), "party", party.id)
-          : getReportVoucherTypeKey(t, "party", party.id) === reportCardFilter
-      );
+      let rows = includeNotesInTable ? processedTransactions : processedTransactions.filter((t: any) => t.type !== "note");
+      if (context === "report" && reportCardFilter && !reportTdsFilterSide(reportCardFilter)) {
+        rows = rows.filter((t: any) =>
+          reportCardFilter.startsWith("summary:")
+            ? reportVoucherMatchesSummaryCard(t, reportCardFilter.slice(8), "party", party.id)
+            : getReportVoucherTypeKey(t, "party", party.id) === reportCardFilter
+        );
+      }
+      if (anusuchiKindFilter) {
+        rows = rows.filter((t: any) => ledgerRowMatchesAnusuchi13KindFilter(t, anusuchiKindFilter));
+      }
+      return rows;
     },
-    [processedTransactions, includeNotesInTable, context, reportCardFilter, party.id]
+    [processedTransactions, includeNotesInTable, context, reportCardFilter, party.id, anusuchiKindFilter]
   );
   const statusFilteredTransactions = useMemo(
     () => filterByStatus(displayTransactions, statusFilter),
@@ -1205,7 +1217,7 @@ export function PartyDetails({
     entityId: party?.id,
     entityKind: "party",
     entityTxnCount: searchFilteredTransactions.length,
-    enabled: Boolean(party?.id && party.id !== "all"),
+    enabled: Boolean(party?.id && party.id !== "all" && !confirmationFyRange),
   });
 
   /** TDS details: running balance starts at 0 (only TDS Dr/Cr), not party books opening. */
@@ -2510,7 +2522,7 @@ export function PartyDetails({
               )}
             </div>
             {/* Cluster: action pills â€” same gap-1.5 as identity cluster */}
-            <div className={LEDGER_HEADER_PILL_ROW_CN}>
+            <LedgerHeaderPillRow>
               {party.id !== "all" &&
                 !(party as any).isSystemAccount &&
                 (!isIcCompanyGroupView || icGroupFilteredMember) ? (
@@ -2674,7 +2686,7 @@ export function PartyDetails({
                   Link for Bill Wise
                 </Button>
               ) : null}
-            </div>
+            </LedgerHeaderPillRow>
           </div>
         </div>
           }
@@ -2717,7 +2729,7 @@ export function PartyDetails({
                     hasTransactions={processedTransactions.length > 0}
                   >
                     <Button variant="ghost" size="icon" className="h-7 w-7">
-                      <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                      <TxnRowMenuGrip />
                     </Button>
                   </EditPartyDialog>
                 ) : null

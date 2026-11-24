@@ -49,14 +49,15 @@ import {
   LEDGER_HEADER_PILL_CN,
   LEDGER_HEADER_PILL_ICON_CN,
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
-  LEDGER_HEADER_PILL_ROW_CN,
   LEDGER_TXN_PAGE_ROOT_CN,
   LEDGER_ENTITY_BALANCE_COL_PX,
   LEDGER_TXN_BALANCE_TO_MENU_PAD_CN,
   LEDGER_TXN_ROW_MENU_CELL_CN,
   LEDGER_TXN_ROW_MENU_COL_PX,
 } from "@/lib/ledgerHeaderChrome";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 import { txnSelectedMainRowCn, txnSelectedNarrationRowCn, txnTableIconBtnCn } from "@/lib/listSelectionChrome";
+import { TxnRowMenuGrip } from "@/components/vouchers/TxnRowMenuGrip";
 import { highlightQueryInText } from "@/lib/highlightQueryInText";
 import {
   LEDGER_TXN_TABLE_TONE_CHANGED_EVENT,
@@ -870,7 +871,7 @@ export function OverdueAccountView({
               </div>
             </div>
           </div>
-          <div className={LEDGER_HEADER_PILL_ROW_CN}>
+          <LedgerHeaderPillRow>
             {/* Important ke baayein: All / Important / Normal — overdueImportant tick filter */}
             <Button
               type="button"
@@ -922,7 +923,7 @@ export function OverdueAccountView({
             >
               <Printer className={LEDGER_HEADER_PILL_ICON_SIZE_CN} />
             </Button>
-          </div>
+          </LedgerHeaderPillRow>
         </div>
       </div>
           </>
@@ -964,7 +965,9 @@ export function OverdueAccountView({
                 {visibleColumns.credit && renderHeaderWithFilter("credit", "Credit", true, OVERDUE_HEADER_MIN_PX.credit)}
                 {visibleColumns.status && renderHeaderWithFilter("status", "Status", false, OVERDUE_HEADER_MIN_PX.status)}
                 {visibleColumns.netBalance && renderHeaderWithFilter("balance", "Net Balance", true, OVERDUE_HEADER_MIN_PX.netBalance)}
-                <TableHead className={LEDGER_TXN_ROW_MENU_CELL_CN} />
+                <TableHead className={cn(LEDGER_TXN_ROW_MENU_CELL_CN, "text-[11px] font-semibold leading-none pt-1")}>
+                  Action
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1184,12 +1187,7 @@ export function OverdueAccountView({
                             data-pl-txn-icon-btn=""
                             className={cn(txnTableIconBtnCn, "relative h-8 w-3 min-w-[12px] shrink-0 p-0")}
                           >
-                            <span
-                              aria-hidden="true"
-                              className="absolute right-[4px] top-1/2 -translate-y-1/2 text-base leading-none text-muted-foreground"
-                            >
-                              ⋮
-                            </span>
+                            <TxnRowMenuGrip />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-40">

@@ -115,6 +115,7 @@ export function ResponsiveMasterDetail({
   }, [pageExpanded]);
 
   const openListPreview = useCallback(() => {
+    if (!desktopListCollapsed) return;
     const grid = desktopGridRef.current;
     const target = grid?.closest<HTMLElement>("main");
     const rect = grid?.getBoundingClientRect();
@@ -128,7 +129,7 @@ export function ResponsiveMasterDetail({
       width: Math.max(240, rect.width * desktopListWidthPercent / 100),
       height: rect.height,
     });
-  }, [desktopListWidthPercent]);
+  }, [desktopListCollapsed, desktopListWidthPercent]);
 
   const scheduleListPreviewClose = useCallback(() => {
     if (listPreviewCloseTimerRef.current) clearTimeout(listPreviewCloseTimerRef.current);
@@ -139,6 +140,43 @@ export function ResponsiveMasterDetail({
     if (listPreviewCloseTimerRef.current) clearTimeout(listPreviewCloseTimerRef.current);
     listPreviewCloseTimerRef.current = null;
   }, []);
+
+  useEffect(() => {
+    const onPreviewOpen = () => openListPreview();
+    const onPreviewClose = () => scheduleListPreviewClose();
+    const onToggleCollapsed = () => {
+      setDesktopListCollapsed((collapsed) => !collapsed);
+      setListPreview(null);
+    };
+    window.addEventListener("pl:master-list:hover-preview-open", onPreviewOpen);
+    window.addEventListener("pl:master-list:hover-preview-close", onPreviewClose);
+    window.addEventListener("pl:master-list:toggle-collapsed", onToggleCollapsed);
+    return () => {
+      window.removeEventListener("pl:master-list:hover-preview-open", onPreviewOpen);
+      window.removeEventListener("pl:master-list:hover-preview-close", onPreviewClose);
+      window.removeEventListener("pl:master-list:toggle-collapsed", onToggleCollapsed);
+    };
+  }, [openListPreview, scheduleListPreviewClose]);
+
+  useEffect(() => {
+    if (!listPreview) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const raw = event.target;
+      const node =
+        raw instanceof Element
+          ? raw
+          : raw instanceof Node
+            ? raw.parentElement
+            : null;
+      if (!node) return;
+      if (node.closest("[data-pl-master-list-hover-preview]")) return;
+      if (node.closest("[data-pl-ledger-header-list-toggle]")) return;
+      if (node.closest("[data-pl-ledger-header-fullscreen]")) return;
+      setListPreview(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [listPreview]);
 
   useEdgeSwipeDocumentCapture(
     showMobileDetailWithSheet && !mobileListSheetOpen,
@@ -371,30 +409,42 @@ export function ResponsiveMasterDetail({
     <div
       ref={desktopGridRef}
       className="grid h-full min-h-0 grid-cols-1 overflow-hidden md:grid-cols-none"
-      style={{ gridTemplateColumns: desktopListCollapsed ? "2.5rem minmax(0, 1fr)" : `minmax(0, ${desktopListWidthPercent}%) minmax(0, 1fr)` }}
+      style={{
+        gridTemplateColumns: desktopListCollapsed
+          ? "4rem minmax(0, 1fr)"
+          : `minmax(0, ${desktopListWidthPercent}%) minmax(0, 1fr)`,
+      }}
       data-master-detail-layout="25-75"
     >
       <div
-        className="relative flex min-h-0 min-w-0 flex-col overflow-hidden border-r"
+        className={cn(
+          "relative flex min-h-0 min-w-0 flex-col overflow-hidden border-r",
+        )}
         data-pl-master-list-chrome=""
+        data-pl-master-list-icon-rail={desktopListCollapsed ? "" : undefined}
         {...listChromeRouteData}
       >
         {desktopListCollapsed ? (
-          <div className="flex justify-center pt-2">
-            {pageExpanded ? <Button
+          <div className="flex shrink-0 justify-center px-1 pt-2 pb-1">
+            <Button
               type="button"
               variant="outline"
               size="icon"
+              data-pl-ledger-header-list-toggle=""
               className="h-7 w-7 shrink-0 p-0"
-              onClick={() => setDesktopListCollapsed(false)}
               onMouseEnter={openListPreview}
               onMouseLeave={scheduleListPreviewClose}
               onFocus={openListPreview}
               onBlur={scheduleListPreviewClose}
+              onClick={() => {
+                setDesktopListCollapsed(false);
+                setListPreview(null);
+              }}
               aria-label="Show list"
+              title="Show account list"
             >
               <PanelLeftOpen className="h-3.5 w-3.5" />
-            </Button> : null}
+            </Button>
           </div>
         ) : (
           <div className={cn(mlc.pageHeader, "flex justify-between items-center gap-2 min-w-0")}>
@@ -408,31 +458,32 @@ export function ResponsiveMasterDetail({
                   {balance}
                 </span>
               ) : null}
-              {pageExpanded ? <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="h-7 w-7 shrink-0 p-0"
-                onClick={() => setDesktopListCollapsed(true)}
-                onMouseEnter={openListPreview}
-                onMouseLeave={scheduleListPreviewClose}
-                onFocus={openListPreview}
-                onBlur={scheduleListPreviewClose}
-                aria-label="Hide list"
-                title="Hide list"
-              >
-                <PanelLeftClose className="h-3.5 w-3.5" />
-              </Button> : null}
+              {pageExpanded ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 p-0"
+                  onClick={() => setDesktopListCollapsed(true)}
+                  aria-label="Hide list"
+                  title="Hide list"
+                >
+                  <PanelLeftClose className="h-3.5 w-3.5" />
+                </Button>
+              ) : null}
             </div>
           </div>
         )}
         {!desktopListCollapsed && tabs ? <div className={cn(mlc.tabsRow, tabsRowClassName)}>{tabs}</div> : null}
-        <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", desktopListCollapsed && "hidden")}>
-          {!desktopListCollapsed ? listView : null}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {desktopListCollapsed && listPreview ? null : listView}
         </div>
         {!desktopListCollapsed ? <ResizeWidthHandle onPointerDown={beginDesktopListResize} title="Resize list panel" /> : null}
       </div>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{detailView}</div>
+      <div
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+        data-pl-detail-pane=""
+      >{detailView}</div>
       {desktopListCollapsed && listPreview
         ? createPortal(
             <div

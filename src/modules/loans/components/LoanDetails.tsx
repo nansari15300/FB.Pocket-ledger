@@ -36,9 +36,9 @@ import {
   LEDGER_HEADER_PILL_CN,
   LEDGER_HEADER_PILL_ICON_CN,
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
-  LEDGER_HEADER_PILL_ROW_CN,
   LEDGER_HEADER_RIBBON_WRAP_CN,
 } from "@/lib/ledgerHeaderChrome";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 import { ResolvedEntityAvatar } from "@/components/entity/ResolvedEntityAvatar";
 import { EntityFileAttachmentHover } from "@/components/entity/EntityFileAttachmentHover";
 import { useDate } from "@/hooks/useDate";
@@ -285,7 +285,7 @@ export function LoanDetails({
               </div>
             </div>
           </div>
-          <div className={LEDGER_HEADER_PILL_ROW_CN}>
+          <LedgerHeaderPillRow>
             <LedgerHeaderPrintButton variant="outline" onClick={() => void accountingRef.current?.print()} />
             <LedgerHeaderReminderButton
               variant="outline"
@@ -405,7 +405,7 @@ export function LoanDetails({
               Add Note
             </Button>
             
-          </div>
+          </LedgerHeaderPillRow>
         </div>
       </div>
 

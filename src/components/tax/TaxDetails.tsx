@@ -25,13 +25,13 @@ import {
   FilePlus,
   Receipt,
   XCircle,
-  MoreVertical,
   ArrowLeft,
   Columns3,
   ChevronDown,
   Search,
   Pencil,
 } from "lucide-react";
+import { TxnRowMenuGrip } from "@/components/vouchers/TxnRowMenuGrip";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { buildTaxTdsAutoLinkProposal, applyTaxTdsAutoLinkProposal, type TaxTdsAutoLinkProposal } from "@/lib/taxTdsAutoLink";
 import { FISCAL_YEAR_PARTITION_ROW_TYPE } from "@/lib/fiscalPartitionRows";
@@ -90,10 +90,10 @@ import {
   LEDGER_HEADER_PILL_CN,
   LEDGER_HEADER_PILL_ICON_CN,
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
-  LEDGER_HEADER_PILL_ROW_CN,
   LEDGER_TXN_PAGE_ROOT_CN,
 } from "@/lib/ledgerHeaderChrome";
 import { LedgerTxnScrollColumn } from "@/components/vouchers/LedgerTxnScrollColumn";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 import { ReportHeaderSummaryCards, type ReportStatementSummaryCardData } from "@/components/reports/ReportStatementSummaryCards";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
 import { CreateNoteForm } from "../vouchers/CreateNoteForm";
@@ -1656,7 +1656,7 @@ export function TaxDetails({
               </div>
               )}
             </div>
-            <div className={LEDGER_HEADER_PILL_ROW_CN}>
+            <LedgerHeaderPillRow>
             {oppositeAccountFilterOptions.length > 0 && (
               <div className="w-[200px] shrink-0 min-h-7 overflow-visible py-px">
                 <Combobox
@@ -1823,7 +1823,7 @@ export function TaxDetails({
                 </Button>
               )}
               
-            </div>
+            </LedgerHeaderPillRow>
           </div>
         </div>
           }
@@ -1858,7 +1858,7 @@ export function TaxDetails({
                       hasTransactions={processedTransactions.length > 0}
                     >
                       <Button variant="ghost" size="icon" className="h-7 w-7">
-                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                        <TxnRowMenuGrip />
                       </Button>
                     </EditTaxDialog>
                   }

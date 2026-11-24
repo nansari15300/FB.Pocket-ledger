@@ -50,12 +50,23 @@ export const LEDGER_TXN_TABLE_HOST_CN =
 /** Ribbon slot inside unified H-scroll — width follows table min width. */
 export const LEDGER_TXN_SCROLL_HEADER_CN =
   "pl-ledger-txn-scroll-header shrink-0 min-w-full w-full box-border";
-/** Entity ledger split table: Type pill (incl. FY opening label) fit + colgroup sync. */
-export const LEDGER_ENTITY_TYPE_COL_PX = 120;
+/** Entity ledger split table: type pill hug + 10px pad so H-scroll gaps stay 10px. */
+export const LEDGER_ENTITY_TYPE_COL_PX = 70;
 /** Daybook Accounts col — header/row max(min); matches txn row min-w. */
 export const DAYBOOK_ACCOUNTS_COL_PX = 210;
-/** Voucher No header: label + filter icon + 5px side pads (10px gap to next col). */
-export const LEDGER_VOUCHER_NO_HEADER_COL_PX = 132;
+/**
+ * H-scroll header hug (label + filter + 10px to next header).
+ * Column width is max(header hug, body min) — body may raise the col.
+ */
+export const LEDGER_HEADER_DATE_BS_HUG_PX = 100;
+export const LEDGER_HEADER_DATE_AD_HUG_PX = 104;
+export const LEDGER_HEADER_TYPE_HUG_PX = 70;
+/** Voucher No header: label + filter + 10px to next header. */
+export const LEDGER_VOUCHER_NO_HEADER_COL_PX = 120;
+export const LEDGER_HEADER_USER_HUG_PX = 70;
+export const LEDGER_HEADER_FILE_HUG_PX = 44;
+export const LEDGER_HEADER_DR_CR_HUG_PX = 80;
+export const LEDGER_HEADER_BALANCE_HUG_PX = 90;
 /** Entity ledger Balance — large formatted amounts + Dr/Cr suffix. */
 export const LEDGER_ENTITY_BALANCE_COL_PX = 132;
 /** Party/group TDS ledger: Taxable + TDS Amount colgroup min (each +60px vs base 110). */
@@ -97,23 +108,30 @@ export const LEDGER_TDS_DR_CR_AMOUNT_CELL_CN =
   "min-w-[168px] px-[5px] text-right tabular-nums";
 /** TDS ledger: +10px min width on last Date col, visual gap before Type. */
 export const LEDGER_TDS_DATE_TO_TYPE_GAP_PX = 10;
-/** Entity / daybook: min visual gap between entry time (e.g. PM) and Type pill. */
-export const LEDGER_ENTRY_TIME_TO_TYPE_MIN_GAP_PX = 2;
-/** Dashboard Recent / daybook: max gap PM (date col) → Type pill. */
-export const LEDGER_DATE_TIME_TO_TYPE_GAP_PX = 3;
-export const LEDGER_DATE_TIME_TO_TYPE_DATE_PR_PX = 2;
-export const LEDGER_DATE_TIME_TO_TYPE_TYPE_PL_PX = 1;
+/** Entity / daybook: visual gap between entry time (e.g. PM) and Type pill. */
+export const LEDGER_ENTRY_TIME_TO_TYPE_MIN_GAP_PX = 10;
+/** Dashboard Recent / daybook: PM → Type pill (5px date pr + 5px type pl). */
+export const LEDGER_DATE_TIME_TO_TYPE_GAP_PX = 10;
+export const LEDGER_DATE_TIME_TO_TYPE_DATE_PR_PX = 5;
+export const LEDGER_DATE_TIME_TO_TYPE_TYPE_PL_PX = 5;
+/** Last date col (AD in Both, or AD-only): voucher date + entry time. Padding 5+5 is the 10px Type gap. */
+export const LEDGER_ENTITY_DATE_AD_COL_PX = 128;
+/**
+ * BS-only Date col: Nepali month date + entry time (e.g. Baisakh-31-2083 3:21 PM) + 10px to Type.
+ * Both-dates keeps time on the AD col; BS-only must not let time touch the Type pill.
+ */
+export const LEDGER_ENTITY_DATE_SINGLE_COL_PX = 188;
 /** TDS: single Date col or Date (AD) — BS date + entry time, no overlap into Type. */
 export const LEDGER_TDS_DATE_COL_PX = 178;
 export const LEDGER_TDS_LAST_DATE_CELL_PAD_CN = LEDGER_TXN_COL_MAX_GAP_PAD_CN;
 /** Entity ledger Date (BS) + Date (AD): +10px on BS col min-width (padding stays max-gap). */
 export const LEDGER_BOTH_DATE_BS_AD_GAP_PX = 10;
-export const LEDGER_ENTITY_DATE_BS_COL_PX = 95;
+export const LEDGER_ENTITY_DATE_BS_COL_PX = 120;
 export const LEDGER_BOTH_DATE_BS_CELL_PAD_CN = LEDGER_TXN_COL_MAX_GAP_PAD_CN;
-/** Compact visual strip after Balance; the visible ⋮ sits 4px from the right edge. */
-export const LEDGER_TXN_ROW_MENU_COL_PX = 18;
+/** Compact strip after Balance. ⋮ and the "Action" label sit 5px in from the scrollbar. */
+export const LEDGER_TXN_ROW_MENU_COL_PX = 48;
 export const LEDGER_TXN_ROW_MENU_CELL_CN =
-  "relative box-border w-[18px] min-w-[18px] max-w-[18px] p-0 align-middle text-center";
+  "relative box-border w-[48px] min-w-[48px] max-w-[48px] py-0 pl-0 pr-[5px] align-middle text-right";
 /** Header stays aligned at the Balance column's right boundary. */
 export const LEDGER_TXN_BALANCE_HEADER_PAD_CN = "pl-[5px] pr-0";
 /** Body Balance: max text gap from Cr; keep small strip before ⋮. */

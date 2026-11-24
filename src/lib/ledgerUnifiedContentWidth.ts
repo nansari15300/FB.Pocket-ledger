@@ -69,6 +69,19 @@ export function computeLedgerUnifiedTableMinPx(args: {
 }): { tableMinPx: number; scaleTargetPx: number; winnerPx: number } {
   const { host, baseColSum, hostViewportPx } = args;
 
+  const hugPx = Math.max(0, baseColSum);
+  if (hugPx > 0) {
+    // Overflow: compact 10px gaps + H-scroll. Fits: fill the pane so the table is never narrower than the screen.
+    if (hostViewportPx > 0 && hugPx > hostViewportPx) {
+      return { tableMinPx: hugPx, scaleTargetPx: hugPx, winnerPx: hugPx };
+    }
+    return {
+      tableMinPx: 0,
+      scaleTargetPx: Math.max(hugPx, hostViewportPx),
+      winnerPx: hugPx,
+    };
+  }
+
   const bandEls: (Element | null)[] = [
     host.querySelector("[data-pl-closing-balance-card]"),
     host.querySelector("[data-pl-footer-parent-pill]"),
@@ -78,7 +91,7 @@ export function computeLedgerUnifiedTableMinPx(args: {
     bandEls.push(el);
   });
 
-  let winnerPx = Math.max(0, baseColSum);
+  let winnerPx = 0;
   for (const el of bandEls) {
     winnerPx = Math.max(winnerPx, measureLedgerUnifiedBandPx(el));
   }
@@ -103,9 +116,7 @@ export function computeLedgerUnifiedTableMinPx(args: {
   if (hostViewportPx > 0 && winnerPx <= hostViewportPx) {
     tableMinPx = 0;
   }
-
-  const scaleTargetPx = Math.max(winnerPx, tableMinPx);
-  return { tableMinPx, scaleTargetPx, winnerPx };
+  return { tableMinPx, scaleTargetPx: tableMinPx, winnerPx };
 }
 /**
  * Plan A: natural (content) width per column for the entity-ledger split tables (header / body / footer).
@@ -183,4 +194,67 @@ export function measureLedgerNaturalColWidths(
 export function mergeLedgerMeasuredColWidths(base: number[], measured: number[]): number[] {
   if (measured.length !== base.length) return base;
   return base.map((w, i) => Math.max(w, Math.ceil(measured[i] || 0)));
+}
+
+const LEDGER_TYPE_TO_VOUCHER_GAP_PX = 10;
+
+/**
+ * Same Type↔Voucher No 10px rule on every page: hug the longest body type pill
+ * (FY pair uses the first pill only) + 10px pad. Body may raise the col; journal stays 70.
+ */
+export function measureLedgerTypeColHugPx(root: ParentNode | null | undefined, minPx: number): number {
+  if (!root) return minPx;
+  const zoom = getAppUiZoomFactor();
+  const pillW = (el: Element | null | undefined) => {
+    if (!(el instanceof HTMLElement)) return 0;
+    return (el.getBoundingClientRect().width || 0) / zoom;
+  };
+  let maxPill = 0;
+  root.querySelectorAll("[data-pl-ledger-txn-type-cell]").forEach((cell) => {
+    // FY pair + Book/Dated Opening overflow Type on purpose — txn pills drive the col.
+    if (
+      cell.querySelector("[data-pl-fy-opening-pills]") ||
+      cell.closest("[data-pl-fy-opening-row]") ||
+      cell.closest("[data-row^='opening-balance']")
+    ) {
+      return;
+    }
+    const badges = cell.querySelectorAll('[class*="rounded-xl"]');
+    if (badges.length > 0) {
+      badges.forEach((el) => {
+        maxPill = Math.max(maxPill, pillW(el));
+      });
+      return;
+    }
+    maxPill = Math.max(maxPill, pillW(cell.firstElementChild));
+  });
+  maxPill = Math.max(maxPill, pillW(root.querySelector('th[data-pl-col="type"] > div')));
+  if (maxPill <= 0) return minPx;
+  return Math.max(minPx, Math.ceil(maxPill + LEDGER_TYPE_TO_VOUCHER_GAP_PX));
+}
+
+/**
+ * Last date col (BS-only / AD-only / Both AD): hug the longest date+time (or posted subline)
+ * + 10px pad so AM/PM stays 10px from the Type pill for any date format length.
+ */
+export function measureLedgerLastDateColHugPx(root: ParentNode | null | undefined, minPx: number): number {
+  if (!root) return minPx;
+  const zoom = getAppUiZoomFactor();
+  let maxContent = 0;
+  const measureTextPx = (el: Element | null | undefined) => {
+    if (!(el instanceof HTMLElement)) return;
+    let w = 0;
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      w = (range.getBoundingClientRect().width || 0) / zoom;
+    } catch {
+      w = Math.max(el.scrollWidth || 0, (el.getBoundingClientRect().width || 0) / zoom);
+    }
+    maxContent = Math.max(maxContent, w);
+  };
+  root.querySelectorAll("[data-pl-ledger-txn-last-date-cell] [data-pl-txn-date-time]").forEach(measureTextPx);
+  root.querySelectorAll("[data-pl-ledger-txn-last-date-cell] [data-pl-txn-date-subline]").forEach(measureTextPx);
+  if (maxContent <= 0) return minPx;
+  return Math.max(minPx, Math.ceil(maxContent + LEDGER_TYPE_TO_VOUCHER_GAP_PX));
 }

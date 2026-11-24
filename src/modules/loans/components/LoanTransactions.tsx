@@ -12,7 +12,8 @@ import {
   useState,
   type MouseEvent,
 } from "react";
-import { CheckCircle, CheckSquare, Filter, History, MoreVertical, Pencil, X } from "lucide-react";
+import { CheckCircle, CheckSquare, Filter, History, Pencil, X } from "lucide-react";
+import { TxnRowMenuGrip } from "@/components/vouchers/TxnRowMenuGrip";
 import {
   statementCheckedMessageColumn,
 } from "@/lib/statementCheckRowMessage";
@@ -647,7 +648,7 @@ export const LoanTransactions = forwardRef(function LoanTransactions(
               data-pl-txn-icon-btn=""
               className={cn(txnTableIconBtnCn, "shrink-0", centeredInBand ? "h-[1.35rem] w-[1.35rem]" : "h-8 w-8")}
             >
-              <MoreVertical className={cn("text-muted-foreground", centeredInBand ? "h-3.5 w-3.5" : "h-4 w-4")} />
+              <TxnRowMenuGrip />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">

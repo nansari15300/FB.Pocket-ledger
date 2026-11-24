@@ -1,21 +1,22 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Landmark, LayoutGrid, Package, PlusCircle, Receipt, Search } from "lucide-react";
+import { Landmark, Package, PlusCircle, Receipt } from "lucide-react";
 import { useEffect, useState, useMemo, useCallback, useRef, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { PendingApprovalListFilterBadge } from "@/components/layout/PendingApprovalListFilterBadge";
+import { MasterListPendingBadge } from "@/components/entity/MasterListPendingBadge";
 import { NoteDetails } from "@/components/notes/NoteDetails";
 import { useFyScopedVouchers } from "@/hooks/useFyScopedVouchers";
-import { useDate } from "@/hooks/useDate";
 import { AddVoucherDialog } from "@/components/vouchers/AddVoucherDialog";
 import { PermissionButton } from "@/components/permission";
 import { doc } from "@/lib/pbCompat/firestore";
 import { getDoc, onSnapshot } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/plClientSession";
 import { useCompany } from "@/hooks/useCompany";
-import { collection, query, orderBy, where } from "@/lib/pbCompat/firestore";
+import { collection, query } from "@/lib/pbCompat/firestore";
 import type { Party } from "@/components/party/types";
 import type { Staff } from "@/components/staff/types";
 import type { Account } from "@/components/bank-cash/types";
@@ -26,9 +27,8 @@ import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSearchParams } from "next/navigation";
 import { ReportRegisterMobileListChrome } from "@/components/reports/ReportRegisterMobileListChrome";
-import { ReportRegisterDesktopSplit } from "@/components/reports/ReportRegisterDesktopSplit";
-import { ReportRegisterListHeading } from "@/components/reports/ReportRegisterListHeading";
-import { ReportRegisterListSearchRow } from "@/components/reports/ReportRegisterListSearchRow";
+import { ReportStatementDesktopShell } from "@/components/reports/ReportStatementDesktopShell";
+import { useReportShowApproveOnList } from "@/components/reports/ReportListParityChrome";
 import {
     MASTER_LIST_AVATAR_CN,
     MASTER_LIST_AVATAR_FALLBACK_CN,
@@ -50,8 +50,6 @@ import { filterAndSortMasterEntityListRows } from "@/lib/filterMasterEntityListR
 import { useLastVoucherMsByEntityId } from "@/hooks/useLastVoucherMsByEntityId";
 import { masterListOrderKey, useMasterListDisplayRows, useMasterListRowMotion } from "@/hooks/useMasterListRowMotion";
 
-const ALL_NOTES_LIST_ROW_NAME = "All";
-
 type NotedEntity = {
     id: string;
     name: string;
@@ -61,6 +59,7 @@ type NotedEntity = {
     openingBalanceDate?: unknown;
     /** Note count — footer "Default" sort (most notes first). */
     balance?: number;
+    pendingApprovalCount?: number;
 };
 
 function notedEntityAvatarFallback(entity: NotedEntity): {
@@ -91,8 +90,6 @@ function NotedEntityList({
     companyId,
     quickFilter,
     onQuickFilterChange,
-    showAllSelected,
-    onSelectAll,
 }: {
     entities: NotedEntity[];
     selectedEntity: NotedEntity | null;
@@ -101,8 +98,6 @@ function NotedEntityList({
     companyId?: string | null;
     quickFilter: EntityListQuickFilter;
     onQuickFilterChange: (next: EntityListQuickFilter) => void;
-    showAllSelected: boolean;
-    onSelectAll: () => void;
 }) {
     const lastVoucherMsById = useLastVoucherMsByEntityId();
     const filteredEntities = useMemo(
@@ -135,11 +130,6 @@ function NotedEntityList({
         { enabled: isRowAnimationEnabled, holdMs: layoutHoldMs }
     );
 
-    const showAllRow = useMemo(() => {
-        if (!searchTerm.trim()) return true;
-        return ALL_NOTES_LIST_ROW_NAME.toLowerCase().includes(searchTerm.trim().toLowerCase());
-    }, [searchTerm]);
-
     return (
         <div className={masterListShellCn} data-theme-list="account-list">
         <ScrollArea
@@ -149,29 +139,6 @@ function NotedEntityList({
             onViewportTouchMove={markListScrolling}
         >
             <ul className="pl-master-list-ul">
-                {showAllRow ? (
-                    <li key="all-notes">
-                        <MasterListRow
-                            selected={showAllSelected}
-                            className={cn("cursor-pointer", masterListRowUnselectedCn(showAllSelected))}
-                            onClick={onSelectAll}
-                        >
-                            <div className="pl-master-list-row">
-                                <div className="pl-master-list-row-leading min-w-0 flex-1">
-                                    <div className={cn(MASTER_LIST_AVATAR_CN, MASTER_LIST_AVATAR_FALLBACK_CN, "flex items-center justify-center")}>
-                                        <LayoutGrid className="h-4 w-4" />
-                                    </div>
-                                    <MasterListNameTooltip
-                                        measureKey={ALL_NOTES_LIST_ROW_NAME}
-                                        tooltipContent={<p>{ALL_NOTES_LIST_ROW_NAME}</p>}
-                                    >
-                                        {ALL_NOTES_LIST_ROW_NAME}
-                                    </MasterListNameTooltip>
-                                </div>
-                            </div>
-                        </MasterListRow>
-                    </li>
-                ) : null}
                 <AnimatePresence mode={animatePresenceMode}>
                 {displayEntities.map((entity) => {
                     const isSelected = selectedEntity?.id === entity.id && selectedEntity?.type === entity.type;
@@ -190,20 +157,23 @@ function NotedEntityList({
                             >
                                 <div className="pl-master-list-row">
                                     <div className="pl-master-list-row-leading min-w-0 flex-1">
-                                        <EntityFileAttachmentHover
-                                            fileUrl={attachmentPreviewUrl}
-                                            triggerClassName="inline-flex shrink-0 rounded-full"
-                                        >
-                                            <ResolvedEntityAvatar
-                                                className={MASTER_LIST_AVATAR_CN}
-                                                fallbackClassName={MASTER_LIST_AVATAR_FALLBACK_CN}
-                                                companyId={entity.entity?.companyId ?? companyId ?? undefined}
-                                                src={attachmentPreviewUrl ?? undefined}
-                                                alt={entity.name}
-                                                fallbackText={avatarFallback.fallbackText}
-                                                fallbackSlot={avatarFallback.fallbackSlot}
-                                            />
-                                        </EntityFileAttachmentHover>
+                                        <div className="relative shrink-0">
+                                            <EntityFileAttachmentHover
+                                                fileUrl={attachmentPreviewUrl}
+                                                triggerClassName="inline-flex shrink-0 rounded-full"
+                                            >
+                                                <ResolvedEntityAvatar
+                                                    className={MASTER_LIST_AVATAR_CN}
+                                                    fallbackClassName={MASTER_LIST_AVATAR_FALLBACK_CN}
+                                                    companyId={entity.entity?.companyId ?? companyId ?? undefined}
+                                                    src={attachmentPreviewUrl ?? undefined}
+                                                    alt={entity.name}
+                                                    fallbackText={avatarFallback.fallbackText}
+                                                    fallbackSlot={avatarFallback.fallbackSlot}
+                                                />
+                                            </EntityFileAttachmentHover>
+                                            <MasterListPendingBadge count={entity.pendingApprovalCount ?? 0} />
+                                        </div>
                                         <div className="min-w-0 flex-1">
                                             <MasterListNameTooltip
                                                 measureKey={entity.name}
@@ -234,15 +204,16 @@ function NotedEntityList({
 export function NotesReportDetail() {
   const isMobile = useIsMobile();
   const searchParams = useSearchParams();
-  const { formatCurrency } = useDate();
   const lastVoucherMsById = useLastVoucherMsByEntityId();
   const { companyId } = useCompany();
-  const { vouchers: allVouchers, loading: vouchersLoading, processedParties } = useFyScopedVouchers();
+  const showApproveOnList = useReportShowApproveOnList();
+  const { vouchers: allVouchers, loading: vouchersLoading } = useFyScopedVouchers();
   const [selectedEntity, setSelectedEntity] = useState<NotedEntity | null>(null);
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState("");
   const [listQuickFilter, setListQuickFilter] = useState<EntityListQuickFilter>("default");
   const [showAllNotes, setShowAllNotes] = useState(false);
+  const [showOnlyUnapproved, setShowOnlyUnapproved] = useState(false);
   const hasAutoSelected = useRef(false);
 
   const [parties, setParties] = useState<Party[]>([]);
@@ -252,6 +223,19 @@ export function NotesReportDetail() {
   const [items, setItems] = useState<Item[]>([]);
 
   const noteVouchers = useMemo(() => allVouchers.filter((v) => v.type === "note"), [allVouchers]);
+  const unapprovedNotesByEntity = useMemo(() => {
+    const byEntityKey: Record<string, number> = {};
+    let voucherCount = 0;
+    if (!showApproveOnList) return { byEntityKey, voucherCount };
+    for (const voucher of noteVouchers as any[]) {
+      if (voucher?.isApproved === true) continue;
+      const key = `${String(voucher?.context ?? "").trim()}:${String(voucher?.entityId ?? "").trim()}`;
+      if (!key || key === ":") continue;
+      byEntityKey[key] = (byEntityKey[key] ?? 0) + 1;
+      voucherCount += 1;
+    }
+    return { byEntityKey, voucherCount };
+  }, [noteVouchers, showApproveOnList]);
 
   const fetchUserName = useCallback(async (userId: string): Promise<string> => {
     try {
@@ -342,6 +326,7 @@ export function NotesReportDetail() {
                     entity: e,
                     openingBalanceDate: latestNoteMsByKey.get(`${type}-${e.id}`) ?? 0,
                     balance: noteCount,
+                    pendingApprovalCount: unapprovedNotesByEntity.byEntityKey[`${type}:${e.id}`] ?? 0,
                 };
             });
     };
@@ -354,13 +339,18 @@ export function NotesReportDetail() {
         ...getEntitiesWithNotes(items, 'Items'),
     ];
 
-  }, [noteVouchers, parties, accounts, staff, items, taxes, vouchersLoading]);
+  }, [noteVouchers, parties, accounts, staff, items, taxes, vouchersLoading, unapprovedNotesByEntity.byEntityKey]);
 
   const totalNotes = useMemo(() => noteVouchers.length, [noteVouchers]);
 
   const entityTransactions = useMemo(() => {
     if (!selectedEntity) return [];
-    return noteVouchers.filter((v) => v.entityId === selectedEntity.id && v.context === selectedEntity.type);
+    const selectedId = String(selectedEntity.id ?? "").trim();
+    const selectedContext = String(selectedEntity.type ?? "").trim().toLowerCase();
+    return noteVouchers.filter((voucher) =>
+      String(voucher?.entityId ?? "").trim() === selectedId &&
+      String(voucher?.context ?? "").trim().toLowerCase() === selectedContext
+    );
   }, [noteVouchers, selectedEntity]);
 
   const allNotesEntity = useMemo(() => {
@@ -392,19 +382,24 @@ export function NotesReportDetail() {
 
   const filteredEntities = useMemo(() => {
     return filterAndSortMasterEntityListRows(
-      notedEntities.map((e) => ({
+      notedEntities
+        .filter((entity) => !showOnlyUnapproved || (entity.pendingApprovalCount ?? 0) > 0)
+        .map((e) => ({
         ...e,
         name: e.name,
         balance: e.balance,
         openingBalanceDate: e.openingBalanceDate ?? e.entity?.openingBalanceDate,
-      })),
+        })),
       searchTerm,
       listQuickFilter,
       { lastVoucherMsById }
     );
-  }, [notedEntities, searchTerm, listQuickFilter, lastVoucherMsById]);
+  }, [notedEntities, searchTerm, listQuickFilter, lastVoucherMsById, showOnlyUnapproved]);
 
-  const REPORT_MEMORY_KEY = "reportNotesState";
+  const entitiesForList = useMemo(
+    () => notedEntities.filter((entity) => !showOnlyUnapproved || (entity.pendingApprovalCount ?? 0) > 0),
+    [notedEntities, showOnlyUnapproved]
+  );
 
   useEffect(() => {
     if (searchParams.get("allVouchers") === "1") {
@@ -419,40 +414,19 @@ export function NotesReportDetail() {
     if (hasAutoSelected.current) return;
     hasAutoSelected.current = true;
     if (isMobile) return; // Mobile: don't auto-select, show list first
-    try {
-      const raw = typeof window !== "undefined" ? localStorage.getItem(REPORT_MEMORY_KEY) : null;
-      const saved = raw ? (JSON.parse(raw) as { entityId?: string }) : null;
-      const entityId = saved?.entityId;
-      if (entityId === "all") {
-        setShowAllNotes(true);
-        setSelectedEntity(null);
-        return;
-      }
-      if (entityId) {
-        const found = notedEntities.find((e) => e.id === entityId);
-        if (found) {
-          setSelectedEntity(found);
-          return;
-        }
-      }
-    } catch (_) {}
-    setSelectedEntity(notedEntities[0]);
+    // Report default: notes across all entity types; tapping a list row narrows the detail.
+    setShowAllNotes(true);
+    setSelectedEntity(null);
   }, [notedEntities, isMobile, searchParams]);
 
   const handleSelectEntity = useCallback((entity: NotedEntity) => {
     setShowAllNotes(false);
     setSelectedEntity(entity);
-    try {
-      localStorage.setItem(REPORT_MEMORY_KEY, JSON.stringify({ entityId: entity.id }));
-    } catch (_) {}
   }, []);
 
   const handleSelectAll = useCallback(() => {
     setShowAllNotes(true);
     setSelectedEntity(null);
-    try {
-      localStorage.setItem(REPORT_MEMORY_KEY, JSON.stringify({ entityId: "all" }));
-    } catch (_) {}
   }, []);
 
   if (vouchersLoading) {
@@ -477,6 +451,7 @@ export function NotesReportDetail() {
               userNames={userNames}
               onShowAll={() => setShowAllNotes(true)}
               isAllVouchersView={showAllNotes}
+              transactionsAlreadyFiltered
               mobileFooterVariant="report"
               mobileReportStickyTitle={showAllNotes ? "All Notes" : "Notes"}
               onBack={() => {
@@ -492,12 +467,31 @@ export function NotesReportDetail() {
       <ReportRegisterMobileListChrome
         title="Notes"
         actionSlot={
-          <AddVoucherDialog onVoucherCreated={() => {}} defaultTab="note">
-            <PermissionButton permission="create_records" className="w-full">
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Add Note
-            </PermissionButton>
-          </AddVoucherDialog>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-1">
+              <Button type="button" variant="chromePill" size="list" onClick={handleSelectAll}>
+                All Notes
+              </Button>
+              {showApproveOnList ? (
+                <PendingApprovalListFilterBadge
+                  compact
+                  count={unapprovedNotesByEntity.voucherCount}
+                  pressed={showOnlyUnapproved}
+                  onToggle={() => setShowOnlyUnapproved((value) => !value)}
+                  tooltipFilterHint={`Only note accounts with unapproved notes - ${unapprovedNotesByEntity.voucherCount} note(s) (click)`}
+                  tooltipShowAllHint="Show all note accounts (click)"
+                  ariaLabelFilter={`Filter ${unapprovedNotesByEntity.voucherCount} unapproved notes`}
+                  ariaLabelShowAll="Show all note accounts"
+                />
+              ) : null}
+            </div>
+            <AddVoucherDialog onVoucherCreated={() => {}} defaultTab="note">
+              <PermissionButton permission="create_records" className="w-full">
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Add Note
+              </PermissionButton>
+            </AddVoucherDialog>
+          </div>
         }
         summary={{
           label: "Total Notes",
@@ -510,58 +504,82 @@ export function NotesReportDetail() {
         listSectionTitle={`Note accounts (${filteredEntities.length})`}
       >
         <NotedEntityList
-          entities={notedEntities}
+          entities={entitiesForList}
           onSelectEntity={handleSelectEntity}
           selectedEntity={selectedEntity}
           searchTerm={searchTerm}
           companyId={companyId}
           quickFilter={listQuickFilter}
           onQuickFilterChange={setListQuickFilter}
-          showAllSelected={showAllNotes}
-          onSelectAll={handleSelectAll}
         />
       </ReportRegisterMobileListChrome>
     );
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0 overflow-hidden">
-      <ReportRegisterDesktopSplit
-        listPanel={
-          <>
-            <div className="p-4 border-b space-y-3 flex-shrink-0">
-              <ReportRegisterListHeading>Notes</ReportRegisterListHeading>
-              <Card className="p-3 text-center">
-                <p className="text-xs text-muted-foreground">Total Notes</p>
-                <p className="text-xl font-bold text-green-600">
-                  {totalNotes}
-                </p>
-              </Card>
-            </div>
-            <ReportRegisterListSearchRow
-              placeholder="Search accounts..."
-              value={searchTerm}
-              onChange={setSearchTerm}
+    <ReportStatementDesktopShell
+      isMobile={false}
+      listChromeRouteKey="bank-cash"
+      pageTitle="Notes Report"
+      listTab="accounts"
+      entityTabValue="accounts"
+      groupTabValue="groups"
+      entityTabLabel="Accounts"
+      hideGroupTab
+      hideTabsRow
+      hideEntityQuickFilter
+      showListHeaderToggle={false}
+      onListTabChange={() => {}}
+      balance={<span className="font-semibold text-green-600">{totalNotes}</span>}
+      searchRowExtras={
+        <div className="flex items-center gap-1">
+          <Button type="button" variant="chromePill" size="list" onClick={handleSelectAll}>
+            All Notes
+          </Button>
+          {showApproveOnList ? (
+            <PendingApprovalListFilterBadge
+              compact
+              count={unapprovedNotesByEntity.voucherCount}
+              pressed={showOnlyUnapproved}
+              onToggle={() => setShowOnlyUnapproved((value) => !value)}
+              tooltipFilterHint={`Only note accounts with unapproved notes - ${unapprovedNotesByEntity.voucherCount} note(s) (click)`}
+              tooltipShowAllHint="Show all note accounts (click)"
+              ariaLabelFilter={`Filter ${unapprovedNotesByEntity.voucherCount} unapproved notes`}
+              ariaLabelShowAll="Show all note accounts"
             />
-            <div className="px-3 pt-2 pb-1 border-b flex-shrink-0">
-              <h3 className="text-sm font-semibold">Note accounts ({filteredEntities.length})</h3>
-            </div>
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <NotedEntityList
-                entities={notedEntities}
-                onSelectEntity={handleSelectEntity}
-                selectedEntity={selectedEntity}
-                searchTerm={searchTerm}
-                companyId={companyId}
-                quickFilter={listQuickFilter}
-                onQuickFilterChange={setListQuickFilter}
-                showAllSelected={showAllNotes}
-                onSelectAll={handleSelectAll}
-              />
-            </div>
-          </>
-        }
-        detailPanel={
+          ) : null}
+        </div>
+      }
+      listSearchTerm={searchTerm}
+      onListSearchChange={setSearchTerm}
+      entitySearchPlaceholder="Search accounts..."
+      groupSearchPlaceholder="Search accounts..."
+      entitySectionLabel={
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <Landmark className="h-4 w-4" />
+          <span>Note accounts ({filteredEntities.length})</span>
+        </div>
+      }
+      groupSectionLabel={null}
+      entityQuickFilter={listQuickFilter}
+      groupQuickFilter="latest"
+      onEntityQuickFilterChange={setListQuickFilter}
+      onGroupQuickFilterChange={() => {}}
+      summaryCards={[]}
+      showSummary={!!currentEntity}
+      entityList={
+        <NotedEntityList
+          entities={entitiesForList}
+          onSelectEntity={handleSelectEntity}
+          selectedEntity={selectedEntity}
+          searchTerm={searchTerm}
+          companyId={companyId}
+          quickFilter={listQuickFilter}
+          onQuickFilterChange={setListQuickFilter}
+        />
+      }
+      groupList={null}
+      detailView={
           entityForDetails ? (
             <NoteDetails
               entity={entityForDetails}
@@ -569,6 +587,7 @@ export function NotesReportDetail() {
               userNames={userNames}
               onShowAll={() => setShowAllNotes(true)}
               isAllVouchersView={showAllNotes}
+              transactionsAlreadyFiltered
             />
           ) : (
             <div className="flex flex-1 items-center justify-center p-8">
@@ -589,8 +608,7 @@ export function NotesReportDetail() {
               </Card>
             </div>
           )
-        }
-      />
-    </div>
+      }
+    />
   );
 }

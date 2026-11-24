@@ -28,7 +28,6 @@ import {
   FilePlus,
   XCircle,
   X,
-  MoreVertical,
   ArrowLeft,
   Search,
   Wrench,
@@ -86,8 +85,8 @@ import {
   LEDGER_HEADER_PILL_CN,
   LEDGER_HEADER_PILL_ICON_CN,
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
-  LEDGER_HEADER_PILL_ROW_CN,
 } from "@/lib/ledgerHeaderChrome";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 import { EntityFileAttachmentHover } from "@/components/entity/EntityFileAttachmentHover";
 import { ResolvedEntityAvatar } from "@/components/entity/ResolvedEntityAvatar";
 import { trimEntityFileUrlForPreview } from "@/lib/trimEntityFileUrlForPreview";
@@ -154,6 +153,8 @@ interface AccountDetailsProps {
   allAccounts?: any[];
   userNames?: Record<string, string>;
   transactions?: any[];
+  /** Optional voucher type filter for report ledgers (e.g. Contra Report). */
+  transactionContext?: string;
   journalAccountNames?: Record<string, string>;
   onShowAll?: () => void;
   isAllVouchersView?: boolean;
@@ -161,6 +162,12 @@ interface AccountDetailsProps {
   mobileFooterVariant?: "ledger" | "report";
   /** Sticky title with `mobileFooterVariant="report"` (e.g. Contra / Journal register detail). */
   mobileReportStickyTitle?: string;
+  /**
+   * Report ledgers (Contra / Journal register): ledger math (opening, Dr/Cr, closing balance) sirf
+   * `transactions` prop se karo — poore ledger vouchers se nahi. Warna list me contra ka net dikhta hai
+   * par header/balance full account ka aata hai (dono ka hisaab alag ho jata hai).
+   */
+  scopeMathToPassedTransactions?: boolean;
 }
 
 export function AccountDetails({
@@ -173,11 +180,13 @@ export function AccountDetails({
   allAccounts,
   userNames,
   transactions,
+  transactionContext,
   journalAccountNames,
   onShowAll,
   isAllVouchersView,
   mobileFooterVariant = "ledger",
   mobileReportStickyTitle,
+  scopeMathToPassedTransactions = false,
 }: AccountDetailsProps) {
   const { company, companyId } = useCompany();
   const { dateSystem, formatDate, formatDateBS, formatCurrency, formatRunning } =
@@ -218,7 +227,18 @@ export function AccountDetails({
 
   const account = useMemo(() => {
     if (!allAccounts) return initialAccount;
-    return allAccounts.find(p => p.id === initialAccount.id) || initialAccount;
+    const found = allAccounts.find(p => p.id === initialAccount.id);
+    if (!found) {
+      /* Contra/Journal report `allAccounts` me account ka id `bank_*` format me mil sakta hai, lekin
+       * voucher legs purane Firestore id se aate hain — match fail hone par `initialAccount` hi rakho
+       * (warna `accountType`/`balance` missing reh jaate hain aur rows filter galat ho jaati hain). */
+      return initialAccount;
+    }
+    /* Report callers pehle se balance override karke dete hain (jaise Contra ka contra-net).
+     * `allAccounts` ka full ledger balance wapas override na kare — sirf chhodi hui fields bharo. */
+    return { ...found, ...Object.fromEntries(
+      Object.entries(initialAccount).filter(([, v]) => v !== undefined)
+    ) };
   }, [allAccounts, initialAccount]);
 
   /** Reminder button: map Journal/Contra row accountType to Messages → Reminder "Link to" option. */
@@ -265,11 +285,17 @@ export function AccountDetails({
     undefined,
     allAccounts,
     transactions,
-    undefined,
+    transactionContext,
     filters,
     undefined,
     journalAccountNames,
-    userNames
+    userNames,
+    undefined,
+    undefined,
+    undefined,
+    true,
+    true,
+    scopeMathToPassedTransactions
   );
 
   const transactionDates = useMemo(() => {
@@ -351,6 +377,20 @@ export function AccountDetails({
     periodCrForPage: desktopPaginationMeta.periodCrForPage,
     closingForPage: desktopPaginationMeta.closingForPage,
   };
+
+  /**
+   * Empty-state hint: jab is account (ya All Contra/Journal view) ke liye koi matching voucher na ho.
+   * `searchFilteredTransactions` use karte hain taaki column/date filter lagne par bhi sahi message aaye.
+   */
+  const emptyTransactionNotice = useMemo(() => {
+    if (!account?.id) return null;
+    const count = (searchFilteredTransactions as any[] | undefined)?.length ?? 0;
+    if (count > 0) return null;
+    if (hasLedgerDateFilter || (filters && Object.entries(filters).some(([_, v]) => v && v !== "all"))) {
+      return "No transactions in this date/filter range.";
+    }
+    return "No transactions for this account.";
+  }, [searchFilteredTransactions, filters, hasLedgerDateFilter, account?.id, isAllVouchersView]);
 
   useEffect(() => {
     setCurrentPage((prev) => Math.min(Math.max(1, prev), totalPages));
@@ -854,6 +894,15 @@ export function AccountDetails({
                   openingBalance={openingBalanceForPeriod}
                 />
               ) : (
+              <>
+              {emptyTransactionNotice ? (
+                <p
+                  className="mb-2 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground"
+                  data-ledger-empty-notice=""
+                >
+                  {emptyTransactionNotice}
+                </p>
+              ) : null}
               <TransactionsTable adaptiveClosingLabel
                 transactions={mobileReportPaginatedTransactions}
                 context="account"
@@ -898,6 +947,7 @@ export function AccountDetails({
                 disableLayoutAnimation={ledgerRowGate.suppress}
                 {...statementCheck.tableProps}
               />
+              </>
               )}
             </div>
           </div>
@@ -1032,7 +1082,7 @@ export function AccountDetails({
     }
 
     return (
-     <div className="h-full flex flex-col">
+     <div className="h-full min-h-0 flex flex-col overflow-hidden">
         {/* Header: identity + pills — Party-style single row */}
         <div className={LEDGER_HEADER_RIBBON_WRAP_CN}>
           <div className={LEDGER_HEADER_OUTER_ROW_CN}>
@@ -1077,7 +1127,7 @@ export function AccountDetails({
                 </div>
               </div>
             </div>
-            <div className={LEDGER_HEADER_PILL_ROW_CN}>
+            <LedgerHeaderPillRow>
               <LedgerHeaderPrintButton variant="outline" onClick={handlePrintStatement} />
               <LedgerHeaderReminderButton
                 variant="outline"
@@ -1161,13 +1211,22 @@ export function AccountDetails({
                   All Vouchers
                 </Button>
               )}
-            </div>
+            </LedgerHeaderPillRow>
           </div>
         </div>
 
         {/* TABLE: page1=oldest block (1–10); Book OB; p2+ Dated w/ date=prev page last txn */}
-        <ScrollArea txnChrome className="flex-1">
+        <ScrollArea txnChrome className="min-h-0 flex-1">
           <div className="p-4">
+            {/* Empty state: is account ke liye koi transaction nahi mili to saaf message (khaali table ke bajaye) */}
+            {emptyTransactionNotice ? (
+              <p
+                className="mb-3 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground"
+                data-ledger-empty-notice=""
+              >
+                {emptyTransactionNotice}
+              </p>
+            ) : null}
             <TransactionsTable adaptiveClosingLabel
               transactions={paginatedTransactions}
               context="account"
@@ -1287,7 +1346,12 @@ export function AccountDetails({
 
   return (
     <>
-      <div className={cn("h-full", isMobile && mobileFooterVariant === "report" && "flex min-h-0 flex-1 flex-col")}>
+      <div
+        className={cn(
+          "h-full min-h-0",
+          mobileFooterVariant === "report" && "flex min-h-0 flex-1 flex-col overflow-hidden"
+        )}
+      >
         {isMobile ? renderMobileView() : renderDesktopView()}
       </div>
       <Dialog open={isNoteOpen} onOpenChange={setIsNoteOpen}>

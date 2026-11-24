@@ -33,8 +33,9 @@ import {
 import type { StockView, Item } from "@/components/items/types";
 import { useMemo, useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Filter, MoreVertical, CheckSquare, MousePointerClick, Printer, Pencil, History, X, CheckCircle, CheckCheck, CircleOff, Trash2 } from "lucide-react";
+import { Filter, CheckSquare, MousePointerClick, Printer, Pencil, History, X, CheckCircle, CheckCheck, CircleOff, Trash2 } from "lucide-react";
 import { txnTableIconBtnCn } from "@/lib/listSelectionChrome";
+import { TxnRowMenuGrip } from "@/components/vouchers/TxnRowMenuGrip";
 import { scrollTransactionSelectedRowIntoView } from "@/lib/ledgerScrollToSelection";
 import {
   DropdownMenu,
@@ -177,6 +178,8 @@ import {
   stabilizeLedgerUnifiedPx,
   measureLedgerNaturalColWidths,
   mergeLedgerMeasuredColWidths,
+  measureLedgerTypeColHugPx,
+  measureLedgerLastDateColHugPx,
   LEDGER_UNIFIED_WIDTH_STABLE_EPS_PX,
 } from "@/lib/ledgerUnifiedContentWidth";
 import { isRecurringVoucherGenerationEnabled } from "@/lib/recurringVoucherSettings";
@@ -216,6 +219,13 @@ import {
   LEDGER_ENTITY_BALANCE_COL_PX,
   LEDGER_ENTITY_TYPE_COL_PX,
   LEDGER_ENTITY_FILE_COL_PX,
+  LEDGER_HEADER_BALANCE_HUG_PX,
+  LEDGER_HEADER_DATE_AD_HUG_PX,
+  LEDGER_HEADER_DATE_BS_HUG_PX,
+  LEDGER_HEADER_DR_CR_HUG_PX,
+  LEDGER_HEADER_FILE_HUG_PX,
+  LEDGER_HEADER_TYPE_HUG_PX,
+  LEDGER_HEADER_USER_HUG_PX,
   LEDGER_TDS_FILE_COL_PX,
   LEDGER_TDS_FILE_CELL_PAD_CN,
   LEDGER_ENTITY_USER_COL_PX,
@@ -234,8 +244,8 @@ import {
   LEDGER_ENTITY_DATE_BS_COL_PX,
   DAYBOOK_ACCOUNTS_COL_PX,
   LEDGER_VOUCHER_NO_HEADER_COL_PX,
-  LEDGER_TDS_DATE_TO_TYPE_GAP_PX,
-  LEDGER_ENTRY_TIME_TO_TYPE_MIN_GAP_PX,
+  LEDGER_ENTITY_DATE_AD_COL_PX,
+  LEDGER_ENTITY_DATE_SINGLE_COL_PX,
   LEDGER_TDS_DATE_COL_PX,
   LEDGER_TDS_LAST_DATE_CELL_PAD_CN,
   LEDGER_TXN_BALANCE_HEADER_PAD_CN,
@@ -453,7 +463,7 @@ function samePendingOutboxIdSet(a: ReadonlySet<string>, b: ReadonlySet<string>):
 
 /** Outbox drain background me hota hai — badge live rakhne ke liye pending rows tak halka poll. */
 const PENDING_OUTBOX_POLL_MS = 10_000;
-const DAYBOOK_ROW_MENU_COL_PX = 40;
+const DAYBOOK_ROW_MENU_COL_PX = 48;
 
 export function TransactionsTable({
   transactions,
@@ -1504,14 +1514,9 @@ export function TransactionsTable({
             variant="ghost"
             size="icon"
             data-pl-txn-icon-btn=""
-            className={cn(txnTableIconBtnCn, "relative h-8 w-[18px] min-w-[18px] shrink-0 p-0 flex items-center justify-center")}
+            className={cn(txnTableIconBtnCn, "relative h-8 w-[22px] min-w-[22px] shrink-0 p-0 flex items-center justify-center")}
           >
-            <span
-              aria-hidden="true"
-              className="text-base leading-none text-muted-foreground select-none"
-            >
-              ⋮
-            </span>
+            <TxnRowMenuGrip />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
@@ -1804,10 +1809,10 @@ export function TransactionsTable({
       >
         <div
           className={cn(
-            "flex w-full items-center gap-1 font-bold py-3 text-black whitespace-nowrap",
+            "flex w-max max-w-full items-center gap-1 font-bold py-3 text-black whitespace-nowrap",
             innerPadding,
             isFiltered ? "text-red-600" : "text-black",
-            isNumeric && !tdsLeftAlignHeader ? "justify-end" : statusHeaderCenter ? "justify-center" : "justify-start"
+            isNumeric && !tdsLeftAlignHeader ? "ml-auto justify-end" : statusHeaderCenter ? "mx-auto justify-center" : "justify-start"
           )}
         >
           {/* Label pehle, filter right — Debit/Credit/Balance; Status centered over row pill. */}
@@ -1858,7 +1863,7 @@ export function TransactionsTable({
       >
         <div
           className={cn(
-            "flex w-full items-center justify-center gap-1 font-bold py-3 whitespace-nowrap",
+            "flex w-max max-w-full mx-auto items-center justify-center gap-1 font-bold py-3 whitespace-nowrap",
             innerPadding,
             "text-black"
           )}
@@ -2563,15 +2568,26 @@ export function TransactionsTable({
 
   const hasTdsLedgerColsForLayout = showCol("tdsTaxable") || showCol("tdsAmount");
   const tdsLedgerTableLayout = hasTdsLedgerColsForLayout;
-  const ledgerDateBsColMinPx =
+  const ledgerDateBsColMinPx = Math.max(
     LEDGER_ENTITY_DATE_BS_COL_PX +
-    (showCol("date") && dateSystem === "Both" ? LEDGER_BOTH_DATE_BS_AD_GAP_PX : 0);
+      (showCol("date") && dateSystem === "Both" ? LEDGER_BOTH_DATE_BS_AD_GAP_PX : 0),
+    LEDGER_HEADER_DATE_BS_HUG_PX
+  );
+  const [ledgerMeasuredLastDateColPx, setLedgerMeasuredLastDateColPx] = useState(0);
+  const lastMeasuredLastDateColRef = useRef(0);
+  useEffect(() => {
+    lastMeasuredLastDateColRef.current = 0;
+    setLedgerMeasuredLastDateColPx(0);
+  }, [dateSystem]);
   const ledgerEntryTimeDateColPx =
-    hasTdsLedgerColsForLayout || dashboardRecentFyAttachmentGate
-      ? LEDGER_TDS_DATE_COL_PX
-      : 112 +
-        (showCol("date") && showCol("type") ? LEDGER_ENTRY_TIME_TO_TYPE_MIN_GAP_PX : 0);
-  const ledgerLastDateColMinPx = ledgerEntryTimeDateColPx;
+    ledgerMeasuredLastDateColPx > 0
+      ? ledgerMeasuredLastDateColPx
+      : hasTdsLedgerColsForLayout || dashboardRecentFyAttachmentGate
+        ? Math.max(LEDGER_TDS_DATE_COL_PX, dateSystem === "BS" ? LEDGER_ENTITY_DATE_SINGLE_COL_PX : 0)
+        : dateSystem === "BS"
+          ? LEDGER_ENTITY_DATE_SINGLE_COL_PX
+          : LEDGER_ENTITY_DATE_AD_COL_PX;
+  const ledgerLastDateColMinPx = Math.max(ledgerEntryTimeDateColPx, LEDGER_HEADER_DATE_AD_HUG_PX);
 
   // Prevent header/amount overlap — opening row cells helpers
   const ensureMinGaps = true;
@@ -2617,6 +2633,7 @@ export function TransactionsTable({
         dateSystem === "Both" ? (
           <>
             <TableCell
+              data-pl-ledger-txn-date-bs-cell=""
               className={cn(
                 "align-top",
                 ensureMinGaps &&
@@ -2626,11 +2643,14 @@ export function TransactionsTable({
                 ensureMinGaps && dateSystem === "Both" ? { minWidth: `${ledgerDateBsColMinPx}px` } : undefined
               }
             >
-              {rowDate ? formatDateBS(rowDate) : ""}
+              <span data-pl-txn-date-bs-text="" className="block overflow-hidden whitespace-nowrap">
+                {rowDate ? formatDateBS(rowDate) : ""}
+              </span>
             </TableCell>
             <TableCell
+              data-pl-ledger-txn-last-date-cell=""
               className={cn(
-                "align-top",
+                "align-top whitespace-nowrap",
                 ensureMinGaps &&
                   (hasTdsLedgerColsForLayout && showCol("type")
                     ? LEDGER_TDS_LAST_DATE_CELL_PAD_CN
@@ -2647,17 +2667,16 @@ export function TransactionsTable({
           </>
         ) : (
           <TableCell
+            data-pl-ledger-txn-last-date-cell=""
             className={cn(
               "align-top",
               ensureMinGaps &&
                 (hasTdsLedgerColsForLayout && showCol("type")
                   ? LEDGER_TDS_LAST_DATE_CELL_PAD_CN
-                  : "min-w-[95px] px-[5px]")
+                  : LEDGER_TXN_COL_MAX_GAP_PAD_CN)
             )}
             style={
-              ensureMinGaps && hasTdsLedgerColsForLayout && showCol("type")
-                ? { minWidth: `${ledgerLastDateColMinPx}px` }
-                : undefined
+              ensureMinGaps ? { minWidth: `${ledgerLastDateColMinPx}px` } : undefined
             }
           >
             {rowDate ? (dateSystem === "AD" ? formatDate(rowDate) : formatDateBS(rowDate)) : ""}
@@ -2675,6 +2694,7 @@ export function TransactionsTable({
     <>
       {showCol("type") && (
         <TableCell
+          data-pl-ledger-txn-type-cell=""
           className={cn("align-middle overflow-visible", ensureMinGaps && "px-[5px]")}
           style={
             ensureMinGaps
@@ -2826,7 +2846,7 @@ export function TransactionsTable({
             )}
           </>
         )}
-        <TableCell className={cn(ensureMinGaps ? LEDGER_TXN_ROW_MENU_CELL_CN : "w-10 p-0", "!bg-white dark:!bg-card")} />
+        <TableCell className={ensureMinGaps ? LEDGER_TXN_ROW_MENU_CELL_CN : "w-10 p-0"} />
       </tr>
     ) : null;
 
@@ -2851,7 +2871,7 @@ export function TransactionsTable({
           hideBalanceColumn={hideBalanceColumn}
           ensureMinGaps={ensureMinGaps}
         />
-        <TableCell className={cn(ensureMinGaps ? LEDGER_TXN_ROW_MENU_CELL_CN : "w-10 p-0", "!bg-white dark:!bg-card")} />
+        <TableCell className={ensureMinGaps ? LEDGER_TXN_ROW_MENU_CELL_CN : "w-10 p-0"} />
       </tr>
     ) : null;
 
@@ -2973,9 +2993,9 @@ export function TransactionsTable({
     if (showCol("syncStatus")) w.push(78);
     if (showCol("date")) {
       if (dateSystem === "Both") {
-        w.push(95, 112);
+        w.push(LEDGER_ENTITY_DATE_BS_COL_PX + LEDGER_BOTH_DATE_BS_AD_GAP_PX, LEDGER_ENTITY_DATE_AD_COL_PX);
       } else {
-        w.push(112);
+        w.push(dateSystem === "BS" ? LEDGER_ENTITY_DATE_SINGLE_COL_PX : 112);
       }
     }
     if (showCol("type")) w.push(SPEND_WISE_TYPE_COL_PX);
@@ -3013,6 +3033,9 @@ export function TransactionsTable({
     return LEDGER_VOUCHER_NO_IC_COL_PX;
   }, [ledgerDesktopSplitScrollGate, displayLedgerRows]);
 
+  const [ledgerMeasuredTypeColPx, setLedgerMeasuredTypeColPx] = useState(0);
+  const lastMeasuredTypeColRef = useRef(0);
+
   /**
    * Entity ledger desktop (party, bank, IC clearing, …): fixed cols so split thead/body
    * stay same width. Per-column mins (Type, Voucher No, User, …); wide panes scale cols
@@ -3025,67 +3048,79 @@ export function TransactionsTable({
     const w: number[] = [];
     if (showCol("syncStatus")) w.push(78);
     const hasTdsLedgerCols = showCol("tdsTaxable") || showCol("tdsAmount");
-    const dateToTypeGapPx =
-      showCol("date") && showCol("type")
-        ? hasTdsLedgerCols
-          ? LEDGER_TDS_DATE_TO_TYPE_GAP_PX
-          : LEDGER_ENTRY_TIME_TO_TYPE_MIN_GAP_PX
-        : 0;
     const entryTimeDateColPx =
-      hasTdsLedgerCols || dashboardRecentFyAttachmentGate
-        ? LEDGER_TDS_DATE_COL_PX
-        : 112 + dateToTypeGapPx;
+      ledgerMeasuredLastDateColPx > 0
+        ? ledgerMeasuredLastDateColPx
+        : hasTdsLedgerCols || dashboardRecentFyAttachmentGate
+          ? Math.max(LEDGER_TDS_DATE_COL_PX, dateSystem === "BS" ? LEDGER_ENTITY_DATE_SINGLE_COL_PX : 0)
+          : dateSystem === "BS"
+            ? LEDGER_ENTITY_DATE_SINGLE_COL_PX
+            : LEDGER_ENTITY_DATE_AD_COL_PX;
     const bsAdDateGap = showCol("date") && dateSystem === "Both" ? LEDGER_BOTH_DATE_BS_AD_GAP_PX : 0;
     if (showCol("date")) {
       if (dateSystem === "Both") {
-        w.push(LEDGER_ENTITY_DATE_BS_COL_PX + bsAdDateGap, entryTimeDateColPx);
+        w.push(
+          Math.max(LEDGER_ENTITY_DATE_BS_COL_PX + bsAdDateGap, LEDGER_HEADER_DATE_BS_HUG_PX),
+          Math.max(entryTimeDateColPx, LEDGER_HEADER_DATE_AD_HUG_PX)
+        );
       } else {
-        w.push(entryTimeDateColPx);
+        w.push(Math.max(entryTimeDateColPx, LEDGER_HEADER_DATE_AD_HUG_PX));
       }
     }
     const middleWidths: number[] = [];
     if (showCol("type")) {
       middleWidths.push(
-        hasSpendWiseGroups
-          ? Math.max(SPEND_WISE_TYPE_COL_PX, LEDGER_ENTITY_TYPE_COL_PX)
-          : LEDGER_ENTITY_TYPE_COL_PX
+        Math.max(
+          hasSpendWiseGroups
+            ? Math.max(SPEND_WISE_TYPE_COL_PX, LEDGER_ENTITY_TYPE_COL_PX)
+            : LEDGER_ENTITY_TYPE_COL_PX,
+          LEDGER_HEADER_TYPE_HUG_PX,
+          ledgerMeasuredTypeColPx
+        )
       );
     }
     if (showCol("voucherNo")) {
-      const voucherNoColPx =
-        context === "daybook"
-          ? Math.max(ledgerVoucherNoColPx, LEDGER_VOUCHER_NO_HEADER_COL_PX)
-          : hasTdsLedgerCols
-            ? Math.max(LEDGER_TDS_VOUCHER_NO_COL_PX, ledgerVoucherNoColPx)
-            : ledgerVoucherNoColPx;
+      const voucherNoColPx = Math.max(
+        ledgerVoucherNoColPx,
+        LEDGER_VOUCHER_NO_HEADER_COL_PX,
+        hasTdsLedgerCols ? LEDGER_TDS_VOUCHER_NO_COL_PX : 0
+      );
       middleWidths.push(voucherNoColPx);
     }
     if (context === "daybook") middleWidths.push(DAYBOOK_ACCOUNTS_COL_PX);
     if (isItemPartyContext && showItemPartyColumn) middleWidths.push(90);
     if (!hasTdsLedgerCols) {
-      if (showCol("user") && context !== "note") middleWidths.push(LEDGER_ENTITY_USER_COL_PX);
-      if (showFileBySelection) middleWidths.push(LEDGER_ENTITY_FILE_COL_PX);
+      if (showCol("user") && context !== "note") {
+        middleWidths.push(Math.max(LEDGER_ENTITY_USER_COL_PX, LEDGER_HEADER_USER_HUG_PX));
+      }
+      if (showFileBySelection) {
+        middleWidths.push(Math.max(LEDGER_ENTITY_FILE_COL_PX, LEDGER_HEADER_FILE_HUG_PX));
+      }
     }
     if (middleWidths.length > 0) {
       w.push(...middleWidths);
     }
     if (hasTdsLedgerCols) {
-      if (showCol("user") && context !== "note") w.push(LEDGER_ENTITY_USER_COL_PX);
-      if (showFileBySelection) w.push(LEDGER_TDS_FILE_COL_PX);
+      if (showCol("user") && context !== "note") {
+        w.push(Math.max(LEDGER_ENTITY_USER_COL_PX, LEDGER_HEADER_USER_HUG_PX));
+      }
+      if (showFileBySelection) w.push(Math.max(LEDGER_TDS_FILE_COL_PX, LEDGER_HEADER_FILE_HUG_PX));
     }
     if (showCol("tdsTaxable")) w.push(LEDGER_TDS_TAXABLE_COL_PX);
     if (showCol("tdsAmount")) w.push(LEDGER_TDS_AMOUNT_COL_PX);
     // TDS details: Dr/Cr race = badge/amount content width (not bare 100px).
     if (showCol("dr") && !hideDebitColumn) {
       const minDr = statementCheckedCols.hasDr ? Math.max(185, LEDGER_TDS_DR_CR_COL_PX) : hasTdsLedgerCols ? LEDGER_TDS_DR_CR_COL_PX : LEDGER_TXN_DR_CR_COL_PX;
-      w.push(minDr);
+      w.push(Math.max(minDr, LEDGER_HEADER_DR_CR_HUG_PX));
     }
     if (showCol("cr") && !hideCreditColumn) {
       const minCr = statementCheckedCols.hasCr ? Math.max(185, LEDGER_TDS_DR_CR_COL_PX) : hasTdsLedgerCols ? LEDGER_TDS_DR_CR_COL_PX : LEDGER_TXN_DR_CR_COL_PX;
-      w.push(minCr);
+      w.push(Math.max(minCr, LEDGER_HEADER_DR_CR_HUG_PX));
     }
     if (showCol("status") && !hideStatusColumn) w.push(95);
-    if (showCol("runningBalance") && !hideBalanceColumn) w.push(LEDGER_ENTITY_BALANCE_COL_PX);
+    if (showCol("runningBalance") && !hideBalanceColumn) {
+      w.push(Math.max(LEDGER_ENTITY_BALANCE_COL_PX, LEDGER_HEADER_BALANCE_HUG_PX));
+    }
     w.push(daybookPartyTableGate ? DAYBOOK_ROW_MENU_COL_PX : LEDGER_TXN_ROW_MENU_COL_PX);
     return w;
   }, [
@@ -3105,6 +3140,8 @@ export function TransactionsTable({
     visibleColumns,
     statementCheckedCols,
     ledgerVoucherNoColPx,
+    ledgerMeasuredTypeColPx,
+    ledgerMeasuredLastDateColPx,
   ]);
 
   const ledgerEntityColKeys = useMemo((): string[] => {
@@ -3177,44 +3214,43 @@ export function TransactionsTable({
     if (!splitScrollColWidths.every((w) => typeof w === "number")) return splitScrollColWidths;
     const nums = splitScrollColWidths as number[];
     const keys = ledgerEntityColKeys;
-    if (intrinsicDateTypeColPx && intrinsicDateTypeCols && keys.length === nums.length) {
-      let fixedSum = 0;
-      const withIntrinsic = nums.map((w, i) => {
-        const colKey = keys[i];
-        if (colKey === "date" || colKey === "date_ad") {
-          fixedSum += intrinsicDateTypeColPx.date;
-          return intrinsicDateTypeColPx.date;
-        }
-        if (colKey === "type") {
-          fixedSum += intrinsicDateTypeColPx.type;
-          return intrinsicDateTypeColPx.type;
-        }
-        return w;
-      });
-      const flexSum = withIntrinsic.reduce((s, w, i) => {
-        const colKey = keys[i];
-        if (colKey === "date" || colKey === "date_ad" || colKey === "type") return s;
-        return s + w;
-      }, 0);
-      if (ledgerHostClientWidth <= 0 || fixedSum + flexSum >= ledgerHostClientWidth) {
-        return withIntrinsic;
-      }
-      const scale = (ledgerHostClientWidth - fixedSum) / flexSum;
-      return withIntrinsic.map((w, i) => {
-        const colKey = keys[i];
-        if (colKey === "date" || colKey === "date_ad" || colKey === "type") return w;
-        return Math.round(w * scale);
-      });
+    const hug = (intrinsicDateTypeColPx && intrinsicDateTypeCols && keys.length === nums.length)
+      ? nums.map((w, i) => {
+          const colKey = keys[i];
+          if (colKey === "date" || colKey === "date_ad") return intrinsicDateTypeColPx.date;
+          if (colKey === "type") return intrinsicDateTypeColPx.type;
+          return w;
+        })
+      : nums;
+    if (ledgerHostClientWidth <= 0 || keys.length !== hug.length) return hug;
+    const isPinned = (colKey: string | undefined) =>
+      colKey === "date" ||
+      colKey === "date_bs" ||
+      colKey === "date_ad" ||
+      colKey === "type" ||
+      colKey === "rowMenu";
+    let pinnedSum = 0;
+    let flexSum = 0;
+    hug.forEach((w, i) => {
+      if (isPinned(keys[i])) pinnedSum += w;
+      else flexSum += w;
+    });
+    const total = pinnedSum + flexSum;
+    // Content wider than the pane: keep hug widths so gaps stay 10px and H-scroll appears.
+    if (total >= ledgerHostClientWidth - 2) return hug;
+    if (flexSum <= 0) {
+      const scale = ledgerHostClientWidth / Math.max(1, total);
+      if (scale <= 1) return hug;
+      return hug.map((w) => Math.max(1, Math.round(w * scale)));
     }
-    const sum = nums.reduce((a, b) => a + b, 0);
-    if (ledgerHostClientWidth <= 0 || sum >= ledgerHostClientWidth) return nums;
-    const scale = ledgerHostClientWidth / sum;
-    return nums.map((w) => Math.round(w * scale));
+    const scale = (ledgerHostClientWidth - pinnedSum) / flexSum;
+    if (scale <= 1) return hug;
+    // Pane is wider than hug: stretch flex cols so the table fills the screen.
+    return hug.map((w, i) => (isPinned(keys[i]) ? w : Math.max(1, Math.round(w * scale))));
   }, [
     splitScrollColWidths,
-    ledgerDesktopSplitScrollGate,
-    ledgerHostClientWidth,
     splitScrollColProportionalGate,
+    ledgerHostClientWidth,
     intrinsicDateTypeColPx,
     intrinsicDateTypeCols,
     ledgerEntityColKeys,
@@ -3275,6 +3311,24 @@ export function TransactionsTable({
 
         const bodyEl = tableContainerRef.current;
         const isDaybookUnifiedHost = host.hasAttribute("data-pl-daybook-unified-scroll");
+        const typeHugPx = measureLedgerTypeColHugPx(
+          (bodyEl?.closest(".pl-ledger-detail-table-shell") as HTMLElement | null) || host,
+          LEDGER_ENTITY_TYPE_COL_PX
+        );
+        const stableTypeHugPx = stabilizeLedgerUnifiedPx(typeHugPx, lastMeasuredTypeColRef.current);
+        if (stableTypeHugPx !== lastMeasuredTypeColRef.current) {
+          lastMeasuredTypeColRef.current = stableTypeHugPx;
+          setLedgerMeasuredTypeColPx(stableTypeHugPx);
+        }
+        const dateHugPx = measureLedgerLastDateColHugPx(
+          (bodyEl?.closest(".pl-ledger-detail-table-shell") as HTMLElement | null) || host,
+          LEDGER_HEADER_DATE_AD_HUG_PX
+        );
+        const stableDateHugPx = stabilizeLedgerUnifiedPx(dateHugPx, lastMeasuredLastDateColRef.current);
+        if (stableDateHugPx !== lastMeasuredLastDateColRef.current) {
+          lastMeasuredLastDateColRef.current = stableDateHugPx;
+          setLedgerMeasuredLastDateColPx(stableDateHugPx);
+        }
         let ledgerVScrollGutterPx = 0;
         if (bodyEl) {
           const { headerPadPx, bodyPadPx } = measureLedgerTxnVerticalScrollPads(bodyEl);
@@ -3306,20 +3360,9 @@ export function TransactionsTable({
           splitScrollColWidths.length > 0 &&
           splitScrollColWidths.every((colW) => typeof colW === "number")
         ) {
+          // Hug floors only — scaled widths would lock inflated 10px+ gaps into min-width.
           const nums = splitScrollColWidths as number[];
-          const keys = ledgerEntityColKeys;
-          if (intrinsicDateTypeColPx && intrinsicDateTypeCols && keys.length === nums.length) {
-            baseColSum = nums.reduce((sum, w, i) => {
-              const colKey = keys[i];
-              if (colKey === "date" || colKey === "date_ad") {
-                return sum + intrinsicDateTypeColPx.date;
-              }
-              if (colKey === "type") return sum + intrinsicDateTypeColPx.type;
-              return sum + w;
-            }, 0);
-          } else {
-            baseColSum = nums.reduce((a, b) => a + b, 0);
-          }
+          baseColSum = nums.reduce((a, b) => a + b, 0);
         }
 
         if (baseColSum > 0) {
@@ -3437,6 +3480,7 @@ export function TransactionsTable({
     ledgerEntityColKeys,
     intrinsicDateTypeColPx,
     intrinsicDateTypeCols,
+    dateSystem,
   ]);
 
   useLayoutEffect(() => {
@@ -3947,7 +3991,7 @@ export function TransactionsTable({
           >
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <span className="shrink-0 text-sm font-medium text-foreground whitespace-nowrap">{dateLabel}</span>
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <div data-pl-fy-opening-pills="" className="flex w-max flex-nowrap items-center gap-[10px]">
                 <FyOpeningPillFormatPill>
                   <span
                     className={cn(
@@ -4319,7 +4363,7 @@ export function TransactionsTable({
                       aria-label="Approve"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <MoreVertical className="h-4 w-4 shrink-0" />
+                      <TxnRowMenuGrip />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
@@ -5038,9 +5082,12 @@ export function TransactionsTable({
             false,
             ensureMinGaps && !intrinsicDateTypeCols
               ? desktopSplitTableScrollGate
-                ? hasSpendWiseGroups
-                  ? Math.max(SPEND_WISE_TYPE_COL_PX, LEDGER_ENTITY_TYPE_COL_PX)
-                  : LEDGER_ENTITY_TYPE_COL_PX
+                ? Math.max(
+                    hasSpendWiseGroups
+                      ? Math.max(SPEND_WISE_TYPE_COL_PX, LEDGER_ENTITY_TYPE_COL_PX)
+                      : LEDGER_ENTITY_TYPE_COL_PX,
+                    LEDGER_HEADER_TYPE_HUG_PX
+                  )
                 : hasSpendWiseGroups
                   ? SPEND_WISE_TYPE_COL_PX
                   : 75
@@ -5052,13 +5099,14 @@ export function TransactionsTable({
             "Voucher No.",
             false,
             ensureMinGaps
-              ? dashboardRecentFyAttachmentGate
-                ? Math.max(ledgerVoucherNoColPx, LEDGER_VOUCHER_NO_HEADER_COL_PX)
-                : desktopSplitTableScrollGate
-                  ? tdsLedgerTableLayout
-                    ? Math.max(LEDGER_TDS_VOUCHER_NO_COL_PX, ledgerVoucherNoColPx)
-                    : ledgerVoucherNoColPx
-                  : LEDGER_VOUCHER_NO_COL_PX
+              ? Math.max(
+                  dashboardRecentFyAttachmentGate || desktopSplitTableScrollGate
+                    ? tdsLedgerTableLayout
+                      ? LEDGER_TDS_VOUCHER_NO_COL_PX
+                      : ledgerVoucherNoColPx
+                    : LEDGER_VOUCHER_NO_COL_PX,
+                  LEDGER_VOUCHER_NO_HEADER_COL_PX
+                )
               : undefined
           )}
         {context === "daybook" &&
@@ -5073,7 +5121,7 @@ export function TransactionsTable({
             Party
           </TableHead>
         )}
-        {showCol("user") && context !== "note" && renderHeaderWithFilter("user", "User", false, ensureMinGaps ? 148 : undefined)}
+        {showCol("user") && context !== "note" && renderHeaderWithFilter("user", "User", false, ensureMinGaps ? Math.max(LEDGER_ENTITY_USER_COL_PX, LEDGER_HEADER_USER_HUG_PX) : undefined)}
         {showFileBySelection && renderFileHeaderWithFilter()}
         {showCol("tdsTaxable") &&
           renderHeaderWithFilter(
@@ -5096,9 +5144,10 @@ export function TransactionsTable({
             debitHeaderLabel,
             true,
             ensureMinGaps
-              ? tdsLedgerTableLayout
-                ? LEDGER_TDS_DR_CR_COL_PX
-                : LEDGER_TXN_DR_CR_COL_PX
+              ? Math.max(
+                  tdsLedgerTableLayout ? LEDGER_TDS_DR_CR_COL_PX : LEDGER_TXN_DR_CR_COL_PX,
+                  LEDGER_HEADER_DR_CR_HUG_PX
+                )
               : undefined
           )}
         {showCol("cr") &&
@@ -5108,9 +5157,10 @@ export function TransactionsTable({
             creditHeaderLabel,
             true,
             ensureMinGaps
-              ? tdsLedgerTableLayout
-                ? LEDGER_TDS_DR_CR_COL_PX
-                : LEDGER_TXN_DR_CR_COL_PX
+              ? Math.max(
+                  tdsLedgerTableLayout ? LEDGER_TDS_DR_CR_COL_PX : LEDGER_TXN_DR_CR_COL_PX,
+                  LEDGER_HEADER_DR_CR_HUG_PX
+                )
               : undefined
           )}
         {showCol("status") && !hideStatusColumn && renderHeaderWithFilter("status", "Status", false, ensureMinGaps ? 95 : undefined)}
@@ -5120,9 +5170,24 @@ export function TransactionsTable({
             "balance",
             stockView === "amount" ? "Balance" : "Stock",
             true,
-            ensureMinGaps ? (desktopSplitTableScrollGate ? LEDGER_ENTITY_BALANCE_COL_PX : 115) : undefined
+            ensureMinGaps
+              ? Math.max(
+                  desktopSplitTableScrollGate ? LEDGER_ENTITY_BALANCE_COL_PX : 115,
+                  LEDGER_HEADER_BALANCE_HUG_PX
+                )
+              : undefined
           )}
-        <TableHead className={ensureMinGaps ? LEDGER_TXN_ROW_MENU_CELL_CN : "w-10 p-0"} />
+        <TableHead
+          className={cn(
+            ensureMinGaps
+              ? LEDGER_TXN_ROW_MENU_CELL_CN
+              : "w-12 p-0 pr-[5px] text-right",
+            "text-[11px] font-semibold leading-none pt-1"
+          )}
+          aria-label="Action"
+        >
+          Action
+        </TableHead>
       </TableRow>
     </TableHeader>
   );
@@ -5674,6 +5739,8 @@ export function TransactionsTable({
                                           getDisplayValue={getDisplayValue}
                                           isTaxContext={isTaxContext}
                                           isBalanceMasked={isBalanceMasked}
+                                          hideDebitColumn={hideDebitColumn}
+                                          hideCreditColumn={hideCreditColumn}
                                           hideBalanceColumn={hideBalanceColumn}
                                           hideStatusColumn={hideStatusColumn}
                                           visibleColumns={visibleColumns}
@@ -5774,6 +5841,8 @@ export function TransactionsTable({
                           getDisplayValue={getDisplayValue}
                           isTaxContext={isTaxContext}
                           isBalanceMasked={isBalanceMasked}
+                          hideDebitColumn={hideDebitColumn}
+                          hideCreditColumn={hideCreditColumn}
                           hideBalanceColumn={hideBalanceColumn}
                           hideStatusColumn={hideStatusColumn}
                           visibleColumns={visibleColumns}
@@ -5883,6 +5952,8 @@ export function TransactionsTable({
                           getDisplayValue={getDisplayValue}
                           isTaxContext={isTaxContext}
                           isBalanceMasked={isBalanceMasked}
+                          hideDebitColumn={hideDebitColumn}
+                          hideCreditColumn={hideCreditColumn}
                           hideBalanceColumn={hideBalanceColumn}
                           hideStatusColumn={hideStatusColumn}
                           visibleColumns={visibleColumns}

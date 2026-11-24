@@ -18,6 +18,7 @@ import {
   APP_THEME_CLASS_NAMES,
   isDarkAppTheme,
 } from "@/lib/appThemes";
+import { ensureScrollbarThumbChrome } from "@/lib/scrollbarThumbChrome";
 
 type Theme = (typeof APP_THEME_CLASS_NAMES)[number] | "theme-vagawa";
 type PrimaryColor = (typeof APP_PRIMARY_CLASS_NAMES)[number] | "primary-vagawa";
@@ -72,6 +73,12 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
     localStorage.setItem(PRIMARY_STORAGE_KEY, primaryColor);
   }, [theme, primaryColor, themeHydrated]);
+
+  // Scrollbar thumb: Pocket Ledger Server (dark admin) jaisa light-ash thumb — saare app themes
+  // (src/lib/scrollbarThumbChrome.ts). Theme effect se alag hai taaki first paint par hi lag jaye.
+  useEffect(() => {
+    ensureScrollbarThumbChrome();
+  }, []);
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);

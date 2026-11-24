@@ -7,7 +7,8 @@ import type { Account, AccountGroup } from "@/components/bank-cash/types";
 import { Button } from "@/components/ui/button";
 import { LedgerViewModePills, LedgerViewModeToggleButton } from "@/components/ui/LedgerViewModePills";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Edit, Printer, Users, Calendar as CalendarIcon, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, FilePlus, XCircle, MoreVertical, ArrowLeft, Scroll, DollarSign, ChevronDown, Crown, Columns3, Search, Info, Pencil, Landmark } from "lucide-react";
+import { Edit, Printer, Users, Calendar as CalendarIcon, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, FilePlus, XCircle, ArrowLeft, Scroll, DollarSign, ChevronDown, Crown, Columns3, Search, Info, Pencil, Landmark } from "lucide-react";
+import { TxnRowMenuGrip } from "@/components/vouchers/TxnRowMenuGrip";
 import { TransactionsTable, type TransactionColumnKey } from "../vouchers/TransactionsTable";
 import { TransactionTableSortDropdown, type TransactionSortBy, type TransactionSortOrder } from "@/components/vouchers/TransactionTableSortDropdown";
 import { useTransactionVisibleColumns, COLUMN_LABELS, useSpendWiseBlinkMode, useShowNotes } from "../vouchers/transactionColumnVisibility";
@@ -82,10 +83,10 @@ import {
   LEDGER_HEADER_PILL_CN,
   LEDGER_HEADER_PILL_ICON_CN,
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
-  LEDGER_HEADER_PILL_ROW_CN,
   LEDGER_TXN_PAGE_ROOT_CN,
 } from "@/lib/ledgerHeaderChrome";
 import { LedgerTxnScrollColumn } from "@/components/vouchers/LedgerTxnScrollColumn";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 import { useCompany } from "@/hooks/useCompany";
 import { useFyLoadOnDateRangeChange } from "@/hooks/useFyLoadOnDateRangeChange";
 import { EditAccountGroupDialog } from "@/components/bank-cash/EditAccountGroupDialog";
@@ -1798,7 +1799,7 @@ export function AccountGroupDetails({
                 </div>
               </div>
             </div>
-            <div className={LEDGER_HEADER_PILL_ROW_CN}>
+            <LedgerHeaderPillRow>
               <LedgerHeaderPrintButton variant="chromePill" onClick={handlePrint} />
               <LedgerHeaderReminderButton
                 variant="chromePill"
@@ -1899,7 +1900,7 @@ export function AccountGroupDetails({
                 <FilePlus className={cn("mr-2", LEDGER_HEADER_PILL_ICON_SIZE_CN)} /> Add Note
               </Button>
               
-            </div>
+            </LedgerHeaderPillRow>
           </div>
         </div>
           }
@@ -1936,7 +1937,7 @@ export function AccountGroupDetails({
                     hasAccounts={accountsInGroup.length > 0 || childGroups.length > 0}
                   >
                     <Button variant="ghost" size="icon" className="h-7 w-7">
-                      <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                      <TxnRowMenuGrip />
                     </Button>
                   </EditAccountGroupDialog>
                 ) : null

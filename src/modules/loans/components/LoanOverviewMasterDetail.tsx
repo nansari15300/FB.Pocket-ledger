@@ -37,7 +37,7 @@ import { LoanAccountList } from "./LoanAccountList";
 import { LoanAccountGroupList } from "./LoanAccountGroupList";
 import { LoanWorkspaceDetails } from "./LoanWorkspaceDetails";
 import { LoanStaffNavTitle } from "@/components/layout/LoanStaffNavTitle";
-import { ReportShowListButton } from "@/components/reports/ReportShowListButton";
+
 
 export type LoanOverviewChromeMode = "entityNav" | "reports";
 
@@ -434,7 +434,6 @@ export function LoanOverviewMasterDetail({
       <ResponsiveMasterDetail
         title={loanOverviewTitleEl}
         balance={formatCurrencyForPrint(totalBalance, { showDrCr: true })}
-        listHeaderLeading={chromeMode === "reports" ? <ReportShowListButton /> : undefined}
         tabs={isMobile ? undefined : loanTabsEl}
         mobileTabsDocked={isMobile}
         listView={listView}

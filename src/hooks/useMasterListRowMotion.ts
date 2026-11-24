@@ -69,6 +69,15 @@ export function useMasterListRowMotion(options?: { enabled?: boolean }) {
     [layoutActive, rowTransition, preferCompositorMotion]
   );
 
+  /**
+   * Naya object har render par `AnimatePresence`/motion rows me jata hai; agar component kisi
+   * `useEffect` dep me poora `rowMotionProps` daal de to render loop banta hai (Maximum update
+   * depth). Isliye stable reference.
+   */
+  const rowMotionPropsRef = useRef(rowMotionProps);
+  rowMotionPropsRef.current = rowMotionProps;
+  const stableRowMotionProps = useMemo(() => rowMotionPropsRef.current, []);
+
   /** Sort/filter FLIP window — PL rematch mid-animation ko hold karne ke liye. */
   const layoutHoldMs = isRowAnimationEnabled
     ? Math.round(rowDuration * 1000) + 80
@@ -76,7 +85,7 @@ export function useMasterListRowMotion(options?: { enabled?: boolean }) {
 
   return {
     animatePresenceMode,
-    rowMotionProps,
+    rowMotionProps: stableRowMotionProps,
     markListScrolling,
     layoutActive,
     preferCompositorMotion,
@@ -89,6 +98,10 @@ export function useMasterListRowMotion(options?: { enabled?: boolean }) {
 /**
  * PL Server rematch / context churn mid-FLIP pe sort rows mute — online jaisi smooth layout.
  * Order change (sort/filter) turant apply; usi window me balance/array identity noise ignore.
+ *
+ * Har effect run par `setDisplay` sirf tab chalta hai jab kuch asli me badla ho (rows identity /
+ * orderKey / enabled / holdMs). Warna render -> naya state -> naya effect -> render ka
+ * "Maximum update depth exceeded" ban jata hai (Reports party statement par dikha tha).
  */
 export function useMasterListDisplayRows<T>(
   rows: readonly T[],
@@ -104,12 +117,27 @@ export function useMasterListDisplayRows<T>(
   const displayOrderKeyRef = useRef(orderKey);
   const holdingRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Aakhri committed input — memo-miss wale naye array par state set karke render loop na chale. */
+  const lastInputRef = useRef({ rows: rows as T[], orderKey, enabled, holdMs });
   const [display, setDisplay] = useState(() => ({
     rows: rows as T[],
     orderKey,
   }));
 
+  /** Inputs badle hain? Effect ke bahar (render me) decide — isliye StrictMode/HMR double run par bhi stable. */
+  const lastInput = lastInputRef.current;
+  const inputsChanged =
+    lastInput.rows !== rows ||
+    lastInput.orderKey !== orderKey ||
+    lastInput.enabled !== enabled ||
+    lastInput.holdMs !== holdMs;
+
   useEffect(() => {
+    /*
+     * IMPORTANT: effect ke andar `inputsChanged` par kabhi bharosa nahi — bail-out check hamesha
+     * committed state (`prev`) se hota hai. Isse ye effect kitni bhi baar chale, state tab hi
+     * badalti hai jab output asli me alag ho. Render loop possible hi nahi rehta.
+     */
     if (!enabled || holdMs <= 0) {
       holdingRef.current = false;
       if (timerRef.current) {
@@ -117,29 +145,42 @@ export function useMasterListDisplayRows<T>(
         timerRef.current = null;
       }
       displayOrderKeyRef.current = orderKey;
-      setDisplay({ rows: rows as T[], orderKey });
+      if (!inputsChanged) return;
+      lastInputRef.current = { rows: rows as T[], orderKey, enabled, holdMs };
+      setDisplay((prev) =>
+        prev.orderKey === orderKey && prev.rows === rows ? prev : { rows: rows as T[], orderKey }
+      );
       return;
     }
+
+    lastInputRef.current = { rows: rows as T[], orderKey, enabled, holdMs };
 
     if (orderKey !== displayOrderKeyRef.current) {
       displayOrderKeyRef.current = orderKey;
       holdingRef.current = true;
-      setDisplay({ rows: rows as T[], orderKey });
+      setDisplay((prev) =>
+        prev.orderKey === orderKey && prev.rows === rows ? prev : { rows: rows as T[], orderKey }
+      );
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
         holdingRef.current = false;
         timerRef.current = null;
         const latest = latestRef.current;
         displayOrderKeyRef.current = latest.orderKey;
-        setDisplay({ rows: latest.rows, orderKey: latest.orderKey });
+        setDisplay((prev) =>
+          prev.orderKey === latest.orderKey && prev.rows === latest.rows
+            ? prev
+            : { rows: latest.rows, orderKey: latest.orderKey }
+        );
       }, holdMs);
       return;
     }
 
-    if (!holdingRef.current) {
-      setDisplay({ rows: rows as T[], orderKey });
-    }
-  }, [rows, orderKey, enabled, holdMs]);
+    if (holdingRef.current || !inputsChanged) return;
+    setDisplay((prev) =>
+      prev.orderKey === orderKey && prev.rows === rows ? prev : { rows: rows as T[], orderKey }
+    );
+  }, [rows, orderKey, enabled, holdMs, inputsChanged]);
 
   useEffect(() => {
     return () => {

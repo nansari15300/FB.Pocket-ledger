@@ -319,6 +319,74 @@ html[data-pl-app-ui-zoom-shell="android-zoom"] .min-h-dvh {
     overflow-y: auto;
     overscroll-behavior: contain;
   }
+  /* Report txn pages: expand icon stays top-right in the pill row. */
+  .pl-ledger-header-pill-row:has(> [data-pl-ledger-header-window-controls] [data-pl-ledger-header-fullscreen]) {
+    position: relative;
+    padding-right: calc(0.5rem + 27px + 3px);
+  }
+  .pl-ledger-header-pill-row > [data-pl-ledger-header-window-controls] {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.5rem;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  /* Fullscreen collapse: only profile avatars + show-list icon. */
+  [data-pl-master-list-icon-rail] .pl-mlc-page-header,
+  [data-pl-master-list-icon-rail] .pl-mlc-tabs-row,
+  [data-pl-master-list-icon-rail] .pl-mlc-search-row,
+  [data-pl-master-list-icon-rail] .pl-mlc-section-label-row,
+  [data-pl-master-list-icon-rail] .pl-mlc-action-row,
+  [data-pl-master-list-icon-rail] .pl-mlc-footer-stack,
+  [data-pl-master-list-icon-rail] .pl-mobile-list-dock,
+  [data-pl-master-list-icon-rail] [data-pl-mobile-list-dock] {
+    display: none !important;
+  }
+  [data-pl-master-list-icon-rail] .pl-master-list-ul,
+  [data-pl-master-list-icon-rail] ul {
+    width: 100%;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    align-items: center;
+  }
+  [data-pl-master-list-icon-rail] .pl-master-list-row {
+    grid-template-columns: max-content;
+    justify-content: center;
+    gap: 0;
+    width: auto;
+  }
+  [data-pl-master-list-icon-rail] .pl-master-list-row-amount,
+  [data-pl-master-list-icon-rail] .pl-master-list-row-leading > :not(:first-child) {
+    display: none !important;
+  }
+  [data-pl-master-list-icon-rail] .pl-master-list-row-leading {
+    justify-content: center;
+    gap: 0;
+    overflow: visible;
+  }
+  [data-pl-master-list-icon-rail] [data-pl-list-row] {
+    display: flex !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    justify-content: center;
+    box-sizing: border-box;
+    padding-left: 0.375rem;
+    padding-right: 0.375rem;
+  }
+  /* Expanded report: hide the reports rail so statement list+details fill the window. */
+  main[data-page-expanded] [data-pl-reports-page-fit] {
+    grid-template-columns: 0 minmax(0, 1fr) !important;
+  }
+  main[data-page-expanded] [data-pl-reports-page-fit] > :first-child {
+    visibility: hidden;
+    overflow: hidden;
+    pointer-events: none;
+    min-width: 0 !important;
+    width: 0 !important;
+    border: none !important;
+  }
   /**
    * Balance card â€” scroll ke bahar, always visible; edit + Balance label + amount.
    */
@@ -1344,6 +1412,23 @@ body.theme-colorfull [data-theme-table="transactions"] table tfoot td {
   content: none !important;
   display: none !important;
 }
+/* 3-dot is a flex button, so text-align does not move it. Pin it 5px from the scrollbar. */
+[data-theme-table="transactions"] tbody td[data-pl-txn-row-menu] > button[data-pl-txn-icon-btn],
+[data-theme-table="transactions"] tbody td:last-child > button[data-pl-txn-row-menu-trigger],
+[data-theme-table="transactions"] tbody td:last-child > button[data-pl-txn-icon-btn] {
+  display: flex !important;
+  width: 22px !important;
+  min-width: 22px !important;
+  margin-left: auto !important;
+  margin-right: 5px !important;
+  letter-spacing: 0 !important;
+  font-size: 16px !important;
+  line-height: 1 !important;
+}
+[data-theme-table="transactions"] thead th:last-child {
+  text-align: right !important;
+  padding-right: 5px !important;
+}
 
 /* FY merge divider â€” sirf 1px lines (double stack = 2px dikhta tha). */
 [data-theme-table="transactions"] tbody tr.transaction-main-row:has(+ tr[data-row="fiscal-partition-total"]) > td:last-child::after,
@@ -1394,6 +1479,91 @@ body.theme-colorfull [data-theme-table="transactions"] table tfoot td {
 /* Narration-less: keep content clear of the bottom separator / next-row chrome */
 [data-theme-table="transactions"] tbody tr.transaction-main-row:not(:has(+ .narration-row)):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td {
   padding-bottom: 0.25rem !important;
+}
+
+/* Notes report details — profile name card ka border blue (right hover-preview box jaisa).
+   Theme rules `.pl-ledger-header-card` ka border-color transparent kar dete hain; yahan force blue.
+   Scope: sirf `.pl-notes-detail-pane` (Notes report details) — baaki ledger headers untouched. */
+.pl-notes-detail-pane .pl-ledger-header-ribbon-wrap .pl-ledger-header-card.pl-ledger-header-name-card {
+  border-color: rgb(147 197 253) !important;
+  border-style: solid !important;
+  border-width: 1px !important;
+}
+
+/* Notes details: header ke neeche SIRF 1px H-line (Journal report jaisa).
+   Yahan teen cheezein stack ho rahi thi (~3px): `<table>` ka border-b-2, `th` ka 1px,
+   aur header/body ke beech wala 1px black divider. Ab sirf `th` ki 1px line rakhi hai. */
+.pl-notes-detail-pane [data-pl-ledger-txn-header-divider] {
+  display: none !important;
+}
+.pl-notes-detail-pane [data-theme-table="transactions"] table {
+  border-bottom-width: 0 !important;
+  border-bottom-style: none !important;
+}
+.pl-notes-detail-pane [data-theme-table="transactions"] thead,
+.pl-notes-detail-pane [data-theme-table="transactions"] thead tr {
+  border-width: 0 !important;
+  border-bottom-width: 0 !important;
+  border-bottom-style: none !important;
+  box-shadow: none !important;
+}
+.pl-notes-detail-pane [data-theme-table="transactions"] thead th {
+  height: 49px;
+  box-sizing: border-box;
+  border-top: 0 !important;
+  border-bottom: 1px solid #000 !important;
+  border-left-width: 0 !important;
+  border-right-width: 0 !important;
+  box-shadow: none !important;
+  background-image: none !important;
+}
+
+/* Notes details: rows ko whole-pixel par snap karo.
+   Fractional row height (15.25px / 35.5px) se 1px border do physical rows me split ho jata tha ->
+   ek line patli, doosri moti dikhti thi. Party/Journal page par rows whole-pixel hote hain,
+   isliye wahan har line uniform 1px dikhti hai (reference). */
+.pl-notes-detail-pane [data-theme-table="transactions"] tbody tr.transaction-main-row {
+  height: 37px;
+  max-height: 37px;
+}
+.pl-notes-detail-pane [data-theme-table="transactions"] tbody tr.transaction-main-row > td {
+  height: 37px;
+  max-height: 37px;
+  box-sizing: border-box;
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+  vertical-align: top;
+  overflow: hidden !important;
+}
+.pl-notes-detail-pane [data-theme-table="transactions"] tbody tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td {
+  box-sizing: border-box;
+}
+.pl-notes-detail-pane [data-theme-table="transactions"] tbody tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) {
+  height: 16px;
+}
+.pl-notes-detail-pane [data-theme-table="transactions"] tbody tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td {
+  height: 16px;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  line-height: 14px !important;
+}
+
+/* Each txn block (main row + narration sub-row) ke neeche ek hi poori-chaudi 1px H-line —
+   har td par, warna line sirf colspan wale narration cells me dikhti thi.
+   NOTE: sirf Notes report ke details pane me (`.pl-notes-detail-pane`), baaki reports untouched. */
+.pl-notes-detail-pane [data-theme-table="transactions"] tbody tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td,
+.pl-notes-detail-pane [data-theme-table="transactions"] tbody tr.transaction-main-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td {
+  border-bottom-width: 0 !important;
+  border-bottom-style: solid !important;
+}
+.pl-notes-detail-pane [data-theme-table="transactions"] tbody tr.transaction-main-row:not(:has(+ .narration-row)):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td,
+.pl-notes-detail-pane [data-theme-table="transactions"] tbody tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td {
+  border-bottom-width: 1px !important;
+  border-bottom-color: #000 !important;
+}
+.pl-notes-detail-pane [data-theme-table="transactions"] tbody tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]):has(+ tr[data-row="fiscal-partition-total"]) > td {
+  border-bottom-width: 0 !important;
+  border-bottom-color: transparent !important;
 }
 
 /* Outstanding / BS ledger popup: zoom-stable H-lines â€” merged td border-bottom (party page jaisa).
@@ -9003,8 +9173,9 @@ body.dark [data-pl-ledger-txn-unified-scroll] [data-pl-ledger-txn-header],
   box-sizing: border-box;
   width: 100%;
   /* reserve V-scrollbar gutter: body clientWidth = host - pad, so tables must not exceed it (else 3-dot hides under scrollbar) */
-  min-width: max(100%, calc(var(--pl-ledger-txn-table-min-px, 0) * 1px - var(--pl-ledger-txn-body-vscroll-pad, 0px)));
-  max-width: none;
+  min-width: calc(var(--pl-ledger-txn-table-min-px, 0) * 1px - var(--pl-ledger-txn-body-vscroll-pad, 0px));
+  /* H-scroll: cap at content width so header/body 10px gaps are not stretched. Unset min-px → 99999 fallback = no cap. */
+  max-width: calc(var(--pl-ledger-txn-table-min-px, 99999) * 1px - var(--pl-ledger-txn-body-vscroll-pad, 0px));
   table-layout: fixed;
 }
 [data-pl-ledger-txn-unified-scroll] [data-pl-ledger-txn] {
@@ -9016,6 +9187,42 @@ body.dark [data-pl-ledger-txn-unified-scroll] [data-pl-ledger-txn-header],
   text-overflow: clip;
   /* Plan A: col widths are content-measured; clip so a cell can never paint over its neighbour. */
   overflow: hidden;
+}
+/* Posted time AM/PM: overflow:hidden cuts the last "M"; hover unclips first-cell. Keep date readable at rest too. */
+[data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr.transaction-main-row > td[data-pl-ledger-txn-last-date-cell] {
+  overflow: visible;
+  overflow-x: visible;
+}
+/* Both dates: BS + AD on the top row; 10px gap (5px + 5px); posted stays left under BS. */
+[data-theme-table="transactions"] tbody td[data-pl-ledger-txn-date-bs-cell],
+[data-theme-table="transactions"] tbody td[data-pl-ledger-txn-last-date-cell] {
+  vertical-align: top;
+}
+[data-theme-table="transactions"] tbody td[data-pl-ledger-txn-date-bs-cell] {
+  padding-left: 5px;
+  padding-right: 5px;
+  overflow: visible;
+}
+[data-theme-table="transactions"] tbody td[data-pl-ledger-txn-last-date-cell] {
+  padding-left: 5px;
+  padding-right: 5px;
+}
+[data-theme-table="transactions"] tbody td[data-pl-ledger-txn-type-cell] {
+  padding-left: 5px;
+}
+[data-theme-table="transactions"] tbody [data-pl-txn-date-time] {
+  overflow: hidden;
+  white-space: nowrap;
+}
+[data-theme-table="transactions"] tbody [data-pl-txn-date-bs-text] {
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+[data-theme-table="transactions"] tbody [data-pl-txn-date-subline] {
+  display: block;
+  text-align: left;
+  white-space: nowrap;
 }
 /* Row H-lines: first-cell anchor + measured table width (last-cell 10000px cap missed Date col). */
 [data-pl-ledger-txn-unified-scroll] [data-theme-table="transactions"] tbody tr > td:first-child::after {
@@ -9029,13 +9236,11 @@ body.dark [data-pl-ledger-txn-unified-scroll] [data-pl-ledger-txn-header],
   z-index: 4;
   border-top-width: 0 !important;
   border-bottom-width: 0 !important;
-  box-shadow: none !important;
 }
 [data-theme-table="transactions"] tbody tr.transaction-main-row[data-pl-txn-layout-animating] > td,
 [data-theme-table="transactions"] tbody tr.narration-row[data-pl-txn-layout-animating] > td {
   border-top-width: 0 !important;
   border-bottom-width: 0 !important;
-  box-shadow: none !important;
 }
 [data-theme-table="transactions"] tbody tr.transaction-main-row[data-pl-txn-layout-animating] > td:last-child,
 [data-theme-table="transactions"] tbody tr.narration-row[data-pl-txn-layout-animating] > td:last-child {
@@ -9285,6 +9490,29 @@ html body
 [data-pl-ledger-txn-page] .pl-ledger-desktop-footer-shell {
   border-top: 1px solid #000 !important;
   border-top-color: #000 !important;
+}
+
+/* Notes report details: footer H-line 1px (Journal report parity).
+   Journal `data-pl-ledger-txn-page` txn scroll ka legacy `border-b-2` hata deta hai
+   aur footer par sirf 1px rakhta hai. Notes me txn-page wrapper nahi, isliye
+   scroll `border-b-2` + footer `border-t` stack hokar moti line dikhti thi. */
+html body [data-pl-ledger-txn-unified-scroll]:has(.pl-notes-detail-pane) [data-pl-ledger-txn].border-b-2,
+html body [data-pl-ledger-txn-unified-scroll]:has(.pl-notes-detail-pane) [data-pl-ledger-txn] > div > table.border-b-2 {
+  border-bottom-width: 0 !important;
+  border-bottom-style: none !important;
+  border-bottom-color: transparent !important;
+  box-shadow: none !important;
+}
+html body [data-pl-ledger-txn-unified-scroll]:has(.pl-notes-detail-pane) .pl-ledger-desktop-footer-shell.border-t {
+  border-width: 0 !important;
+  border-top-width: 1px !important;
+  border-top-style: solid !important;
+  border-top-color: #000 !important;
+  box-shadow: none !important;
+}
+body.theme-pro [data-pl-ledger-txn-unified-scroll]:has(.pl-notes-detail-pane) .pl-ledger-desktop-footer-shell.border-t {
+  border-top-width: 1px !important;
+  border-top-color: rgb(147 197 253 / 0.6) !important;
 }
 
 /* Ledger txn page: sirf td border-bottom â€” koi ::after / last-row global band na (2px double fix) */
@@ -9587,26 +9815,28 @@ main:has([data-pl-dashboard-page-root]) {
 [data-pl-daybook-unified-scroll] [data-pl-txn-row-menu-trigger] {
   overflow: visible;
 }
-/* Recent Transactions: 3-dot column ko breathing room do taaki V-scrollbar 3-dot ke thoda right me rahe (party page parity) */
+/* Recent Transactions: 3-dot scrollbar se 5px gap (Action label isi column me). */
 [data-pl-dashboard-recent-shell] [data-pl-txn-row-menu] {
-  width: 24px !important;
-  min-width: 24px !important;
-  max-width: 24px !important;
-  padding-right: 8px !important;
+  width: 48px !important;
+  min-width: 48px !important;
+  max-width: 48px !important;
+  padding-right: 5px !important;
   box-sizing: border-box;
+  text-align: right !important;
 }
 [data-pl-dashboard-recent-shell] thead th:last-child {
-  width: 24px !important;
-  min-width: 24px !important;
-  max-width: 24px !important;
-  padding-right: 8px !important;
+  width: 48px !important;
+  min-width: 48px !important;
+  max-width: 48px !important;
+  padding-right: 5px !important;
   box-sizing: border-box;
+  text-align: right !important;
 }
 [data-pl-dashboard-recent-shell] col:last-child {
-  width: 24px !important;
+  width: 48px !important;
 }
 [data-pl-dashboard-recent-shell] [data-pl-txn-row-menu] [data-pl-txn-row-menu-trigger] {
-  margin-right: 4px;
+  margin-right: 0;
 }
 [data-pl-dashboard-recent-shell] [data-pl-dashboard-recent-txn-header],
 [data-pl-dashboard-recent-shell] [data-pl-dashboard-recent-txn] {
@@ -9623,16 +9853,16 @@ main:has([data-pl-dashboard-page-root]) {
   text-overflow: clip;
   overflow: visible;
 }
-/* Recent: Date under "D"; max 3px PM â†’ Type pill (2px + 1px pad). */
+/* Recent: Date under "D"; 10px PM → Type pill (5px + 5px pad). */
 [data-pl-dashboard-recent-shell] [data-pl-ledger-txn-last-date-cell] {
   text-align: left !important;
   white-space: nowrap;
-  padding-right: 2px !important;
+  padding-right: 5px !important;
   padding-left: 5px;
 }
 [data-pl-dashboard-recent-shell] [data-pl-ledger-txn-type-cell] {
   white-space: nowrap;
-  padding-left: 1px !important;
+  padding-left: 5px !important;
   padding-right: 5px;
 }
 [data-pl-dashboard-recent-shell] [data-pl-dashboard-recent-txn-header] th[data-pl-col="date"],
@@ -9641,22 +9871,22 @@ main:has([data-pl-dashboard-page-root]) {
 }
 [data-pl-dashboard-recent-shell] [data-pl-dashboard-recent-txn-header] th[data-pl-col="date"] > div,
 [data-pl-dashboard-recent-shell] [data-pl-dashboard-recent-txn-header] th[data-pl-col="date_ad"] > div {
-  padding-right: 2px !important;
+  padding-right: 5px !important;
   padding-left: 5px !important;
 }
 [data-pl-dashboard-recent-shell] [data-pl-dashboard-recent-txn-header] th[data-pl-col="type"] > div {
-  padding-left: 1px !important;
+  padding-left: 5px !important;
   padding-right: 5px !important;
 }
 [data-pl-daybook-unified-scroll] [data-pl-ledger-txn-last-date-cell] {
   text-align: left !important;
   white-space: nowrap;
-  padding-right: 2px !important;
+  padding-right: 5px !important;
   padding-left: 5px;
 }
 [data-pl-daybook-unified-scroll] [data-pl-ledger-txn-type-cell] {
   white-space: nowrap;
-  padding-left: 1px !important;
+  padding-left: 5px !important;
   padding-right: 5px;
 }
 [data-pl-daybook-unified-scroll] [data-pl-dashboard-recent-txn-header] th[data-pl-col="date"],
@@ -9665,11 +9895,11 @@ main:has([data-pl-dashboard-page-root]) {
 }
 [data-pl-daybook-unified-scroll] [data-pl-dashboard-recent-txn-header] th[data-pl-col="date"] > div,
 [data-pl-daybook-unified-scroll] [data-pl-dashboard-recent-txn-header] th[data-pl-col="date_ad"] > div {
-  padding-right: 2px !important;
+  padding-right: 5px !important;
   padding-left: 5px !important;
 }
 [data-pl-daybook-unified-scroll] [data-pl-dashboard-recent-txn-header] th[data-pl-col="type"] > div {
-  padding-left: 1px !important;
+  padding-left: 5px !important;
   padding-right: 5px !important;
 }
 [data-pl-dashboard-recent-shell] [data-pl-dashboard-recent-txn-hscroll] {
@@ -9679,28 +9909,29 @@ main:has([data-pl-dashboard-page-root]) {
 /* Daybook unified H-scroll: keep the row menu well inside the body viewport so its vertical
    scrollbar cannot paint over the 3-dot trigger at narrow widths. */
 [data-pl-daybook-unified-scroll][data-pl-dashboard-recent-shell] [data-pl-txn-row-menu] {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-  padding-left: 4px !important;
-  padding-right: 16px !important;
+  width: 48px !important;
+  min-width: 48px !important;
+  max-width: 48px !important;
+  padding-left: 0 !important;
+  padding-right: 5px !important;
   box-sizing: border-box;
-  text-align: left !important;
+  text-align: right !important;
 }
 [data-pl-daybook-unified-scroll][data-pl-dashboard-recent-shell] thead th:last-child,
 [data-pl-daybook-unified-scroll][data-pl-dashboard-recent-shell] col:last-child {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
+  width: 48px !important;
+  min-width: 48px !important;
+  max-width: 48px !important;
   box-sizing: border-box;
 }
 [data-pl-daybook-unified-scroll][data-pl-dashboard-recent-shell] thead th:last-child {
-  padding-left: 4px !important;
-  padding-right: 16px !important;
+  padding-left: 0 !important;
+  padding-right: 5px !important;
+  text-align: right !important;
 }
 [data-pl-daybook-unified-scroll][data-pl-dashboard-recent-shell] [data-pl-txn-row-menu-trigger] {
-  margin-left: 0 !important;
-  margin-right: 0 !important;
+  margin-left: auto !important;
+  margin-right: 5px !important;
 }
 
 body[class*="theme-"] [data-theme-table="transactions"] tbody tr.transaction-main-row[data-pl-txn-selected]:not([data-pl-check-marked]):has(+ .narration-row[data-pl-txn-selected]) > td:first-child::before,
@@ -11960,6 +12191,76 @@ body[class*="theme-"] [data-pl-daybook-toolbar] button[data-pl-toolbar-field][ro
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.55),
     0 1px 2px rgba(15, 23, 42, 0.06) !important;
+}
+
+/* Anusuchi 13 FY dropdown — pill blue-300 border, pure white fill, shape unchanged.
+   `:not(#id)` ID-weight beats theme `.rounded-md.border` black-border list. */
+html body[class*="theme-"] main button[data-pl-anusuchi-fy-select][role="combobox"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body[class*="theme-"] button[data-pl-anusuchi-fy-select][role="combobox"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: rgb(147 197 253) !important; /* blue-300, same as pills */
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+html body[class*="theme-"] main button[data-pl-anusuchi-fy-select][role="combobox"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):focus,
+html body[class*="theme-"] main button[data-pl-anusuchi-fy-select][role="combobox"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):focus-visible,
+html body[class*="theme-"] main button[data-pl-anusuchi-fy-select][role="combobox"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2)[data-state="open"],
+html body[class*="theme-"] button[data-pl-anusuchi-fy-select][role="combobox"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):focus,
+html body[class*="theme-"] button[data-pl-anusuchi-fy-select][role="combobox"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):focus-visible,
+html body[class*="theme-"] button[data-pl-anusuchi-fy-select][role="combobox"]:not(#pl-theme-master-none):not(#pl-theme-master-none-2)[data-state="open"] {
+  outline: none !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  border-color: rgb(96 165 250) !important; /* blue-400 */
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+/* Anusuchi 13 amount pill + party search — blue-300 border, pure white fill, shape unchanged. */
+html body[class*="theme-"] main input[data-pl-anusuchi-white-field]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body[class*="theme-"] input[data-pl-anusuchi-white-field]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body[class*="theme-"] main input[placeholder="Search parties..." i]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: rgb(147 197 253) !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  color-scheme: light !important;
+}
+html body[class*="theme-"] main input[data-pl-anusuchi-party-search]:not(#pl-theme-master-none):not(#pl-theme-master-none-2),
+html body[class*="theme-"] input[data-pl-anusuchi-party-search]:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  /* Default Input h-10 (40px) se 10% kam = 36px (h-9). */
+  height: 2.25rem !important;
+  min-height: 2.25rem !important;
+  max-height: 2.25rem !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+html body[class*="theme-"] main input[data-pl-anusuchi-white-field]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):focus,
+html body[class*="theme-"] main input[data-pl-anusuchi-white-field]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):focus-visible,
+html body[class*="theme-"] input[data-pl-anusuchi-white-field]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):focus,
+html body[class*="theme-"] input[data-pl-anusuchi-white-field]:not(#pl-theme-master-none):not(#pl-theme-master-none-2):focus-visible {
+  outline: none !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  border-color: rgb(96 165 250) !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  box-shadow: none !important;
+}
+html body[class*="theme-"] main input[data-pl-anusuchi-white-field]:-webkit-autofill:not(#pl-theme-master-none),
+html body[class*="theme-"] input[data-pl-anusuchi-white-field]:-webkit-autofill:not(#pl-theme-master-none) {
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  background-color: #ffffff !important;
 }
 
 /* Balance Sheet difference trace popup â€” separate section cards + inner grid. */
@@ -14968,6 +15269,20 @@ body[class*="theme-"] [data-theme-table="transactions"] tbody tr:is(.transaction
 body[class*="theme-"] [data-theme-table="transactions"] tbody tr.narration-row:is([data-pl-txn-selected], [data-pl-txn-hovered]):last-child > td:first-child::before {
   bottom: 8px !important;
 }
+/* Click: same orange box as hover, but 2px. Later 1px side rules must not flatten the selected ring. */
+body[class*="theme-"] [data-theme-table="transactions"] tbody tr.transaction-main-row[data-pl-txn-selected]:not([data-pl-check-marked]) > td:first-child::before,
+body[class*="theme-"] [data-theme-table="transactions"] tbody tr.narration-row[data-pl-txn-selected]:not([data-pl-check-marked]) > td:first-child::before {
+  border-top-width: 2px !important;
+  border-right-width: 2px !important;
+  border-bottom-width: 2px !important;
+  border-left-width: 2px !important;
+}
+body[class*="theme-"] [data-theme-table="transactions"] tbody tr.transaction-main-row[data-pl-txn-selected]:not([data-pl-check-marked]):has(+ .narration-row) > td:first-child::before {
+  border-bottom-width: 0 !important;
+}
+body[class*="theme-"] [data-theme-table="transactions"] tbody tr.narration-row[data-pl-txn-selected]:not([data-pl-check-marked]) > td:first-child::before {
+  border-top-width: 0 !important;
+}
 
 /* 20. Ledger footer: leftover white / light-blue box matches the theme. Amounts stay green/red. */
 :is(body.theme-pl-light, body.theme-pl-gray, body.theme-pl-medium, body.theme-soft-green, body.theme-dim-soft-green, body.theme-soft-blue, body.theme-sky-blue, body.theme-soft-yellow) :is(.pl-ledger-desktop-footer-shell, [data-pl-ledger-txn-fixed-summary], [data-pl-closing-balance-card], [data-pl-footer-drcr-balance-card], [data-pl-txn-split-scroll-footer]):not(#pl-theme-master-none) {
@@ -14975,6 +15290,11 @@ body[class*="theme-"] [data-theme-table="transactions"] tbody tr.narration-row:i
   background-image: none !important;
   color: hsl(var(--foreground)) !important;
   border-color: transparent !important;
+}
+:is(body.theme-pl-light, body.theme-pl-gray, body.theme-pl-medium, body.theme-soft-green, body.theme-dim-soft-green, body.theme-soft-blue, body.theme-sky-blue, body.theme-soft-yellow) [data-pl-ledger-txn-unified-scroll]:has(.pl-notes-detail-pane) .pl-ledger-desktop-footer-shell:not(#pl-theme-master-none) {
+  border-top-width: 1px !important;
+  border-top-style: solid !important;
+  border-top-color: hsl(var(--border)) !important;
 }
 :is(body.theme-pl-light, body.theme-pl-gray, body.theme-pl-medium, body.theme-soft-green, body.theme-dim-soft-green, body.theme-soft-blue, body.theme-sky-blue, body.theme-soft-yellow) button[data-pl-mobile-txn-pager-select]:not(#pl-theme-master-none) {
   background-color: hsl(var(--pl-pill-bg)) !important;
@@ -16472,80 +16792,245 @@ html body table[data-theme-table="transactions"] {
   display: none !important;
 }
 
+/* Gridline wipe above hides every cell ::before. Put the orange row box back on top of that:
+   hover 1px, click 2px. First cell stays static so the ring uses the row as its box. */
+html body [data-theme-table="transactions"] tbody tr:is(.transaction-main-row, .narration-row):is([data-pl-txn-hovered], [data-pl-txn-selected]):not([data-pl-check-marked]) {
+  position: relative !important;
+  z-index: 1 !important;
+}
+html body [data-theme-table="transactions"] tbody tr:is(.transaction-main-row, .narration-row):is([data-pl-txn-hovered], [data-pl-txn-selected]):not([data-pl-check-marked]) > td:first-child:not(#pl-theme-master-none) {
+  position: static !important;
+  overflow: visible !important;
+}
+html body [data-theme-table="transactions"] tbody tr.transaction-main-row > td[data-pl-ledger-txn-last-date-cell]:not(#pl-theme-master-none) {
+  overflow: visible !important;
+  overflow-x: visible !important;
+  vertical-align: top !important;
+  padding-left: 5px !important;
+  padding-right: 5px !important;
+}
+html body [data-theme-table="transactions"] tbody td[data-pl-ledger-txn-type-cell]:not(#pl-theme-master-none) {
+  padding-left: 5px !important;
+  overflow: visible !important;
+}
+html body [data-pl-fy-opening-pills]:not(#pl-theme-master-none) {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 10px !important;
+  width: max-content !important;
+  max-width: none !important;
+}
+html body [data-pl-fy-opening-pills]:not(#pl-theme-master-none) > * {
+  max-width: none !important;
+  flex-shrink: 0 !important;
+}
+html body tr[data-pl-fy-opening-row] [data-pl-fy-opening-file-dash]:not(#pl-theme-master-none) {
+  visibility: hidden !important;
+}
+html body [data-theme-table="transactions"] thead th[data-pl-col="date"]:not(#pl-theme-master-none),
+html body [data-theme-table="transactions"] thead th[data-pl-col="date_ad"]:not(#pl-theme-master-none) {
+  padding-right: 5px !important;
+}
+html body [data-theme-table="transactions"] thead th[data-pl-col="type"]:not(#pl-theme-master-none) {
+  padding-left: 5px !important;
+}
+html body [data-pl-ledger-txn-header] thead th > div:not(#pl-theme-master-none) {
+  width: max-content !important;
+  max-width: 100%;
+}
+html body [data-pl-ledger-txn-header] thead th[data-pl-col="debit"] > div:not(#pl-theme-master-none),
+html body [data-pl-ledger-txn-header] thead th[data-pl-col="credit"] > div:not(#pl-theme-master-none),
+html body [data-pl-ledger-txn-header] thead th[data-pl-col="balance"] > div:not(#pl-theme-master-none) {
+  margin-left: auto !important;
+}
+html body [data-theme-table="transactions"] tbody [data-pl-txn-date-time]:not(#pl-theme-master-none) {
+  overflow: hidden !important;
+  white-space: nowrap !important;
+}
+html body [data-theme-table="transactions"] tbody td[data-pl-ledger-txn-date-bs-cell]:not(#pl-theme-master-none) {
+  overflow: visible !important;
+  overflow-x: visible !important;
+  vertical-align: top !important;
+  padding-left: 5px !important;
+  padding-right: 5px !important;
+}
+html body [data-theme-table="transactions"] tbody [data-pl-txn-date-subline]:not(#pl-theme-master-none) {
+  display: block !important;
+  text-align: left !important;
+  white-space: nowrap !important;
+}
+html body [data-theme-table="transactions"] tbody tr:is(.transaction-main-row, .narration-row):is([data-pl-txn-hovered], [data-pl-txn-selected]):not([data-pl-check-marked]) > td:first-child:not(#pl-theme-master-none)::before {
+  content: "" !important;
+  display: block !important;
+  position: absolute !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  pointer-events: none !important;
+  z-index: 6 !important;
+  box-sizing: border-box !important;
+  background: transparent !important;
+  border: 1px solid #fb923c !important;
+  border-radius: 0.75rem !important;
+}
+html body [data-theme-table="transactions"] tbody tr:is(.transaction-main-row, .narration-row)[data-pl-txn-selected]:not([data-pl-check-marked]) > td:first-child:not(#pl-theme-master-none)::before {
+  border-width: 2px !important;
+}
+html body [data-theme-table="transactions"] tbody tr.transaction-main-row:is([data-pl-txn-hovered], [data-pl-txn-selected]):not([data-pl-check-marked]):has(+ tr.narration-row) > td:first-child:not(#pl-theme-master-none)::before {
+  border-bottom-width: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+html body [data-theme-table="transactions"] tbody tr.narration-row:is([data-pl-txn-hovered], [data-pl-txn-selected]):not([data-pl-check-marked]) > td:first-child:not(#pl-theme-master-none)::before {
+  top: 0 !important;
+  border-top-width: 0 !important;
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+}
+
 :is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr > td:not(#pl-theme-master-none) {
   border-top-width: 0 !important;
   border-top-style: none !important;
   border-top-color: transparent !important;
+  border-bottom-width: 0 !important;
+  border-bottom-style: none !important;
+  border-bottom-color: transparent !important;
 }
 
-/* 1px solid black separator under standalone transaction rows, narration rows, and opening balance */
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row:not([data-has-narration="true"]):not(:has(+ .narration-row)):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row + tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:not(:has(+ tr[data-row="opening-balance-narration"])):not(:has(+ tr[data-row="opening-balance-linked"])) > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance"]:not(:has(+ tr[data-row="opening-balance-linked"])) > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"] > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"] > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-book"]:not(:has(+ tr[data-row="opening-balance-narration"])) > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody > tr:not(.spend-wise-group-card-row tr):not(.spend-wise-group-card-row):not(.spend-wise-gap-row):not(.spend-wise-inner-txn-sep):not([aria-hidden="true"]):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]):not([data-pl-spend-wise-opening]):last-child > td:not(#pl-theme-master-none) {
-  border-bottom: 1px solid #000 !important;
+/*
+ * Full-width 1px H-line from the Action (last) cell: 10000px bar going left.
+ * td box-shadow does not paint in border-collapse tables, which is why the
+ * line vanished. Last-cell ::before = top, ::after = bottom. Adjacent rows
+ * share the seam so at rest it looks like one 1px line. The bar lives on the
+ * row, so it travels during layout animation.
+ */
+html body [data-theme-table="transactions"] tbody tr.transaction-main-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:last-child:not(#pl-theme-master-none),
+html body [data-theme-table="transactions"] tbody tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:last-child:not(#pl-theme-master-none),
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-book"] > td:last-child:not(#pl-theme-master-none),
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance"] > td:last-child:not(#pl-theme-master-none),
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"] > td:last-child:not(#pl-theme-master-none),
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"] > td:last-child:not(#pl-theme-master-none),
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"] > td:last-child:not(#pl-theme-master-none),
+html body [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-total"] > td:last-child:not(#pl-theme-master-none),
+html body [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-label"] > td:last-child:not(#pl-theme-master-none) {
+  position: relative !important;
+  overflow: visible !important;
+}
+html body [data-theme-table="transactions"] tbody tr.transaction-main-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr.transaction-main-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-book"] > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-book"] > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance"] > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance"] > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"] > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"] > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"] > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"] > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"] > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"] > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-total"] > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-total"] > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-label"] > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-label"] > td:last-child:not(#pl-theme-master-none)::after {
+  content: "" !important;
+  display: block !important;
+  position: absolute !important;
+  right: 0 !important;
+  left: auto !important;
+  width: 10000px !important;
+  height: 1px !important;
+  background: #000 !important;
+  background-color: #000 !important;
+  border: none !important;
+  box-shadow: none !important;
+  pointer-events: none !important;
+  z-index: 5 !important;
+}
+html body [data-theme-table="transactions"] tbody tr.transaction-main-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-book"] > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance"] > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"] > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"] > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"] > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-total"] > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-label"] > td:last-child:not(#pl-theme-master-none)::before {
+  top: -1px !important;
+  bottom: auto !important;
+}
+html body [data-theme-table="transactions"] tbody tr.transaction-main-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-book"] > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance"] > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"] > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"] > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"] > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-total"] > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-label"] > td:last-child:not(#pl-theme-master-none)::after {
+  top: auto !important;
+  bottom: 0 !important;
+}
+/* Main + narration = one card: top on main, bottom on narration. */
+html body [data-theme-table="transactions"] tbody tr.transaction-main-row:has(+ .narration-row):not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:has(+ tr[data-row="opening-balance-narration"]) > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:has(+ tr[data-row="opening-balance-linked"]) > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance"]:has(+ tr[data-row="opening-balance-linked"]) > td:last-child:not(#pl-theme-master-none)::after,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-book"]:has(+ tr[data-row="opening-balance-narration"]) > td:last-child:not(#pl-theme-master-none)::after {
+  content: none !important;
+  display: none !important;
+}
+html body [data-theme-table="transactions"] tbody tr.narration-row:not([data-pl-spend-wise-group]):not([data-pl-spend-in-group-card]) > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"] > td:last-child:not(#pl-theme-master-none)::before,
+html body [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"] > td:last-child:not(#pl-theme-master-none)::before {
+  content: none !important;
+  display: none !important;
+}
+/* FY rows use the same last-cell 1px bars as txn rows. td borders stacked to 2px. */
+html body [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-total"] > td:not(#pl-theme-master-none),
+html body [data-theme-table="transactions"] tbody tr[data-row="fiscal-partition-label"] > td:not(#pl-theme-master-none) {
+  border-top-width: 0 !important;
+  border-top-style: none !important;
+  border-bottom-width: 0 !important;
+  border-bottom-style: none !important;
+}
+
+/* Header / table / footer: one 1px line, never 2px utilities stacked. */
+html body [data-theme-table="transactions"] table,
+html body [data-pl-ledger-txn].border-b-2,
+html body [data-pl-ledger-txn] > div > table,
+html body [data-pl-ledger-txn-header] > div > table {
+  border-top-width: 0 !important;
+  border-bottom-width: 0 !important;
+  border-bottom-style: none !important;
+}
+html body [data-theme-table="transactions"] thead > tr,
+html body [data-theme-table="transactions"] thead > tr > th:not(#pl-theme-master-none) {
+  border-top-width: 0 !important;
+  border-bottom-width: 1px !important;
+  border-bottom-style: solid !important;
   border-bottom-color: #000 !important;
   box-shadow: none !important;
 }
-
-/* Main row with narration: ZERO line between main row and narration row (single combined card) */
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row[data-has-narration="true"],
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row:has(+ .narration-row),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:has(+ tr[data-row="opening-balance-narration"]),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:has(+ tr[data-row="opening-balance-linked"]),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance"]:has(+ tr[data-row="opening-balance-linked"]),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-book"]:has(+ tr[data-row="opening-balance-narration"]) {
-  border-bottom: none !important;
-  border-bottom-width: 0 !important;
-  border-bottom-color: transparent !important;
-  box-shadow: none !important;
+html body [data-theme-table="transactions"] tbody > tr:first-child > td:last-child:not(#pl-theme-master-none)::before {
+  content: none !important;
+  display: none !important;
 }
-
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row[data-has-narration="true"] > td,
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row:has(+ .narration-row) > td,
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row[data-has-narration="true"] > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.transaction-main-row:has(+ .narration-row) > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:has(+ tr[data-row="opening-balance-narration"]) > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-dated"]:has(+ tr[data-row="opening-balance-linked"]) > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance"]:has(+ tr[data-row="opening-balance-linked"]) > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-book"]:has(+ tr[data-row="opening-balance-narration"]) > td:not(#pl-theme-master-none) {
-  border-bottom: none !important;
-  border-bottom-width: 0 !important;
-  border-bottom-color: transparent !important;
-  box-shadow: none !important;
+html body [data-pl-ledger-txn-unified-scroll] .pl-ledger-desktop-footer-shell,
+html body [data-pl-ledger-txn-page] .pl-ledger-desktop-footer-shell {
+  border-top-width: 1px !important;
+  border-top-style: solid !important;
 }
-
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.narration-row,
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"],
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"] {
-  border-top: none !important;
+html body [data-theme-table="transactions"] tfoot > tr > td:not(#pl-theme-master-none) {
   border-top-width: 0 !important;
-  border-top-color: transparent !important;
-  box-shadow: none !important;
+  border-bottom-width: 0 !important;
 }
-
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.narration-row > td,
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr.narration-row > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-narration"] > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tbody tr[data-row="opening-balance-linked"] > td:not(#pl-theme-master-none) {
-  border-top: none !important;
-  border-top-width: 0 !important;
-  border-top-color: transparent !important;
-  box-shadow: none !important;
-}
-
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] thead > tr > th:not(#pl-theme-master-none) {
-  border-bottom: 1px solid #000 !important;
-  border-bottom-color: #000 !important;
-}
-
-:is(body[class*="theme-"], html body) [data-theme-table="transactions"] tfoot > tr > td:not(#pl-theme-master-none),
-:is(body[class*="theme-"], html body) [data-pl-ledger-txn-fixed-summary] td:not(#pl-theme-master-none) {
+html body [data-pl-ledger-txn-fixed-summary] td:not(#pl-theme-master-none) {
   border-top: 1px solid #000 !important;
   border-top-color: #000 !important;
 }
@@ -17025,6 +17510,14 @@ html body:not([data-pl-embedded-shell]) [data-pl-reports-page-fit] {
 [data-pl-native-scroll] {
   scrollbar-width: thin;
 }
+/* Reports page ka bada right-side page scroller (`data-pl-report-detail-scroll`):
+   desktop mouse par 2x (16px) native bar. `thin` custom width ko daba deta hai, isliye
+   yahan standard prop auto — left list ke patle (thin) bars waisa hi rehte hain. */
+@media (hover: hover) and (pointer: fine) {
+  [data-pl-report-detail-scroll] {
+    scrollbar-width: auto;
+  }
+}
 @media (hover: none), (pointer: coarse) {
   [data-pl-native-scroll] { scrollbar-width: thin; scrollbar-color: var(--pl-sb-thumb) transparent; }
 }
@@ -17347,4 +17840,28 @@ html body.dark [data-pl-report-emerald-bg],
 html body.dark [data-pl-report-emerald-bg] > [data-pl-report-detail-root] {
   background-color: transparent !important;
   background-image: none !important;
+}
+
+/* Hover: narration uses the same opaque stripe as the transaction row.
+   A translucent hover wash was letting the green page shell show through the narration only. */
+html body.theme-pro [data-theme-table="transactions"]:not([data-pl-txn-table-tone="green"]):not([data-pl-txn-table-tone="blue"]) tbody tr.narration-row[data-txn-stripe="0"][data-pl-txn-hovered]:not([data-pl-txn-selected]):not([data-pl-check-marked]):not([data-pl-statement-checked]):not([data-pl-pending-approval]) > td:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  background: hsl(var(--row-odd-bg)) !important;
+  background-image: none !important;
+}
+html body.theme-pro [data-theme-table="transactions"]:not([data-pl-txn-table-tone="green"]):not([data-pl-txn-table-tone="blue"]) tbody tr.narration-row[data-txn-stripe="1"][data-pl-txn-hovered]:not([data-pl-txn-selected]):not([data-pl-check-marked]):not([data-pl-statement-checked]):not([data-pl-pending-approval]) > td:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  background: hsl(var(--row-even-bg)) !important;
+  background-image: none !important;
+}
+html body [data-theme-table="transactions"][data-pl-txn-table-tone="green"] tbody tr.narration-row[data-txn-stripe="0"][data-pl-txn-hovered]:not([data-pl-txn-selected]):not([data-pl-check-marked]):not([data-pl-statement-checked]):not([data-pl-pending-approval]) > td:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  background-color: rgb(240 252 246) !important;
+  background-image: none !important;
+}
+html body [data-theme-table="transactions"][data-pl-txn-table-tone="green"] tbody tr.narration-row[data-txn-stripe="1"][data-pl-txn-hovered]:not([data-pl-txn-selected]):not([data-pl-check-marked]):not([data-pl-statement-checked]):not([data-pl-pending-approval]) > td:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  background-color: rgb(236 253 245) !important;
+  background-image: none !important;
+}
+html body.theme-pl-light [data-pl-ledger-txn-page] [data-theme-table="transactions"] tbody tr.narration-row[data-pl-txn-hovered]:not([data-pl-txn-selected]):not([data-pl-check-marked]):not([data-pl-statement-checked]):not([data-pl-pending-approval]) > td:not(#pl-theme-master-none):not(#pl-theme-master-none-2) {
+  background-color: #fff !important;
+  background-image: none !important;
+  --pl-seam-c: #fff;
 }

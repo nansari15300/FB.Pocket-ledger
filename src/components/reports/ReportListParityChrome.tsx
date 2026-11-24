@@ -11,6 +11,64 @@ import { collectStaffIdsTouchedByUnapprovedVoucher } from "@/lib/voucherTouchesS
 import { collectItemIdsTouchedByUnapprovedVoucher } from "@/lib/voucherTouchesItemLedger";
 import { collectInterCompanyIdsForPendingApproval } from "@/lib/interCompany/interCompanyVoucherHydrate";
 
+function collectContraAccountIdsTouchedByUnapprovedVoucher(voucher: any, accountIds: Set<string>): Set<string> {
+  const touched = new Set<string>();
+  if (voucher?.type !== "contra" || voucher?.isApproved === true) return touched;
+  for (const value of [
+    voucher.fromAccountId,
+    voucher.toAccountId,
+    voucher.otherChargeAccountId,
+    voucher.accountId,
+    voucher.bankAccountId,
+  ]) {
+    const id = value && typeof value === "object" && "id" in value
+      ? String(value.id ?? "").trim()
+      : String(value ?? "").trim();
+    if (id && accountIds.has(id)) touched.add(id);
+  }
+  return touched;
+}
+
+function collectJournalAccountIdsTouchedByUnapprovedVoucher(voucher: any, accountIds: Set<string>): Set<string> {
+  const touched = new Set<string>();
+  if (voucher?.type !== "journal" || voucher?.subType === "add_salary" || voucher?.isApproved === true) return touched;
+  for (const entry of [...(voucher.entries || []), ...(voucher.lines || [])]) {
+    const value = entry?.accountId;
+    const id = value && typeof value === "object" && "id" in value
+      ? String(value.id ?? "").trim()
+      : String(value ?? "").trim();
+    if (id && accountIds.has(id)) touched.add(id);
+  }
+  return touched;
+}
+
+function collectAddSalaryStaffIdsTouchedByUnapprovedVoucher(voucher: any, staffIds: Set<string>): Set<string> {
+  const touched = new Set<string>();
+  const isAddSalary =
+    (voucher?.type === "journal" && voucher?.subType === "add_salary") || voucher?.type === "add_salary";
+  if (!isAddSalary || voucher?.isApproved === true) return touched;
+  for (const entry of [...(voucher.entries || []), ...(voucher.lines || [])]) {
+    const value = entry?.accountId;
+    const id = value && typeof value === "object" && "id" in value
+      ? String(value.id ?? "").trim()
+      : String(value ?? "").trim();
+    if (id && staffIds.has(id) && Number(entry?.credit || 0) > 0) touched.add(id);
+  }
+  const staffId = voucher?.staffId != null && voucher?.staffId !== "" ? String(voucher.staffId).trim() : "";
+  if (staffId && staffIds.has(staffId)) touched.add(staffId);
+  return touched;
+}
+
+function collectNoteEntityKeysTouchedByUnapprovedVoucher(voucher: any, entityKeys: Set<string>): Set<string> {
+  const touched = new Set<string>();
+  if (voucher?.type !== "note" || voucher?.isApproved === true) return touched;
+  const entityId = String(voucher?.entityId ?? "").trim();
+  const context = String(voucher?.context ?? "").trim();
+  const key = `${context}:${entityId}`;
+  if (entityId && context && entityKeys.has(key)) touched.add(key);
+  return touched;
+}
+
 /** Main master list page jaisa: approve-on-list setting + permission. */
 export function useReportShowApproveOnList(): boolean {
   const { effectiveNotificationSettings } = useCompany();
@@ -162,7 +220,23 @@ export function useReportsMenuPendingApproval() {
     const sets: Array<[string, Set<string>, (vv: any, s: Set<string>) => Set<string>]> = [
       ["party-statement", new Set((processedParties || []).map((e: any) => e.id)), collectPartyIdsTouchedByUnapprovedVoucher],
       ["bank-statement", new Set((processedAccounts || []).map((e: any) => e.id)), collectBankAccountIdsTouchedByUnapprovedVoucher],
+      ["contra", new Set((processedAccounts || []).map((e: any) => e.id)), collectContraAccountIdsTouchedByUnapprovedVoucher],
+      ["journal", new Set([
+        ...(processedAccounts || []).map((e: any) => e.id),
+        ...(processedParties || []).map((e: any) => e.id),
+        ...(processedStaff || []).map((e: any) => e.id),
+        ...(processedTaxes || []).map((e: any) => e.id),
+        ...(processedExpenseAccounts || []).map((e: any) => e.id),
+      ]), collectJournalAccountIdsTouchedByUnapprovedVoucher],
+      ["notes", new Set([
+        ...(processedParties || []).map((e: any) => `Party:${e.id}`),
+        ...(processedAccounts || []).map((e: any) => `Bank/Cash:${e.id}`),
+        ...(processedStaff || []).map((e: any) => `Staff:${e.id}`),
+        ...(processedTaxes || []).map((e: any) => `Tax:${e.id}`),
+        ...(processedItems || []).map((e: any) => `Items:${e.id}`),
+      ]), collectNoteEntityKeysTouchedByUnapprovedVoucher],
       ["staff-statement", new Set((processedStaff || []).map((e: any) => e.id)), collectStaffIdsTouchedByUnapprovedVoucher],
+      ["add-salary", new Set((processedStaff || []).map((e: any) => e.id)), collectAddSalaryStaffIdsTouchedByUnapprovedVoucher],
       ["tax-statement", new Set((processedTaxes || []).map((e: any) => e.id)), collectTaxIdsTouchedByUnapprovedVoucherForReport],
       ["expense-statement", new Set((processedExpenseAccounts || []).map((e: any) => e.id)), collectExpenseIdsTouchedByUnapprovedVoucherForReport],
       ["item-statement", new Set((processedItems || []).map((e: any) => e.id)), collectItemIdsTouchedByUnapprovedVoucher],

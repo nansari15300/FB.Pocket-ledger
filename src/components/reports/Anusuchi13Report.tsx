@@ -9,8 +9,10 @@ import { useCompany } from "@/hooks/useCompany";
 import type { Party } from "@/components/party/types";
 import { PartyDetails } from "@/components/party/PartyDetails";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Search } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, masterDetailBalanceToneClass } from "@/lib/utils";
+import { useFyLoadOnDateRangeChange } from "@/hooks/useFyLoadOnDateRangeChange";
 import type { DateRange } from "@/components/ui/ad-calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -22,10 +24,13 @@ import { masterListShellCn, masterListRowUnselectedCn } from "@/lib/masterListCh
 import { MasterListRow } from "@/components/ui/master-list-row";
 import { useReportPage } from "@/contexts/ReportPageContext";
 import { Anusuchi13ConfirmationRibbon } from "@/components/reports/Anusuchi13ConfirmationRibbon";
+import { Anusuchi13ListAmountInfo } from "@/components/reports/Anusuchi13ListAmountInfo";
 import {
   type Anusuchi13ConfirmationFilter,
+  type Anusuchi13KindFilter,
   countAnusuchi13ConfirmationFilter,
-  computePartyFyTransactionTotal,
+  computePartyFyListSignedAmount,
+  computePartyFyOpeningBalance,
   filterVouchersInFy,
   getAnusuchi13FyKey,
   getFiscalRangeForFyKey,
@@ -37,6 +42,8 @@ import {
   readAnusuchi13DefaultThreshold,
   parseAnusuchi13ThresholdInput,
   formatAnusuchi13ThresholdLabel,
+  readAnusuchi13KindFilter,
+  voucherMatchesAnusuchi13KindFilter,
 } from "@/lib/reports/anusuchi13Confirmation";
 import {
   readAnusuchi13ReportMemory,
@@ -49,7 +56,6 @@ import { masterListOrderKey, useMasterListDisplayRows, useMasterListRowMotion } 
 import usePermissions from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
 import { persistCompanyRootSettingsPatch } from "@/lib/persistCompanyRootSettings";
-import { chromeProPillCn } from "@/lib/chromePillButton";
 import {
   Dialog,
   DialogContent,
@@ -136,7 +142,7 @@ export function Anusuchi13Report() {
   const [selectedPartyRaw, setSelectedParty] = useState<Party | null>(null);
   const selectedParty = useLiveMasterSelection<Party>(selectedPartyRaw, setSelectedParty, processedParties);
   const [searchTerm, setSearchTerm] = useState("");
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [userDateRange, setUserDateRange] = useState<DateRange | undefined>(undefined);
   const [confirmationRunning, setConfirmationRunning] = useState(
     Boolean(initialMemory.confirmationRunning)
   );
@@ -145,6 +151,9 @@ export function Anusuchi13Report() {
   );
   const [selectedFyKey, setSelectedFyKey] = useState(
     initialMemory.selectedFyKey ?? runningFyKey
+  );
+  const [kindFilter, setKindFilter] = useState<Anusuchi13KindFilter>(() =>
+    readAnusuchi13KindFilter(initialMemory)
   );
   const hasAutoSelected = useRef(false);
   const { widthPx: accountListWidthPx, beginResize: beginAccountListResize } = useResizablePixelWidth({
@@ -168,10 +177,34 @@ export function Anusuchi13Report() {
     [company?.country, fyKey]
   );
 
+  const fyDateRange = useMemo<DateRange>(
+    () => ({ from: fyRange.start, to: fyRange.end }),
+    [fyRange.start, fyRange.end]
+  );
+  const dateRange = userDateRange ?? fyDateRange;
+  const handleDateRangeChange = useCallback((next: DateRange | undefined) => {
+    if (!next?.from && !next?.to) {
+      setUserDateRange(undefined);
+      return;
+    }
+    setUserDateRange(next);
+  }, []);
+  useFyLoadOnDateRangeChange(fyDateRange);
+
   const fyVouchers = useMemo(
     () => filterVouchersInFy(allVouchers, fyRange.start, fyRange.end),
     [allVouchers, fyRange.start, fyRange.end]
   );
+
+  const fyOpeningByPartyId = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const party of processedParties) {
+      if ((party as Party & { isSystemAccount?: boolean }).isSystemAccount) continue;
+      if (!party?.id) continue;
+      map[party.id] = computePartyFyOpeningBalance(party, allVouchers, fyRange.start);
+    }
+    return map;
+  }, [processedParties, allVouchers, fyRange.start]);
 
   const partiesWithOneLacOrAbove = useMemo(
     () =>
@@ -180,9 +213,10 @@ export function Anusuchi13Report() {
         allVouchers,
         fyRange.start,
         fyRange.end,
-        activeThreshold
+        activeThreshold,
+        kindFilter
       ),
-    [processedParties, allVouchers, fyRange.start, fyRange.end, activeThreshold]
+    [processedParties, allVouchers, fyRange.start, fyRange.end, activeThreshold, kindFilter]
   );
 
   const confirmationCounts = useMemo(
@@ -216,10 +250,11 @@ export function Anusuchi13Report() {
     if (!selectedParty) return [];
     return allVouchers.filter(
       (v) =>
-        v.partyId === selectedParty.id ||
-        (Array.isArray(v.entries) && v.entries.some((e: any) => e.accountId === selectedParty.id))
+        (v.partyId === selectedParty.id ||
+          (Array.isArray(v.entries) && v.entries.some((e: any) => e.accountId === selectedParty.id))) &&
+        voucherMatchesAnusuchi13KindFilter(v, kindFilter)
     );
-  }, [allVouchers, selectedParty]);
+  }, [allVouchers, selectedParty, kindFilter]);
 
   const handleConfirmationRunningChange = useCallback((next: boolean) => {
     setConfirmationRunning(next);
@@ -233,7 +268,20 @@ export function Anusuchi13Report() {
 
   const handleSelectedFyKeyChange = useCallback((next: string) => {
     setSelectedFyKey(next);
+    setUserDateRange(undefined);
     writeAnusuchi13ReportMemory({ selectedFyKey: next });
+  }, []);
+
+  const handleKindFilterChange = useCallback((key: keyof Anusuchi13KindFilter, next: boolean) => {
+    setKindFilter((prev) => {
+      const updated = { ...prev, [key]: next };
+      writeAnusuchi13ReportMemory({
+        includeSale: updated.sale,
+        includePurchase: updated.purchase,
+        includePayment: updated.payment,
+      });
+      return updated;
+    });
   }, []);
 
   const fyKeyLabel = useMemo(
@@ -324,7 +372,12 @@ export function Anusuchi13Report() {
     <ul className="pl-master-list-ul">
       <AnimatePresence mode={animatePresenceMode}>
         {displayParties.map((party) => {
-          const total = computePartyFyTransactionTotal(party, fyVouchers);
+          const listSigned = computePartyFyListSignedAmount(
+            party,
+            fyVouchers,
+            kindFilter,
+            fyOpeningByPartyId[party.id] ?? 0
+          );
           const isSelected = selectedParty?.id === party.id;
           return (
             <motion.li key={party.id} layoutDependency={displayOrderKey} {...rowMotionProps}>
@@ -339,8 +392,13 @@ export function Anusuchi13Report() {
                       <span className="block min-w-0 truncate text-left text-sm font-medium">
                         {party.name}
                       </span>
-                      <span className="pl-master-list-row-amount ml-2 shrink-0 text-xs tabular-nums text-muted-foreground">
-                        {formatCurrency(total)}
+                      <span
+                        className={cn(
+                          "pl-master-list-row-amount ml-2 shrink-0 text-xs tabular-nums",
+                          masterDetailBalanceToneClass(listSigned)
+                        )}
+                      >
+                        {formatCurrency(listSigned, { showDrCr: true })}
                       </span>
                     </div>
                   </div>
@@ -361,10 +419,10 @@ export function Anusuchi13Report() {
         aria-label="Minimum FY transaction amount"
         title="Show parties with FY transaction at or above this amount"
         placeholder={String(companyDefaultThreshold)}
+        data-pl-anusuchi-white-field=""
         className={cn(
-          // Same blue as app pills (chromeProPillCn) + pill shape; 1px border via pl-chrome-btn-drop.
-          chromeProPillCn,
-          "h-7 w-24 rounded-full px-3 text-xs tabular-nums placeholder:text-blue-400 focus-visible:border-blue-500"
+          "h-7 w-24 rounded-full border border-blue-300 bg-white px-3 text-xs tabular-nums text-blue-950",
+          "placeholder:text-blue-400 focus-visible:border-blue-400"
         )}
         value={thresholdInput}
         onChange={(e) => {
@@ -430,6 +488,36 @@ export function Anusuchi13Report() {
     </Dialog>
   );
 
+  const kindFilterRow = (
+    <div className="grid w-full min-w-0 grid-cols-3 gap-1.5">
+      {(
+        [
+          { key: "sale" as const, label: "Sale" },
+          { key: "purchase" as const, label: "Pur" },
+          { key: "payment" as const, label: "Payment" },
+        ] as const
+      ).map(({ key, label }) => (
+        <label
+          key={key}
+          className={cn(
+            "flex h-7 min-h-7 w-full min-w-0 cursor-pointer items-center justify-center gap-1 rounded-full border px-1.5 text-xs font-medium",
+            kindFilter[key]
+              ? "border-blue-300 bg-blue-100/80 text-blue-950"
+              : "border-blue-200 bg-white text-blue-800/80"
+          )}
+        >
+          <span className="whitespace-nowrap">{label}</span>
+          <Checkbox
+            checked={kindFilter[key]}
+            onCheckedChange={(v) => handleKindFilterChange(key, v === true)}
+            aria-label={label}
+            className="h-3.5 w-3.5 shrink-0 rounded-sm border border-blue-800/80 bg-white shadow-none data-[state=checked]:border-blue-800 data-[state=checked]:bg-blue-800 data-[state=checked]:text-white"
+          />
+        </label>
+      ))}
+    </div>
+  );
+
   const listHeader = (
     <>
       {confirmDefaultDialog}
@@ -447,12 +535,16 @@ export function Anusuchi13Report() {
               <span className="text-xs text-muted-foreground">Min FY transaction</span>
               {thresholdControls}
             </div>
+            {kindFilterRow}
           </>
         ) : (
-          <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1">
-            <ReportRegisterListHeading className="flex-1">Anusuchi 13</ReportRegisterListHeading>
-            {thresholdControls}
-          </div>
+          <>
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1">
+              <ReportRegisterListHeading className="flex-1">Anusuchi 13</ReportRegisterListHeading>
+              {thresholdControls}
+            </div>
+            {kindFilterRow}
+          </>
         )}
         <Card className="p-3 text-center">
           <p className="text-xs text-muted-foreground">Parties with FY transaction ≥ {thresholdLabel}</p>
@@ -465,14 +557,19 @@ export function Anusuchi13Report() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search parties..."
-            className="pl-9"
+            data-pl-anusuchi-white-field=""
+            data-pl-anusuchi-party-search=""
+            className="h-9 min-h-9 max-h-9 border border-blue-300 bg-[#ffffff] py-0 pl-9 focus-visible:border-blue-400"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
       </div>
       <div className="px-3 pt-2 pb-1 border-b flex-shrink-0">
-        <h3 className="text-sm font-semibold">Parties ({filteredParties.length})</h3>
+        <div className="flex min-w-0 items-center justify-between gap-1.5">
+          <h3 className="text-sm font-semibold">Parties ({filteredParties.length})</h3>
+          <Anusuchi13ListAmountInfo />
+        </div>
       </div>
     </>
   );
@@ -509,13 +606,14 @@ export function Anusuchi13Report() {
               onPartyUpdated={handlePartyUpdated}
               onPartyDeleted={() => setSelectedParty(null)}
               dateRange={dateRange}
-              onDateRangeChange={setDateRange}
+              onDateRangeChange={handleDateRangeChange}
               userNames={vouchersUserNames}
               journalAccountNames={journalAccountNames}
               context="report"
               confirmationFyKey={fyKey}
               confirmationFyRange={fyRange}
               confirmationAllVouchers={allVouchers}
+              anusuchiKindFilter={kindFilter}
             />
           </div>
         </div>
@@ -573,13 +671,14 @@ export function Anusuchi13Report() {
               onPartyUpdated={handlePartyUpdated}
               onPartyDeleted={() => setSelectedParty(null)}
               dateRange={dateRange}
-              onDateRangeChange={setDateRange}
+              onDateRangeChange={handleDateRangeChange}
               userNames={vouchersUserNames}
               journalAccountNames={journalAccountNames}
               context="report"
               confirmationFyKey={fyKey}
               confirmationFyRange={fyRange}
               confirmationAllVouchers={allVouchers}
+              anusuchiKindFilter={kindFilter}
             />
           ) : (
             <div className="flex flex-1 items-center justify-center p-8">

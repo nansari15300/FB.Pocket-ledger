@@ -32,7 +32,63 @@ export type Anusuchi13ReportMemory = {
   confirmationRunning?: boolean;
   confirmationFilter?: Anusuchi13ConfirmationFilter;
   selectedFyKey?: string;
+  includeSale?: boolean;
+  includePurchase?: boolean;
+  includePayment?: boolean;
 };
+
+/** Sale / Pur / Payment include flags — default all on. */
+export type Anusuchi13KindFilter = {
+  sale: boolean;
+  purchase: boolean;
+  payment: boolean;
+};
+
+export const ANUSUCHI13_KIND_FILTER_ALL: Anusuchi13KindFilter = {
+  sale: true,
+  purchase: true,
+  payment: true,
+};
+
+export type Anusuchi13VoucherKind = "sale" | "purchase" | "payment";
+
+/** Sale / sale_service → sale; purchase / purchase_service → purchase; baaki payment (sale-pur chhod ke). */
+export function anusuchi13VoucherKind(type: unknown): Anusuchi13VoucherKind | null {
+  const t = typeof type === "string" ? type : "";
+  if (!t) return null;
+  if (t === "sale" || t === "sale_service") return "sale";
+  if (t === "purchase" || t === "purchase_service") return "purchase";
+  return "payment";
+}
+
+export function voucherMatchesAnusuchi13KindFilter(
+  voucher: { type?: unknown } | null | undefined,
+  filter: Anusuchi13KindFilter
+): boolean {
+  const kind = anusuchi13VoucherKind(voucher?.type);
+  if (!kind) return false;
+  return Boolean(filter[kind]);
+}
+
+/** Details table: hide unticked Sale / Pur / Payment; keep opening / unknown rows. */
+export function ledgerRowMatchesAnusuchi13KindFilter(
+  voucher: { type?: unknown } | null | undefined,
+  filter: Anusuchi13KindFilter
+): boolean {
+  const kind = anusuchi13VoucherKind(voucher?.type);
+  if (!kind) return true;
+  return Boolean(filter[kind]);
+}
+
+export function readAnusuchi13KindFilter(
+  memory: Pick<Anusuchi13ReportMemory, "includeSale" | "includePurchase" | "includePayment"> | null | undefined
+): Anusuchi13KindFilter {
+  return {
+    sale: memory?.includeSale !== false,
+    purchase: memory?.includePurchase !== false,
+    payment: memory?.includePayment !== false,
+  };
+}
 
 function parseVoucherDate(value: unknown): Date | null {
   if (!value) return null;
@@ -253,16 +309,105 @@ export function filterVouchersInFy(vouchers: any[], fyStart: Date, fyEnd: Date):
   });
 }
 
-export function computePartyFyTransactionTotal(
+function partyVoucherSideAmount(party: Party, voucher: any): number {
+  const { debit, credit } = getTransactionAmounts(voucher, "party", party);
+  const d = Math.abs(debit || 0);
+  const c = Math.abs(credit || 0);
+  // Ek voucher ki ek side — Dr+Cr dono add nahi (Anusuchi 13 both-side sum nahi).
+  return Math.max(d, c);
+}
+
+export function computePartyFyKindTotals(
   party: Party,
   vouchers: any[]
-): number {
-  let total = 0;
+): Record<Anusuchi13VoucherKind, number> {
+  const totals: Record<Anusuchi13VoucherKind, number> = { sale: 0, purchase: 0, payment: 0 };
   for (const t of vouchers) {
-    const { debit, credit } = getTransactionAmounts(t, "party", party);
-    total += (debit || 0) + (credit || 0);
+    const kind = anusuchi13VoucherKind(t?.type);
+    if (!kind) continue;
+    totals[kind] += partyVoucherSideAmount(party, t);
   }
-  return total;
+  return totals;
+}
+
+/**
+ * Nepal Anusuchi 13: Sale / Pur / Payment alag. Eligibility = included kinds ka max
+ * (Dr total + Cr total nahi).
+ */
+export function computePartyFyTransactionTotal(
+  party: Party,
+  vouchers: any[],
+  kindFilter: Anusuchi13KindFilter = ANUSUCHI13_KIND_FILTER_ALL
+): number {
+  const totals = computePartyFyKindTotals(party, vouchers);
+  const parts: number[] = [];
+  if (kindFilter.sale) parts.push(totals.sale);
+  if (kindFilter.purchase) parts.push(totals.purchase);
+  if (kindFilter.payment) parts.push(totals.payment);
+  return parts.length ? Math.max(...parts) : 0;
+}
+
+function partyTouchesVoucher(party: Party, voucher: any): boolean {
+  const id = String(party?.id ?? "").trim();
+  if (!id || !voucher) return false;
+  if (String(voucher.partyId ?? "").trim() === id) return true;
+  return Array.isArray(voucher.entries) && voucher.entries.some((e: any) => String(e?.accountId ?? "").trim() === id);
+}
+
+/** Selected FY start pe party ka books opening (prior txns + master OB). Positive = Dr, negative = Cr. */
+export function computePartyFyOpeningBalance(
+  party: Party,
+  vouchers: any[],
+  fyStart: Date
+): number {
+  const start = new Date(fyStart);
+  start.setHours(0, 0, 0, 0);
+  const cutoff = start.getTime();
+  let running = Number(party.openingBalance) || 0;
+  for (const t of vouchers) {
+    if (!partyTouchesVoucher(party, t)) continue;
+    const d = parseVoucherDate(t?.date);
+    if (!d || d.getTime() >= cutoff) continue;
+    const amt = getTransactionAmounts(t, "party", party);
+    running += (Number(amt.debit) || 0) - (Number(amt.credit) || 0);
+  }
+  return running;
+}
+
+/** Included FY vouchers ka party-side Dr total vs Cr total. `fyOpeningSigned` list Total me opening row. */
+export function computePartyFyDrCrTotals(
+  party: Party,
+  vouchers: any[],
+  kindFilter: Anusuchi13KindFilter = ANUSUCHI13_KIND_FILTER_ALL,
+  fyOpeningSigned = 0
+): { debit: number; credit: number } {
+  let debit = 0;
+  let credit = 0;
+  for (const t of vouchers) {
+    if (!voucherMatchesAnusuchi13KindFilter(t, kindFilter)) continue;
+    const amt = getTransactionAmounts(t, "party", party);
+    debit += Math.abs(Number(amt.debit) || 0);
+    credit += Math.abs(Number(amt.credit) || 0);
+  }
+  const opening = Number(fyOpeningSigned) || 0;
+  if (opening > 0) debit += opening;
+  else if (opening < 0) credit += Math.abs(opening);
+  return { debit, credit };
+}
+
+/**
+ * List amount: Dr/Cr me se jo side badi ho (FY opening included). Positive = Dr, negative = Cr.
+ * Both-side sum nahi.
+ */
+export function computePartyFyListSignedAmount(
+  party: Party,
+  vouchers: any[],
+  kindFilter: Anusuchi13KindFilter = ANUSUCHI13_KIND_FILTER_ALL,
+  fyOpeningSigned = 0
+): number {
+  const { debit, credit } = computePartyFyDrCrTotals(party, vouchers, kindFilter, fyOpeningSigned);
+  if (credit > debit) return -credit;
+  return debit;
 }
 
 /** Company root key — Anusuchi 13 list default minimum FY transaction (all users of the company). */
@@ -299,14 +444,15 @@ export function listAnusuchi13EligibleParties(
   vouchers: any[],
   fyStart: Date,
   fyEnd: Date,
-  minAmount: number = ANUSUCHI13_ONE_LAC
+  minAmount: number = ANUSUCHI13_ONE_LAC,
+  kindFilter: Anusuchi13KindFilter = ANUSUCHI13_KIND_FILTER_ALL
 ): Party[] {
   const fyVouchers = filterVouchersInFy(vouchers, fyStart, fyEnd);
   return parties
     .filter((p) => !(p as Party & { isSystemAccount?: boolean }).isSystemAccount)
     .map((party) => ({
       party,
-      total: computePartyFyTransactionTotal(party, fyVouchers),
+      total: computePartyFyTransactionTotal(party, fyVouchers, kindFilter),
     }))
     .filter(({ total }) => total >= minAmount)
     .sort((a, b) => b.total - a.total)

@@ -6,7 +6,7 @@ import * as React from "react";
 import type { Account, AccountGroup } from "@/components/bank-cash/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Edit, Printer, Users, Calendar as CalendarIcon, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, FilePlus, XCircle, MoreVertical, ArrowLeft, Search, ChevronDown, Columns3 } from "lucide-react";
+import { Edit, Printer, Users, Calendar as CalendarIcon, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, FilePlus, XCircle, ArrowLeft, Search, ChevronDown, Columns3 } from "lucide-react";
 import { TransactionsTable, type TransactionColumnKey } from "../vouchers/TransactionsTable";
 import { StatementCheckModeFooterControls } from "@/components/vouchers/StatementCheckModeFooterControls";
 import { useStatementCheckMode } from "@/hooks/useStatementCheckMode";
@@ -39,6 +39,7 @@ import {
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
   LEDGER_HEADER_PILL_ROW_CN,
 } from "@/lib/ledgerHeaderChrome";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 import { ScrollArea } from "../ui/scroll-area";
 import { useCompany } from "@/hooks/useCompany";
 import { EditAccountGroupDialog } from "@/components/bank-cash/EditAccountGroupDialog";
@@ -285,14 +286,14 @@ export function AccountGroupDetails({
                     <div className="border rounded-md p-2 whitespace-nowrap"><span className="text-muted-foreground">Balance: </span><span className={cn("font-semibold", filteredBalance >= 0 ? "text-green-600" : "text-red-600")}>{formatCurrency(filteredBalance, {showDrCr: true})}</span></div>
                   </div>
                 </div>
-                <div className={LEDGER_HEADER_PILL_ROW_CN}>
+                <LedgerHeaderPillRow>
                   <Button variant="outline" size="sm" onClick={() => handleOpenNoteDialog()} className={LEDGER_HEADER_PILL_CN}>
                     <FilePlus className={cn("mr-2", LEDGER_HEADER_PILL_ICON_SIZE_CN)} /> Add Note
                   </Button>
                   <Button variant="outline" size="icon" onClick={handlePrint} className={LEDGER_HEADER_PILL_ICON_CN}>
                     <Printer className={LEDGER_HEADER_PILL_ICON_SIZE_CN} />
                   </Button>
-                </div>
+                </LedgerHeaderPillRow>
               </div>
               {/* Row 2: date/filter + voucher count — same gap */}
               <div className={LEDGER_HEADER_OUTER_ROW_CN}>

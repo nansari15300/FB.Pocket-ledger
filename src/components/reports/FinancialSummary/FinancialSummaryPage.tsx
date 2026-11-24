@@ -91,6 +91,7 @@ function FinancialSummaryPageBody({ country }: FinancialSummaryPageBodyProps) {
           processedItems,
           period,
           comparisonPeriod,
+          dateSystem,
         }),
         error: null as string | null,
       };
@@ -113,6 +114,7 @@ function FinancialSummaryPageBody({ country }: FinancialSummaryPageBodyProps) {
     processedStaff,
     processedTaxes,
     vouchers,
+    dateSystem,
   ]);
 
   const summary = summaryResult.summary;

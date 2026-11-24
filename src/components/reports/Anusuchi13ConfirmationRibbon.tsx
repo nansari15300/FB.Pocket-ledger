@@ -81,18 +81,21 @@ export function Anusuchi13ConfirmationRibbon({
         <Checkbox
           checked={confirmationRunning}
           onCheckedChange={(v) => onConfirmationRunningChange(v === true)}
-          aria-label="Confirmation running"
+          aria-label={confirmationRunning ? "Confirmation running" : "Start Confirmation"}
         />
         <span className="whitespace-nowrap text-sm font-semibold text-blue-950">
-          Confirmation running
+          {confirmationRunning ? "Confirmation running" : "Start Confirmation"}
         </span>
       </label>
 
       <Select value={selectedFyKey} onValueChange={onSelectedFyKeyChange}>
         <SelectTrigger
+          data-pl-toolbar-field=""
+          data-pl-anusuchi-fy-select=""
           className={cn(
             LEDGER_HEADER_PILL_CN,
-            "h-7 min-h-7 w-fit max-w-none shrink-0 border-blue-300 bg-white/80 px-2 text-xs text-blue-950",
+            "h-7 min-h-7 w-fit max-w-none shrink-0 border border-blue-300 bg-white px-2 text-xs text-blue-950",
+            "focus:border-blue-400 focus-visible:border-blue-400",
             "[&>span]:max-w-none [&>span]:truncate-none [&>span]:whitespace-nowrap"
           )}
           style={{ width: `${fyTriggerWidthCh}ch` }}

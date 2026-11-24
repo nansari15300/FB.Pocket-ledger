@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Pencil, History, CheckCircle, CheckCheck, CheckSquare, Printer, MousePointerClick, RefreshCw, Loader2, CircleOff, Trash2 } from "lucide-react";
 import { StatementCheckedRowMessageLabel } from "@/components/vouchers/StatementCheckedRowMessageLabel";
+import { TxnRowMenuGrip } from "@/components/vouchers/TxnRowMenuGrip";
 import { statementCheckedMessageColumn } from "@/lib/statementCheckRowMessage";
 import { VoucherAttachmentFileIndicator } from "@/components/vouchers/VoucherAttachmentFileIndicator";
 import {
@@ -84,6 +85,8 @@ import {
   LEDGER_BOTH_DATE_BS_AD_GAP_PX,
   LEDGER_BOTH_DATE_BS_CELL_PAD_CN,
   LEDGER_ENTITY_DATE_BS_COL_PX,
+  LEDGER_ENTITY_DATE_AD_COL_PX,
+  LEDGER_HEADER_DATE_AD_HUG_PX,
   LEDGER_TDS_DATE_TO_TYPE_GAP_PX,
   LEDGER_TDS_DATE_COL_PX,
   LEDGER_TDS_LAST_DATE_CELL_PAD_CN,
@@ -1588,6 +1591,8 @@ export const TransactionRow = React.memo(
     getDisplayValue,
     isTaxContext,
     isBalanceMasked,
+    hideDebitColumn = false,
+    hideCreditColumn = false,
     hideBalanceColumn,
     hideStatusColumn,
     visibleColumns,
@@ -2107,73 +2112,79 @@ export const TransactionRow = React.memo(
             const bsDateMinPx =
               LEDGER_ENTITY_DATE_BS_COL_PX +
               (dateSystem === "Both" ? LEDGER_BOTH_DATE_BS_AD_GAP_PX : 0);
-            const tdsLastDateMinPx = hasTdsLedgerCols ? LEDGER_TDS_DATE_COL_PX : 112;
+            const lastDateMinPx = hasTdsLedgerCols
+              ? LEDGER_TDS_DATE_COL_PX
+              : dateSystem === "BS"
+                ? LEDGER_HEADER_DATE_AD_HUG_PX
+                : LEDGER_ENTITY_DATE_AD_COL_PX;
             const lastDatePad =
               ensureMinGaps && hasTdsLedgerCols
                 ? LEDGER_TDS_LAST_DATE_CELL_PAD_CN
                 : ensureMinGaps
-                  ? "min-w-[112px] px-[5px]"
+                  ? LEDGER_TXN_COL_MAX_GAP_PAD_CN
                   : undefined;
-            const tdsDateCellStyle =
-              ensureMinGaps && hasTdsLedgerCols
-                ? {
-                    minWidth: `${tdsLastDateMinPx}px`,
-                    maxWidth: `${tdsLastDateMinPx}px`,
-                  }
-                : undefined;
+            const tdsDateCellStyle = ensureMinGaps
+              ? {
+                  minWidth: `${lastDateMinPx}px`,
+                }
+              : undefined;
             return dateSystem === "Both" ? (
               <>
                 <TableCell
+                  data-pl-ledger-txn-date-bs-cell=""
                   className={cn(
-                    ensureMinGaps ? LEDGER_BOTH_DATE_BS_CELL_PAD_CN : undefined,
-                    hasTdsLedgerCols && "overflow-x-clip"
+                    "align-top",
+                    ensureMinGaps ? LEDGER_BOTH_DATE_BS_CELL_PAD_CN : undefined
                   )}
                   style={ensureMinGaps ? { minWidth: `${bsDateMinPx}px` } : undefined}
                 >
-                  {d ? hlForColumn("date_bs")(formatDateBS(d)) : ""}
+                  <span data-pl-txn-date-bs-text="" className="block overflow-hidden whitespace-nowrap">
+                    {d ? hlForColumn("date_bs")(formatDateBS(d)) : ""}
+                  </span>
+                  {dateSubline ? (
+                    <span data-pl-txn-date-subline="" className="block whitespace-nowrap text-left text-[10px] leading-tight text-foreground/70">
+                      {dateSubline}
+                    </span>
+                  ) : null}
                 </TableCell>
                 <TableCell
                   data-pl-ledger-txn-last-date-cell=""
                   className={cn(
-                    typeof lastDatePad === "string" ? lastDatePad : undefined,
-                    "whitespace-nowrap",
-                    (hasTdsLedgerCols || ensureMinGaps) && "overflow-x-clip"
+                    "align-top",
+                    typeof lastDatePad === "string" ? lastDatePad : undefined
                   )}
                   style={tdsDateCellStyle}
                 >
-                  {d ? hlForColumn("date_ad")(formatDate(d)) : ""}
-                  {entryClock ? (
-                    <span className="ml-1 inline-block text-[10px] text-foreground/70">
-                      {hlForColumn("date_ad")(entryClock)}
-                    </span>
-                  ) : null}
-                  {dateSubline ? (
-                    <span data-pl-txn-date-subline="" className="block text-[10px] leading-tight text-foreground/70">
-                      {dateSubline}
-                    </span>
-                  ) : null}
+                  <span data-pl-txn-date-time="" className="inline-flex w-max max-w-full items-baseline overflow-hidden whitespace-nowrap">
+                    {d ? hlForColumn("date_ad")(formatDate(d)) : ""}
+                    {entryClock ? (
+                      <span className="ml-1 inline-block text-[10px] text-foreground/70">
+                        {hlForColumn("date_ad")(entryClock)}
+                      </span>
+                    ) : null}
+                  </span>
                 </TableCell>
               </>
             ) : (
               <TableCell
                 data-pl-ledger-txn-last-date-cell=""
                 className={cn(
-                  typeof lastDatePad === "string" ? lastDatePad : undefined,
-                  "whitespace-nowrap",
-                  (hasTdsLedgerCols || ensureMinGaps) && "overflow-x-clip"
+                  typeof lastDatePad === "string" ? lastDatePad : undefined
                 )}
                 style={tdsDateCellStyle}
               >
-                {d ? hlForColumn("date")(dateSystem === "AD" ? formatDate(d) : formatDateBS(d)) : ""}
-                {entryClock ? (
-                  <span className="ml-1 inline-block text-[10px] text-foreground/70">
-                    {hlForColumn("date")(entryClock)}
-                  </span>
-                ) : null}
+                <span data-pl-txn-date-time="" className="inline-flex w-max max-w-full items-baseline overflow-hidden whitespace-nowrap">
+                  {d ? hlForColumn("date")(dateSystem === "AD" ? formatDate(d) : formatDateBS(d)) : ""}
+                  {entryClock ? (
+                    <span className="ml-1 inline-block text-[10px] text-foreground/70">
+                      {hlForColumn("date")(entryClock)}
+                    </span>
+                  ) : null}
+                </span>
                 {dateSubline ? (
-                  <span data-pl-txn-date-subline="" className="block text-[10px] leading-tight text-foreground/70">
-                    {dateSubline}
-                  </span>
+                    <span data-pl-txn-date-subline="" className="block whitespace-nowrap text-[10px] leading-tight text-foreground/70">
+                      {dateSubline}
+                    </span>
                 ) : null}
               </TableCell>
             );
@@ -2206,17 +2217,32 @@ export const TransactionRow = React.memo(
             }
           >
             {isFyOpeningRow && fyOpeningPillSplit ? (
-              <FyOpeningPillFormatPill>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    voucherTypePillClassName(fyOpeningDrCrSide ?? "dr"),
-                    "w-fit max-w-none shrink-0 whitespace-nowrap"
-                  )}
-                >
-                  {hlForColumn("type")(fyOpeningPillSplit.typePill)}
-                </Badge>
-              </FyOpeningPillFormatPill>
+              <div data-pl-fy-opening-pills="" className="flex w-max flex-nowrap items-center gap-[10px]">
+                <FyOpeningPillFormatPill>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      voucherTypePillClassName(fyOpeningDrCrSide ?? "dr"),
+                      "w-fit max-w-none shrink-0 whitespace-nowrap"
+                    )}
+                  >
+                    {hlForColumn("type")(fyOpeningPillSplit.typePill)}
+                  </Badge>
+                </FyOpeningPillFormatPill>
+                {fyOpeningPillSplit.voucherPill ? (
+                  <FyOpeningPillFormatPill>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        voucherTypePillClassName(fyOpeningDrCrSide ?? "dr"),
+                        "w-fit max-w-none shrink-0 whitespace-nowrap"
+                      )}
+                    >
+                      {hlForColumn("voucherNumber")(fyOpeningPillSplit.voucherPill)}
+                    </Badge>
+                  </FyOpeningPillFormatPill>
+                ) : null}
+              </div>
             ) : (transaction as { _ledgerTdsRow?: boolean; type?: string })[LEDGER_TDS_ROW_FLAG] ||
               (transaction as { type?: string }).type === "tds" ? (
               <Badge
@@ -2264,19 +2290,7 @@ export const TransactionRow = React.memo(
             }
           >
             <span className="inline-flex max-w-full flex-wrap items-center gap-1">
-              {fyOpeningPillSplit?.voucherPill ? (
-                <FyOpeningPillFormatPill>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      voucherTypePillClassName(fyOpeningDrCrSide ?? "dr"),
-                      "max-w-full whitespace-nowrap"
-                    )}
-                  >
-                    {hlForColumn("voucherNumber")(fyOpeningPillSplit.voucherPill)}
-                  </Badge>
-                </FyOpeningPillFormatPill>
-              ) : (
+              {fyOpeningPillSplit?.voucherPill ? null : (
               <span className="whitespace-nowrap">
                 {hlForColumn("voucherNumber")(getDisplayVoucherNumber(transaction))}
               </span>
@@ -2402,7 +2416,15 @@ export const TransactionRow = React.memo(
             {(() => {
               const rowUrls = getVoucherAttachmentUrlsForUi(transaction, voucherAttachmentUiOpts);
               if (rowUrls.length === 0) {
-                return <span className="flex w-full justify-center">-</span>;
+                return (
+                  <span
+                    data-pl-fy-opening-file-dash={isFyOpeningRow ? "" : undefined}
+                    className={cn("flex w-full justify-center", isFyOpeningRow && "invisible")}
+                    aria-hidden={isFyOpeningRow || undefined}
+                  >
+                    -
+                  </span>
+                );
               }
               const suppressAutoThumbLoad =
                 enforceCurrentFyAttachmentAutoLoad &&
@@ -2507,7 +2529,7 @@ export const TransactionRow = React.memo(
               : renderHlDrCr(formatAmountCell(Number(transaction._tdsAmount) || 0), "credit")}
           </TableCell>
         )}
-        {showCol("dr") && (
+        {showCol("dr") && !hideDebitColumn && (
           <TableCell
             className={cn(
               tdsLedgerRowLayout ? "text-left" : "text-right",
@@ -2544,7 +2566,7 @@ export const TransactionRow = React.memo(
             )}
           </TableCell>
         )}
-        {showCol("cr") && (
+        {showCol("cr") && !hideCreditColumn && (
           <TableCell
             className={cn(
               tdsLedgerRowLayout ? "text-left" : "text-right",
@@ -2747,7 +2769,7 @@ export const TransactionRow = React.memo(
             );
           })()}
         <TableCell
-          className={ensureMinGaps ? LEDGER_TXN_ROW_MENU_CELL_CN : "w-11 min-w-[44px] p-1 text-center align-middle"}
+          className={ensureMinGaps ? LEDGER_TXN_ROW_MENU_CELL_CN : "w-12 min-w-[48px] py-1 pl-1 pr-[5px] text-right align-middle"}
           data-pl-txn-row-menu=""
           onClick={(e) => e.stopPropagation()}
         >
@@ -2758,14 +2780,9 @@ export const TransactionRow = React.memo(
                 size="icon"
                 data-pl-txn-icon-btn=""
                 data-pl-txn-row-menu-trigger=""
-                className={cn(txnTableIconBtnCn, "relative h-8 w-[18px] min-w-[18px] shrink-0 p-0 flex items-center justify-center")}
+                className={cn(txnTableIconBtnCn, "relative h-8 w-[22px] min-w-[22px] shrink-0 p-0 flex items-center justify-center")}
               >
-                <span
-                  aria-hidden="true"
-                  className="text-base leading-none text-muted-foreground select-none"
-                >
-                  ⋮
-                </span>
+                <TxnRowMenuGrip />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
@@ -2884,8 +2901,8 @@ export const TransactionRow = React.memo(
           (showFileColumn ? 1 : 0) +
           (showCol("tdsTaxable") ? 1 : 0) +
           (showCol("tdsAmount") ? 1 : 0) +
-          (showCol("dr") ? 1 : 0) +
-          (showCol("cr") ? 1 : 0);
+          (showCol("dr") && !hideDebitColumn ? 1 : 0) +
+          (showCol("cr") && !hideCreditColumn ? 1 : 0);
     const statusDetailText = getStatusDetail(transaction, { billWiseOnly: statusBillWiseOnly });
     const statusDetailVouchers = getStatusDetailVouchers(transaction, { billWiseOnly: statusBillWiseOnly });
     const showNarrationRow =
@@ -3132,13 +3149,6 @@ export const TransactionRow = React.memo(
           isSpendWiseInflowRow && !isSelected && "bg-green-100 dark:bg-green-900/30 [&>td]:bg-green-100 [&>td]:dark:bg-green-900/30 hover:bg-green-200 [&>td]:hover:bg-green-200 [&>td]:dark:hover:bg-green-900/40",
           (isSpendWiseOutflowRow || (context === "group" && isSpendWiseChild && !isSpendWiseInflowRow) || spendWiseGroupStandaloneOutflow) && !isSelected && "bg-gray-50 dark:bg-gray-900/20 [&>td]:bg-gray-50 [&>td]:dark:bg-gray-900/20 [&>td]:text-xs",
           isNote && !isSelected && "bg-amber-50 hover:bg-amber-100 [&>td]:bg-amber-50 [&>td]:hover:bg-amber-100",
-          !isSelected &&
-            !isStatementChecked &&
-            !showPendingApprovalPink &&
-            !isPeerPendingChange &&
-            !isSpendWiseChild &&
-            !isNote &&
-            "hover:bg-muted/20 [&>td]:hover:bg-muted/20",
           // Avoid extra bottom expansion in sub-row; we only want a small top gap.
           "md:[&>td]:pb-0"
         )}

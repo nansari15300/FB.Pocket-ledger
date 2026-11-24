@@ -21,19 +21,22 @@ import { masterListShellCn } from "@/lib/masterListChrome";
 import type { GroupListSelectOptions } from "@/lib/groupListExpand";
 import { MasterGroupExpandableListBody } from "@/components/entity/MasterGroupExpandableListBody";
 
+const EMPTY_PENDING_BY_ID: Record<string, number> = {};
+const EMPTY_STAFF_MEMBERS_BY_GROUP: Record<string, Staff[]> = {};
+
 export function StaffGroupList({
   groups,
   searchTerm,
   selectedGroup,
   onSelectGroup,
-  pendingApprovalByGroupId = {},
+  pendingApprovalByGroupId,
   getItemHref,
   quickFilter: quickFilterProp,
   onQuickFilterChange,
   hideQuickFilterBar = false,
-  groupMembersByGroupId = {},
+  groupMembersByGroupId,
   selectedGroupMemberFilterId = null,
-  pendingApprovalByMemberId = {},
+  pendingApprovalByMemberId,
 }: {
   groups: StaffGroup[];
   searchTerm: string;
@@ -48,6 +51,14 @@ export function StaffGroupList({
   selectedGroupMemberFilterId?: string | null;
   pendingApprovalByMemberId?: Record<string, number>;
 }) {
+  /**
+   * Default `= {}` object literal har render par naya reference deta hai — `useMemo` deps me
+   * jaakar render -> setState -> render loop ("Maximum update depth exceeded") banana. Isliye
+   * module-level stable empties.
+   */
+  const pendingByGroup = pendingApprovalByGroupId ?? EMPTY_PENDING_BY_ID;
+  const membersByGroup = groupMembersByGroupId ?? EMPTY_STAFF_MEMBERS_BY_GROUP;
+  const pendingByMember = pendingApprovalByMemberId ?? EMPTY_PENDING_BY_ID;
   const { formatCurrency } = useDate();
   const lastVoucherMsById = useLastVoucherMsByEntityId();
   const { hideSettled, setHideSettled } = useEntityListHideSettled();
@@ -70,10 +81,10 @@ export function StaffGroupList({
       base,
       searchTerm,
       quickFilter,
-      stampLastVoucherMsFromMemberGroups(lastVoucherMsById, groupMembersByGroupId),
+      stampLastVoucherMsFromMemberGroups(lastVoucherMsById, membersByGroup),
       hideSettled
     );
-  }, [groups, searchTerm, quickFilter, lastVoucherMsById, groupMembersByGroupId, hideSettled]);
+  }, [groups, searchTerm, quickFilter, lastVoucherMsById, membersByGroup, hideSettled]);
 
   const listOrderKey = useMemo(
     () => masterListOrderKey(filteredAndSortedGroups.map((g) => g.id)),
@@ -101,10 +112,10 @@ export function StaffGroupList({
               displayOrderKey={displayOrderKey}
               selectedGroup={selectedGroup}
               selectedGroupMemberFilterId={selectedGroupMemberFilterId}
-              groupMembersByGroupId={groupMembersByGroupId}
+              groupMembersByGroupId={membersByGroup}
               onSelectGroup={onSelectGroup}
-              pendingApprovalByGroupId={pendingApprovalByGroupId}
-              pendingApprovalByMemberId={pendingApprovalByMemberId}
+              pendingApprovalByGroupId={pendingByGroup}
+              pendingApprovalByMemberId={pendingByMember}
               getItemHref={getItemHref}
               quickFilter={quickFilter}
               animatePresenceMode={animatePresenceMode}

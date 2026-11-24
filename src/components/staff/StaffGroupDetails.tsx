@@ -10,7 +10,8 @@ import { STAFF_SYSTEM_GROUP_ID } from "@/lib/staffSystemGroups";
 import { isLoanLiabilityStaff } from "@/modules/loans/utils/loanLiabilityStaff";
 import { Button } from "@/components/ui/button";
 import { LedgerViewModePills } from "@/components/ui/LedgerViewModePills";
-import { Edit, Printer, Calendar as CalendarIcon, FilePlus, XCircle, MoreVertical, ArrowLeft, ChevronDown, Columns3, Search, Pencil } from "lucide-react";
+import { Edit, Printer, Calendar as CalendarIcon, FilePlus, XCircle, ArrowLeft, ChevronDown, Columns3, Search, Pencil } from "lucide-react";
+import { TxnRowMenuGrip } from "@/components/vouchers/TxnRowMenuGrip";
 import { StaffAccountFallbackIcon } from "@/components/entity/StaffEntityIcon";
 import { TransactionsTable, type TransactionColumnKey } from "../vouchers/TransactionsTable";
 import { StatementCheckModeFooterControls } from "@/components/vouchers/StatementCheckModeFooterControls";
@@ -83,10 +84,10 @@ import {
   LEDGER_HEADER_PILL_CN,
   LEDGER_HEADER_PILL_ICON_CN,
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
-  LEDGER_HEADER_PILL_ROW_CN,
   LEDGER_TXN_PAGE_ROOT_CN,
 } from "@/lib/ledgerHeaderChrome";
 import { LedgerTxnScrollColumn } from "@/components/vouchers/LedgerTxnScrollColumn";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 import { useCompany } from "@/hooks/useCompany";
 import { useFyLoadOnDateRangeChange } from "@/hooks/useFyLoadOnDateRangeChange";
 import { EditStaffGroupDialog } from "@/components/staff/EditStaffGroupDialog";
@@ -1070,7 +1071,7 @@ export function StaffGroupDetails({
                 </div>
               </div>
             </div>
-            <div className={LEDGER_HEADER_PILL_ROW_CN}>
+            <LedgerHeaderPillRow>
               <LedgerHeaderPrintButton variant="chromePill" onClick={handlePrint} />
               <LedgerHeaderReminderButton
                 variant="chromePill"
@@ -1174,7 +1175,7 @@ export function StaffGroupDetails({
                 <FilePlus className={cn("mr-2", LEDGER_HEADER_PILL_ICON_SIZE_CN)} /> Add Note
               </Button>
               
-            </div>
+            </LedgerHeaderPillRow>
           </div>
         </div>
           }
@@ -1202,7 +1203,7 @@ export function StaffGroupDetails({
                   hasAccounts={staffInGroup.length > 0 || childGroups.length > 0}
                 >
                   <Button variant="ghost" size="icon" className="h-7 w-7">
-                    <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                    <TxnRowMenuGrip />
                   </Button>
                 </EditStaffGroupDialog>
               }

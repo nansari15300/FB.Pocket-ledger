@@ -38,9 +38,16 @@ export function FinancialSummaryChart({ data }: FinancialSummaryChartProps) {
       </CardHeader>
       <CardContent className="h-[280px]">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <ComposedChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 36 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+            <XAxis
+              dataKey="label"
+              interval={0}
+              angle={-35}
+              textAnchor="end"
+              height={56}
+              tick={{ fontSize: 11 }}
+            />
             <YAxis tick={{ fontSize: 11 }} width={72} />
             <Tooltip
               formatter={(value: number, name: string) => [

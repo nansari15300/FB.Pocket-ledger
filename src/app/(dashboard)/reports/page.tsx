@@ -73,16 +73,11 @@ function ReportsPageDetailRibbon() {
   return <div className="min-w-0 flex-1">{detailRibbonContent}</div>;
 }
 
-/** Desktop detail chrome: PC par sirf custom detail ribbon (Anusuchi13, etc.) — collapsed list toggle bar hide. */
-function ReportsDesktopDetailTopBar({
-  isDesktopReportListOpen,
-}: {
-  isDesktopReportListOpen: boolean;
-  onToggleDesktopReportList: () => void;
-}) {
+/** Desktop detail chrome: custom detail ribbon (Anusuchi13, etc.) stays mounted as the report list collapses. */
+function ReportsDesktopDetailTopBar() {
   const { detailRibbonContent } = useReportPage();
 
-  if (!isDesktopReportListOpen || !detailRibbonContent) return null;
+  if (!detailRibbonContent) return null;
 
   return (
     <div className={cn("flex shrink-0 gap-2", LEDGER_HEADER_RIBBON_WRAP_CN, "items-center py-1")}>
@@ -116,6 +111,24 @@ function useReportsPageNoDoubleScroll() {
   }, []);
 }
 
+/** Width animation can leave nested transaction tables horizontally scrolled at the old width. */
+function useResetReportHorizontalScroll(isDesktopReportListOpen: boolean, reportId?: string) {
+  React.useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+    const frame = window.requestAnimationFrame(() => {
+      const root = document.querySelector<HTMLElement>("[data-pl-report-detail-scroll]");
+      if (!root) return;
+      const scrollers = root.querySelectorAll<HTMLElement>(
+        ".pl-ledger-txn-scroll-native, [data-pl-report-register-trxn], [data-pl-native-scroll]"
+      );
+      scrollers.forEach((element) => {
+        if (element.scrollLeft !== 0) element.scrollLeft = 0;
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [isDesktopReportListOpen, reportId]);
+}
+
 function ReportsPageContent() {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -127,6 +140,7 @@ function ReportsPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { company } = useCompany();
+  useResetReportHorizontalScroll(isDesktopReportListOpen, selectedReport?.id);
 
   const reportsForCompany = useMemo(() => {
     if (company?.country !== undefined) {
@@ -270,10 +284,18 @@ function ReportsPageContent() {
   const detailView = (
     selectedReport ? (
       /* key={id}: dubara render par purana search/filter state recycle na ho — SPA me report swap same component-type */
-      /* 8px top gap (same as Financial Summary) + 10px gap from the report-list divider line.
-       * `flex`-based sizing keeps the inner report at the remaining height instead of overflowing. */
-      <div className="flex h-full min-h-0 flex-col pl-[10px] pt-2" data-pl-report-detail-root="" data-pl-report-emerald-bg="">
-        <div className="min-h-0 flex-1">
+      /* Detail pane edge-to-edge: report-list divider aur top edge dono se touch — koi extra
+       * left/top gap nahi (pehle `pl-[10px] pt-2` tha jo blank patti jaisa dikhta tha). */
+      <div className="flex h-full min-h-0 flex-col" data-pl-report-detail-root="" data-pl-report-emerald-bg="">
+        {/* data-pl-report-detail-scroll: bada right page — iske page-level bar ki width 2x (scrollbarThumbChrome).
+            Reports list ke andar ke patle (8px) scrollbars yahan se separate rehte hain. */}
+        <div
+          className={cn(
+            "h-full min-h-0 flex-1",
+            selectedReport.id === "contra" ? "overflow-hidden" : "overflow-y-auto"
+          )}
+          data-pl-report-detail-scroll=""
+        >
           <ReportDetails key={selectedReport.id} report={selectedReport} />
         </div>
       </div>
@@ -292,7 +314,7 @@ function ReportsPageContent() {
           // List full page
           <div className="h-full w-full overflow-hidden bg-background flex flex-col" data-pl-reports-page-fit="">
             <div className="flex-shrink-0 border-b px-2 py-1">
-              <h1 className="text-sm font-bold font-headline">Reports</h1>
+              <h1 className="text-sm font-bold font-headline">Reports ({filteredReports.length})</h1>
             </div>
             <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
               {listView}
@@ -317,7 +339,7 @@ function ReportsPageContent() {
         <Sheet open={reportListOpen} onOpenChange={setReportListOpen}>
           <SheetContent side="right" className="w-72 p-0 sm:max-w-[280px]">
             <SheetHeader className="p-4 pb-2">
-              <SheetTitle>Reports</SheetTitle>
+              <SheetTitle>Reports ({filteredReports.length})</SheetTitle>
             </SheetHeader>
             <div className="flex flex-col h-[calc(100vh-80px)] overflow-hidden">
               <div className="flex-1 min-h-0 overflow-auto">
@@ -344,7 +366,10 @@ function ReportsPageContent() {
       onShowDesktopReportList={() => setIsDesktopReportListOpen(true)}
     >
       <div
-        className="grid h-full overflow-hidden transition-[grid-template-columns] duration-300"
+        /* `grid-rows-[minmax(0,1fr)]`: warna grid ka implicit row `auto` rehta hai aur detail panel
+         * ke transactions table ki content height (e.g. 1305px) row ko stretch kar deti hai —
+         * footer (pagination/sort/columns) viewport ke neeche chala jaata hai aur scroll band ho jata hai. */
+        className="grid h-full grid-rows-[minmax(0,1fr)] overflow-hidden transition-[grid-template-columns] duration-300"
         data-pl-reports-page-fit=""
         style={{
           gridTemplateColumns: isDesktopReportListOpen
@@ -355,7 +380,7 @@ function ReportsPageContent() {
         {/* Desktop report list: expanded = full list, collapsed = main sidebar jaisa 64px icon rail. */}
         {isDesktopReportListOpen ? (
           <div
-            className="border-r border-r-[1px] overflow-hidden"
+            className="min-h-0 min-w-0 overflow-hidden border-r border-r-[1px]"
             /* Inline width: theme ka `!important` border rule isse nahi hara sakta — divider exactly 1px. */
             style={{ width: reportListWidthPx, borderRightWidth: "1px", borderRightStyle: "solid" }}
             data-pl-reports-panel-border=""
@@ -370,7 +395,7 @@ function ReportsPageContent() {
                 className="flex shrink-0 items-center justify-between gap-2 border-b border-b-[1px] px-2 py-1"
                 style={{ borderBottomWidth: "1px" }}
               >
-                <h1 className="min-w-0 flex-1 text-base font-bold font-headline leading-tight">Reports</h1>
+                <h1 className="min-w-0 flex-1 text-base font-bold font-headline leading-tight">Reports ({filteredReports.length})</h1>
                 <Button
                   type="button"
                   variant="outline"
@@ -389,7 +414,7 @@ function ReportsPageContent() {
           </div>
         ) : (
           <div
-            className="flex h-full min-w-0 flex-col border-r border-r-[1px] bg-sidebar"
+            className="flex h-full min-h-0 min-w-0 flex-col border-r border-r-[1px] bg-sidebar"
             style={{ borderRightWidth: "1px", borderRightStyle: "solid" }}
             data-pl-reports-rail=""
             data-pl-reports-panel-border=""
@@ -425,11 +450,8 @@ function ReportsPageContent() {
             </div>
           </div>
         )}
-        <div className="min-w-0 flex flex-col overflow-hidden">
-          <ReportsDesktopDetailTopBar
-            isDesktopReportListOpen={isDesktopReportListOpen}
-            onToggleDesktopReportList={() => setIsDesktopReportListOpen((prev) => !prev)}
-          />
+        <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+          <ReportsDesktopDetailTopBar />
           <div className="flex-1 min-h-0 overflow-hidden">{detailView}</div>
         </div>
       </div>

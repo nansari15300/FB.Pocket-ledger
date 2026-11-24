@@ -4,6 +4,7 @@ import { isDeviceLocalCompany } from "@/lib/companyStorageKind";
 import { normalizePlanIdForClient, type PlanId, planTierIndex } from "@/config/plans";
 import { readAccountPlanLocalCache } from "@/lib/accountPlanLocalCache";
 import { resolvePlServerSharedOwnerPlanId } from "@/lib/plServerAccessContext";
+import { isMyCompanyPlanExempt, MY_COMPANY_PLAN_ID } from "@/lib/myCompanyPlanOverride";
 
 /**
  * Account-level plan: highest tier among companies the Firebase user owns.
@@ -109,6 +110,8 @@ export function resolvePlanIdForActiveCompany(
   if (!company) {
     return resolveEffectiveAccountPlanId(allCompanies, firebaseUid, null);
   }
+  // My Company = server books — not an end-user SKU (caps overridden in myCompanyPlanOverride).
+  if (isMyCompanyPlanExempt(company)) return MY_COMPANY_PLAN_ID;
   if (isCompanyOwnedByFirebaseUser(company, firebaseUid, firebaseEmail)) {
     return resolveEffectiveAccountPlanId(allCompanies, firebaseUid, company.planId);
   }

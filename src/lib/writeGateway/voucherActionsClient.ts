@@ -716,6 +716,12 @@ async function resolveLocalPlanForImmediateVoucherSave(
   } catch {
     /* local registry optional; defaults below keep save path non-blocking */
   }
+  const { isMyCompanyPlanExempt, MY_COMPANY_PLAN_ID, myCompanyUnlimitedEntitlements } = await import(
+    "@/lib/myCompanyPlanOverride"
+  );
+  if (isMyCompanyPlanExempt(companyId)) {
+    return { planId: MY_COMPANY_PLAN_ID, storageOption, entitlements: myCompanyUnlimitedEntitlements() };
+  }
   const planId = resolvePlanIdForVoucherEnforcement(companyId, sqliteRow, null);
   const entitlements = await mergePlanEntitlementsForId(planId);
   return { planId, storageOption, entitlements };
@@ -2021,11 +2027,18 @@ export async function saveVoucher(
       /* registry miss — sirf Firestore tier use */
     }
 
-    const planId = resolvePlanIdForVoucherEnforcement(companyId, sqliteQuotaRow, {
-      planId: (cd.planId as string | null | undefined) ?? null,
-      planExpiryMs: planExpiryMsFromCompanyFirestoreData(cd),
-    });
-    const mergedEntitlements = await mergePlanEntitlementsForId(planId);
+    const { isMyCompanyPlanExempt, MY_COMPANY_PLAN_ID, myCompanyUnlimitedEntitlements } = await import(
+      "@/lib/myCompanyPlanOverride"
+    );
+    const planId = isMyCompanyPlanExempt(companyId)
+      ? MY_COMPANY_PLAN_ID
+      : resolvePlanIdForVoucherEnforcement(companyId, sqliteQuotaRow, {
+          planId: (cd.planId as string | null | undefined) ?? null,
+          planExpiryMs: planExpiryMsFromCompanyFirestoreData(cd),
+        });
+    const mergedEntitlements = isMyCompanyPlanExempt(companyId)
+      ? myCompanyUnlimitedEntitlements()
+      : await mergePlanEntitlementsForId(planId);
     const storageIsLocal = companyStorageIsLocal(companyData?.storageOption as string | undefined);
     const dailyLimit = numericEntitlement(mergedEntitlements, "dailyVoucherLimit", storageIsLocal);
     const monthlyLimit = numericEntitlement(mergedEntitlements, "monthlyVoucherLimit", storageIsLocal);

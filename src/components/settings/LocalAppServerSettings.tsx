@@ -455,7 +455,7 @@ export function LocalAppServerSettings() {
     ) : null;
 
   return (
-    <div className="space-y-4" data-pl-server-settings>
+    <div className="min-w-0 overflow-x-hidden space-y-4" data-pl-server-settings>
       <div className="hidden max-md:sr-only md:flex md:flex-wrap md:items-start md:justify-between md:gap-x-4 md:gap-y-3">
         <div className="min-w-0 space-y-1.5">
           <h2 className="flex items-center gap-2 text-lg font-semibold leading-none tracking-tight">

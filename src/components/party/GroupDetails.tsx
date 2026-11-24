@@ -36,7 +36,6 @@ import {
   Calendar as CalendarIcon,
   FilePlus,
   XCircle,
-  MoreVertical,
   ArrowLeft,
   Scroll,
   DollarSign,
@@ -46,6 +45,7 @@ import {
   Search,
   Pencil,
 } from "lucide-react";
+import { TxnRowMenuGrip } from "@/components/vouchers/TxnRowMenuGrip";
 import { TransactionsTable, type TransactionColumnKey } from "../vouchers/TransactionsTable";
 import { TransactionTableSortDropdown, type TransactionSortBy, type TransactionSortOrder } from "@/components/vouchers/TransactionTableSortDropdown";
 import { LedgerFooterColumnsMenu } from "@/components/vouchers/LedgerFooterColumnsMenu";
@@ -129,10 +129,10 @@ import {
   LEDGER_HEADER_PILL_CN,
   LEDGER_HEADER_PILL_ICON_CN,
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
-  LEDGER_HEADER_PILL_ROW_CN,
   LEDGER_TXN_PAGE_ROOT_CN,
 } from "@/lib/ledgerHeaderChrome";
 import { LedgerTxnScrollColumn } from "@/components/vouchers/LedgerTxnScrollColumn";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 import { ScrollArea } from "../ui/scroll-area";
 import { useCompany } from "@/hooks/useCompany";
 import { useFyLoadOnDateRangeChange } from "@/hooks/useFyLoadOnDateRangeChange";
@@ -1760,7 +1760,7 @@ export function GroupDetails({
             </div>
             )}
           </div>
-          <div className={LEDGER_HEADER_PILL_ROW_CN}>
+          <LedgerHeaderPillRow>
               <LedgerHeaderPrintButton variant="chromePill" onClick={handlePrint} />
               <LedgerHeaderReminderButton
                 variant="chromePill"
@@ -1898,7 +1898,7 @@ export function GroupDetails({
               <FilePlus className={cn("mr-2", LEDGER_HEADER_PILL_ICON_SIZE_CN)} /> Add Note
             </Button>
             
-          </div>
+          </LedgerHeaderPillRow>
         </div>
       </div>
           }
@@ -1936,7 +1936,7 @@ export function GroupDetails({
                   hasAccounts={partiesInGroup.length > 0 || childGroups.length > 0}
                 >
                   <Button variant="ghost" size="icon" className="h-7 w-7">
-                    <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                    <TxnRowMenuGrip />
                   </Button>
                 </EditGroupDialog>
               ) : null

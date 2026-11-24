@@ -16,6 +16,7 @@ import { isLocalOnlyMode } from "@/lib/localMode";
 import { resolvePlanIdForActiveCompany } from "@/lib/accountPlanForOwner";
 import { resolveCompanyIsOwnedForUser } from "@/lib/companyOnlineIntegrity";
 import { companyRowUsesSqliteLedgerWrites, isServerGateCompany, isServerSelectorCompanyRow } from "@/lib/companyStorageKind";
+import { isMyCompanyPlanExempt, myCompanyUnlimitedEntitlements } from "@/lib/myCompanyPlanOverride";
 import { isPlServerThinStaffClient } from "@/lib/plServerThinStaffClient";
 import { PL_SERVER_COMPANY_META_UPDATED_EVENT } from "@/lib/plServerCompanyMetaSync";
 import { logPlPerm, resolvePermissionConfigSource, summarizePermissionDateLimits, companyUsesDeviceOrPlPermissionConfig, companyRolesAuthorityExcludesFirebase } from "@/lib/permissionConfigSource";
@@ -552,10 +553,12 @@ const usePermissions = () => {
         );
         const plan = getPlanFromPlans(livePlans, effectivePlanId);
         const roleFileLimits = config.fileAttachmentLimits?.[role] || { maxFileCount: 0, allowImage: false, allowPDF: false, allowDelete: false };
+        const myCompanyExempt = isMyCompanyPlanExempt(company);
+        const planEnt = myCompanyExempt ? myCompanyUnlimitedEntitlements() : plan.entitlements;
 
         // Plan entitlements (live `app_settings/plans` + cache); default basic tier me files band ho sakte hain
-        let canAddFileImagePdf = plan.entitlements.canAddFileImagePdf === true;
-        let planMaxFiles = Math.max(0, Math.min(10, Number(plan.entitlements.maxVoucherFileCount) || 0));
+        let canAddFileImagePdf = planEnt.canAddFileImagePdf === true;
+        let planMaxFiles = Math.max(0, Math.min(10, Number(planEnt.maxVoucherFileCount) || 0));
 
         /** Viewer ke alawa role jab file types allow karti ho — SQLite/local company par `planId` purana "basic" reh jata hai ya offline cache miss */
         const roleAllowsFiles =
@@ -577,7 +580,7 @@ const usePermissions = () => {
           );
         }
 
-        let canAddAvatar = plan.entitlements.canAddAvatar === true;
+        let canAddAvatar = planEnt.canAddAvatar === true;
         // Local company / APK: `app_settings/plans` sync na ho ya cache purana ho to `basic` bundle me `canAddAvatar: false` reh jata hai — party-staff avatar bhi voucher files jaisa role se chale
         if (
           company &&
@@ -599,11 +602,26 @@ const usePermissions = () => {
             Math.min(10, Math.max(1, Number(roleFileLimits.maxFileCount) || 3))
           );
         }
+
+        // My Company: server books — plan SKU irrelevant; files + caps always on (beyond Pro Plus).
+        if (myCompanyExempt && role !== "viewer" && config.allowAttachments !== false) {
+          canAddFileImagePdf = true;
+          canAddAvatar = true;
+          planMaxFiles = Math.max(planMaxFiles, 10);
+        }
+
         const cappedMax = canAddFileImagePdf && planMaxFiles > 0
-          ? Math.min(roleFileLimits.maxFileCount, planMaxFiles)
+          ? (myCompanyExempt
+              ? Math.max(roleFileLimits.maxFileCount || 0, planMaxFiles)
+              : Math.min(roleFileLimits.maxFileCount, planMaxFiles))
           : 0;
         const fileAttachmentLimits = canAddFileImagePdf && planMaxFiles > 0
-          ? { ...roleFileLimits, maxFileCount: cappedMax }
+          ? {
+              maxFileCount: cappedMax,
+              allowImage: myCompanyExempt ? true : roleFileLimits.allowImage,
+              allowPDF: myCompanyExempt ? true : roleFileLimits.allowPDF,
+              allowDelete: myCompanyExempt ? true : roleFileLimits.allowDelete,
+            }
           : { maxFileCount: 0, allowImage: false, allowPDF: false, allowDelete: false };
         const allowAttachments =
           (config.allowAttachments !== false) && canAddFileImagePdf && planMaxFiles > 0;

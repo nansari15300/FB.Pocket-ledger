@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { EntityListQuickFilter } from "@/components/entity/EntityListQuickFilterBar";
 import { masterListOrderKey, useMasterListDisplayRows } from "@/hooks/useMasterListRowMotion";
@@ -32,10 +32,29 @@ export function GroupListTreeNodeMotionList<T>({
   getItemClassName,
   renderItem,
 }: GroupListTreeNodeMotionListProps<T>) {
-  const listOrderKey = useMemo(
-    () => `${quickFilter}|${masterListOrderKey(items.map((item) => getItemId(item)))}`,
-    [items, quickFilter, getItemId]
+  const getItemKeyRef = React.useRef(getItemKey);
+  getItemKeyRef.current = getItemKey;
+  const getItemIdRef = React.useRef(getItemId);
+  getItemIdRef.current = getItemId;
+  const getItemClassNameRef = React.useRef(getItemClassName);
+  getItemClassNameRef.current = getItemClassName;
+  const renderItemRef = React.useRef(renderItem);
+  renderItemRef.current = renderItem;
+
+  const stableGetItemKey = useCallback(
+    (item: T, index: number) => getItemKeyRef.current(item, index),
+    []
   );
+  const stableGetItemClassName = useCallback(
+    (item: T, index: number) => getItemClassNameRef.current?.(item, index),
+    []
+  );
+
+  const listOrderKey = useMemo(() => {
+    const ids: (string | undefined)[] = [];
+    for (const item of items) ids.push(getItemIdRef.current(item));
+    return `${quickFilter}|${masterListOrderKey(ids)}`;
+  }, [items, quickFilter]);
 
   const { displayRows, displayOrderKey } = useMasterListDisplayRows(items as T[], listOrderKey, {
     enabled: isRowAnimationEnabled,
@@ -46,12 +65,12 @@ export function GroupListTreeNodeMotionList<T>({
     <AnimatePresence mode={animatePresenceMode}>
       {displayRows.map((item, index) => (
         <motion.li
-          key={getItemKey(item, index)}
+          key={stableGetItemKey(item, index)}
           layoutDependency={displayOrderKey}
-          className={cn(getItemClassName?.(item, index))}
+          className={cn(stableGetItemClassName(item, index))}
           {...rowMotionProps}
         >
-          {renderItem(item, index)}
+          {renderItemRef.current(item, index)}
         </motion.li>
       ))}
     </AnimatePresence>

@@ -24,7 +24,6 @@ import {
   ChevronRight,
   ChevronsRight,
   FilePlus,
-  MoreVertical,
   XCircle,
   ArrowLeft,
   Columns3,
@@ -32,6 +31,7 @@ import {
   Search,
   Pencil,
 } from "lucide-react";
+import { TxnRowMenuGrip } from "@/components/vouchers/TxnRowMenuGrip";
 import { StaffAccountFallbackIcon } from "@/components/entity/StaffEntityIcon";
 import { MobileEntityLedgerFooterPrintButton } from "@/components/entity/MobileEntityLedgerFooterPrintButton";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -97,10 +97,10 @@ LEDGER_HEADER_AVATAR_IMAGE_CN,
   LEDGER_HEADER_PILL_CN,
   LEDGER_HEADER_PILL_ICON_CN,
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
-  LEDGER_HEADER_PILL_ROW_CN,
   LEDGER_TXN_PAGE_ROOT_CN,
 } from "@/lib/ledgerHeaderChrome";
 import { LedgerTxnScrollColumn } from "@/components/vouchers/LedgerTxnScrollColumn";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
 import { CreateNoteForm } from "../vouchers/CreateNoteForm";
 import { useCompany } from "@/hooks/useCompany";
@@ -2102,7 +2102,7 @@ export function StaffDetails({
             </>
             )}
           </div>
-          <div className={LEDGER_HEADER_PILL_ROW_CN}>
+          <LedgerHeaderPillRow>
                 <ReconciliationAccountButton accountId={staff.id} />
               <LedgerHeaderPrintButton variant="outline" onClick={balanceMode === "bill_wise" ? handlePrintBillWise : handlePrintStatement} />
               <LedgerHeaderReminderButton
@@ -2253,7 +2253,7 @@ export function StaffDetails({
                 Link for Bill Wise
               </Button>
             ) : null}
-          </div>
+          </LedgerHeaderPillRow>
         </div>
       </div>
           }
@@ -2291,7 +2291,7 @@ export function StaffDetails({
                       hasTransactions={processedTransactions.length > 0}
                     >
                       <Button variant="ghost" size="icon" className="h-7 w-7">
-                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                        <TxnRowMenuGrip />
                       </Button>
                     </EditStaffDialog>
                     ) : null

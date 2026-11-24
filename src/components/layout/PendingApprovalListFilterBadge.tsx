@@ -40,7 +40,7 @@ export function PendingApprovalListFilterBadge({
       title={pressed ? tooltipShowAllHint : tooltipFilterHint}
       className={cn(
         // `w-fit` + tabular-nums - digit count ke hisaab se width
-        "inline-flex w-fit max-w-[5rem] shrink-0 items-center justify-center rounded-md border font-bold tabular-nums transition-colors",
+        "inline-flex w-fit min-w-[1.5rem] max-w-[5rem] shrink-0 items-center justify-center rounded-md border font-bold tabular-nums transition-colors",
         compact
           ? "pl-mlc-pending-badge box-border h-7 min-h-7 max-h-7 self-center px-1 py-0 text-[10px] leading-none"
           : "h-9 px-1.5 text-xs sm:px-2",

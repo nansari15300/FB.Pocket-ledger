@@ -994,7 +994,13 @@ export function useTransactions(
     /** false = skip heavy voucher scan (inactive dashboard tab). */
     transactionsComputationEnabled: boolean = true,
     /** Tax statement hides Status; skip its bill-wise allocation/link scans until needed. */
-    includeTaxBillWiseStatus: boolean = true
+    includeTaxBillWiseStatus: boolean = true,
+    /**
+     * Report registers (Contra / Journal): ledger math (opening, Dr/Cr, closing) sirf
+     * `passedTransactions` se karo — poore ledger vouchers se nahi. Warna header balance full account
+     * ka aata hai jabki rows report-scoped hoti hain (dono ka hisaab match nahi karta).
+     */
+    scopeMathToPassedTransactions: boolean = false
 ) {
     const { vouchers, processedTaxes } = useVouchers();
     const { company, companyId } = useCompany();
@@ -1070,9 +1076,15 @@ export function useTransactions(
             entity.id === "all" &&
             Array.isArray(passedTransactions) &&
             (Boolean(transactionContext) || isReportAllAccountView);
+        /* Report register (Contra/Journal) single-account view: rows `passedTransactions` se aati hain,
+         * to ledger math bhi wahin se hona chahiye (warna header balance full ledger ka rehta hai). */
+        const useReportScopedLedger =
+            scopeMathToPassedTransactions &&
+            context === "account" &&
+            Array.isArray(passedTransactions);
         let transactionsToProcess = useExplicitDaybookVoucherList
             ? (passedTransactions ?? [])
-            : shouldUseScopedPassedTransactions
+            : shouldUseScopedPassedTransactions || useReportScopedLedger
             ? (passedTransactions ?? [])
             : (vouchers ?? []);
         if (context === "party" && !shouldUseScopedPassedTransactions) {
@@ -1262,7 +1274,20 @@ export function useTransactions(
                 v.items?.some((li: any) => voucherLineTouchesTaxLedgerAccount(li, entity.id)) ||
                 (Array.isArray(v.entries) && v.entries.some((e: any) => e.accountId === entity.id)) ||
                 (v.type === 'note' && v.entityId === entity.id) ||
-                    (v.type === 'contra' && (v.fromAccountId === entity.id || v.toAccountId === entity.id)) ||
+                    (v.type === 'contra' && (() => {
+                        const hasToAccount = v.toAccountId != null && v.toAccountId !== "";
+                        const legacyAccountMatches =
+                            ledgerIdEq(v.accountId, entityIdStr) || ledgerIdEq(v.bankAccountId, entityIdStr);
+                        return (
+                            ledgerIdEq(v.fromAccountId, entityIdStr) ||
+                            ledgerIdEq(v.toAccountId, entityIdStr) ||
+                            ledgerIdEq(v.otherChargeAccountId, entityIdStr) ||
+                            (legacyAccountMatches &&
+                                (!hasToAccount ||
+                                    (!ledgerIdEq(v.fromAccountId, entityIdStr) &&
+                                        !ledgerIdEq(v.toAccountId, entityIdStr))))
+                        );
+                    })()) ||
                 // IC: `companyBankAccountId` + target/source entity ids — sirf staffId se kaafi nahi
                 (v.type === "inter_company" &&
                     ((context === "party" && interCompanyVoucherTouchesEntity(v, entity.id, "party")) ||
@@ -1593,8 +1618,11 @@ export function useTransactions(
           company,
           fy.activeScope
         );
-        // FY-start filter + full local mirror (no server snapshot): opening = book OB + walk, same as the full-ledger chain.
-        const periodOpeningBase = atFyStartFilter && !fullLocalVoucherMirror ? 0 : initialOpeningBalance;
+        // Report registers (Contra/Journal): opening balance report-scoped list ka hissa nahi — 0 rakho,
+        // warna header balance full ledger ke opening se bana hoga aur list ke contra net se match nahi karega.
+        const periodOpeningBase = scopeMathToPassedTransactions
+          ? 0
+          : atFyStartFilter && !fullLocalVoucherMirror ? 0 : initialOpeningBalance;
         const requiresAuthoritativeOpening =
             !fullLocalVoucherMirror &&
             company != null &&
@@ -2875,6 +2903,7 @@ export function useTransactions(
     daybookUserIdFilter,
     skipRunningBalance,
     includeTaxBillWiseStatus,
+    scopeMathToPassedTransactions,
     company?.id,
     company?.country,
     company?.fiscalSplitMode,

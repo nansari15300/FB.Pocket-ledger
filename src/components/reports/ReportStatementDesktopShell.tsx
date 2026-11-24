@@ -54,6 +54,17 @@ export type ReportStatementDesktopShellProps = {
     list: React.ReactNode;
     searchPlaceholder?: string;
   }>;
+  /** Hide the Groups tab for reports that list only individual accounts. */
+  hideGroupTab?: boolean;
+  /** Remove the tabs row entirely when a report has no tabs or replacement control. */
+  hideTabsRow?: boolean;
+  /** Hide the shared footer sort row when the entity list renders its own footer controls. */
+  hideEntityQuickFilter?: boolean;
+  /**
+   * Report list pane collapse hone par "Show report list" icon list heading me dikhaya jaaye.
+   * Default `false` — icon sirf report list ke collapsed rail me rehta hai, account list headings me nahi.
+   */
+  showListHeaderToggle?: boolean;
 };
 
 /** Party Statement PC layout — tabs + master list + ledger detail (shared by all entity reports). */
@@ -86,7 +97,12 @@ export function ReportStatementDesktopShell({
   isMobile = false,
   searchRowExtras,
   extraTabs,
+  hideGroupTab = false,
+  hideTabsRow = false,
+  hideEntityQuickFilter = false,
+  showListHeaderToggle = false,
 }: ReportStatementDesktopShellProps) {
+  const displayPageTitle = /\breport\b/i.test(pageTitle) ? pageTitle : `${pageTitle} Report`;
   const activeExtraTab = extraTabs?.find((t) => t.value === listTab);
   const reportListTabs = (
     <Tabs
@@ -102,9 +118,11 @@ export function ReportStatementDesktopShell({
         <TabsTrigger listChrome value={entityTabValue} className="flex-1">
           {entityTabLabel}
         </TabsTrigger>
-        <TabsTrigger listChrome value={groupTabValue} className="flex-1">
-          {groupTabLabel}
-        </TabsTrigger>
+        {!hideGroupTab ? (
+          <TabsTrigger listChrome value={groupTabValue} className="flex-1">
+            {groupTabLabel}
+          </TabsTrigger>
+        ) : null}
         {extraTabs?.map((t) => (
           <TabsTrigger key={t.value} listChrome value={t.value} className="flex-1">
             {t.label}
@@ -114,26 +132,30 @@ export function ReportStatementDesktopShell({
     </Tabs>
   );
 
+  const reportSearchInput = (
+    <div className={mlc.searchWrap}>
+      <Search className={mlc.searchIcon} />
+      <Input
+        placeholder={
+          activeExtraTab
+            ? activeExtraTab.searchPlaceholder ?? entitySearchPlaceholder
+            : listTab === groupTabValue
+              ? groupSearchPlaceholder
+              : entitySearchPlaceholder
+        }
+        listChrome
+        listChromeSearch
+        className={REPORT_LIST_SEARCH_INPUT_CN}
+        value={listSearchTerm}
+        onChange={(e) => onListSearchChange(e.target.value)}
+        autoComplete="off"
+      />
+    </div>
+  );
+
   const reportSearchRow = (
     <div className={mlc.searchRow}>
-      <div className={mlc.searchWrap}>
-        <Search className={mlc.searchIcon} />
-        <Input
-          placeholder={
-            activeExtraTab
-              ? activeExtraTab.searchPlaceholder ?? entitySearchPlaceholder
-              : listTab === groupTabValue
-                ? groupSearchPlaceholder
-                : entitySearchPlaceholder
-          }
-          listChrome
-          listChromeSearch
-          className={REPORT_LIST_SEARCH_INPUT_CN}
-          value={listSearchTerm}
-          onChange={(e) => onListSearchChange(e.target.value)}
-          autoComplete="off"
-        />
-      </div>
+      {reportSearchInput}
       {searchRowExtras}
     </div>
   );
@@ -155,7 +177,9 @@ export function ReportStatementDesktopShell({
       tabs={isMobile ? reportListTabs : undefined}
       searchRow={reportSearchRow}
       sectionLabel={reportSectionLabel}
-      quickFilter={listTab === groupTabValue ? groupQuickFilter : entityQuickFilter}
+      quickFilter={hideEntityQuickFilter && listTab === entityTabValue
+        ? undefined
+        : listTab === groupTabValue ? groupQuickFilter : entityQuickFilter}
       onQuickFilterChange={listTab === groupTabValue ? onGroupQuickFilterChange : onEntityQuickFilterChange}
     >
       <div className="relative h-full min-h-0 w-full overflow-hidden">
@@ -194,22 +218,24 @@ export function ReportStatementDesktopShell({
   );
 
   return (
-    <>
-      <ResponsiveMasterDetail
-        listChromeRouteKey={listChromeRouteKey}
-        title={pageTitle}
-        balance={balance}
-        listHeaderLeading={<ReportShowListButton />}
-        tabsRowClassName="!min-h-0 !border-b-0 !p-0"
-        tabs={isMobile ? undefined : reportListTabsRow}
-        listView={reportListView}
-        detailView={<ReportLedgerTxnDetailPane>{detailView}</ReportLedgerTxnDetailPane>}
-        isMobile={isMobile}
-        mobileListOnly={isMobile}
-        mobileTabsDocked={isMobile}
-        hasSelectedItem={false}
-      />
-      {footer}
-    </>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <ResponsiveMasterDetail
+          listChromeRouteKey={listChromeRouteKey}
+          title={displayPageTitle}
+          balance={balance}
+          listHeaderLeading={showListHeaderToggle ? <ReportShowListButton /> : undefined}
+          tabsRowClassName="!min-h-0 !border-b-0 !p-0"
+          tabs={isMobile || hideTabsRow ? undefined : reportListTabsRow}
+          listView={reportListView}
+          detailView={<ReportLedgerTxnDetailPane>{detailView}</ReportLedgerTxnDetailPane>}
+          isMobile={isMobile}
+          mobileListOnly={isMobile}
+          mobileTabsDocked={isMobile}
+          hasSelectedItem={false}
+        />
+      </div>
+      {footer ? <div className="shrink-0">{footer}</div> : null}
+    </div>
   );
 }

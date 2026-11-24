@@ -104,10 +104,10 @@ LEDGER_HEADER_AVATAR_IMAGE_CN,
   LEDGER_HEADER_PILL_CN,
   LEDGER_HEADER_PILL_ICON_CN,
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
-  LEDGER_HEADER_PILL_ROW_CN,
   LEDGER_TXN_PAGE_ROOT_CN,
 } from "@/lib/ledgerHeaderChrome";
 import { LedgerTxnScrollColumn } from "@/components/vouchers/LedgerTxnScrollColumn";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 import { ReportHeaderSummaryCards, type ReportStatementSummaryCardData } from "@/components/reports/ReportStatementSummaryCards";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import AdCalendar from "@/components/ui/ad-calendar";
@@ -1195,7 +1195,7 @@ export default function ItemDetails({
               </Select>
             )}
           </div>
-          <div className={LEDGER_HEADER_PILL_ROW_CN}>
+          <LedgerHeaderPillRow>
             <LedgerHeaderPrintButton variant="outline" onClick={handlePrint} />
             <LedgerHeaderReminderButton
               variant="outline"
@@ -1302,7 +1302,7 @@ export default function ItemDetails({
               </Button>
             )}
             
-          </div>
+          </LedgerHeaderPillRow>
         </div>
       </div>
           }

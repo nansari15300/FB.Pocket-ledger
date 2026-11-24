@@ -25,7 +25,6 @@ import {
   Calendar as CalendarIcon,
   FilePlus,
   XCircle,
-  MoreVertical,
   ArrowLeft,
   Scroll,
   DollarSign,
@@ -106,10 +105,10 @@ import {
   LEDGER_HEADER_PILL_CN,
   LEDGER_HEADER_PILL_ICON_CN,
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
-  LEDGER_HEADER_PILL_ROW_CN,
   LEDGER_TXN_PAGE_ROOT_CN,
 } from "@/lib/ledgerHeaderChrome";
 import { LedgerTxnScrollColumn } from "@/components/vouchers/LedgerTxnScrollColumn";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 import { ScrollArea } from "../ui/scroll-area";
 import { useCompany } from "@/hooks/useCompany";
 import { useFyLoadOnDateRangeChange } from "@/hooks/useFyLoadOnDateRangeChange";
@@ -1069,7 +1068,7 @@ export function ItemGroupDetails({
                 </div>
               </div>
             </div>
-            <div className={LEDGER_HEADER_PILL_ROW_CN}>
+            <LedgerHeaderPillRow>
               <LedgerHeaderPrintButton variant="outline" onClick={handlePrint} />
               <LedgerHeaderReminderButton
                 variant="outline"
@@ -1174,7 +1173,7 @@ export function ItemGroupDetails({
                 <FilePlus className={cn("mr-2", LEDGER_HEADER_PILL_ICON_SIZE_CN)} /> Add Note
               </Button>
               
-            </div>
+            </LedgerHeaderPillRow>
           </div>
         </div>
           }

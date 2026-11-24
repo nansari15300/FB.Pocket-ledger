@@ -109,6 +109,16 @@ export function useRowChangeHighlight<T>(
     // Diff against the previous rows is only known after commit → state update here is intended.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setHighlightedIds((cur) => {
+      // Anti-loop: agar saare changed ids pehle se highlighted hain, wahi Set wapas do — warna
+      // naye array se render -> naya rows reference -> effect -> setState ka loop banta hai.
+      let alreadyAll = true;
+      for (const id of changed) {
+        if (!cur.has(id)) {
+          alreadyAll = false;
+          break;
+        }
+      }
+      if (alreadyAll) return cur;
       const n = new Set(cur);
       for (const id of changed) n.add(id);
       return n;

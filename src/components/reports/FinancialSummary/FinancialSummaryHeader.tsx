@@ -27,7 +27,7 @@ export function FinancialSummaryHeader({
           Overview of your business financial position
         </p>
       </div>
-      <div className="flex flex-wrap gap-2 shrink-0">
+      <div className="flex flex-wrap gap-2 shrink-0 translate-y-[10px]">
         <Button type="button" variant="outline" onClick={onPrint} disabled={printDisabled} className={financialSummaryPillCn}>
           <Printer className="h-4 w-4 mr-2" />
           Print

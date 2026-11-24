@@ -614,6 +614,11 @@ export default function DesktopBankStatementPage() {
       })),
     [mobileBalanceCards, balanceCardFilter]
   );
+  const matchesSelectedBalanceCard = useCallback(
+    (transaction: any) =>
+      bankReportVoucherTypeLabel(transaction, activeContext, activeEntity?.id) === balanceCardFilter,
+    [activeContext, activeEntity?.id, balanceCardFilter]
+  );
 
   const handlePrint = () => {
     if (!activeEntity || !company) return;
@@ -933,6 +938,7 @@ export default function DesktopBankStatementPage() {
         onDateRangeChange={setDateRange}
         userNames={userNames}
         reportSummaryCards={clickableSummaryCards}
+        reportTransactionFilter={balanceCardFilter ? matchesSelectedBalanceCard : undefined}
       />
     ) : selectedGroup ? (
       <AccountGroupDetails

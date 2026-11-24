@@ -51,7 +51,7 @@ import {
 } from "@/components/reports/GroupSummaryTreeList";
 import { ItemGroupDetails } from "@/components/items/ItemGroupDetails";
 import { MasterListViewShell } from "@/components/layout/MasterListViewShell";
-import { ReportShowListButton } from "@/components/reports/ReportShowListButton";
+
 import { ReportRegisterListHeading } from "@/components/reports/ReportRegisterListHeading";
 import { masterListRowUnselectedCn } from "@/lib/masterListChrome";
 import { MasterListRow } from "@/components/ui/master-list-row";
@@ -2711,7 +2711,6 @@ function AccountsStatementPageContent({ onPartySelectionChange, mode = "account"
             <div className={cn(mlc.pageHeader, "flex flex-col items-stretch border-b")}>
               <div className="flex min-w-0 items-center justify-between gap-2">
                 <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                  <ReportShowListButton />
                   <h2 className={cn(mlc.pageTitle, "min-w-0 truncate")}>Group Summary</h2>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">

@@ -4,14 +4,21 @@
 import { voucherTypeDisplayText } from "@/lib/voucherTypeDisplay";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import {
-  Edit,
   FilePlus,
+  Pencil,
   Printer,
   ArrowLeft,
   Search,
+  Calendar as CalendarIcon,
+  XCircle,
 } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { format, startOfDay, endOfDay } from "date-fns";
+import type { DateRange } from "@/components/ui/ad-calendar";
+import AdCalendar from "@/components/ui/ad-calendar";
+import BsDatePicker from "@/components/ui/BsDatePicker";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TransactionsTable, type TransactionColumnKey } from "../vouchers/TransactionsTable";
 import {
   type TransactionSortBy,
@@ -21,6 +28,7 @@ import { MobileTransactionsPager } from "@/components/vouchers/MobileTransaction
 import { MobileDetailSummaryCollapsible } from "@/components/layout/MobileDetailSummaryCollapsible";
 import { ReportMobileLedgerFooter } from "@/components/reports/ReportMobileLedgerFooter";
 import { LedgerDesktopFooter } from "@/components/vouchers/LedgerDesktopFooter";
+import { LedgerTxnScrollColumn } from "@/components/vouchers/LedgerTxnScrollColumn";
 import { LedgerFooterCheckboxPill } from "@/components/vouchers/ledgerFooterChrome";
 import { LedgerFooterColumnsMenu } from "@/components/vouchers/LedgerFooterColumnsMenu";
 import { StatementCheckModeFooterControls } from "@/components/vouchers/StatementCheckModeFooterControls";
@@ -41,7 +49,11 @@ import {
 import { applyStatementCheckModeHiddenToLedgerList } from "@/lib/statementCheckModeLedger";
 import { useDate } from "@/hooks/useDate";
 import { useRowsPerPage } from "@/hooks/useRowsPerPage";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsMobile, useCalendarMonths } from "@/hooks/use-mobile";
+import { useLedgerUnapprovedOnlyFilter } from "@/hooks/useLedgerUnapprovedOnlyFilter";
+import { LedgerUnapprovedFilterButton } from "@/components/vouchers/LedgerUnapprovedFilterButton";
+import { LedgerHeaderReminderButton, type LedgerReminderContext } from "@/components/vouchers/LedgerHeaderReminderButton";
+import { LedgerReminderDialog } from "@/components/vouchers/LedgerReminderDialog";
 import { AddVoucherDialog } from "../vouchers/AddVoucherDialog";
 import { ScrollArea } from "../ui/scroll-area";
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -52,6 +64,20 @@ import { useCompany } from "@/hooks/useCompany";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
 import { CreateNoteForm } from "../vouchers/CreateNoteForm";
 import { cn } from "@/lib/utils";
+import {
+  LEDGER_DATE_RANGE_PILL_CN,
+  LEDGER_HEADER_AVATAR_CN,
+  LEDGER_HEADER_AVATAR_IMAGE_CN,
+  LEDGER_HEADER_AVATAR_PEN_CN,
+  LEDGER_HEADER_NAME_CARD_CN,
+  LEDGER_HEADER_OUTER_ROW_CN,
+  LEDGER_HEADER_PILL_CN,
+  LEDGER_HEADER_PILL_ICON_CN,
+  LEDGER_HEADER_PILL_ICON_SIZE_CN,
+  LEDGER_HEADER_RIBBON_WRAP_CN,
+  LEDGER_HEADER_TITLE_CN,
+} from "@/lib/ledgerHeaderChrome";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 import { mdc, mobileTxnScrollBodyClass } from "@/lib/mobileDetailChrome";
 import * as XLSX from "xlsx";
 
@@ -66,6 +92,7 @@ export function NoteDetails({
   onBack,
   mobileFooterVariant = "ledger",
   mobileReportStickyTitle,
+  transactionsAlreadyFiltered = false,
 }: {
   entity: any;
   transactions: any[];
@@ -75,6 +102,8 @@ export function NoteDetails({
   onBack?: () => void;
   mobileFooterVariant?: "ledger" | "report";
   mobileReportStickyTitle?: string;
+  /** Report details pass an already entity-filtered voucher list. */
+  transactionsAlreadyFiltered?: boolean;
 }) {
   const { formatDate, formatDateBS, dateSystem } = useDate();
   const { company, companyId } = useCompany();
@@ -83,12 +112,26 @@ export function NoteDetails({
   const [selectedVoucher, setSelectedVoucher] = React.useState<any>(null);
   const [isVoucherDialogOpen, setIsVoucherDialogOpen] = React.useState(false);
   const [isNoteDialogOpen, setIsNoteDialogOpen] = React.useState(false);
+  const [isReminderOpen, setIsReminderOpen] = React.useState(false);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [rowsPerPage, setRowsPerPage] = useRowsPerPage(20);
   const [currentPage, setCurrentPage] = useState(1);
   const [showNarration, setShowNarration] = useState(true);
   const [mobileSearchTerm, setMobileSearchTerm] = useState("");
+  const calendarMonths = useCalendarMonths();
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [isAdCalendarOpen, setIsAdCalendarOpen] = useState(false);
+  const {
+    unapprovedOnly,
+    toggleUnapprovedOnly,
+    onDateRangeChangeWithUnapprovedReset,
+  } = useLedgerUnapprovedOnlyFilter({
+    onDateRangeChange: setDateRange,
+    setCurrentPage,
+    setFilters,
+    setActiveFilter,
+  });
 
   // Account / "All Vouchers" switch par purana page index mat rakho — nahi to nayi list pe galat slice dikhti hai.
   useEffect(() => {
@@ -99,6 +142,10 @@ export function NoteDetails({
     setCurrentPage(1);
   }, [mobileSearchTerm]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [dateRange?.from?.getTime(), dateRange?.to?.getTime(), unapprovedOnly]);
+
   const handleEditVoucher = (voucher: any) => {
     setSelectedVoucher(voucher);
     setIsVoucherDialogOpen(true);
@@ -107,14 +154,27 @@ export function NoteDetails({
   const currentTransactions = useMemo(() => {
     let baseTransactions = transactions;
 
-    if (!isAllVouchersView && entity) {
+    if (!isAllVouchersView && entity && !transactionsAlreadyFiltered) {
       baseTransactions = transactions.filter(
         (v) => v.entityId === entity.id && v.context === entity.type
       );
     }
 
+    let filteredTransactions = baseTransactions;
+    if (dateRange?.from || dateRange?.to) {
+      const fromMs = dateRange.from ? startOfDay(dateRange.from).getTime() : Number.NEGATIVE_INFINITY;
+      const toMs = dateRange.to ? endOfDay(dateRange.to).getTime() : Number.POSITIVE_INFINITY;
+      filteredTransactions = filteredTransactions.filter((t: any) => {
+        const rawDate = t?.date?.toDate ? t.date.toDate() : t?.date;
+        const dateMs = rawDate instanceof Date ? rawDate.getTime() : new Date(rawDate ?? "").getTime();
+        return Number.isFinite(dateMs) && dateMs >= fromMs && dateMs <= toMs;
+      });
+    }
+    if (unapprovedOnly) {
+      filteredTransactions = filteredTransactions.filter((t: any) => t?.isApproved !== true);
+    }
     if (Object.values(filters).some((v) => v)) {
-      return baseTransactions.filter((t: any) => {
+      return filteredTransactions.filter((t: any) => {
         return Object.entries(filters).every(([key, value]) => {
           if (!value) return true;
           const lowerCaseValue = value.toLowerCase();
@@ -148,8 +208,8 @@ export function NoteDetails({
       });
     }
 
-    return baseTransactions;
-  }, [transactions, filters, isAllVouchersView, entity, formatDate, formatDateBS]);
+    return filteredTransactions;
+  }, [transactions, filters, isAllVouchersView, entity, transactionsAlreadyFiltered, formatDate, formatDateBS, dateRange, unapprovedOnly]);
 
   useEffect(() => {
     const savedState = sessionStorage.getItem("showNarration");
@@ -161,10 +221,74 @@ export function NoteDetails({
     sessionStorage.setItem("showNarration", String(checked));
   };
 
+  const handleAdDateSelect = useCallback((date: Date) => {
+    const current = dateRange;
+    let nextRange: DateRange;
+    if (!current?.from || current.to) {
+      nextRange = { from: date };
+    } else if (date < current.from) {
+      nextRange = { from: date, to: current.from };
+    } else {
+      nextRange = { from: current.from, to: date };
+    }
+    onDateRangeChangeWithUnapprovedReset(nextRange);
+    if (nextRange.to) setIsAdCalendarOpen(false);
+  }, [dateRange, onDateRangeChangeWithUnapprovedReset]);
+
+  const dateFilterControls = (
+    <>
+      {(dateSystem === "BS" || dateSystem === "Both") ? (
+        <BsDatePicker
+          isRange
+          valueAD={dateRange}
+          onChangeAD={onDateRangeChangeWithUnapprovedReset}
+          className={LEDGER_DATE_RANGE_PILL_CN}
+        />
+      ) : null}
+      {(dateSystem === "AD" || dateSystem === "Both") ? (
+        <Popover open={isAdCalendarOpen} onOpenChange={setIsAdCalendarOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              className={cn(LEDGER_DATE_RANGE_PILL_CN, "justify-start text-left font-normal", !dateRange && "text-muted-foreground")}
+              data-theme-detail="date-range"
+            >
+              <CalendarIcon className={cn("mr-1.5", LEDGER_HEADER_PILL_ICON_SIZE_CN)} />
+              {dateRange?.from ? (
+                dateRange.to
+                  ? `${format(dateRange.from, "LLL dd, y")} - ${format(dateRange.to, "LLL dd, y")}`
+                  : format(dateRange.from, "LLL dd, y")
+              ) : "Pick a date range"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <AdCalendar valueAD={dateRange} isRange numberOfMonths={calendarMonths} onSelect={handleAdDateSelect} />
+          </PopoverContent>
+        </Popover>
+      ) : null}
+      {dateRange ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={LEDGER_HEADER_PILL_ICON_CN}
+          onClick={() => onDateRangeChangeWithUnapprovedReset(undefined)}
+          aria-label="Clear date filter"
+        >
+          <XCircle className={LEDGER_HEADER_PILL_ICON_SIZE_CN} />
+        </Button>
+      ) : null}
+    </>
+  );
+
   const handlePrint = () => {
     if (!company) return;
 
     const title = isAllVouchersView ? "All Notes" : `Notes: ${entity.name}`;
+    const dateRangeText = dateRange?.from
+      ? `${dateSystem === "BS" ? formatDateBS(dateRange.from) : formatDate(dateRange.from)} to ${dateRange.to ? (dateSystem === "BS" ? formatDateBS(dateRange.to) : formatDate(dateRange.to)) : "…"}`
+      : "All Time";
 
     openPrintDirect(
       {
@@ -182,7 +306,7 @@ export function NoteDetails({
         context: "note",
         contextId: entity.id,
         dateSystem: dateSystem,
-        dateRangeText: "All Time",
+        dateRangeText,
         vouchersCount: currentTransactions.length,
         openingBalance: 0,
         transactions: currentTransactions,
@@ -192,6 +316,16 @@ export function NoteDetails({
       true
     );
   };
+
+  const reminderDialog = (
+    <LedgerReminderDialog
+      open={isReminderOpen}
+      onOpenChange={setIsReminderOpen}
+      context={entity?.id === "all" ? undefined : entity?.type as LedgerReminderContext | undefined}
+      entityId={entity?.id === "all" ? undefined : entity?.id}
+      title={entity?.id === "all" ? "All Notes" : entity?.name}
+    />
+  );
 
   const [sortBy, setSortBy] = useState<TransactionSortBy>("date");
   const [sortOrder, setSortOrder] = useState<TransactionSortOrder>(DEFAULT_TRANSACTION_SORT_ORDER);
@@ -353,7 +487,11 @@ export function NoteDetails({
           <MobileDetailSummaryCollapsible>
             <div className="flex flex-shrink-0 items-center justify-center gap-1 border-b px-2 py-1">
               <span className="text-xs font-medium text-muted-foreground">
-                {searchFilteredTransactions.length} note(s) · All Time
+                {searchFilteredTransactions.length} note(s) · {dateRange?.from
+                  ? dateRange.to
+                    ? `${formatDate(dateRange.from)} - ${formatDate(dateRange.to)}`
+                    : formatDate(dateRange.from)
+                  : "All Time"}
               </span>
             </div>
             <div className="flex-shrink-0 border-b p-2 space-y-2">
@@ -377,6 +515,11 @@ export function NoteDetails({
                     All Vouchers
                   </Button>
                 ) : null}
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
+                {dateFilterControls}
+                <LedgerHeaderReminderButton onClick={() => setIsReminderOpen(true)} />
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -406,6 +549,10 @@ export function NoteDetails({
                   setActiveFilter={setActiveFilter}
                   showNarration={showNarration}
                   scrollOnlyTransactions
+                hideDebitColumn
+                hideCreditColumn
+                hideBalanceColumn
+                hideFooter
                   transactionCardSearchHighlight={mobileSearchTerm}
                   visibleColumns={visibleColumns}
                   {...statementCheck.tableProps}
@@ -480,6 +627,7 @@ export function NoteDetails({
           voucher={selectedVoucher}
           onVoucherCreated={() => setSelectedVoucher(null)}
         />
+        {reminderDialog}
         <Dialog open={isNoteDialogOpen} onOpenChange={setIsNoteDialogOpen}>
           <DialogContent>
             <DialogHeader>
@@ -504,56 +652,76 @@ export function NoteDetails({
 
   return (
     <>
-      <Card className="h-full flex flex-col">
-        <CardHeader>
-          <div className="flex justify-between items-start">
-            <div>
-              <CardTitle>{entity.name}</CardTitle>
-              {entity.id !== "all" && <CardDescription>Notes related to this entity.</CardDescription>}
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setIsNoteDialogOpen(true)}>
-                <FilePlus className="mr-2 h-4 w-4" /> Add Note
-              </Button>
-              {onShowAll && (
-                <Button
-                  variant={isAllVouchersView ? "default" : "outline"}
-                  size="sm"
-                  onClick={onShowAll}
-                  className={isAllVouchersView ? "bg-primary text-primary-foreground" : ""}
-                >
-                  All Vouchers
+      <LedgerTxnScrollColumn
+        header={
+          <div className={LEDGER_HEADER_RIBBON_WRAP_CN}>
+            <div className={LEDGER_HEADER_OUTER_ROW_CN}>
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <div className={LEDGER_HEADER_AVATAR_CN}>
+                  <Avatar className={LEDGER_HEADER_AVATAR_IMAGE_CN}>
+                    <AvatarFallback className="rounded-none bg-muted p-0 text-muted-foreground">
+                      <FilePlus className="h-6 w-6" aria-hidden />
+                    </AvatarFallback>
+                  </Avatar>
+                  <button type="button" className={LEDGER_HEADER_AVATAR_PEN_CN} title="Edit">
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                </div>
+                <div className={LEDGER_HEADER_NAME_CARD_CN}>
+                  <h2 className={LEDGER_HEADER_TITLE_CN} title={entity.name}>{entity.name}</h2>
+                </div>
+              </div>
+              <LedgerHeaderPillRow>
+                <LedgerUnapprovedFilterButton active={unapprovedOnly} onClick={toggleUnapprovedOnly} />
+                {dateFilterControls}
+                {onShowAll && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onShowAll}
+                    className={cn(LEDGER_HEADER_PILL_CN, isAllVouchersView && "font-semibold text-blue-900")}
+                  >
+                    All Vouchers
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => setIsNoteDialogOpen(true)} className={LEDGER_HEADER_PILL_CN}>
+                  <FilePlus className={cn("mr-1.5", LEDGER_HEADER_PILL_ICON_SIZE_CN)} /> Add Note
                 </Button>
-              )}
-              <Button variant="outline" size="icon" onClick={handlePrint}>
-                <Printer className="h-4 w-4" />
-              </Button>
+                <Button variant="outline" size="icon" onClick={handlePrint} className={LEDGER_HEADER_PILL_ICON_CN} aria-label="Print notes">
+                  <Printer className={LEDGER_HEADER_PILL_ICON_SIZE_CN} />
+                </Button>
+                <LedgerHeaderReminderButton onClick={() => setIsReminderOpen(true)} />
+              </LedgerHeaderPillRow>
             </div>
           </div>
-        </CardHeader>
-        <CardContent className="flex-1 p-0 flex flex-col min-h-0">
-          <ScrollArea txnChrome className="flex-1">
-            <div className="p-4">
-              <TransactionsTable
-                transactions={paginatedTransactions}
-                context="note"
-                userNames={userNames}
-                onRowClick={handleEditVoucher}
-                filters={filters}
-                setFilters={setFilters}
-                activeFilter={activeFilter}
-                setActiveFilter={setActiveFilter}
-                showNarration={showNarration}
-                visibleColumns={visibleColumns}
-                {...statementCheck.tableProps}
-              />
-              {transactions.length === 0 && (
-                <div className="text-center py-16 text-muted-foreground">No notes found for this entity.</div>
-              )}
-            </div>
-          </ScrollArea>
-        </CardContent>
-        <LedgerDesktopFooter
+        }
+        table={
+          <div className="pl-notes-detail-pane flex h-0 min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <TransactionsTable
+              transactions={paginatedTransactions}
+              context="note"
+              userNames={userNames}
+              onRowClick={handleEditVoucher}
+              filters={filters}
+              setFilters={setFilters}
+              activeFilter={activeFilter}
+              setActiveFilter={setActiveFilter}
+              showNarration={showNarration}
+              scrollOnlyTransactions
+              hideDebitColumn
+              hideCreditColumn
+              hideBalanceColumn
+              hideFooter
+              visibleColumns={visibleColumns}
+              {...statementCheck.tableProps}
+            />
+            {currentTransactions.length === 0 ? (
+              <div className="text-center py-16 text-muted-foreground">No notes found for this entity.</div>
+            ) : null}
+          </div>
+        }
+        footer={
+          <LedgerDesktopFooter
           left={
             <>
               <LedgerFooterCheckboxPill
@@ -607,13 +775,15 @@ export function NoteDetails({
           afterCount={noteAfterCount}
           totalCount={transactionsForPaging.length}
         />
-      </Card>
+        }
+      />
       <AddVoucherDialog
         isOpen={isVoucherDialogOpen}
         onOpenChange={setIsVoucherDialogOpen}
         voucher={selectedVoucher}
         onVoucherCreated={() => setSelectedVoucher(null)}
       />
+      {reminderDialog}
       <Dialog open={isNoteDialogOpen} onOpenChange={setIsNoteDialogOpen}>
         <DialogContent>
           <DialogHeader>

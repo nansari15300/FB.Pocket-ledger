@@ -158,7 +158,8 @@ async function runEnsure(opts: {
     createdAt: now,
     sharedWith: [],
     sharedWithEmails: ownerEmail ? [ownerEmail] : [],
-    planId: "basic",
+    // Plan SKU is for end users only — My Company always uses unlimited override (see myCompanyPlanOverride).
+    planId: "pro-plus",
     planOwnerUid: ownerId,
     accountPlanAuthorityVersion: 1,
     planExpiry: planExpiryIso,
@@ -184,7 +185,7 @@ async function runEnsure(opts: {
       currencyCode: currency.currencyCode,
       fiscalYearStartMs: fy.start.getTime(),
       fiscalYearEndMs: fy.end.getTime(),
-      planId: "basic",
+      planId: "pro-plus",
     },
   });
 
@@ -214,7 +215,7 @@ async function runEnsure(opts: {
       createdAt: now,
       sharedWith: [],
       sharedWithEmails: ownerEmail ? [ownerEmail] : [],
-      planId: "basic",
+      planId: "pro-plus",
       planOwnerUid: ownerId,
       accountPlanAuthorityVersion: 1,
       planExpiry: planExpiryIso,

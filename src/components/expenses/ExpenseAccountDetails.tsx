@@ -21,7 +21,6 @@ import {
   Calendar as CalendarIcon,
   FilePlus,
   XCircle,
-  MoreVertical,
   ArrowLeft,
   Search,
   Wrench,
@@ -100,9 +99,9 @@ import {
   LEDGER_HEADER_PILL_CN,
   LEDGER_HEADER_PILL_ICON_CN,
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
-  LEDGER_HEADER_PILL_ROW_CN,
   LEDGER_TXN_PAGE_ROOT_CN,
 } from "@/lib/ledgerHeaderChrome";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 import { ReportHeaderSummaryCards, type ReportStatementSummaryCardData } from "@/components/reports/ReportStatementSummaryCards";
 import { LedgerTxnScrollColumn } from "@/components/vouchers/LedgerTxnScrollColumn";
 import { ResolvedEntityAvatar } from "@/components/entity/ResolvedEntityAvatar";
@@ -859,7 +858,7 @@ export function ExpenseAccountDetails({
               </div>
               )}
             </div>
-            <div className={LEDGER_HEADER_PILL_ROW_CN}>
+            <LedgerHeaderPillRow>
               <LedgerHeaderPrintButton variant="outline" onClick={handlePrint} />
               <LedgerHeaderReminderButton
                 variant="outline"
@@ -964,7 +963,7 @@ export function ExpenseAccountDetails({
                 </Button>
               )}
               
-            </div>
+            </LedgerHeaderPillRow>
           </div>
         </div>
           }

@@ -26,7 +26,6 @@ import {
   Filter,
   XCircle,
   ArrowLeft,
-  MoreVertical,
   Phone,
   MessageSquare,
   Gift,
@@ -73,10 +72,10 @@ import {
   LEDGER_HEADER_PILL_CN,
   LEDGER_HEADER_PILL_ICON_CN,
   LEDGER_HEADER_PILL_ICON_SIZE_CN,
-  LEDGER_HEADER_PILL_ROW_CN,
   LEDGER_TXN_PAGE_ROOT_CN,
 } from "@/lib/ledgerHeaderChrome";
 import { LedgerTxnScrollColumn } from "@/components/vouchers/LedgerTxnScrollColumn";
+import { LedgerHeaderPillRow } from "@/components/vouchers/LedgerHeaderPillRow";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
 import { CreateNoteForm } from "../vouchers/CreateNoteForm";
 import { useCompany } from "@/hooks/useCompany";
@@ -480,7 +479,7 @@ export function PayeeDetails({
                 </div>
               </div>
             </div>
-            <div className={LEDGER_HEADER_PILL_ROW_CN}>
+            <LedgerHeaderPillRow>
               <LedgerHeaderPrintButton variant="outline" onClick={handlePrint} />
               <LedgerHeaderReminderButton
                 variant="outline"
@@ -577,7 +576,7 @@ export function PayeeDetails({
                 </Button>
               )}
               
-            </div>
+            </LedgerHeaderPillRow>
           </div>
         </div>
           }
