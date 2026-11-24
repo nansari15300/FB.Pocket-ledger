@@ -1,6 +1,6 @@
 # Theme Master — Handoff (Pocket Ledger / Touri + React)
 
-> आखिरी अपडेट: 1 Nov 2026, 6:35 PM (Asia/Kathmandu, UTC+5:45)
+> आखिरी अपडेट: 24 Nov 2026, 6:52 PM (Asia/Kathmandu, UTC+5:45)
 > Project: `C:\Project xxx\Refference apps\Touri + React`
 > यह file दूसरे bot/agent के लिए है ताकि वह यहीं से काम आगे बढ़ा सके।
 
@@ -12,7 +12,7 @@
 - जहाँ CSS से काम न हो, वहाँ सिर्फ **minimal tsx बदलाव** (data attribute / class) — logic नहीं।
 
 ## 2. नियम (Rules)
-1. हर बदलाव से **पहले backup**: `C:\Project xxx\backup-theme-<YYYYMMDD>-<HHmm>\` (नया folder, relative path same रखें, जैसे `src\app\globals.css`)।
+1. Nov 4, 2026 user rule: no local backups before code changes anymore; recover from Git. Don't delete old backups.
 2. **No git** commit / push / stash / checkout — sync **Git Master** करता है।
 3. `electron\` और `src-tauri\` को मत छुएँ — owner **Tauri Master**।
 4. `globals.css` का **table-layout region** edit मत करें — owner **Trxn Table Master**। Region content से खोजें:
@@ -396,3 +396,19 @@ Account list ki dono lines (Pro theme): right edge 2 Nov 3:49 PM aur left edge 3
 - Selector: html :is(body.theme-pro, html.theme-pro body) .pl-master-entity-form-chrome.sm:max-w-5xl button.h-6.rounded-sm[role="combobox"] + 5x :not(#id). border-radius 4px, height/min-height 22px, max-height 24px, padding-y 0, line-height 1.15; chevron svg 12px. CreateItemDialog does not have this control yet (same classes will match if added).
 - Item Master planned wrapper of top fields (Item/Service, Name, HS Code, Group, Alias) in border p-4 rounded-md: existing Pro green 3D card selector .border.p-4.rounded-md already matches; no CSS change.
 - CSS only, TSX not edited. Block after Pro item form gray/3D cards (~16331+). postcss + lightningcss verified. Not visually checked. Dev server not restarted.
+
+## Nov 24 2026 18:52 Asia/Kathmandu - Server website pages use admin UI themes
+- User: put the server admin UI themes same-to-same on both public website pages (master and sub each have their own site).
+- Work was done on ServerWin10 (C:\Project Next.js Balgram\PocketLedger-Server), not the laptop copy. The laptop PocketLedger-Server tree does not contain the website folders; live sites are served from ServerWin10 ports 9786 (main) and 2786 (sub).
+- Master and sub admin UIs already share the same four themes (Default | Light | Medium | Dark) and the same colours, default (default), storage key (pl_server_theme) and v2 migration (gray -> medium, old medium -> dark). Both websites were updated to match that, not the old website set Light | Gray | Medium | Dark.
+- Theme files changed (identical copies in main-server\website and sub-server\pb_public\website):
+  - js\color-mode.js — theme list, default, migrateTheme v2, html.dark only for Dark
+  - css\color-mode.css — Default/Light/Medium/Dark tokens copied from admin style.css (#e0e8f6 / #f4f6fa / #c4c4c4 / #3a3a3a); old website Dark #0f141c and Gray #d9d9d9 removed
+  - css\country-gate.css — country-page surfaces/cards/header for the same four themes
+  - js\site-chrome.js — header switch order Default | Light | Medium | Dark
+  - js\i18n-web.js — added 	heme_default; Medium/Dark labels aligned with admin (en/hi/ne)
+  - cache ?v=20261124-1855 on those CSS/JS in the website HTML pages only (including home, login, terms, company, downloads, website-settings, admin-release)
+- Not touched: admin UI, server logic/routes, Touri-HR, sub-server-2, sub-server\pb_public\b (older /b/ copy still has the old 4 website themes). No commit/push, no npm install, no server restart.
+- Verify (no restart): http://127.0.0.1:9786/ and http://127.0.0.1:2786/ plus the new CSS/JS URLs all 200 with the new cache version and tokens. 
+ode --check passed on the JS files. Not visually checked in a browser.
+- First-time visitors now get Default (blue-tinted), same as the admin UI. A saved website Medium from before this change migrates to Dark so the previous dark-grey look is kept (same v2 rule as the admin UI). Hard refresh if an old cached CSS/JS still shows Light | Gray | Medium | Dark.
