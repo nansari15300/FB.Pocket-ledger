@@ -8,7 +8,7 @@
 ## PC और फ़ोल्डर
 | PC | machineId | ऐप फ़ोल्डर | सर्वर फ़ोल्डर |
 |-|-|-|-|
-| DESKTOP-M4HAJE9 (लैपटॉप) | 87099f47-479e-481c-afa5-031d443c15b8 | `C:\Project xxx\Refference apps\Touri + React` | `C:\Project xxx\Refference apps\PocketLedger-Server` |
+| DESKTOP-M4HAJE9 (लैपटॉप) | 87099f47-479e-481c-afa5-031d443c15b8 | `C:\Project Pocket-ledger_ERP\App` | `C:\Project Pocket-ledger_ERP\Server` |
 | ServerWin10 | 8fbef226-7949-44a9-ba98-ad7e2d552e16 | `C:\Project Next.js Balgram\Online Project` | `C:\Project Next.js Balgram\PocketLedger-Server` |
 
 ऐप फ़ोल्डर के नाम अलग हैं और यूज़र ने नाम बदलने से मना किया है। इसलिए **दो अलग repo** हैं, और हर repo का root वही फ़ोल्डर है।
@@ -39,7 +39,7 @@
 दोनों ड्राफ़्ट बॉट के कंप्यूटर पर `/workspace/sync-setup/app.gitignore` और `server.gitignore` में हैं। ये अभी किसी PC पर लगाए नहीं गए हैं। मुख्य नियम: `node_modules/ .next/ out/ dist/ dist-build/ build/ .build-logs/ .data/ android/app/build/ .gradle/ android/app/src/main/assets/public/ src-tauri/target/ src-tauri/gen/ *.apk *.aab *.exe *.log *.tsbuildinfo`, ऊपर के secrets, और सर्वर repo में डेटा और Cloudflare वाले नियम।
 
 ## 10 मिनट auto-sync योजना (2026-11-02 14:45 से दोनों PC पर ऐप repo के लिए चालू है)
-हर PC पर Task Scheduler में एक PowerShell script लगेगी, ताकि बॉट offline हो तब भी sync चले। Log: लैपटॉप पर `C:\Project xxx\git-sync.log`, ServerWin10 पर D: पर।
+हर PC पर Task Scheduler में एक PowerShell script लगेगी, ताकि बॉट offline हो तब भी sync चले। Log: लैपटॉप पर `C:\Project Pocket-ledger_ERP\git-sync.log`, ServerWin10 पर D: पर।
 1. `git fetch`। अगर न local बदलाव है न remote बदलाव, तो कुछ न करें।
 2. Local बदलाव हो तो नियम 2 की जाँच करें, फिर commit करें (message में PC का नाम और समय)।
 3. `git pull --rebase`, फिर `git push`।
@@ -81,7 +81,7 @@
 - **Laptop का dev server छुआ नहीं गया।** `localhost:3000/` और `/app` दोनों 200 दे रहे हैं।
 - **Scheduled task `\PocketLedger Git AutoSync`** दोनों PC पर लगा है: हर 10 मिनट, बिना अंत, hidden (conhost --headless), सिर्फ़ user के login रहने पर, Limited। Laptop पर user ASUS, server पर newpa। Last result 0।
   - Scripts: laptop पर `C:\PocketLedger-Sync\`, server पर `D:\PocketLedger-Sync\` (`git-autosync.ps1`, `install-autosync.ps1`)।
-  - Logs: laptop पर `C:\Project xxx\git-sync.log`, server पर `D:\PocketLedger-Backups\git-sync.log` (ATTENTION फ़ाइल उसी फ़ोल्डर में बनती है)।
+  - Logs: laptop पर `C:\Project Pocket-ledger_ERP\git-sync.log`, server पर `D:\PocketLedger-Backups\git-sync.log` (ATTENTION फ़ाइल उसी फ़ोल्डर में बनती है)।
   - रोकना या देखना हो तो: `install-autosync.ps1 -Disable`, `-Enable` या `-Status`।
 - **End-to-end test पास हुआ:** laptop पर `_handoff/sync-test.md` बनाई गई। Quiet period में auto-sync ने उसे छोड़ दिया, फिर commit और push किया (`8dbb355c`)। उसके बाद server task ने उसे pull किया, फ़ाइल server पर मौजूद है और HEAD बराबर है।
 - **Log फ़ाइलें बाहर रखी गईं:** दोनों PC के `.git/info/exclude` में `*.log` जोड़ा गया (सिर्फ़ local)। Script के secret guard में भी नई `*.log` फ़ाइलें रोकने का नियम जुड़ा। पहले laptop पर लगभग 47 log फ़ाइलें और server पर `dev-server.log` auto-commit हो सकती थीं।
@@ -110,26 +110,26 @@
 - `.env.local` main से copy किया गया है। `node_modules` के लिए `npm ci` सिर्फ़ Touri-HR में चलाया गया।
 - main के 26 electron files skip-worktree हैं, लेकिन यह setting हर worktree की अलग होती है, इसलिए HR worktree में वे सामान्य रूप से checkout हैं। Excludes (`src-tauri/`, `desktop-sidecar/`, `TAURI-MIGRATION.md`, `*.log`) दोनों worktree में लागू हैं।
 - नियम:
-  - auto-sync सिर्फ़ main फ़ोल्डर (`Touri + React`) को sync करता है, Touri-HR को कभी नहीं।
+  - auto-sync सिर्फ़ main फ़ोल्डर (`App`) को sync करता है, `App\HR` को कभी नहीं।
   - `feature/hr-module` तभी push होगी जब user खुद कहे।
   - force push कभी नहीं करना है।
   - main में merge सिर्फ़ user के "हाँ" कहने के बाद होगा।
   - PB schema दोनों का साझा है (एक ही server PB), इसलिए HR के लिए collection या field बदलने से main ऐप पर भी असर पड़ेगा। ऐसा बदलाव user से पूछकर ही करें।
 
 ## 2026-11-03 ~16:15 (नेपाल समय): फ़ोल्डर rename, path fix, HR branch push, server worktree
-- **Rename:** user ने `C:\Project xxx` का नाम `C:\Project ERP` कर दिया। अब main repo `C:\Project ERP\Refference apps\Touri + React` और HR worktree `C:\Project ERP\Refference apps\Touri-HR` है।
+- **Rename:** user ने `C:\Project xxx` का नाम `C:\Project ERP` कर दिया। अब main repo `C:\Project Pocket-ledger_ERP\App` और HR worktree `C:\Project Pocket-ledger_ERP\App\HR` है।
 - **Backup (fix से पहले):** `C:\PocketLedger-Backups\pre-path-fix-20261103-1605\` में main का `git bundle --all`, दोनों launcher, task XML और worktree metadata रखे गए हैं।
 - **Path fix:**
   - `git worktree repair` चलाया। अब `gitdir` और `Touri-HR\.git` दोनों नए path पर हैं।
   - `start-dev-2000.cmd` और `start-dev-hr-2100.cmd` में नया path डाला गया।
-  - Auto-sync task को installer (`-Headless`) से फिर register किया गया, अब `-Repos "C:\Project ERP\Refference apps\Touri + React" -LogPath "C:\Project ERP\git-sync.log"` के साथ। Rename के बाद task ने पुराने path पर एक खाली `C:\Project xxx\git-sync.log` बना दिया था, जो अब इस्तेमाल नहीं होता।
+  - Auto-sync task को installer (`-Headless`) से फिर register किया गया, अब `-Repos "C:\Project Pocket-ledger_ERP\App" -LogPath "C:\Project Pocket-ledger_ERP\git-sync.log"` के साथ। Rename के बाद task ने पुराने path पर एक खाली `C:\Project xxx\git-sync.log` बना दिया था, जो अब इस्तेमाल नहीं होता।
 - **Dev server शुरू करने का तरीका:** launcher को `Start-Process cmd.exe -WindowStyle Hidden` से चलाएँ। WMI से चलाने पर शुरू करने वाला shell बंद होते ही server बंद हो गया था।
 - **HR push:** `feature/hr-module` पर commit `09fa15b5` ("HR module: employees + attendance") बना और `origin/feature/hr-module` पर push हुआ। उससे पहले `tsc` में 0 errors थे। इस commit में leaves वाली फ़ाइलें भी हैं। Main पर कुछ merge नहीं हुआ।
 - **Server worktree:** ServerWin10 पर `D:\Touri-HR` बना, branch `feature/hr-module` (track `origin/feature/hr-module`, HEAD `09fa15b5`)। `.env.local` Online Project से copy किया गया और `npm ci` चलाया गया। Server का auto-sync अब भी सिर्फ़ `Online Project` को sync करता है।
 - **HR के नियम:**
   - HR branch को auto-sync कभी sync नहीं करेगा। इसका sync सिर्फ़ हाथ से, Git Master के ज़रिए होगा (commit/pull/push, force कभी नहीं)।
   - Payroll (d)+(e) का काम सिर्फ़ server (`D:\Touri-HR`) पर होगा, `src/modules/hr/payroll/**` और `src/app/(dashboard)/hr/payroll/**` में।
-  - Leaves (c) का काम सिर्फ़ laptop (`C:\Project ERP\Refference apps\Touri-HR`) पर होगा।
+  - Leaves (c) का काम सिर्फ़ laptop (`C:\Project Pocket-ledger_ERP\App\HR`) पर होगा।
   - इस बँटवारे से दोनों PC एक ही फ़ाइल नहीं छूते। Main में merge सिर्फ़ user के "हाँ" कहने के बाद होगा।
 
 ## 2026-11-03 शाम से 2026-11-04 सुबह (नेपाल समय): Tauri, HR payroll, secret scan, नए नियम

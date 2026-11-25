@@ -11,7 +11,7 @@
 ## 2. Project और PCs
 | PC | भूमिका | Path |
 |---|---|---|
-| DESKTOP-M4HAJE9 | laptop, work PC | `C:\Project xxx\Refference apps\Touri + React` और `PocketLedger-Server` |
+| DESKTOP-M4HAJE9 | laptop, work PC | `C:\Project Pocket-ledger_ERP\App` और `C:\Project Pocket-ledger_ERP\Server` |
 | ServerWin10 | server PC | `C:\Project Next.js Balgram\Online Project` |
 
 Stack:
