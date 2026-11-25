@@ -49,8 +49,14 @@ function AddonEsewaInner() {
         });
         let msg: string | null = null;
         try {
-          const data = (await res.json()) as { error?: string };
+          const data = (await res.json()) as {
+            error?: string;
+            pendingVerification?: boolean;
+            message?: string;
+          };
           if (typeof data?.error === "string") msg = data.error;
+          // Patch 10: eSewa on Manual verify — paid, waiting for admin.
+          if (data?.pendingVerification && typeof data.message === "string") msg = data.message;
         } catch {
           /* ignore */
         }
@@ -82,7 +88,7 @@ function AddonEsewaInner() {
           ) : null}
           {state === "ok" ? (
             <p className="text-sm text-green-600 dark:text-green-500" aria-live="polite">
-              Add-ons applied — you can continue.
+              {detail ?? "Add-ons applied — you can continue."}
             </p>
           ) : null}
           {state === "error" && detail ? (

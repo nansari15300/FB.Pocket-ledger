@@ -18,7 +18,7 @@ export type ApplySubscriptionCheckoutInput = {
   companyId?: string | null;
   userId: string;
   paymentId: string;
-  gateway: "khalti" | "esewa";
+  gateway: string;
   amountNpr: number;
   currency: string;
   planId: PlanId;

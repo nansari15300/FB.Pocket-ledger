@@ -5,12 +5,14 @@ import {
   resolveBillingGatewayAvailability,
   type GatewayKeys,
 } from "@/ai/flows/gateway-keys";
+import { parseCountryWallets, publicCountryWallets } from "@/lib/countryWallets";
 import { serverDb } from "@/lib/server/appDb";
 
 /** Admin read — keys merge + payment toggles (`app_settings/payment_gateways`). */
 async function getGatewayStateFromAdmin(): Promise<{
   keys: GatewayKeys;
   flags: ReturnType<typeof parseGatewayPaymentFlags>;
+  wallets: ReturnType<typeof publicCountryWallets>;
 }> {
   try {
     const db = serverDb();
@@ -20,9 +22,10 @@ async function getGatewayStateFromAdmin(): Promise<{
     return {
       keys: mergeGatewayKeysWithEnv(stored),
       flags: parseGatewayPaymentFlags(raw),
+      wallets: publicCountryWallets(parseCountryWallets(raw.wallets)),
     };
   } catch {
-    return { keys: mergeGatewayKeysWithEnv({}), flags: parseGatewayPaymentFlags(null) };
+    return { keys: mergeGatewayKeysWithEnv({}), flags: parseGatewayPaymentFlags(null), wallets: [] };
   }
 }
 
@@ -30,8 +33,9 @@ async function getGatewayStateFromAdmin(): Promise<{
  * Billing UI: keys configured + admin “Show on plan page” — dono true par radio enable.
  */
 export async function GET() {
-  const { keys, flags } = await getGatewayStateFromAdmin();
-  return NextResponse.json(resolveBillingGatewayAvailability(keys, flags), {
-    headers: { "Cache-Control": "no-store" },
-  });
+  const { keys, flags, wallets } = await getGatewayStateFromAdmin();
+  return NextResponse.json(
+    { ...resolveBillingGatewayAvailability(keys, flags), wallets },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }

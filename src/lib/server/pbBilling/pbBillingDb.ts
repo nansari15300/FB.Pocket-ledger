@@ -64,7 +64,8 @@ export function pbBillingKey(): string {
  * link key either, with narrow rights (see pb_hooks/lib/billing_api.js, block TEMP-NOKEY).
  * REMOVE: set PL_HOSTING_KEY (the fallback then switches itself off), or set this to false / delete the TEMP blocks.
  */
-export const TEMP_NOKEY_FALLBACK = true;
+// Patch 13: off. The app has PL_HOSTING_KEY; the sub server also strips plan/billing keys from any no-key caller.
+export const TEMP_NOKEY_FALLBACK = false;
 
 /** True when the app can reach the server billing endpoints (link key set, or the TEMP fallback is on). */
 export function pbBillingReady(): boolean {

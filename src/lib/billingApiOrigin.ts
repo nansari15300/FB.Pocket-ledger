@@ -15,6 +15,7 @@
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
 import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
 import { isStaticAppBuild } from "@/lib/isStaticAppBuild";
+import { isPlServerPackedApp } from "@/lib/plServerPackedApp";
 import { appApiUrl, joinPocketLedgerOriginAndPath } from "@/lib/webAppBasePath";
 
 /**
@@ -58,6 +59,8 @@ export function normalizeDevLoopbackBillingOrigin(origin: string): string {
 /** Static/APK/EXE: local static server par Google OAuth secrets nahi — hosted API force. */
 function shouldForceHostedBillingApiOrigin(): boolean {
   if (typeof window === "undefined") return false;
+  // Packed sub-server app: billing stays on THIS PocketBase, never np.pocket-ledger.com.
+  if (isPlServerPackedApp()) return false;
   return isCapacitorNativeApp() || isElectronDesktopApp() || isStaticAppBuild();
 }
 
@@ -75,6 +78,7 @@ function shouldUseHostedBillingApiInWebDev(): boolean {
  */
 function useSameOriginBillingApi(): boolean {
   if (typeof window === "undefined") return false;
+  if (isPlServerPackedApp()) return true;
   return !shouldForceHostedBillingApiOrigin();
 }
 

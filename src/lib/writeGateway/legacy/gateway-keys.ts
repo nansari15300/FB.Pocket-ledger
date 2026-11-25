@@ -211,6 +211,10 @@ export async function updateGatewayPaymentFlags(
   await setDoc(keysDocRef(), patch, { merge: true });
 }
 
+export async function updateCountryWallets(wallets: import("@/lib/countryWallets").CountryWallet[]): Promise<void> {
+  await setDoc(keysDocRef(), { wallets }, { merge: true });
+}
+
 export async function updateGatewayKeys(keys: GatewayKeys): Promise<void> {
   // Firestore rejects `undefined` (and non-primitive oddities); normalise every field to string.
   const str = (v: unknown) => (v === undefined || v === null ? '' : String(v));

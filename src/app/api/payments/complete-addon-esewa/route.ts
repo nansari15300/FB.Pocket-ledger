@@ -13,6 +13,12 @@ import {
 } from "@/ai/flows/gateway-keys";
 import type { AddonKind } from "@/lib/planAddOns";
 import { resolveBillingCaller } from "@/lib/server/billingCaller";
+import {
+  ESEWA_MANUAL_PENDING_MESSAGE,
+  esewaSignatureValid,
+  esewaVerifyModeOf,
+  verifyEsewaPayment,
+} from "@/lib/payments/esewaVerify";
 
 import { serverTimestamp } from "@/lib/server/pbBilling/fieldValue";
 
@@ -82,6 +88,37 @@ export async function POST(req: NextRequest) {
     const amountNpr = Number(p.amountNpr);
     if (!Number.isFinite(totalNum) || Math.abs(totalNum - amountNpr) > 0.5) {
       return NextResponse.json({ error: "Amount does not match quoted add-on total" }, { status: 400 });
+    }
+
+    // Patch 10: eSewa "Manual verify" (Gateway page switch, the default) — never activate here;
+    // keep the row pending with the eSewa details so an admin can confirm it.
+    if (esewaVerifyModeOf(gwRaw) === "manual") {
+      await pendingRef.update({
+        verifyStatus: "manual_pending",
+        esewaTransactionUuid: transactionUuid,
+        esewaTotalAmount: String(totalRaw ?? ""),
+        esewaSignatureOk: esewaSignatureValid(
+          decoded as Record<string, unknown>,
+          String(gwKeys.esewaSecretKey ?? "")
+        ),
+        verifyRequestedAt: serverTimestamp(),
+      });
+      return NextResponse.json(
+        { ok: true, pendingVerification: true, message: ESEWA_MANUAL_PENDING_MESSAGE },
+        { status: 202 }
+      );
+    }
+
+    // Security fix 2: prove the payment with eSewa (signature + status API) before activating.
+    const esewaCheck = await verifyEsewaPayment({
+      decoded: decoded as Record<string, unknown>,
+      merchantCode: String(gwKeys.esewaMerchantCode ?? ""),
+      secretKey: String(gwKeys.esewaSecretKey ?? ""),
+      transactionUuid,
+      totalAmount: totalRaw,
+    });
+    if (esewaCheck.ok === false) {
+      return NextResponse.json({ error: esewaCheck.error }, { status: esewaCheck.status });
     }
 
     const items = (Array.isArray(p.items) ? p.items : []) as { kind: AddonKind; quantity: number }[];
