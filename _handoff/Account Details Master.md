@@ -4,7 +4,7 @@
 
 ## नक्शा
 - लक्ष्य: Pocket Ledger के Account Details पेज और Group Details पेज का UI, डेटा, बग और नए फ़ीचर संभालना।
-- Project path: `C:\Project ERP\Refference apps\Touri + React` (3 नवंबर 2026 को user ने `C:\Project xxx` का नाम बदलकर `C:\Project ERP` किया)।
+- Project path: `C:\Project Pocket-ledger_ERP\App` (3 नवंबर 2026 को user ने `C:\Project xxx` का नाम बदलकर `C:\Project Pocket-ledger_ERP` किया)।
 - मुख्य files: `src\components\account\AccountDetails.tsx`, `src\components\account\AccountGroupDetails.tsx`।
 - Ledger header strip की shared class `.pl-ledger-header-ribbon-wrap` (`src\app\globals.css`, `src\lib\ledgerHeaderChrome.ts`) से आती है।
 - नियम: बदलाव से पहले user की हाँ; commit/push नहीं; Firebase code नहीं (सिर्फ़ PocketBase)।

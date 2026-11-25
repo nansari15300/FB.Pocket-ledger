@@ -101,7 +101,7 @@
 - **Reboot के बाद:** सिर्फ़ `C:\PocketLedger-Sync\start-dev-2000.cmd` चलाएँ। अगर sign-in screen पर अब भी `127.0.0.1:8090` दिखे, तो browser के localStorage से `pl_online_data_server_settings_v1` हटाकर reload करें, या "Server address" में `http://localhost:2000/pb` लिखें।
 
 ## 2026-11-02 ~15:25 (नेपाल समय): HR module के लिए अलग worktree (सिर्फ़ laptop)
-- फ़ोल्डर: `C:\Project xxx\Refference apps\Touri-HR`. यह `git worktree` है, यानी main repo वाला ही `.git` इस्तेमाल होता है।
+- फ़ोल्डर: `C:\Project Pocket-ledger_ERP\App\HR`. यह `git worktree` है, यानी main repo वाला ही `.git` इस्तेमाल होता है।
 - Branch: `feature/hr-module`, main के commit `5181a7c8` से बनी। इसका कोई upstream नहीं है और यह push नहीं हुई है।
 - Launcher: `C:\PocketLedger-Sync\start-dev-hr-2100.cmd` (repo से बाहर)।
   - Gateway `:2100` पर और Next `:2101` पर चलते हैं। PB है `http://localhost:2100/pb`, जो pb-proxy `127.0.0.1:18090` से होकर ServerWin10 का PB है।
@@ -117,7 +117,7 @@
   - PB schema दोनों का साझा है (एक ही server PB), इसलिए HR के लिए collection या field बदलने से main ऐप पर भी असर पड़ेगा। ऐसा बदलाव user से पूछकर ही करें।
 
 ## 2026-11-03 ~16:15 (नेपाल समय): फ़ोल्डर rename, path fix, HR branch push, server worktree
-- **Rename:** user ने `C:\Project xxx` का नाम `C:\Project ERP` कर दिया। अब main repo `C:\Project Pocket-ledger_ERP\App` और HR worktree `C:\Project Pocket-ledger_ERP\App\HR` है।
+- **Rename:** user ने `C:\Project xxx` का नाम `C:\Project Pocket-ledger_ERP` कर दिया। अब main repo `C:\Project Pocket-ledger_ERP\App` और HR worktree `C:\Project Pocket-ledger_ERP\App\HR` है।
 - **Backup (fix से पहले):** `C:\PocketLedger-Backups\pre-path-fix-20261103-1605\` में main का `git bundle --all`, दोनों launcher, task XML और worktree metadata रखे गए हैं।
 - **Path fix:**
   - `git worktree repair` चलाया। अब `gitdir` और `Touri-HR\.git` दोनों नए path पर हैं।

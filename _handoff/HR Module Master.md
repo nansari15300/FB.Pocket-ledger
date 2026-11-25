@@ -1,7 +1,7 @@
 # HR Module Master
 
 HR module (Employees / Attendance / Leaves / Payroll) — Pocket Ledger के अंदर अलग, plan-gated module।
-Worktree: `C:\Project ERP\Refference apps\Touri-HR` (branch `feature/hr-module`)। (पुराना नाम `C:\Project xxx` था — folder rename हो गया, अब हर जगह `C:\Project ERP`।)
+Worktree: `C:\Project Pocket-ledger_ERP\App\HR` (branch `feature/hr-module`)। (पुराना नाम `C:\Project xxx` था — folder rename हो गया, अब हर जगह `C:\Project Pocket-ledger_ERP`।)
 
 > **ज़रूरी (2026-11-03 17:34 NPT से):** user ने आदेश दिया कि **HR का सारा काम सिर्फ़ laptop (DESKTOP-M4HAJE9) पर** होगा। **`D:\Touri-HR` (ServerWin10) को edit नहीं करना है।** नीचे का पुराना "PC बँटवारा" अब रद्द है — सिर्फ़ इतिहास के लिए रखा है।
 
@@ -25,7 +25,7 @@ Worktree: `C:\Project ERP\Refference apps\Touri-HR` (branch `feature/hr-module`)
 
 ## User के नियम (rework brief, 2026-11-03)
 
-- सिर्फ़ worktree `C:\Project ERP\Refference apps\Touri-HR` में edit; main `Touri + React`, `C:\Project xxx`, ServerWin10 / `D:\Touri-HR`, किसी server को नहीं छूना।
+- सिर्फ़ worktree `C:\Project Pocket-ledger_ERP\App\HR` में edit; main `Touri + React`, `C:\Project xxx`, ServerWin10 / `D:\Touri-HR`, किसी server को नहीं छूना।
 - Git state बदलने वाली कोई command नहीं; सिर्फ़ `git --no-optional-locks status/diff`। npm install नहीं। Dev preview :2100 start/stop नहीं।
 - हर मौजूदा file बदलने से पहले backup `C:\PocketLedger-Backups\HR\<yyyyMMdd-HHmmss>\` में। Edit से पहले file दोबारा पढ़ें, user के बदलाव overwrite न करें।
 - UTF-8 बिना BOM, CRLF। Firebase code नहीं — सिर्फ़ PocketBase (app का data layer)।
@@ -36,7 +36,7 @@ Worktree: `C:\Project ERP\Refference apps\Touri-HR` (branch `feature/hr-module`)
 
 | PC | Worktree | काम | कहाँ लिख सकता है |
 |---|---|---|---|
-| **Laptop** DESKTOP-M4HAJE9 | `C:\Project ERP\Refference apps\Touri-HR` | (c) Leaves + **सारी shared HR files** (types, hrApi, hooks, utils, HrGate, HrHomePage, barrels, routes, plans/permissions, यह handoff file) | पूरा Touri-HR worktree (नियम ऊपर/नीचे वाले), backups `C:\PocketLedger-Backups\HR\` |
+| **Laptop** DESKTOP-M4HAJE9 | `C:\Project Pocket-ledger_ERP\App\HR` | (c) Leaves + **सारी shared HR files** (types, hrApi, hooks, utils, HrGate, HrHomePage, barrels, routes, plans/permissions, यह handoff file) | पूरा Touri-HR worktree (नियम ऊपर/नीचे वाले), backups `C:\PocketLedger-Backups\HR\` |
 | **ServerWin10** | `D:\Touri-HR` | (d) Payroll + (e) Salary slip | **सिर्फ़** `src/modules/hr/payroll/**` और `src/app/(dashboard)/hr/payroll/**` — write-only |
 
 - ServerWin10 पर **dev server / `tsc` नहीं** चलाना। Payroll का test **laptop** पर होगा, Git Master के sync के बाद (preview :2100)।
@@ -126,7 +126,7 @@ Worktree: `C:\Project ERP\Refference apps\Touri-HR` (branch `feature/hr-module`)
 - **2026-11-03 16:21 (NPT)** — Git Master ने `09fa15b5` ("HR module: employees + attendance") commit किया; इसमें (a)+(b)+(c) Leaves की सारी files पहले से हैं (`utils/leaves.ts`, `hooks/useHrLeaves.ts`, `pages/LeavesPage.tsx`, route `/hr/leaves`, attendance integration, HrHomePage Leaves card, barrels)। Working tree clean।
 - **2026-11-03 16:22 (NPT)** — (c) Leaves review (laptop): दोबारा नहीं बनाया, spec से मिलाया — सब मौजूद, कोई code बदलाव ज़रूरी नहीं। Backup `C:\PocketLedger-Backups\HR\20261103-162224\` → `_handoff\HR Module Master.md`।
 - **2026-11-03 16:23 (NPT)** — `npx tsc --noEmit -p .` → 0 errors। Preview `/app/hr/leaves/` → 308 → `/app/hr/leaves` → **200**।
-- **2026-11-03 16:25 (NPT)** — यह file: path `C:\Project xxx` → `C:\Project ERP`; PC बँटवारा section (laptop: (c) + shared; ServerWin10 `D:\Touri-HR`: (d)+(e) सिर्फ़ payroll folders में); file map में payroll paths; checklist में (e) slip।
+- **2026-11-03 16:25 (NPT)** — यह file: path `C:\Project xxx` → `C:\Project Pocket-ledger_ERP`; PC बँटवारा section (laptop: (c) + shared; ServerWin10 `D:\Touri-HR`: (d)+(e) सिर्फ़ payroll folders में); file map में payroll paths; checklist में (e) slip।
 
 - **2026-11-03 17:34 (NPT)** — User का आदेश: HR का सारा काम सिर्फ़ laptop पर; `D:\Touri-HR` edit नहीं करना।
 - **2026-11-03 17:59 (NPT)** — Backup `C:\PocketLedger-Backups\HR\20261103-175903\` → `_handoff\HR Module Master.md`, `_handoff\HR Module Master - ServerWin10.md`, `src\components\staff\types.ts`, `src\modules\hr\types.ts`, `src\modules\hr\index.ts`, `src\modules\hr\services\hrApi.ts`, `src\modules\hr\components\HrGate.tsx`, `src\modules\hr\hooks\{useHrEmployees,useHrAttendance,useHrLeaves}.ts`, `src\modules\hr\pages\{HrHomePage,EmployeesPage,EmployeeDetailsPage,AttendancePage,LeavesPage}.tsx`, `src\modules\hr\payroll\hooks\useHrPayroll.ts`, `src\modules\hr\payroll\pages\{PayrollPage,SalarySlipPage}.tsx` (18 files)। Laptop files edit से पहले के orig से मिलाईं — कोई manual बदलाव नहीं था।

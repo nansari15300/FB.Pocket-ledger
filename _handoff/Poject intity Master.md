@@ -19,7 +19,7 @@
 |---|---|---|---|
 | 2026-11-01 18:40 | सिर्फ़ जाँच (read-only), यह file बनाई | `_handoff\Poject intity Master.md` (नई) | — (कोई code नहीं बदला) |
 | 2026-11-01 18:50 | Theme Master का फ़ैसला: 14c/14d नहीं छूना; मेरा अलग section `/* === Poject intity Master: account lists === */` Theme Master के END marker के बाद। Static audit (read-only): 14d सिर्फ़ `border-blue-*` पकड़ता है, `bg-blue-*` नहीं। संभावित बचे नीले हिस्से: `MasterListViewShell.tsx` L75/L96 (`bg-blue-100/80` desktop strip + mobile dock panel; 14482 dock panel सिर्फ़ Medium/Dark में), `EntityListQuickFilterBar.tsx` L73, `ReceivablesPayablesDialogEntityList.tsx` L50/51/756। App चलाकर visual जाँच नहीं हुई (dev server नियम)। | — | — |
-| 2026-11-03 17:25 | काम (7) और (8) REJECTED: user ने ख़ुद manually कर दिया। मैंने कोई code नहीं बदला। Project path अब `C:\Project ERP\Refference apps\Touri + React` (पहले `C:\Project xxx\...`)। | `_handoff\Poject intity Master.md` | — |
+| 2026-11-03 17:25 | काम (7) और (8) REJECTED: user ने ख़ुद manually कर दिया। मैंने कोई code नहीं बदला। Project path अब `C:\Project Pocket-ledger_ERP\App` (पहले `C:\Project xxx\...`)। | `_handoff\Poject intity Master.md` | — |
 
 ## अगला कदम
 - कुछ नहीं। Account list वाला काम बंद (rejected, user ने ख़ुद किया)। नया काम Bot Leader या user से आने पर।

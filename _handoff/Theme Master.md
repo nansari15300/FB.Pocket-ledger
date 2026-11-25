@@ -1,7 +1,7 @@
 # Theme Master — Handoff (Pocket Ledger / Touri + React)
 
 > आखिरी अपडेट: 24 Nov 2026, 6:52 PM (Asia/Kathmandu, UTC+5:45)
-> Project: `C:\Project xxx\Refference apps\Touri + React`
+> Project: `C:\Project Pocket-ledger_ERP\App`
 > यह file दूसरे bot/agent के लिए है ताकि वह यहीं से काम आगे बढ़ा सके।
 
 ---
@@ -206,7 +206,7 @@ User ne kaha: 'kaam jo ruka hua hai uske sab ko reject karwa do maine sab manual
 - Checks: postcss OK, tsc exit 0, CRLF/no BOM, Trxn Table region unchanged. Status: done, NOT visually verified.
 
 ## PATH BADLAV (3 Nov 2026, 4:03 PM Asia/Kathmandu)
-User ne laptop par folder 'C:\Project xxx' ka naam badalkar 'C:\Project ERP' kar diya. Main app ab: C:\Project ERP\Refference apps\Touri + React. Purane backups (backup-theme-2026110x-*) aur theme-work-tmp ab C:\Project ERP\ ke andar hain. Is file me upar jahan bhi 'C:\Project xxx' likha hai, use 'C:\Project ERP' samjhein. Folder ka naam wapas mat badlein.
+User ne laptop par folder 'C:\Project xxx' ka naam badalkar 'C:\Project Pocket-ledger_ERP' kar diya. Main app ab: C:\Project Pocket-ledger_ERP\App. Purane backups (backup-theme-2026110x-*) aur theme-work-tmp ab C:\Project Pocket-ledger_ERP\ ke andar hain. Is file me upar jahan bhi 'C:\Project xxx' likha hai, use 'C:\Project Pocket-ledger_ERP' samjhein. Folder ka naam wapas mat badlein.
 Account list ki dono lines (Pro theme): right edge 2 Nov 3:49 PM aur left edge 3:52 PM par ho chuki hain (handle ki duplicate line chhipayi, globals.css lines 15742-15755). Is kaam me kuch baaki nahi.
 
 
@@ -214,7 +214,7 @@ Account list ki dono lines (Pro theme): right edge 2 Nov 3:49 PM aur left edge 3
 - Approved by user 6:19 PM NPT Nov 3, 2026. File: src/app/globals.css (only 2 lines changed, CRLF/no BOM kept).
 - Line 7460 (rule at 7453-7461, selectors: body[class*="theme-"] main table:not([data-pl-manage-sharing-users-table]):not([data-pl-manage-sharing-limits-table]):not(.pl-special-account-usage-table):not([data-pl-online-trigger-log-inner]) + th/td/tr, and body[class*="theme-"] [data-theme-table="transactions"] table/th/td): before `  border-color: #000 !important;` after `  border-color: hsl(var(--border)) !important;`. Global (all themes), not Pro-scoped; Pro --border = 0 0% 0% so Pro stays black.
 - Line 3153 (inside @media (min-width: 3840px) and (hover: hover) and (pointer: fine), line 3142; selectors 3146-3152: table:not([data-pl-subscription-payments-table]):not(.pl-special-account-usage-table):not([data-pl-company-profile-table]):not([data-pl-online-trigger-log-inner]) + td/th/tr/thead th/tbody td/tfoot td): before `    border-width: 3px !important;` after `    border-width: 1px !important;`. Global 4K-only; Pro on 4K also gets 1px (was 3px). Line 3154 border-color #000000 left untouched (not in approved scope).
-- Backup: C:\Project ERP\backup-theme-20261103-1820\ (src\app\globals.css, _handoff\Theme Master.md).
+- Backup: C:\Project Pocket-ledger_ERP\backup-theme-20261103-1820\ (src\app\globals.css, _handoff\Theme Master.md).
 - Checks: postcss parse OK; npx tsc --noEmit exit 0; diff vs backup = only lines 3153 and 7460; CRLF, no BOM; Trxn Table Master region, electron\, src-tauri\ untouched.
 - Pending: visual check on localhost:2000 (transaction tables e.g. Party/Bank-Cash account detail, Dashboard, Reports > Accounts Statement; 4K check needs >=3840px desktop). Notify HR Module Master.
 
@@ -227,7 +227,7 @@ Account list ki dono lines (Pro theme): right edge 2 Nov 3:49 PM aur left edge 3
 - src/hooks/useTheme.tsx line 39: comment only (Server Gray default -> Pro default).
 - THEME_DEFAULT_REV stays "5" (no bump), no new migration: anyone with a saved valid theme keeps it. Only an empty theme key, or a theme/accent from REMOVED_* lists, falls back to Pro now (before: Server Gray).
 - globals.css, theme colours, electron\, src-tauri\ untouched. CRLF/no BOM kept.
-- Backup: C:\Project ERP\backup-theme-20261104-0831\ (src\lib\proTheme.ts, src\lib\appThemes.ts, src\app\layout.tsx, src\hooks\useTheme.tsx, _handoff\Theme Master.md).
+- Backup: C:\Project Pocket-ledger_ERP\backup-theme-20261104-0831\ (src\lib\proTheme.ts, src\lib\appThemes.ts, src\app\layout.tsx, src\hooks\useTheme.tsx, _handoff\Theme Master.md).
 - Checks: npx tsc --noEmit exit 0.
 - Pending: visual check on localhost:2000 - fresh browser profile (or delete localStorage keys "theme" and "primaryColor") should open in Pro, labelled "Default" in Settings > Background Theme and the header Appearance menu; an existing user who picked e.g. Gray should stay on Gray.
 

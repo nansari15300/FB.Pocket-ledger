@@ -6,7 +6,7 @@
 
 ## नक्शा
 - **Goal:** Pocket Ledger के सारे builds (Tauri EXE, Android APK/AAB, web/static) सिर्फ़ Build Master करती है — user की "हाँ" के बाद। दूसरा कोई bot build नहीं करता।
-- **Repo (laptop DESKTOP-M4HAJE9):** `C:\Project ERP\Refference apps\Touri + React` (`C:\Project xxx\...` अब मौजूद नहीं है, वहाँ कभी न लिखें)
+- **Repo (laptop DESKTOP-M4HAJE9):** `C:\Project Pocket-ledger_ERP\App` (`C:\Project xxx\...` अब मौजूद नहीं है, वहाँ कभी न लिखें)
 - **ServerWin10 repo:** `C:\Project Next.js Balgram\Online Project`
 - **मेरी files:**
   - `scripts\build-android-signed.ps1` — signed APK/AAB script (नीचे देखें)
@@ -72,7 +72,7 @@ Flow:
 
 Usage:
 ```powershell
-cd "C:\Project ERP\Refference apps\Touri + React"
+cd "C:\Project Pocket-ledger_ERP\App"
 # जाँच + decrypt test (Gradle नहीं):
 powershell -ExecutionPolicy Bypass -File scripts\build-android-signed.ps1 -BuildType both -DryRun `
   -EncryptedKeystorePath "<Key Manager से>" -Cipher "<openssl-aes256-pbkdf2|gpg-aes256>" `

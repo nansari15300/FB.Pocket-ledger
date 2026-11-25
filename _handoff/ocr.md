@@ -21,8 +21,8 @@
 
 रास्ते (laptop **DESKTOP-M4HAJE9**):
 
-- App repo: `C:\Project ERP\Refference apps\Touri + React`
-- असली PocketBase server: `C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\`
+- App repo: `C:\Project Pocket-ledger_ERP\App`
+- असली PocketBase server: `C:\Project Pocket-ledger_ERP\Server\sub-server\`
 - PocketBase version: **0.40.6** (windows_amd64)
 - App repo के अंदर खाली `PocketLedger-Server` folder एक पुराना gitignored stub है। काम sibling folder में करें।
 
@@ -317,7 +317,7 @@ Fix (OCR build `2026-11-12.1`, सिर्फ़ client, server deploy ज़�
 
 ### Server Master के लिए: कौन-सी फाइलें deploy करनी हैं
 
-Laptop: `C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\`। तीनों फाइलें एक साथ copy करें, फिर PocketBase restart:
+Laptop: `C:\Project Pocket-ledger_ERP\Server\sub-server\`। तीनों फाइलें एक साथ copy करें, फिर PocketBase restart:
 
 1. `pb_hooks/lib/ocr_cloud.js` — final size **65278 bytes** (पहले 43595 B)। Google Vision और Azure वैसे ही हैं; नया Gemini हिस्सा जुड़ा है।
 2. `pb_hooks/ocr_cloud.pb.js` — 4 नए routes: `POST/DELETE /api/ocr-cloud/ai-key`, `GET /api/ocr-cloud/ai-status`, `POST /api/ocr-cloud/ai-read`। पुराने 5 routes नहीं बदले।
@@ -417,8 +417,8 @@ Ansari Ji approved: Recent OCR must show only OCR-created vouchers and be the sa
 
 ### Server deploy (Server master — not deployed from this change)
 Laptop sources (do not copy from Server PC):
-`C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\company_file_count.pb.js`
-`C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\lib\company_file_count.js`
+`C:\Project Pocket-ledger_ERP\Server\sub-server\pb_hooks\company_file_count.pb.js`
+`C:\Project Pocket-ledger_ERP\Server\sub-server\pb_hooks\lib\company_file_count.js`
 Copy those two files onto ServerWin10 at:
 `C:\Project Next.js Balgram\PocketLedger-Server\sub-server\pb_hooks\company_file_count.pb.js`
 `C:\Project Next.js Balgram\PocketLedger-Server\sub-server\pb_hooks\lib\company_file_count.js`
@@ -455,8 +455,8 @@ Voucher attachments such as CNTR Out-001 (`local:<uuid>`) on PocketBase/server-g
 
 **Deploy (Server master — do not copy from Server PC, do not restart from this change):**
 Laptop sources:
-`C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\company_file_count.pb.js`
-`C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\lib\company_file_count.js`
+`C:\Project Pocket-ledger_ERP\Server\sub-server\pb_hooks\company_file_count.pb.js`
+`C:\Project Pocket-ledger_ERP\Server\sub-server\pb_hooks\lib\company_file_count.js`
 Copy onto ServerWin10 at:
 `C:\Project Next.js Balgram\PocketLedger-Server\sub-server\pb_hooks\company_file_count.pb.js`
 `C:\Project Next.js Balgram\PocketLedger-Server\sub-server\pb_hooks\lib\company_file_count.js`
@@ -475,8 +475,8 @@ After the first gallery-counts deploy, laptopdev Gallery for New parsa Engineeri
 
 **Deploy (Server master — copy from the laptop sources below, then restart PocketBase; do not edit live files from Server PC, no migration, no Cloudflared change):**
 Laptop sources:
-`C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\company_file_count.pb.js`
-`C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\lib\company_file_count.js`
+`C:\Project Pocket-ledger_ERP\Server\sub-server\pb_hooks\company_file_count.pb.js`
+`C:\Project Pocket-ledger_ERP\Server\sub-server\pb_hooks\lib\company_file_count.js`
 Live destinations:
 `C:\Project Next.js Balgram\PocketLedger-Server\sub-server\pb_hooks\company_file_count.pb.js`
 `C:\Project Next.js Balgram\PocketLedger-Server\sub-server\pb_hooks\lib\company_file_count.js`
@@ -517,9 +517,9 @@ The other 12 are current-FY / unscoped numbers such as PUR-83-84-*, Sale Inv-83-
 
 Laptop sources:
 
-- `C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\lib\company_file_count.js`
+- `C:\Project Pocket-ledger_ERP\Server\sub-server\pb_hooks\lib\company_file_count.js`
   SHA256 `B5393285679CCF21450595D6C0D6EB3C0807668100A204B50187ABAB1B643C92` (17123 bytes)
-- `C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\company_file_count.pb.js`
+- `C:\Project Pocket-ledger_ERP\Server\sub-server\pb_hooks\company_file_count.pb.js`
   SHA256 `08CD494726251611BBBB9DFBBD65ACFCDE17AF2AE4A627A33E2C47E0831D2900` (1391 bytes, unchanged from `005f5b1`)
 
 Live destinations:
@@ -676,7 +676,7 @@ Ansari Ji (t168u): Gemini (`gemini-3.5-flash-lite`, OCR build 2026-11-18.1) on a
 
 - The laptop copy of `PocketLedger-Server/sub-server/pb_hooks/lib/ocr_cloud.js` was **stale** (83,091 B, sha256 `2F9AF43B…8BDF65`, 12 Nov, old bill-only schema). The **live** file on ServerWin10 (`C:\Project Next.js Balgram\PocketLedger-Server\...\ocr_cloud.js`) is the real schema (150,209 B, sha256 `8CCC2DA72B110D06B77D16562E311816A4996360D35B8F12938ABFB64C086E29`, 17 Nov 21:30). Prompt additions were applied on top of the **live** file, not the stale laptop copy.
 - Prepared laptop file (live + additive prompt/schema only; no other live behaviour changed):
-  - Path: `C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\lib\ocr_cloud.js`
+  - Path: `C:\Project Pocket-ledger_ERP\Server\sub-server\pb_hooks\lib\ocr_cloud.js`
   - Size: 152,140 B
   - sha256: `7D44A411B3C0C91FC7A09E5980A3116FBB8505568281190493948E67E5FD7600`
 - Additive prompt/schema: `date_bs_raw` (optional, not required); cash / नगद must not be `bank_transfer`; always return `amount_in_words` and the raw date string; handwritten ४↔८ / १↔९ / ३↔८/९ guidance; if the year digit is overwritten, leave `date_bs` null, keep `date_bs_raw`, and flag `uncertain_fields`. Existing number-check rules are kept.
@@ -689,7 +689,7 @@ Ansari Ji (t168u): Gemini (`gemini-3.5-flash-lite`, OCR build 2026-11-18.1) on a
 - `src/lib/ocr/dates.ts`
 - `src/modules/ocr/useVoucherOcr.tsx`
 - `tests/ocr/kharchaVoucherWordsDate.selftest.mts` (new)
-- `C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_hooks\lib\ocr_cloud.js` (live + additive prompt)
+- `C:\Project Pocket-ledger_ERP\Server\sub-server\pb_hooks\lib\ocr_cloud.js` (live + additive prompt)
 - this handoff
 
 **Tests:** px tsx tests/ocr/kharchaVoucherWordsDate.selftest.mts ALL PASS. All 44 	ests/ocr/*.selftest.mts were run on the laptop (2026-11-19 13:26 Asia/Kathmandu): 39 passed (including the new one). 5 already failed on current git HEAD with the same errors, unrelated to this change (iGeminiPratik.selftest.mts 3, illPaymentOut.selftest.mts 1, partyAlias.selftest.mts 2, partyMatch.selftest.mts 1, sampleDocs.selftest.mts 1). pm run typecheck passed.

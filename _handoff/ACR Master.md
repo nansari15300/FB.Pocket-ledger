@@ -4,7 +4,7 @@ Last updated: 2026-11-10 21:50 (Asia/Kathmandu)
 
 ## Scope
 - Goal: OCR / auto-fill of New Trxn vouchers from attached documents (the ACR module only).
-- App path (laptop DESKTOP-M4HAJE9, machineId `87099f47-479e-481c-afa5-031d443c15b8`): `C:\Project ERP\Refference apps\Touri + React`
+- App path (laptop DESKTOP-M4HAJE9, machineId `87099f47-479e-481c-afa5-031d443c15b8`): `C:\Project Pocket-ledger_ERP\App`
 - Files/paths:
   - `src/modules/ocr/` — engine, bill parser, hook, field bubbles, adapters, prefs
   - `src/lib/ocr/` — dates, receipt/document detectors, account matching, money-voucher fill

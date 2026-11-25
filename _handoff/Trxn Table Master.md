@@ -5,8 +5,8 @@
 ## मेरा काम
 Pocket Ledger के Transaction (trxn) टेबल का ढाँचा मेरी ज़िम्मेदारी है: उसके कॉलम, फ़ील्ड, डेटा टाइप, रिलेशन और इंडेक्स, और यह कि client और server (PocketBase + Go) में यह टेबल कैसे इस्तेमाल होती है। इसके अलावा ledger के TransactionsTable का layout भी मेरे पास है।
 - trxn सिर्फ़ client में UI/route का नाम है। असल डेटा PocketBase की collection `pl_vouchers` में रहता है।
-- Schema: `C:\Project ERP\Refference apps\PocketLedger-Server\sub-server\pb_migrations\1761500000_app_data_collections.js` (लाइन ~160–175)। इसमें 19 कॉलम और 6 इंडेक्स हैं, जिनमें UNIQUE(company, app_id) भी है। इससे जुड़ा logic `pb_hooks` में है।
-- Client: `C:\Project ERP\Refference apps\Touri + React` (laptop DESKTOP-M4HAJE9 पर)।
+- Schema: `C:\Project Pocket-ledger_ERP\Server\sub-server\pb_migrations\1761500000_app_data_collections.js` (लाइन ~160–175)। इसमें 19 कॉलम और 6 इंडेक्स हैं, जिनमें UNIQUE(company, app_id) भी है। इससे जुड़ा logic `pb_hooks` में है।
+- Client: `C:\Project Pocket-ledger_ERP\App` (laptop DESKTOP-M4HAJE9 पर)।
 - Live server: ServerWin10 पर `C:\Project Next.js Balgram\PocketLedger-Server\sub-server`। उसका PocketBase `192.168.1.64:8090` पर और `https://np.pocket-ledger.com` पर मिलता है।
 
 ## नियम
@@ -38,8 +38,8 @@ Pocket Ledger के Transaction (trxn) टेबल का ढाँचा म�
 - `TransactionsTable.tsx:4713`: mobile group item की key अब `t.id ?? _rowKey ?? idx` है।
 
 ## बैकअप
-- Plan A से पहले का: `C:\Project ERP\backup-trxn-table-20261101-1602\`। इसमें 5 फ़ाइलें हैं: TransactionsTable.tsx, ledgerUnifiedContentWidth.ts, ledgerHeaderChrome.ts, transactionTableShared.tsx और globals.css।
-- Animation fixes से पहले का: `C:\Project ERP\backup-trxn-anim-20261101-1735\src\components\vouchers\`, जिसमें दोनों फ़ाइलें हैं।
+- Plan A से पहले का: `C:\Project Pocket-ledger_ERP\backup-trxn-table-20261101-1602\`। इसमें 5 फ़ाइलें हैं: TransactionsTable.tsx, ledgerUnifiedContentWidth.ts, ledgerHeaderChrome.ts, transactionTableShared.tsx और globals.css।
+- Animation fixes से पहले का: `C:\Project Pocket-ledger_ERP\backup-trxn-anim-20261101-1735\src\components\vouchers\`, जिसमें दोनों फ़ाइलें हैं।
 - Restore करते समय `globals.css` को पूरा मत बदलना, सिर्फ़ मेरा वाला एक rule वापस करना, ताकि Theme Master के बदलाव न मिटें।
 
 ## Dev setup (laptop)
@@ -77,8 +77,8 @@ Pocket Ledger के Transaction (trxn) टेबल का ढाँचा म�
 - Ledger rows highlight (`highlightRowIds` / `pl-row-change-highlight`)
 
 ## Progress log (Asia/Kathmandu, laptop clock)
-- 2026-11-02 15:32 : Account/Party details trxn table ki rows ke beech wali moti line ko 1px karne ka kaam - **BLOCKED, koi code edit nahi hua**. Source: line border nahi hai, Theme Master ka card gap hai - `src\app\globals.css` line 14713 (section 11): har main-row td par `border-top: 8px solid transparent !important` (section 9 line 14654 me 5px tha, 14713 override karta hai), td `background-clip: padding-box` (line 14649) se gap me table ka background `hsl(var(--pl-row-gap))` (line 14412) dikhta hai; Medium theme me --pl-row-gap 0 0% 22% (line 14277) = dark. Ye sab Theme Master block (line 14016 - 15722 `/* === end Theme Master === */`) ke andar hai, isliye edit nahi kiya. tsc nahi chalaya (koi .ts/.tsx/.css change nahi). Sirf is handoff file ka backup: `C:\Project ERP\backup-trxn-rowborder-20261102-1532\_handoff\Trxn Table Master.md`.
-- 2026-11-03 17:22 : Path badla: C:\Project xxx -> C:\Project ERP (user ne khud kiya); handoff me sab paths update.
+- 2026-11-02 15:32 : Account/Party details trxn table ki rows ke beech wali moti line ko 1px karne ka kaam - **BLOCKED, koi code edit nahi hua**. Source: line border nahi hai, Theme Master ka card gap hai - `src\app\globals.css` line 14713 (section 11): har main-row td par `border-top: 8px solid transparent !important` (section 9 line 14654 me 5px tha, 14713 override karta hai), td `background-clip: padding-box` (line 14649) se gap me table ka background `hsl(var(--pl-row-gap))` (line 14412) dikhta hai; Medium theme me --pl-row-gap 0 0% 22% (line 14277) = dark. Ye sab Theme Master block (line 14016 - 15722 `/* === end Theme Master === */`) ke andar hai, isliye edit nahi kiya. tsc nahi chalaya (koi .ts/.tsx/.css change nahi). Sirf is handoff file ka backup: `C:\Project Pocket-ledger_ERP\backup-trxn-rowborder-20261102-1532\_handoff\Trxn Table Master.md`.
+- 2026-11-03 17:22 : Path badla: C:\Project xxx -> C:\Project Pocket-ledger_ERP (user ne khud kiya); handoff me sab paths update.
 - 2026-11-03 17:22 : Row gap 1px: user ne option A chuna; Theme Master apne block me 8px -> 1px karegi; Trxn Table Master ka koi code badlav nahi.
 - 2026-11-03 17:22 : Naya niyam (2026-11-03): phone notification sirf Firebase Master (mail alerts); Trxn Table Master ki notification band.
 - 2026-11-19 08:18 : PC Sale/Purchase voucher width (user ki haan, 2026-11-19). Item table sirf Amount column tak; green box, Invoice/Dr-Cr ribbon, Narration/Attachment/Sub Total aur voucher tabs bhi usi chaudai tak; dialog bada karne par khali jagah daayin taraf; dialog chhota hone par form scroll pehle jaisa. Mobile, column tracks, cells, Add Line, Items/Services tabs, dialog resize/localStorage/min-w 940 untouched. Badli files (NOT committed, alag backup nahi - Git hi backup): `src/lib/salePurchaseLineColumnLabels.ts` L182 GRID_CLASS w-max max-w-none, L223-227 grid style width max-content, L235 DESKTOP_BODY w-max min-w-0 max-w-none; `CreateSaleForm.tsx` L2400 data-pl-sp-desktop-body, L2410 ribbon [contain:inline-size], L2781 green w-max max-w-full, L4365 bottom block [contain:inline-size] + xl:w-max/xl:min-w-full hata, Sub Total col min(32vw,600px,50%), L4584 OCR bar se fitContent hata (buttons wrap); `CreatePurchaseForm.tsx` same: L2179, L2187, L2561, L3730, L3947; `AddVoucherDialog.tsx` L1380-1417 voucherFrameRef + ResizeObserver/MutationObserver se --pl-voucher-content-w (sirf PC sale/purchase, cleanup ke saath), L1497 desktop Tabs maxWidth var(--pl-voucher-content-w, 100%). `npx tsc --noEmit`: 0 errors. Patch copy: Radhe PC `C:\Project Next.js Balgram\_bot-data\Trxn Table Master\voucher-width-20261119.patch`. Baaki: localhost:2000/app par aankh se jaanch.
