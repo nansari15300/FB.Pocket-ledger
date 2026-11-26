@@ -341,7 +341,7 @@ export function CreatePaymentInForm({
     shouldFetchNextOnDateChange: Boolean((!savedVoucherId || isEditingAndConverting) && isAutoVoucherEnabled),
     fetchVoucherNumber,
     resolvePrefix: () => {
-      const list = company?.voucherPrefixes?.[voucherType] || [getVoucherPrefix()];
+      const list = company?.voucherPrefixes?.[voucherType] || [getVoucherPrefix(company?.voucherPrefixes, voucherType)];
       return resolvePrefixFromVoucherNumber(String(form.getValues("voucherNumber") || ""), list, list[0]);
     },
   });
@@ -718,7 +718,7 @@ export function CreatePaymentInForm({
     () => mapBankAccountsForVoucherCombobox(availableAccounts),
     [availableAccounts]
   );
-  const voucherPrefixes = useMemo(() => company?.voucherPrefixes?.[voucherType] || [getVoucherPrefix()], [company, voucherType]);
+  const voucherPrefixes = useMemo(() => company?.voucherPrefixes?.[voucherType] || [getVoucherPrefix(company?.voucherPrefixes, voucherType)], [company, voucherType]);
   
   const paymentPayeeTypes = [
     { value: 'party', label: 'Party' },

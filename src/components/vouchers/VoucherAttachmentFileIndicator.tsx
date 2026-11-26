@@ -26,6 +26,7 @@ import {
 import { useVoucherListReuseHint, lookupVoucherListReuseHint } from "@/lib/voucherAttachmentListReuseIndex";
 import { useAttachmentNoFile } from "@/lib/attachmentNoFileSession";
 import { AttachmentNoFileEye } from "@/components/vouchers/AttachmentNoFileEye";
+import { isPbAttachmentRef } from "@/lib/pocketbaseData/pbAttachments";
 
 type Props = {
   urls: readonly string[];
@@ -135,11 +136,12 @@ export function VoucherAttachmentFileIndicator({
   const wantsPreview = displayMode === "preview";
   // Files OFF: sirf device cache se thumb; network kabhi nahi. Files ON: visible page + lazy load.
   // Tick-only mode: same lazy byte lookup (probe only, no thumb) so URL-only rows can show the eye instead of the tick.
+  const pbattThumb = isPbAttachmentRef(effectiveThumbSrc);
   const allowThumbLoad =
     inView &&
     !suppressAutoThumbLoad &&
     filesNetworkAllowed &&
-    (readyState === "ready" || shouldUseAttachmentLazyLoad(company));
+    (readyState === "ready" || shouldUseAttachmentLazyLoad(company) || pbattThumb);
   const thumbUrl = useAttachmentThumbDisplayUrl(
     currentDocUrlOverride ?? primaryUrl,
     allowThumbLoad,
@@ -355,7 +357,7 @@ export function VoucherAttachmentFileIndicator({
       !!thumbUrl &&
       thumbRetryKey < 4 &&
       (filesNetworkAllowed
-        ? isReady || shouldUseAttachmentLazyLoad(company)
+        ? isReady || shouldUseAttachmentLazyLoad(company) || isPbAttachmentRef(effectiveThumbSrc)
         : true);
 
     const thumbInner = canShowThumb ? (

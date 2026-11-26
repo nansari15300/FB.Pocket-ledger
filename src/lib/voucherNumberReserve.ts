@@ -9,8 +9,10 @@
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
 import { readPendingOutboxPayloadsForCompany } from "@/lib/localVoucherOutbox";
 import { isPocketBaseCompanyId } from "@/lib/pocketbaseData/pbCompanyRegistry";
+import { listPrefixesForVoucherLike, voucherNumberBelongsToType } from "@/lib/nextVoucherNumber";
 import {
   applyRenumberedVoucherFields,
+  coerceVoucherNumberToAllowedPrefix,
   collectTakenVoucherNumbers,
   nextFreeVoucherNumber,
   PROVISIONAL_NUMBER_FIELD,
@@ -47,6 +49,31 @@ async function loadTakenNumbers(companyId: string, excludeId: string): Promise<S
     /* optional */
   }
   return collectTakenVoucherNumbers(rows, excludeId);
+}
+
+function voucherLikeFromData(data: Record<string, unknown>): {
+  type?: string;
+  subType?: string;
+  lineItems?: Array<{ type?: string }>;
+} {
+  const lineItems = Array.isArray(data.lineItems)
+    ? (data.lineItems as Array<{ type?: string }>)
+    : undefined;
+  return {
+    type: String(data.type || "").trim() || undefined,
+    subType: typeof data.subType === "string" ? data.subType : undefined,
+    lineItems,
+  };
+}
+
+async function loadCompanyDoc(companyId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const { getLocalCompanyById } = await import("@/lib/localCompanyStore");
+    const company = await getLocalCompanyById(companyId);
+    return company && typeof company === "object" ? (company as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
 }
 
 function applyLocalFreeNumber(
@@ -86,18 +113,42 @@ export async function confirmVoucherNumberOnSave(input: {
   voucherId: string;
   data: Record<string, unknown>;
   isNew: boolean;
+  previousData?: Record<string, unknown> | null;
 }): Promise<ConfirmVoucherNumberResult> {
   const companyId = String(input.companyId || "").trim();
   const voucherId = String(input.voucherId || "").trim();
-  const data = { ...input.data, id: voucherId || input.data.id };
-  const desired = currentVoucherNumber(data);
+  let data: Record<string, unknown> = { ...input.data, id: voucherId || input.data.id };
+  let desired = currentVoucherNumber(data);
   if (!companyId || !voucherId || !desired) {
     return { data, reserved: false, provisional: false, changed: false };
   }
   const taken = await loadTakenNumbers(companyId, voucherId);
+  const companyDoc = await loadCompanyDoc(companyId);
+  const voucherLike = voucherLikeFromData(data);
+  const previous = input.previousData && typeof input.previousData === "object" ? input.previousData : null;
+  const previousNumber = String(previous?.voucherNumber || previous?.voucherNo || "").trim();
+  const previousType = String(previous?.type || "").trim();
+  const typeChanged = Boolean(previousType && voucherLike.type && previousType !== voucherLike.type);
+  const shouldCoerceToTypeSeries =
+    Boolean(voucherLike.type) &&
+    (input.isNew || data[PROVISIONAL_NUMBER_FIELD] === true || typeChanged || !previousNumber);
+  if (shouldCoerceToTypeSeries && !voucherNumberBelongsToType(desired, companyDoc, voucherLike)) {
+    const coerced = coerceVoucherNumberToAllowedPrefix(
+      desired,
+      listPrefixesForVoucherLike(companyDoc, voucherLike),
+      taken
+    );
+    if (coerced && coerced !== desired) {
+      const next = applyRenumberedVoucherFields(data, coerced, {
+        reason: `Type ${voucherLike.type} keeps its own series; ${desired} was changed to ${coerced}.`,
+      });
+      data = next;
+      desired = coerced;
+    }
+  }
   const desiredTaken = taken.has(desired);
   // Routine edit of an already-confirmed number that is still free for this id: leave it.
-  if (!input.isNew && data[PROVISIONAL_NUMBER_FIELD] !== true && !desiredTaken) {
+  if (!input.isNew && data[PROVISIONAL_NUMBER_FIELD] !== true && !desiredTaken && !typeChanged) {
     return { data, reserved: false, provisional: false, changed: false };
   }
 

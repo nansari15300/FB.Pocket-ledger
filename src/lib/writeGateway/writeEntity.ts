@@ -212,6 +212,7 @@ export async function writeEntity(req: WriteEntityRequest): Promise<WriteEntityR
           voucherId: effectiveDocId,
           data: { ...(existing || {}), ...writeData, id: effectiveDocId },
           isNew: req.operation === "create" && !existing,
+          previousData: existing && typeof existing === "object" ? (existing as Record<string, unknown>) : null,
         });
         writeData = confirmed.data;
         if (confirmed.changed && req.data && typeof req.data === "object") {

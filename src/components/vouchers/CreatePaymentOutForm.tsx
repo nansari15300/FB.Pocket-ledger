@@ -1498,7 +1498,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
     shouldFetchNextOnDateChange: Boolean((!savedVoucherId || isEditingAndConverting) && isAutoVoucherEnabled),
     fetchVoucherNumber,
     resolvePrefix: () => {
-      const list = company?.voucherPrefixes?.[voucherType] || [getVoucherPrefix()];
+      const list = company?.voucherPrefixes?.[voucherType] || [getVoucherPrefix(company?.voucherPrefixes, voucherType)];
       return resolvePrefixFromVoucherNumber(String(form.getValues("voucherNumber") || ""), list, list[0]);
     },
   });
@@ -2260,7 +2260,7 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
       ),
     [availableAccounts, formatCurrencyForPrint]
   );
-  const voucherPrefixes = useMemo(() => company?.voucherPrefixes?.[voucherType] || [getVoucherPrefix()], [company, voucherType]);
+  const voucherPrefixes = useMemo(() => company?.voucherPrefixes?.[voucherType] || [getVoucherPrefix(company?.voucherPrefixes, voucherType)], [company, voucherType]);
 
   const paymentInDialogNames = useMemo(() => {
     const m: Record<string, string> = {};

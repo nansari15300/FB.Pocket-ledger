@@ -15,6 +15,8 @@ import {
   parseFySegmentFromVoucherNumber,
   parseVoucherNumberPart,
   parseVoucherSerial,
+  resolvePrefixFromVoucherNumber,
+  voucherPrefixStemForFy,
 } from "@/lib/voucherNumberFormat";
 import { voucherFySegmentForDate } from "@/lib/fiscalYearLabel";
 import { parseFyOpeningPillFormat, type FyOpeningPillFormat } from "@/lib/fyOpeningPillFormat";
@@ -97,6 +99,66 @@ export function resolveCompanyVoucherPrefixList(
     out.push(resolved);
   }
   return out.length > 0 ? out : [resolveVoucherPrefixForKey(prefixKey, null)];
+}
+
+/** Configured prefixes for this voucher type, else the built-in default for that type. */
+export function listPrefixesForVoucherLike(
+  companyDoc: Record<string, unknown> | null | undefined,
+  voucherLike: { type?: string; subType?: string; lineItems?: Array<{ type?: string }> }
+): string[] {
+  const prefixKey = getVoucherPrefixKeyFromLike(voucherLike);
+  const configured = (companyDoc?.voucherPrefixes as Record<string, string[] | undefined> | undefined)?.[prefixKey];
+  return resolveCompanyVoucherPrefixList(prefixKey, configured);
+}
+
+function prefixTokens(prefix: string): string[] {
+  const raw = String(prefix || "").trim();
+  if (!raw) return [];
+  return [...new Set([raw, normalizePrefix(raw), voucherPrefixStemForFy(raw)].filter(Boolean))];
+}
+
+/** True when selected is one of this type's prefixes (not another type's series). */
+export function isPrefixAllowedForVoucherLike(
+  selected: string,
+  companyDoc: Record<string, unknown> | null | undefined,
+  voucherLike: { type?: string; subType?: string; lineItems?: Array<{ type?: string }> }
+): boolean {
+  const want = String(selected || "").trim();
+  if (!want) return false;
+  const wantTokens = new Set(prefixTokens(want).map((t) => t.toLowerCase()));
+  for (const allowed of listPrefixesForVoucherLike(companyDoc, voucherLike)) {
+    for (const t of prefixTokens(allowed)) {
+      if (wantTokens.has(t.toLowerCase())) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Prefix/series for this voucher type. A selected prefix is honored only when it
+ * belongs to this type; otherwise the type's own first prefix is used.
+ */
+export function resolvePrefixForVoucherLike(
+  companyDoc: Record<string, unknown> | null | undefined,
+  voucherLike: { type?: string; subType?: string; lineItems?: Array<{ type?: string }> },
+  selectedPrefix?: string | null
+): string {
+  const allowed = listPrefixesForVoucherLike(companyDoc, voucherLike);
+  const selected = String(selectedPrefix || "").trim();
+  if (selected && isPrefixAllowedForVoucherLike(selected, companyDoc, voucherLike)) {
+    return selected;
+  }
+  return allowed[0] || resolveVoucherPrefixForKey(getVoucherPrefixKeyFromLike(voucherLike), null);
+}
+
+export function voucherNumberBelongsToType(
+  voucherNo: string,
+  companyDoc: Record<string, unknown> | null | undefined,
+  voucherLike: { type?: string; subType?: string; lineItems?: Array<{ type?: string }> }
+): boolean {
+  const vn = String(voucherNo || "").trim();
+  if (!vn) return false;
+  return Boolean(resolvePrefixFromVoucherNumber(vn, listPrefixesForVoucherLike(companyDoc, voucherLike), ""));
 }
 
 /** Serial lookup: purane PS- / SS- vouchers bhi SER- numbering me count hon. */
@@ -256,11 +318,7 @@ export type GetNextVoucherNumberParams = {
 export async function getNextVoucherNumberForCompany(params: GetNextVoucherNumberParams): Promise<string> {
   const { companyId, companyDoc, voucherLike, selectedPrefix, voucherDate } = params;
   const prefixKey = getVoucherPrefixKeyFromLike(voucherLike);
-  const configured = (companyDoc?.voucherPrefixes as Record<string, string[] | undefined> | undefined)?.[prefixKey];
-  const rawPrefix =
-    selectedPrefix?.trim() ||
-    (Array.isArray(configured) && configured[0] ? configured[0] : "");
-  const prefix = resolveVoucherPrefixForKey(prefixKey, rawPrefix || null);
+  const prefix = resolvePrefixForVoucherLike(companyDoc, voucherLike, selectedPrefix);
 
   const pureLocal =
     companyDoc != null && isOfflineCompanyStorage(companyDoc as { storageOption?: string });

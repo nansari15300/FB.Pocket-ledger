@@ -7,7 +7,11 @@
  * voucher is reassigned.
  */
 
-import { padVoucherNumberPart } from "@/lib/voucherNumberFormat";
+import {
+  formatVoucherNumberWithFy,
+  padVoucherNumberPart,
+  resolvePrefixFromVoucherNumber,
+} from "@/lib/voucherNumberFormat";
 
 export const NUMBERING_AUDIT_FIELD = "numberingAudit";
 export const AUTO_RENUMBERED_FROM_FIELD = "autoRenumberedFrom";
@@ -46,6 +50,40 @@ export function parseVoucherNumberParts(voucherNo: string): VoucherNumberParts |
 
 export function formatVoucherNumberParts(parts: VoucherNumberParts): string {
   return `${parts.head}${padVoucherNumberPart(parts.serial)}`;
+}
+
+/** FY span like `83-84` from `PYMT-83-84-001` / `Sale Inv-83-84-001`. */
+export function extractFySegmentLoose(voucherNo: string): string | null {
+  const trimmed = String(voucherNo || "").trim();
+  if (!trimmed) return null;
+  const m = /(\d{2,4}-\d{2,4})-(?=\d+$)/.exec(trimmed);
+  return m ? m[1]! : null;
+}
+
+export function voucherNumberUsesPrefixList(voucherNo: string, prefixes: string[]): boolean {
+  const vn = String(voucherNo || "").trim();
+  const allowed = prefixes.map((p) => String(p || "").trim()).filter(Boolean);
+  if (!vn || allowed.length === 0) return false;
+  return Boolean(resolvePrefixFromVoucherNumber(vn, allowed, ""));
+}
+
+/**
+ * Keep `desired` when it already uses this type's prefix. Otherwise retarget
+ * onto the type's first prefix, preserving any FY span, then pick the next
+ * free serial. Never switches a voucher onto another type's series.
+ */
+export function coerceVoucherNumberToAllowedPrefix(
+  desired: string,
+  allowedPrefixes: string[],
+  taken: Iterable<string>
+): string {
+  const want = String(desired || "").trim();
+  if (!want) return want;
+  const allowed = allowedPrefixes.map((p) => String(p || "").trim()).filter(Boolean);
+  if (allowed.length === 0) return nextFreeVoucherNumber(want, taken);
+  if (voucherNumberUsesPrefixList(want, allowed)) return nextFreeVoucherNumber(want, taken);
+  const first = formatVoucherNumberWithFy(allowed[0]!, extractFySegmentLoose(want), 1);
+  return nextFreeVoucherNumber(first, taken);
 }
 
 /**
