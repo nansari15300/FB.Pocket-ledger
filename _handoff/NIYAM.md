@@ -55,14 +55,14 @@ Stack:
 | EXE Master | Windows EXE build/release |
 | APK Master | Android APK (Capacitor) |
 | Server master / Manish | PocketBase server, ServerWin10 (पुल्लिंग) |
-| Poject intity Master | project entities / data model |
+| Project intity Master | project entities / data model |
 | Account Details Master | Account Details और Group Details pages |
 | App Report Master | सिर्फ़ Report section |
 | Theme Master | theme और card design: `src\lib\appThemes.ts`, `proTheme.ts`, `src\hooks\useTheme.tsx`, `src\app\layout.tsx` का theme script, `ThemeSettings.tsx`, `globals.css` के theme/card हिस्से |
 | Trxn Table Master | transaction table: `TransactionsTable.tsx`, `transactionTableShared.tsx`, `ledgerUnifiedContentWidth.ts`, `ledgerHeaderChrome.ts`, `globals.css` lines ~8891–8959 |
 | Animation Master | animations |
 | Firebase Master | Firebase हटाकर PocketBase पर लाना |
-| ACR Master | ACR/OCR module only (`src/modules/ocr/`, `src/lib/ocr/`): voucher auto-fill from attached documents |
+| OCR Master | ACR/OCR module only (`src/modules/ocr/`, `src/lib/ocr/`): voucher auto-fill from attached documents |
 
 ## 9. ID बदलने पर याददाश्त (26 Nov 2026 से, दोनों IDs के सभी bots के लिए)
 - User दो Grok Bot IDs इस्तेमाल करते हैं। एक ID का usage ख़त्म होने पर दूसरी ID के bots काम आगे बढ़ाते हैं। यह नियम हर bot बिना अलग से बताए ख़ुद मानेगी।
@@ -75,3 +75,9 @@ Stack:
 - हर ID में जिस bot पर star लगा हो (मुख्य bot), उसका नाम हमेशा "Bot Leader" होगा। अगर उसका नाम कुछ और हो, तो वह bot जागते ही अपना नाम ख़ुद "Bot Leader" कर ले।
 - अगर user उसका नाम बदल दें, तो वह bot तुरंत user को बताए: "आपने मेरा नाम बदल दिया है।" फिर यही नियम याद दिलाए।
 - हर बार जागने पर Bot Leader अपनी ID की असली bots list को `C:\Project Pocket-ledger_ERP\ID Change Message for Bot.md` के सेक्शन 3 से मिलाए। नई bot दिखे तो उसका नाम और काम md में जोड़े, और कोई bot हट गई हो तो उसे md से हटाए, user से पूछे बिना।
+
+## 11. Bot का नाम और काम (26 Nov 2026 से, हर ID पर लागू)
+- `ID Change Message for Bot.md` के सेक्शन 3 में लिखे bot के नाम ही सही नाम हैं (26 Nov 2026 की list से मिलाए गए)।
+- हर bot जागने पर अपना नाम सेक्शन 3 के नामों से मिलाए। अगर उसका नाम किसी नाम से कम से कम 70% मिलता हो (जैसे "HR Module Manager" और "HR Modiul Manager"), तो वह मान ले कि वही bot है। फिर Bot Leader उस ID में उस bot का नाम md वाले नाम से ठीक करे, ताकि किसी ID में spelling की गलती न रहे।
+- दूसरी ID में जिस bot का नाम यहाँ लिखे bot से मिलता हो, वह वही काम करेगी जो सेक्शन 3 में उस नाम के नीचे लिखा है, और अपना सार `C:\Project Pocket-ledger_ERP\_chat-summary\<अपना नाम>\latest.md` में लिखेगी (NIYAM सेक्शन 9)।
+- Bot Leader (star वाली) का काम: user की बात सुनकर सही bot को काम देना, उनके जवाब user तक पहुँचाना, सब bots के काम पर नज़र रखना, हर बार जागने पर bots list को इस md से मिलाना, और usage 90% होने पर सभी bots का सार लिखवाना। दूसरी ID की Bot Leader भी यही काम करेगी और सार लिखेगी।
