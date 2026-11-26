@@ -7,12 +7,19 @@ import { useCompany } from "@/hooks/useCompany";
 import usePermissions from "@/hooks/usePermissions";
 import { useLocationSearchParams } from "@/hooks/useLocationSearchParams";
 import { adToBs } from "@/lib/bs-date";
-import { generateDueRecurringVouchersOnAppOpen, recurringAutoRunnerSkipsCloudIO } from "@/lib/recurringVouchers";
+import {
+  AUTO_RECURRING_SYNC_NOT_READY,
+  generateDueRecurringVouchersOnAppOpen,
+  recurringAutoRunnerSkipsCloudIO,
+} from "@/lib/recurringVouchers";
 import { getLocalCompanyById } from "@/lib/localCompanyStore";
 import type { Company } from "@/hooks/useCompany";
 
 const RUNNER_SESSION_KEY_PREFIX = "pl-recurring-runner";
 const APP_OPEN_RUNNER_DELAY_MS = 2500;
+/** PL Server company: sync not ready yet (offline / pull running) — retry later instead of using stale local data. */
+const SYNC_NOT_READY_RETRY_MS = 60_000;
+const SYNC_NOT_READY_MAX_RETRIES = 5;
 
 function scheduleAfterFirstUiPaint(run: () => void): () => void {
   if (typeof window === "undefined") return () => {};
@@ -70,6 +77,9 @@ export function RecurringVoucherAutoRunner() {
   const scheduledForKeyRef = useRef<string | null>(null);
   /** Bumps once when SQLite fallback company arrives — avoids depending on full `company` object identity. */
   const [fallbackReadyEpoch, setFallbackReadyEpoch] = useState(0);
+  /** Bumps when a PL Server sync-not-ready run should be retried. */
+  const [syncRetryEpoch, setSyncRetryEpoch] = useState(0);
+  const syncRetryCountRef = useRef(0);
   const hasCompany = Boolean(company);
 
   companyRef.current = company;
@@ -164,7 +174,16 @@ export function RecurringVoucherAutoRunner() {
         } catch (error) {
           scheduledForKeyRef.current = null;
           if (typeof window !== "undefined") sessionStorage.removeItem(runKey);
-          console.error("[RecurringVoucherAutoRunner] failed", error);
+          const message = String((error as Error)?.message || "");
+          if (message.startsWith(AUTO_RECURRING_SYNC_NOT_READY)) {
+            console.info("[RecurringVoucherAutoRunner] sync not ready — retry later", { companyId: cid, message });
+            if (typeof window !== "undefined" && syncRetryCountRef.current < SYNC_NOT_READY_MAX_RETRIES) {
+              syncRetryCountRef.current += 1;
+              window.setTimeout(() => setSyncRetryEpoch((n) => n + 1), SYNC_NOT_READY_RETRY_MS);
+            }
+          } else {
+            console.error("[RecurringVoucherAutoRunner] failed", error);
+          }
         } finally {
           inFlightRef.current = false;
         }
@@ -182,6 +201,7 @@ export function RecurringVoucherAutoRunner() {
     companyId,
     hasCompany,
     fallbackReadyEpoch,
+    syncRetryEpoch,
     user?.uid,
     user?.email,
     user?.displayName,

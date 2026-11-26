@@ -149,6 +149,7 @@ function generateRecurringChainKeyFallback(): string {
 /** Dubara append se pehle line ke end par purana `| Id …` hatao (purana lamba `· Src` wala bhi). */
 export function stripRecurringNarrationSearchSuffix(narration: string): string {
   return String(narration || "")
+    .replace(/\s*\[\s*Start\s+vou\.No\..*$/i, "")
     .replace(/\s*\|\s*Id\s+.+$/i, "")
     .trim();
 }
@@ -230,12 +231,39 @@ function extractVoucherNarrationNumericPart(raw: string): string {
  * Narration tail: ` | Id vou.No.-094JRNL` — `-` + number + voucher-type UPPER tail; Firestore `recurringChainKey` alag rehta hai.
  * `sourceVoucherNumber` khali ho to `chainKey` se number + type jahan mumkin, warna purana `k` fallback.
  */
+function recurringNarrationNumberBody(voucherNumber: string | null | undefined, caps: string): string {
+  const s = String(voucherNumber || "").trim();
+  if (!s) return "";
+  const safe = s.replace(/\s+/g, "").replace(/[^A-Za-z0-9\-_.]/g, "").slice(0, 80);
+  if (!safe) return "";
+  const forDigits = stripLegacyNarrationTypeSlugsFromCompact(safe);
+  let num = extractVoucherNarrationNumericPart(forDigits);
+  if (!num) num = (forDigits.match(/\d/g) || []).join("").slice(-12) || "0";
+  return `-${num}${caps}`;
+}
+
+/**
+ * Narration tail (2026-11-26, Ansari Ji): ` [ Start vou.No.-0184JRNL ]-[ Current voucher No.-0310JRNL ]`.
+ * Start = jis voucher se recurring shuru hua (fixed); Current = abhi bana (switch wala) voucher.
+ * `currentVoucherNumber` na ho to purana ` | Id vou.No.-…` format.
+ */
 export function formatRecurringNarrationSearchSuffix(
   chainKey: string,
   sourceVoucherNumber: string,
   voucherType?: string | null,
+  currentVoucherNumber?: string | null,
 ): string {
   const caps = recurringNarrationIdTypeSuffixCaps(voucherType);
+  const currentBody = recurringNarrationNumberBody(currentVoucherNumber, caps);
+  if (currentBody) {
+    let startBody = recurringNarrationNumberBody(sourceVoucherNumber, caps);
+    if (!startBody) {
+      const k = String(chainKey || "").trim();
+      const numK = k ? extractVoucherNarrationNumericPart(stripLegacyNarrationTypeSlugsFromCompact(k.replace(/^vou\.No\./i, ""))) : "";
+      startBody = numK ? `-${numK}${caps}` : currentBody;
+    }
+    return ` [ Start vou.No.${startBody} ]-[ Current voucher No.${currentBody} ]`;
+  }
   const s = String(sourceVoucherNumber || "").trim();
   if (s) {
     const compact = s.replace(/\s+/g, "");
@@ -604,7 +632,13 @@ export async function assertOnlineForRecurringVoucherCreate(
   const id = String(companyId || "").trim();
   if (!id) return { ok: false, message: "Missing company." };
   const c = company ?? null;
-  if (recurringActorIsCompanyAdmin(c, actor)) {
+  // ADM-1: admin bhi server confirm ke bina auto voucher nahi — admin shortcut sirf server-less (pure local) company pe.
+  const serverBacked =
+    (c != null && isServerGateCompany(c)) ||
+    (c != null && companyUsesOnlineSelectorSyncTicks(c)) ||
+    (c != null && isCloudLinkedCompanyStorage(c)) ||
+    isPocketBaseCompany(id, c);
+  if (!serverBacked && recurringActorIsCompanyAdmin(c, actor)) {
     console.info("[AutoRecurringOnlineGate] pass", { companyId: id, reason: "company_admin_local_first" });
     return { ok: true };
   }
@@ -1689,10 +1723,14 @@ export function computeRecurringAccrualPeriodStartMs(
 async function getNextVoucherNumberForType(
   companyId: string,
   sourceVoucher: Record<string, unknown>,
+  /** Prefix ke liye user ka original (manual-ON) voucher no — clone body ka number galat (`V-…`) ho tab bhi series sahi. */
+  prefixHintVoucherNo?: string | null,
 ): Promise<string> {
-  const sourceVoucherNo = String(sourceVoucher.voucherNumber || "").trim();
+  const sourceVoucherNo = String(prefixHintVoucherNo || "").trim() || String(sourceVoucher.voucherNumber || "").trim();
   const match = sourceVoucherNo.match(/^([^0-9]*)(\d+)$/);
-  const rawPrefix = match?.[1] ?? "V-";
+  // FY numbers (`JRNL-83-84-0309`): purana regex fail => "V-" ban jata tha (V-83-84-001). Leading letters hi prefix (ADM-1).
+  const fyLead = match ? null : sourceVoucherNo.match(/^([^0-9]*?)[\s-]*\d/);
+  const rawPrefix = match?.[1] ?? (fyLead?.[1]?.trim() || "V-");
   const prefix = rawPrefix || "V-";
   const type = String(sourceVoucher.type || "sale");
   try {
@@ -2255,7 +2293,7 @@ async function createOneRecurringVoucherFromTemplate(
   bsNow: { y: number; m: number; d: number },
   actor: GenerateActor,
   /** Manual “Generate now”: suppressed month dubara + recycler ko gap maano — scheduler me undefined. */
-  opts?: { ignoreSuppressed?: boolean; skipCloudIO?: boolean },
+  opts?: { ignoreSuppressed?: boolean; skipCloudIO?: boolean; voucherIdOverride?: string },
 ): Promise<{ id: string; voucherNumber: string } | null> {
   const skipCloudIO = opts?.skipCloudIO === true;
   const cloneVid = String(template.cloneSourceVoucherId || template.sourceVoucherId || "").trim();
@@ -2340,7 +2378,11 @@ async function createOneRecurringVoucherFromTemplate(
     }
   }
 
-  const nextVoucherNumber = await getNextVoucherNumberForType(companyId, sourceVoucher);
+  const nextVoucherNumber = await getNextVoucherNumberForType(
+    companyId,
+    sourceVoucher,
+    String(template.manualOnSourceVoucherNumber || "").trim() || null,
+  );
   const monthDays = getBSMonthDays(bsNow.y);
   const dim = monthDays[bsNow.m - 1] || bsNow.d;
   const dayNum = effectiveScheduleBsDay(template);
@@ -2414,9 +2456,11 @@ async function createOneRecurringVoucherFromTemplate(
   const narrCore = stripRecurringNarrationSearchSuffix(cleanedNarration || `Auto voucher for ${dueMonthName}`);
   // Type tail narration me (jrnl / sale …); clone body + template dono se type fallback.
   const narrType = String(sourceVoucher.type || template.sourceVoucherType || "journal").trim();
-  const narrSuffix = formatRecurringNarrationSearchSuffix(chainKey, srcTagVoucherNo, narrType);
+  const narrSuffix = formatRecurringNarrationSearchSuffix(chainKey, srcTagVoucherNo, narrType, nextVoucherNumber);
   const narrationFinal = narrCore + (narrSuffix || "");
-  const generatedVoucherId = `voucher_${Date.now().toString(36)}_${clientRandomUUID().slice(0, 12)}`;
+  const generatedVoucherId =
+    String(opts?.voucherIdOverride || "").trim() ||
+    `voucher_${Date.now().toString(36)}_${clientRandomUUID().slice(0, 12)}`;
 
   const payload = {
     ...base,
@@ -2838,6 +2882,205 @@ export async function generateRecurringBackfillAllMissingForVoucher(
   return generateRecurringVouchersForPeriodSlots(companyId, company, initialSourceVoucherId, actor, slots);
 }
 
+/* ------------------------------------------------------------------ */
+/* PL Server (PocketBase) auto-run duplicate guard                      */
+/* ------------------------------------------------------------------ */
+// ADM-1 (2026-11-26): stale-local devices created 2-3 vouchers for the same template + BS month
+// (auto-runner read only local SQLite for server-gate companies). For PocketBase companies the
+// auto-runner now (1) pulls server changes first, (2) checks the SERVER for an existing voucher of
+// this template + period, (3) takes an atomic server claim (`expects exists:false`) and
+// (4) creates the voucher with a deterministic id, so even two racing creates land on ONE row.
+
+const PB_AUTO_CLAIM_STALE_MS = 30 * 60 * 1000;
+const PB_PERIOD_SCAN_PAD_MS = 3 * 24 * 60 * 60 * 1000;
+export const AUTO_RECURRING_SYNC_NOT_READY = "AUTO_RECURRING_SYNC_NOT_READY";
+
+type PbRecurringScanCache = Map<string, Record<string, unknown>[]>;
+
+function sanitizeRecurringIdPart(raw: string): string {
+  return String(raw || "")
+    .trim()
+    .replace(/[^A-Za-z0-9_-]/g, "_");
+}
+
+/** Deterministic voucher id for one template + BS period (auto-run, PL Server companies). */
+export function recurringDeterministicVoucherId(templateId: string, periodKey: string): string {
+  return `voucher_rec_${sanitizeRecurringIdPart(templateId)}_${sanitizeRecurringIdPart(periodKey)}`.slice(0, 180);
+}
+
+/** Server claim doc id (`recurring_voucher_generation_locks`) — kept after success as a durable marker. */
+function recurringAutoClaimDocId(templateId: string, periodKey: string): string {
+  return `auto_${sanitizeRecurringIdPart(templateId)}_${sanitizeRecurringIdPart(periodKey)}`.slice(0, 180);
+}
+
+function isPbConflictError(e: unknown): boolean {
+  return Number((e as { status?: unknown } | null)?.status) === 409;
+}
+
+/**
+ * PocketBase companies: before the auto-runner trusts local SQLite, wait for any full pull and run one
+ * incremental pull so this device sees vouchers other devices already created.
+ */
+async function ensurePocketBaseLocalFreshForRecurring(companyId: string): Promise<{ ok: boolean; reason?: string }> {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return { ok: false, reason: "offline" };
+  try {
+    const [{ getPbDataPullProgress }, sync] = await Promise.all([
+      import("@/lib/pocketbaseData/pbSyncProgress"),
+      import("@/lib/pocketbaseData/pbSync"),
+    ]);
+    const waitUntil = Date.now() + 90_000;
+    while (getPbDataPullProgress().active && Date.now() < waitUntil) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+    }
+    if (getPbDataPullProgress().active) return { ok: false, reason: "full_pull_in_progress" };
+    const res = await raceWithTimeout<{ failed?: number } | null>(
+      sync.pullPocketBaseCompanyToLocal(companyId).catch(() => null),
+      45_000,
+      null,
+    );
+    if (!res) return { ok: false, reason: "pull_failed_or_timeout" };
+    if (Number(res.failed) > 0) return { ok: false, reason: "pull_partial" };
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "pull_error" };
+  }
+}
+
+/** Server vouchers (not recycled) dated in / around one BS month — one request per period per run. */
+async function pbServerVouchersForPeriod(
+  companyId: string,
+  periodKey: string,
+  cache: PbRecurringScanCache,
+): Promise<Record<string, unknown>[]> {
+  const pm = parsePeriodKey(periodKey);
+  if (!pm) return [];
+  const key = `${companyId}|${periodKey}`;
+  const cached = cache.get(key);
+  if (cached) return cached;
+  const startMs = bsToAd({ y: pm.y, m: pm.m, d: 1 }).getTime();
+  const nx = getNextBsPeriodFromCurrent(pm.y, pm.m);
+  const endMs = bsToAd({ y: nx.y, m: nx.m, d: 1 }).getTime();
+  const [client, sync] = await Promise.all([
+    import("@/lib/pocketbaseData/pbClient"),
+    import("@/lib/pocketbaseData/pbSync"),
+  ]);
+  const companyRec = await sync.ensurePocketBaseCompany(companyId);
+  const filter =
+    `company = ${client.pbQuote(companyRec)} && deleted = false` +
+    ` && date_ms >= ${Math.trunc(startMs - PB_PERIOD_SCAN_PAD_MS)} && date_ms < ${Math.trunc(endMs + PB_PERIOD_SCAN_PAD_MS)}`;
+  const recs = await client.pbListAll<Record<string, unknown>>("pl_vouchers", filter, { maxPages: 40 });
+  const docs = recs.map((r) => sync.pbRecordToAppDoc(r));
+  cache.set(key, docs);
+  return docs;
+}
+
+/** ok => claimId + voucherId set; else reason (+ existing voucherId when known). */
+type PbSlotGuard = { ok: boolean; reason?: string; claimId?: string; voucherId?: string | null };
+
+/**
+ * Server-side duplicate guard for one auto slot (PocketBase companies). Fail-closed: any server
+ * error => do not create (the next app open / sync retries).
+ */
+async function pbGuardRecurringSlot(
+  companyId: string,
+  templateId: string,
+  periodKey: string,
+  cache: PbRecurringScanCache,
+  actor: GenerateActor,
+): Promise<PbSlotGuard> {
+  const voucherId = recurringDeterministicVoucherId(templateId, periodKey);
+  const claimId = recurringAutoClaimDocId(templateId, periodKey);
+  try {
+    const localDet = await getCompanyDocFromBrowserDb(companyId, "vouchers", voucherId, { includeDeleted: true }).catch(
+      () => null,
+    );
+    if (localDet) return { ok: false, reason: "deterministic_voucher_exists_local", voucherId };
+
+    const sync = await import("@/lib/pocketbaseData/pbSync");
+    const det = await sync.pbReadAppDoc(companyId, "vouchers", voucherId);
+    if (det.exists) return { ok: false, reason: "deterministic_voucher_exists_server", voucherId };
+
+    const tplSrv = await sync.pbReadAppDoc(companyId, RECURRING_TEMPLATE_COLLECTION, templateId);
+    if (!tplSrv.exists || !tplSrv.data) return { ok: false, reason: "server_template_missing" };
+    const st = tplSrv.data as unknown as RecurringVoucherTemplate & { isDeleted?: boolean };
+    if (st.isDeleted === true || st.enabled !== true) return { ok: false, reason: "server_template_disabled" };
+    const srvSuppressed = Array.isArray(st.suppressedPeriodKeys) ? st.suppressedPeriodKeys.map((k) => String(k)) : [];
+    if (srvSuppressed.includes(periodKey)) return { ok: false, reason: "server_period_suppressed" };
+    const srvLastVid = String(st.lastGeneratedVoucherId || "").trim();
+    if (String(st.lastGeneratedPeriodKey || "").trim() === periodKey && srvLastVid) {
+      const lastV = await sync.pbReadAppDoc(companyId, "vouchers", srvLastVid);
+      if (lastV.exists && lastV.data && lastV.data.isDeleted !== true) {
+        return { ok: false, reason: "server_template_period_already_generated", voucherId: srvLastVid };
+      }
+    }
+
+    const rows = await pbServerVouchersForPeriod(companyId, periodKey, cache);
+    for (const row of rows) {
+      if (!row || row.isDeleted === true) continue;
+      const meta = row.recurringMeta;
+      if (!meta || typeof meta !== "object") continue;
+      const m = meta as Record<string, unknown>;
+      if (String(m.templateId || "").trim() !== templateId) continue;
+      if (String(m.periodKey || "").trim() !== periodKey) continue;
+      return { ok: false, reason: "server_active_period_exists", voucherId: String(row.id || "") || null };
+    }
+
+    const LOCK = RECURRING_LOCK_COLLECTION;
+    const claimData = {
+      templateId,
+      periodKey,
+      voucherId,
+      kind: "auto_app_open",
+      claimedAtMs: Date.now(),
+      claimedBy: actor.uid,
+      deviceId: sync.pbDeviceId(),
+    };
+    try {
+      await sync.pbBatchWrite(companyId, [{ coll: LOCK, id: claimId, mode: "set", data: claimData }], [
+        { coll: LOCK, id: claimId, exists: false },
+      ]);
+      return { ok: true, claimId, voucherId };
+    } catch (e) {
+      if (!isPbConflictError(e)) throw e;
+    }
+    // Claim already there. No voucher was found above, so take over only a stale claim (crashed device).
+    // A late outbox push of the old claimer uses the same deterministic id => still one voucher.
+    const cur = await sync.pbReadAppDoc(companyId, LOCK, claimId);
+    const claimedAt = Number(cur.data?.claimedAtMs) || 0;
+    if (cur.exists && cur.version && claimedAt > 0 && Date.now() - claimedAt > PB_AUTO_CLAIM_STALE_MS) {
+      try {
+        await sync.pbBatchWrite(
+          companyId,
+          [{ coll: LOCK, id: claimId, mode: "set", data: { ...claimData, takeoverOf: String(cur.data?.claimedBy || "") } }],
+          [{ coll: LOCK, id: claimId, exists: true, version: cur.version }],
+        );
+        return { ok: true, claimId, voucherId };
+      } catch (e) {
+        if (isPbConflictError(e)) return { ok: false, reason: "claim_takeover_conflict", voucherId };
+        throw e;
+      }
+    }
+    return { ok: false, reason: "claim_exists", voucherId };
+  } catch (error) {
+    console.warn("[AutoRecurringAppOpen] pl_server_guard_failed", {
+      companyId,
+      templateId,
+      periodKey,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, reason: "server_check_failed" };
+  }
+}
+
+async function pbReleaseRecurringClaim(companyId: string, claimId: string): Promise<void> {
+  try {
+    const sync = await import("@/lib/pocketbaseData/pbSync");
+    await sync.pbWriteAppDoc(companyId, RECURRING_LOCK_COLLECTION, claimId, null, "delete");
+  } catch {
+    /* claim release best-effort (stale takeover after 30 min) */
+  }
+}
+
 export async function generateDueRecurringVouchersOnAppOpen(
   companyId: string,
   company: Company | null,
@@ -2868,6 +3111,17 @@ export async function generateDueRecurringVouchersOnAppOpen(
 
   const skipCloudIO = recurringAutoRunnerSkipsCloudIO(company);
   const cloudIoOpts: RecurringCloudIOOpts = { skipCloudIO };
+  // PL Server companies: never trust a stale local mirror — server guard per slot (ADM-1).
+  const pbGuard = isPocketBaseCompany(companyId, company);
+  const pbScanCache: PbRecurringScanCache = new Map();
+  let pbServerCheckFailed = false;
+  if (pbGuard) {
+    const fresh = await ensurePocketBaseLocalFreshForRecurring(companyId);
+    if (!fresh.ok) {
+      console.info("[AutoRecurringAppOpen] skip", { reason: "pl_server_sync_not_ready", companyId, detail: fresh.reason });
+      throw new Error(`${AUTO_RECURRING_SYNC_NOT_READY}:${fresh.reason || "unknown"}`);
+    }
+  }
   const now = new Date();
   let enabledTemplates: Array<{ id: string; template: RecurringVoucherTemplate }>;
   try {
@@ -2952,6 +3206,25 @@ export async function generateDueRecurringVouchersOnAppOpen(
         }
       }
 
+      let pbClaimId: string | null = null;
+      let pbVoucherId: string | undefined;
+      if (pbGuard) {
+        const guard = await pbGuardRecurringSlot(companyId, templateId, periodKey, pbScanCache, actor);
+        if (!guard.ok) {
+          if (guard.reason === "server_check_failed") pbServerCheckFailed = true;
+          console.info("[AutoRecurringAppOpen] slot_skip", {
+            companyId,
+            templateId,
+            periodKey,
+            reason: guard.reason,
+            voucherId: guard.voucherId ?? null,
+          });
+          continue;
+        }
+        pbClaimId = guard.claimId || null;
+        pbVoucherId = guard.voucherId || undefined;
+      }
+
       let lockAcquired = false;
       let lockRef: ReturnType<typeof doc> | null = null;
       if (!skipCloudIO) {
@@ -2996,8 +3269,11 @@ export async function generateDueRecurringVouchersOnAppOpen(
           periodKey,
           { y: slot.bsY, m: slot.bsM, d: 1 },
           actor,
-          { ignoreSuppressed: true, skipCloudIO },
+          { ignoreSuppressed: true, skipCloudIO, voucherIdOverride: pbVoucherId },
         );
+        if (pbClaimId && !result) {
+          await pbReleaseRecurringClaim(companyId, pbClaimId);
+        }
         if (lockRef && lockAcquired) {
           await updateDoc(lockRef, {
             voucherId: result?.id ?? null,
@@ -3024,11 +3300,18 @@ export async function generateDueRecurringVouchersOnAppOpen(
         if (lockRef && lockAcquired) {
           await deleteDoc(lockRef).catch(() => {});
         }
+        if (pbClaimId) {
+          await pbReleaseRecurringClaim(companyId, pbClaimId);
+        }
         console.error("[recurringVouchers] generation failed", templateId, periodKey, error);
       }
     }
   }
-  console.info("[AutoRecurringAppOpen] complete", { companyId, createdCount });
+  console.info("[AutoRecurringAppOpen] complete", { companyId, createdCount, pbServerCheckFailed });
+  if (pbServerCheckFailed) {
+    // Server confirm nahi hua => kuch nahi bana; runner baad me dobara try kare (local-only create kabhi nahi).
+    throw new Error(`${AUTO_RECURRING_SYNC_NOT_READY}:server_check_failed`);
+  }
   return createdCount;
 }
 
