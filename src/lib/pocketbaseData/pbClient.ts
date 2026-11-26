@@ -11,6 +11,7 @@
 import { resolvePocketBaseServerUrl } from "@/lib/onlineDataServer";
 import { isPlServerPackedApp, plServerPackedSameOrigin } from "@/lib/plServerPackedApp";
 import { isCapacitorNativeApp } from "@/lib/isCapacitorNative";
+import { isElectronDesktopApp } from "@/lib/isElectronDesktop";
 
 const AUTH_KEY = "pl_pb_data_auth_v1";
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -43,28 +44,34 @@ export function normalizePocketBaseUrl(raw: unknown): string {
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "0.0.0.0", "[::1]", "::1"]);
 
 /**
- * Dev gateway only (`npm run dev`, port 3000): when the app is opened from another device
- * (LAN IP / port-forwarded public IP), a "this PC" server URL (127.0.0.1:8090) would point at
- * the phone itself. Use the gateway's same-origin `/pb` proxy instead. Localhost pages,
- * Electron/Capacitor (localhost / file:) and hosted builds are unchanged.
+ * Prefer the same-origin `/pb` proxy:
+ *  - empty / unset server URL in a browser tab (hosted web and the dev gateway)
+ *  - dev gateway (`NEXT_PUBLIC_PL_DEV_LOCAL_SERVER=1`): any loopback PocketBase URL
+ *    (including the stale 127.0.0.1:8090 default), also when the page itself is localhost.
+ * Electron / Capacitor / packed apps keep a resolved absolute URL (country host or saved).
+ * The gateway — not this client — chooses the live PocketBase port (1786 today).
  */
 function viaDevGatewayProxy(url: string): string {
-  if (typeof window === "undefined" || process.env.NEXT_PUBLIC_PL_DEV_LOCAL_SERVER !== "1") return url;
+  if (typeof window === "undefined") return url;
+  if (isCapacitorNativeApp() || isElectronDesktopApp() || isPlServerPackedApp()) return url;
   try {
     const loc = window.location;
-    if (loc.protocol !== "http:" && loc.protocol !== "https:") return url;
-    if (!loc.hostname || LOOPBACK_HOSTS.has(loc.hostname.toLowerCase())) return url;
+    if ((loc.protocol !== "http:" && loc.protocol !== "https:") || !loc.hostname) return url;
+    if (!url) return `${loc.origin}/pb`;
+    const devGw = process.env.NEXT_PUBLIC_PL_DEV_LOCAL_SERVER === "1";
+    if (!devGw) return url;
     const u = new URL(url);
     if (!LOOPBACK_HOSTS.has(u.hostname.toLowerCase())) return url;
     return `${loc.origin}/pb`;
   } catch {
-    return url;
+    return url || (typeof window !== "undefined" ? `${window.location.origin}/pb` : url);
   }
 }
 
 /**
- * Server the app talks to (also pre-login). Resolved by `resolvePocketBaseServer`: dev = saved/default
- * 127.0.0.1:8090; production = explicitly saved URL, else the chosen country's live host. Packed My Company = this PocketBase.
+ * Server the app talks to (also pre-login). Resolved by `resolvePocketBaseServer`:
+ * dev = saved URL or same-origin `/pb`; production = explicitly saved URL, else the chosen
+ * country's live host (https://np.pocket-ledger.com). Packed My Company = this PocketBase.
  */
 export function getPocketBaseServerUrl(): string {
   if (isPlServerPackedApp()) {

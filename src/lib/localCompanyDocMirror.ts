@@ -1444,6 +1444,30 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
                 approvalUpdatedAt: payload.approvalUpdatedAt ?? existing.approvalUpdatedAt,
               };
             } else {
+              // Local row is newer overall, but incoming allocations / fileUrls must still merge in
+              // so a narration edit on this device cannot drop a link (or pic) from another device.
+              if (collectionName === "vouchers") {
+                try {
+                  const { mergeVoucherConflictFields, voucherFieldMergeChanged } = await import(
+                    "@/lib/sync/voucherFieldMerge"
+                  );
+                  const merged = mergeVoucherConflictFields(
+                    existing as Record<string, unknown>,
+                    payload as Record<string, unknown>,
+                    { localDocMs: existingMs, incomingDocMs: incomingMs }
+                  );
+                  if (voucherFieldMergeChanged(merged)) {
+                    await upsertCompanyDocInBrowserDb(companyId, collectionName, id, { ...merged.doc, id }, {
+                      force: true,
+                      notify: true,
+                      skipPlanMutationGate: true,
+                      skipCloudSyncEnqueue: true,
+                    });
+                  }
+                } catch {
+                  /* next pull retries the field merge */
+                }
+              }
               await options?.onLocalNewer?.(id, existing, payload);
               skipped += 1;
               mirrorMergeSkipLog({

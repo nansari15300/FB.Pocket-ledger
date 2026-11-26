@@ -797,139 +797,268 @@ export type PbOutboxRow = {
  * new `fileUrls`. Retry once with a fresh `at`. The post-upload rewrite also uses a fresh
  * `at` so it is not rejected as older than the JSON write that just succeeded.
  */
-export async function pushOutboxRowToPocketBase(row: PbOutboxRow): Promise<PbOpResult | null> {
+export class PocketBaseOutboxRetryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PocketBaseOutboxRetryError";
+  }
+}
+
+type PreparedOutboxWrite = {
+  row: PbOutboxRow;
+  data: Record<string, unknown>;
+  mode: PbWriteMode;
+  at: number | undefined;
+  conversion: import("@/lib/pocketbaseData/pbAttachments").PbAttachmentConversion | null;
+};
+
+function payloadHasLocalRef(data: Record<string, unknown>): boolean {
+  return JSON.stringify(data).includes('"local:"');
+}
+
+async function resolveLeftoverLocalRefs(
+  companyId: string,
+  data: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const { collectLocalFileRefs, stripLocalFileRefsDeep, isLocalFileRef } = await import("@/lib/sync/voucherFieldMerge");
+  const leftover = collectLocalFileRefs(data);
+  if (!leftover.size) return data;
+  const { pbFirst, pbQuote, getValidPocketBaseAuth } = await import("@/lib/pocketbaseData/pbClient");
+  const { PB_ATTACHMENT_PREFIX } = await import("@/lib/pocketbaseData/pbAttachments");
+  const map = new Map<string, string>();
+  if (getValidPocketBaseAuth()) {
+    try {
+      const companyRec = await ensurePocketBaseCompany(companyId, {
+        createIfMissing: true,
+        info: await companyInfoFromLocalRegistry(companyId),
+      });
+      for (const localRef of leftover) {
+        if (!isLocalFileRef(localRef)) continue;
+        const localId = localRef.slice("local:".length).trim();
+        if (!localId) continue;
+        const appId = `att_${localId}`.slice(0, 200);
+        try {
+          const rec = await pbFirst<Record<string, unknown>>(
+            "pl_attachments",
+            `company = ${pbQuote(companyRec)} && app_id = ${pbQuote(appId)}`
+          );
+          const rid = String(rec?.id || "").trim();
+          const file = String(rec?.file || "").trim();
+          if (rid && file) map.set(localRef, `${PB_ATTACHMENT_PREFIX}${rid}/${file}`);
+        } catch {
+          /* resolve later */
+        }
+      }
+    } catch {
+      /* strip below */
+    }
+  }
+  let next = data;
+  if (map.size) {
+    const { replaceRefsDeep } = await import("@/lib/pocketbaseData/pbAttachments");
+    next = replaceRefsDeep(data, map);
+  }
+  if (collectLocalFileRefs(next).size) next = stripLocalFileRefsDeep(next);
+  return next;
+}
+
+/**
+ * Upload every `local:` file first, then prepare a server payload that contains
+ * only `pbatt:` (or no file refs). Never writes `local:` to the server.
+ *
+ * Choice: if this device still has the pending blob and upload failed, throw
+ * `PocketBaseOutboxRetryError` so the outbox row stays and retries (text waits
+ * one backoff cycle, the file is not lost). If this device has no bytes (a
+ * leftover `local:` from another device), resolve via `pl_attachments` or omit
+ * that ref from the server payload so voucher text is not blocked forever.
+ */
+async function prepareOutboxRowForPocketBase(row: PbOutboxRow): Promise<PreparedOutboxWrite> {
   let payload: Record<string, unknown> = {};
   try {
     payload = JSON.parse(row.payload || "{}") as Record<string, unknown>;
   } catch {
     payload = {};
   }
-  const isTombstone =
-    row.op !== "delete" &&
-    (payload.isDeleted === true || payload.deleted === true);
-  // Recycle-bin soft delete: merge tombstone. Full SET was rejected when server `updatedAtMs`
-  // was newer, so PocketBase never logged the delete and the other device kept the voucher.
+  const isTombstone = row.op !== "delete" && (payload.isDeleted === true || payload.deleted === true);
   const mode: PbWriteMode = row.op === "delete" ? "delete" : isTombstone ? "merge" : "set";
-  const at = Number(row.created_at);
-  const writeOnce = async (data: Record<string, unknown>, atOverrideMs?: number) => {
-    const useAt =
-      Number.isFinite(atOverrideMs) && (atOverrideMs as number) > 0
-        ? Math.trunc(atOverrideMs as number)
-        : Number.isFinite(at) && at > 0
-          ? at
-          : undefined;
-    const [result] = await pbBatchWrite(row.company_id, [
-      {
-        coll: row.collection_name,
-        id: row.doc_id,
-        mode,
-        data,
-        at: useAt,
-      },
-    ]);
-    return result || null;
-  };
-  const payloadHasLocalRef = (data: Record<string, unknown>) => JSON.stringify(data).includes('"local:"');
-  const fileUrlsFingerprint = (raw: unknown): string => {
-    if (!Array.isArray(raw)) return "";
-    return raw
-      .filter((u): u is string => typeof u === "string")
-      .map((u) => u.trim())
-      .filter(Boolean)
-      .join("\n");
-  };
-  const convertPendingLocals = async (
-    data: Record<string, unknown>
-  ): Promise<import("@/lib/pocketbaseData/pbAttachments").PbAttachmentConversion | null> => {
-    if (mode === "delete" || !payloadHasLocalRef(data)) return null;
+  const createdAt = Number(row.created_at);
+  const at = Number.isFinite(createdAt) && createdAt > 0 ? createdAt : undefined;
+  let conversion: PreparedOutboxWrite["conversion"] = null;
+
+  if (mode !== "delete" && payloadHasLocalRef(payload)) {
+    const { getPendingPayloadForLocalRef } = await import("@/lib/localPendingFiles");
+    const { convertLocalRefsForPocketBase } = await import("@/lib/pocketbaseData/pbAttachments");
     const ac = typeof AbortController !== "undefined" ? new AbortController() : null;
-    // Give the file upload time - a short abort left `local:` on the voucher.
     const timer = ac ? setTimeout(() => ac.abort(), 60_000) : null;
     try {
-      const [{ convertLocalRefsForPocketBase }, { getPendingPayloadForLocalRef }] = await Promise.all([
-        import("@/lib/pocketbaseData/pbAttachments"),
-        import("@/lib/localPendingFiles"),
-      ]);
       const pbCompanyId = await ensurePocketBaseCompany(row.company_id, {
         createIfMissing: true,
         info: await companyInfoFromLocalRegistry(row.company_id),
       });
-      return await convertLocalRefsForPocketBase({
+      conversion = await convertLocalRefsForPocketBase({
         pbCompanyId,
         coll: row.collection_name,
         docId: row.doc_id,
-        data,
+        data: payload,
         deviceId: pbDeviceId(),
         getPending: getPendingPayloadForLocalRef,
         signal: ac?.signal,
       });
-    } catch {
-      return null;
+      payload = conversion.data;
     } finally {
       if (timer) clearTimeout(timer);
     }
-  };
 
-  // JSON first - voucher attachment upload used to occupy the HTTP/1.1 slot so the
-  // other device only saw the edit after the writer refreshed (SSE dropped, POST ran).
-  let r = await writeOnce(payload);
-  let conversion: import("@/lib/pocketbaseData/pbAttachments").PbAttachmentConversion | null = null;
-
-  if (mode !== "delete" && r?.status !== "rejected" && payloadHasLocalRef(payload)) {
-    conversion = await convertPendingLocals(payload);
-    if (conversion?.converted.size) {
-      payload = conversion.data;
-      // Fresh at: same outbox `created_at` would look older than the JSON write above.
-      r = await writeOnce(payload, Date.now());
+    if (payloadHasLocalRef(payload)) {
+      const { collectLocalFileRefs } = await import("@/lib/sync/voucherFieldMerge");
+      const refs = collectLocalFileRefs(payload);
+      let hasLocalBytes = false;
+      for (const ref of refs) {
+        try {
+          const pending = await getPendingPayloadForLocalRef(ref);
+          if (pending && pending.blob && Number(pending.blob.size) > 0) {
+            hasLocalBytes = true;
+            break;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      if (hasLocalBytes) {
+        throw new PocketBaseOutboxRetryError(
+          "Attachment upload pending — voucher kept in outbox (never sending local: to server)"
+        );
+      }
+      payload = await resolveLeftoverLocalRefs(row.company_id, payload);
     }
   }
 
-  // Approved rule: edit + replace file on PocketBase - do not let a rejected SET restore the
-  // old fileUrls. One fresh-at retry (after uploading any pending local: bytes).
-  if (
-    r?.status === "rejected" &&
-    mode === "set" &&
-    row.collection_name === "vouchers" &&
-    Object.prototype.hasOwnProperty.call(payload, "fileUrls") &&
-    fileUrlsFingerprint(payload.fileUrls) !== fileUrlsFingerprint(r.data?.fileUrls)
-  ) {
-    let retryPayload = payload;
-    let retryConversion = conversion;
-    if (payloadHasLocalRef(retryPayload)) {
-      const uploaded = await convertPendingLocals(retryPayload);
-      if (uploaded?.converted.size) {
-        retryPayload = uploaded.data;
-        retryConversion = uploaded;
+  return { row, data: payload, mode, at, conversion };
+}
+
+async function writePreparedOutboxOp(prep: PreparedOutboxWrite, atOverrideMs?: number): Promise<PbOpResult | null> {
+  const useAt =
+    Number.isFinite(atOverrideMs) && (atOverrideMs as number) > 0
+      ? Math.trunc(atOverrideMs as number)
+      : prep.at;
+  const [result] = await pbBatchWrite(prep.row.company_id, [
+    {
+      coll: prep.row.collection_name,
+      id: prep.row.doc_id,
+      mode: prep.mode,
+      data: prep.data,
+      at: useAt,
+    },
+  ]);
+  return result || null;
+}
+
+async function retryRejectedWithFieldMerge(
+  prep: PreparedOutboxWrite,
+  rejected: PbOpResult
+): Promise<PbOpResult> {
+  const { mergeVoucherConflictFields } = await import("@/lib/sync/voucherFieldMerge");
+  const serverDoc = (rejected.data && typeof rejected.data === "object" ? rejected.data : {}) as Record<string, unknown>;
+  const localDoc = { ...prep.data, id: prep.row.doc_id };
+  const merged = mergeVoucherConflictFields(serverDoc, localDoc, {
+    localDocMs: Number(rejected.updatedAtMs) || 0,
+    incomingDocMs: Number(prep.at) || Date.now(),
+  });
+  const retried = await writePreparedOutboxOp({ ...prep, data: merged.doc, mode: "set" }, Date.now());
+  return retried || rejected;
+}
+
+/**
+ * Push one `sync_outbox` row. Files are uploaded first; the voucher is written
+ * once with `pbatt:` refs. Conflict: allocations / fileUrls are field-merged and
+ * retried once instead of overwriting or dropping the whole document.
+ */
+export async function pushOutboxRowToPocketBase(row: PbOutboxRow): Promise<PbOpResult | null> {
+  const results = await pushOutboxRowsToPocketBase([row]);
+  const r = results[0];
+  if (r === "retry") {
+    throw new PocketBaseOutboxRetryError(
+      "Attachment upload pending — voucher kept in outbox (never sending local: to server)"
+    );
+  }
+  return r ?? null;
+}
+
+export type PbOutboxPushSlot = PbOpResult | null | "retry";
+
+/**
+ * Push several outbox rows for one company in a single `/api/pl/data/batch`
+ * transaction (bill-wise payment + target vouchers go together).
+ * `"retry"` means the row was not written (usually a file still uploading) and
+ * must stay in the outbox.
+ */
+export async function pushOutboxRowsToPocketBase(rows: PbOutboxRow[]): Promise<PbOutboxPushSlot[]> {
+  if (!rows.length) return [];
+  const slots: PbOutboxPushSlot[] = rows.map(() => "retry");
+  const preps: { index: number; prep: PreparedOutboxWrite }[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    try {
+      preps.push({ index: i, prep: await prepareOutboxRowForPocketBase(rows[i]!) });
+    } catch {
+      slots[i] = "retry";
+    }
+  }
+  if (!preps.length) return slots;
+
+  const companyId = preps[0]!.prep.row.company_id;
+  const now = Date.now();
+  const ops: PbBatchOp[] = preps.map(({ prep }) => ({
+    coll: prep.row.collection_name,
+    id: prep.row.doc_id,
+    mode: prep.mode,
+    data: prep.data,
+    at: prep.at ?? now,
+  }));
+  const results = await pbBatchWrite(companyId, ops);
+
+  for (let j = 0; j < preps.length; j++) {
+    const { index, prep } = preps[j]!;
+    let r = results[j] || null;
+    if (r?.status === "rejected" && prep.row.collection_name === "vouchers") {
+      r = await retryRejectedWithFieldMerge(prep, r);
+    }
+    if (prep.conversion && prep.conversion.converted.size && r && r.status !== "rejected") {
+      await applyAttachmentLinksLocally(prep.row, prep.conversion);
+    }
+    if (r && r.status === "rejected") {
+      try {
+        const { upsertCompanyDocInBrowserDb } = await import("@/lib/localCompanyDocMirror");
+        const { mergeVoucherConflictFields } = await import("@/lib/sync/voucherFieldMerge");
+        const serverDoc = (r.data && typeof r.data === "object" ? r.data : {}) as Record<string, unknown>;
+        const merged = mergeVoucherConflictFields(serverDoc, prep.data, {
+          localDocMs: Number(r.updatedAtMs) || 0,
+          incomingDocMs: Number(prep.at) || Date.now(),
+        });
+        await upsertCompanyDocInBrowserDb(
+          prep.row.company_id,
+          prep.row.collection_name,
+          prep.row.doc_id,
+          { ...merged.doc, id: prep.row.doc_id },
+          { force: true, notify: true, skipPlanMutationGate: true, skipCloudSyncEnqueue: true }
+        );
+      } catch {
+        try {
+          const { upsertCompanyDocInBrowserDb } = await import("@/lib/localCompanyDocMirror");
+          await upsertCompanyDocInBrowserDb(
+            prep.row.company_id,
+            prep.row.collection_name,
+            prep.row.doc_id,
+            pbRecordToAppDoc({ app_id: prep.row.doc_id, data: r.data, deleted: r.exists === false }),
+            { force: true, notify: true, skipPlanMutationGate: true, skipCloudSyncEnqueue: true }
+          );
+        } catch {
+          /* next pull repairs the mirror */
+        }
       }
     }
-    const retry = await writeOnce(retryPayload, Date.now());
-    if (retry && retry.status !== "rejected") {
-      payload = retryPayload;
-      conversion = retryConversion;
-      r = retry;
-    } else if (retry) {
-      r = retry;
-    }
+    slots[index] = r;
   }
-
-  if (conversion && conversion.converted.size && r && r.status !== "rejected") {
-    await applyAttachmentLinksLocally(row, conversion);
-  }
-  if (r && r.status === "rejected") {
-    try {
-      const { upsertCompanyDocInBrowserDb } = await import("@/lib/localCompanyDocMirror");
-      await upsertCompanyDocInBrowserDb(
-        row.company_id,
-        row.collection_name,
-        row.doc_id,
-        pbRecordToAppDoc({ app_id: row.doc_id, data: r.data, deleted: r.exists === false }),
-        { force: true, notify: true, skipPlanMutationGate: true, skipCloudSyncEnqueue: true }
-      );
-    } catch {
-      /* next pull repairs the mirror */
-    }
-  }
-  return r || null;
+  return slots;
 }
 
 /** After a push: local copy gets the `pbatt:` links too, then the pending bytes can go. */
@@ -1033,6 +1162,7 @@ async function mirrorDocs(
     "@/lib/localCompanyDocMirror"
   );
   const counts: Record<string, number> = {};
+  await healMirrorAttachmentRefs(companyId, byColl);
   for (const [coll, docs] of byColl) {
     if (!docs.length) continue;
     const result = await mirrorCollectionDocsToBrowserDbSilent(companyId, coll, docs, {
@@ -1057,6 +1187,47 @@ async function mirrorDocs(
  * Live-patch open lists from SQLite (post-merge), never from a stale incoming server row.
  * Writer save: local newer stays; painting the old server copy caused a 20ms old-narration flash.
  */
+
+async function healMirrorAttachmentRefs(
+  companyId: string,
+  byColl: Map<string, Record<string, unknown>[]>
+): Promise<void> {
+  const refs: string[] = [];
+  try {
+    const { healLocalAttachmentRefsOnDoc } = await import("@/lib/pocketbaseData/healLocalAttachmentRefs");
+    for (const docs of byColl.values()) {
+      for (let i = 0; i < docs.length; i++) {
+        const doc = docs[i];
+        if (!doc) continue;
+        try {
+          const healed = await healLocalAttachmentRefsOnDoc(companyId, doc);
+          if (healed.changed) docs[i] = healed.doc;
+          if (healed.downloadRefs.length) refs.push(...healed.downloadRefs);
+        } catch {
+          /* keep original doc */
+        }
+        try {
+          const { collectRemoteFileRefs } = await import("@/lib/sync/voucherFieldMerge");
+          const found = collectRemoteFileRefs(docs[i]);
+          if (found.size) refs.push(...found);
+        } catch {
+          /* exact-ref helper optional */
+        }
+      }
+    }
+  } catch {
+    /* helper unavailable */
+  }
+  if (refs.length) {
+    try {
+      const { queuePbExactRefs } = await import("@/lib/pocketbaseData/pbFilesPull");
+      queuePbExactRefs(companyId, refs);
+    } catch {
+      /* full file pull still queued by callers */
+    }
+  }
+}
+
 async function dispatchPbMirrorLivePatches(
   companyId: string,
   byColl: Map<string, Record<string, unknown>[]>,
@@ -1260,10 +1431,11 @@ export async function pullPocketBaseCompanyToLocal(
       return { full: true, changed, collections, failed: failedOut.n };
     }
     if (failedOut.n > 0) {
-      // Partial failure: some docs written successfully - save cursor to avoid full re-download next time.
-      console.warn("[pbSync] full pull: partial write failure", failedOut.n, "docs - cursor saved anyway", companyId);
+      // Partial failure: do NOT advance the cursor — incremental change-log cannot repair holes.
+      console.warn("[pbSync] full pull: partial write failure", failedOut.n, "docs - cursor not saved", companyId);
+      if (!collectionScoped) writeCursor(companyId, null);
+      return { full: true, changed, collections, failed: failedOut.n };
     }
-    // Save cursor (even on partial failure, so next pull is incremental delta not full).
     if (!collectionScoped) {
       writeCursor(companyId, { atMs: maxAt, url: auth.url });
       // First login / full pull: bring every server file of this company to the device too.
@@ -1371,13 +1543,50 @@ const HEAL_STILL_SHORT_BACKOFF_MS = 30 * 60_000;
 const healNextCheckAt = new Map<string, number>();
 
 /** Core collections whose absence makes the app look empty (accounts / parties / groups / vouchers / expense heads). */
-const HEAL_CORE_COLLECTIONS: ReadonlyArray<{ label: string; pb: string; appColls: readonly string[]; kindFilter?: boolean }> = [
+const HEAL_CORE_COLLECTIONS: ReadonlyArray<{ label: string; pb: string; appColls: readonly string[]; kindFilter?: boolean; catchAllDocs?: boolean }> = [
   { label: "parties", pb: "pl_parties", appColls: ["parties"] },
   { label: "bank_accounts", pb: "pl_bank_accounts", appColls: ["bank_accounts"] },
   { label: "groups", pb: "pl_groups", appColls: PB_GROUP_KINDS as readonly string[], kindFilter: true },
   { label: "vouchers", pb: "pl_vouchers", appColls: ["vouchers"] },
   { label: "expense_accounts", pb: "pl_expense_accounts", appColls: ["expense_accounts"] },
+  { label: "items", pb: "pl_items", appColls: ["items"] },
+  { label: "staff", pb: "pl_staff", appColls: ["staff"] },
+  { label: "taxes", pb: "pl_taxes", appColls: ["taxes"] },
+  { label: "unassigned_documents", pb: "pl_unassigned_documents", appColls: ["unassigned_documents"] },
+  // pl_docs is a catch-all (loans / HR / recurring). Local count = company_docs not in dedicated collections.
+  { label: "docs", pb: "pl_docs", appColls: [], catchAllDocs: true },
 ];
+
+const HEAL_DEDICATED_APP_COLLS = new Set<string>([
+  "vouchers",
+  "parties",
+  "bank_accounts",
+  "staff",
+  "items",
+  "taxes",
+  "expense_accounts",
+  "unassigned_documents",
+  ...PB_GROUP_KINDS,
+]);
+
+async function countLocalCatchAllDocs(companyId: string): Promise<number> {
+  try {
+    const { getBrowserDbForCompanyId } = await import("@/lib/localSqlite");
+    const db = await getBrowserDbForCompanyId(companyId);
+    if (!db) return 0;
+    const placeholders = Array.from(HEAL_DEDICATED_APP_COLLS)
+      .map(() => "?")
+      .join(", ");
+    const row = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM company_docs WHERE company_id = ? AND collection NOT IN (" + placeholders + ")"
+      )
+      .get(companyId, ...Array.from(HEAL_DEDICATED_APP_COLLS)) as { n?: number } | undefined;
+    return Math.max(0, Number(row?.n) || 0);
+  } catch {
+    return 0;
+  }
+}
 
 /** Cheap server count for one company collection (perPage=1 -> totalItems); null when unknown. */
 async function pbServerCount(collection: string, filter: string): Promise<number | null> {
@@ -1402,7 +1611,8 @@ async function localMirrorShortReason(companyId: string, companyRec: string): Pr
   const localCounts: Record<string, number> = {};
   for (const c of HEAL_CORE_COLLECTIONS) {
     let n = 0;
-    for (const appColl of c.appColls) n += await countCompanyDocsInBrowserDb(companyId, appColl);
+    if (c.catchAllDocs) n = await countLocalCatchAllDocs(companyId);
+    else for (const appColl of c.appColls) n += await countCompanyDocsInBrowserDb(companyId, appColl);
     localCounts[c.label] = n;
   }
   const allLocalEmpty = localCounts.parties === 0 && localCounts.vouchers === 0;
@@ -1418,9 +1628,9 @@ async function localMirrorShortReason(companyId: string, companyRec: string): Pr
       continue;
     }
     const local = localCounts[c.label];
-    // Only force full pull if local is completely empty for this collection.
-    // If local already has data (even partial), incremental delta will fill gaps.
-    if (server > 0 && local === 0) short.push(`${c.label} local=${local} server=${server}`);
+    // Local count includes tombstones, so local >= server-alive is the cheap healthy case.
+    // local < server means the mirror is definitely short (partial holes included).
+    if (server > 0 && local < server) short.push(`${c.label} local=${local} server=${server}`);
   }
   if (short.length) return short.join(", ");
   // Server counts unavailable: keep the legacy emptiness heal (no parties and no vouchers locally).

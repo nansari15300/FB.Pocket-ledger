@@ -61,8 +61,9 @@ const RECONNECT_MIN_MS = 2_000;
 const RECONNECT_MAX_MS = 15_000;
 const CONNECT_WAIT_MS = 8_000;
 const CATCHUP_MIN_MS = 8_000;
-/** Tab focus / visibility: at most one catch-up pull per minute while SSE is already live. */
+/** Tab visibility wake: catch-up only after the tab was hidden at least this long, then at most once a minute. */
 const FOCUS_CATCHUP_MIN_MS = 60_000;
+const HIDDEN_WAKE_MS = 15_000;
 
 type RealtimePayload = {
   action?: string;
@@ -221,8 +222,16 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
   const listenNames = eventNamesToListen(mode);
 
   const setConnected = (v: boolean) => {
+    const was = feedConnected;
     feedConnected = v;
     setPocketBaseRealtimeLive(v);
+    if (v && !was && typeof window !== "undefined") {
+      try {
+        window.dispatchEvent(new Event("pl-pb-realtime-connected"));
+      } catch {
+        /* ignore */
+      }
+    }
   };
 
   const clearConnectWatch = () => {
@@ -524,8 +533,15 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
     else connectEventSource(auth);
   }
 
+  let hiddenAt = 0;
   const onVisible = () => {
-    if (closed || document.visibilityState !== "visible") return;
+    if (document.visibilityState !== "visible") {
+      hiddenAt = Date.now();
+      return;
+    }
+    if (closed) return;
+    const hiddenFor = hiddenAt ? Date.now() - hiddenAt : 0;
+    hiddenAt = 0;
     if (!feedConnected) {
       queueAll({ force: true });
       if (retryTimer != null) {
@@ -537,14 +553,22 @@ export function startPocketBaseLiveChangeFeed(mode: PocketBaseRealtimeMode = "de
       connect();
       return;
     }
+    if (hiddenFor < HIDDEN_WAKE_MS) return;
     if (Date.now() - lastCatchupAt < FOCUS_CATCHUP_MIN_MS) return;
     queueAll({ force: true });
   };
 
   const onFocus = () => {
+    // Focus alone must not pull while SSE is healthy; a long visibility hide is the wake signal.
     if (closed || document.visibilityState !== "visible") return;
-    if (feedConnected && Date.now() - lastCatchupAt < FOCUS_CATCHUP_MIN_MS) return;
-    queueAll({ force: true });
+    if (feedConnected) return;
+    if (retryTimer != null) {
+      window.clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+    retryMs = RECONNECT_MIN_MS;
+    dropStream();
+    connect();
   };
 
   const onOnline = () => {

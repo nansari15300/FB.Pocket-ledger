@@ -965,32 +965,46 @@ async function adminGetQuerySnapshot(
 }
 
 const ADMIN_POLL_MS = 600_000;
-/** SSE down: poll udoc every 60s. SSE up: skip ticks until this 10m fallback. */
-const USER_POLL_MS = 60_000;
-const USER_POLL_WHEN_LIVE_MS = 600_000;
+/** SSE down: slow fallback poll for udoc listeners. SSE up: no idle poll (events + catch-up cover it). */
+const USER_POLL_MS = 30_000;
+const USER_POLL_MAX_MS = 3 * 60_000;
 
 const userPollers = new Set<() => void>();
-let userPollTicker: ReturnType<typeof setInterval> | null = null;
-let lastUserPollAt = 0;
+let userPollTicker: ReturnType<typeof setTimeout> | null = null;
+let userPollIntervalMs = USER_POLL_MS;
 function startUserPollTicker(): void {
   if (userPollTicker) return;
-  userPollTicker = setInterval(() => {
-    const now = Date.now();
-    if (isPocketBaseRealtimeLive() && now - lastUserPollAt < USER_POLL_WHEN_LIVE_MS) return;
-    lastUserPollAt = now;
-    for (const fn of Array.from(userPollers)) {
-      try {
-        fn();
-      } catch {
-        /* ignore */
+  const arm = (ms: number) => {
+    userPollTicker = setTimeout(() => {
+      userPollTicker = null;
+      if (userPollers.size === 0) return;
+      if (isPocketBaseRealtimeLive()) {
+        userPollIntervalMs = USER_POLL_MS;
+        arm(USER_POLL_MS);
+        return;
       }
-    }
-  }, USER_POLL_MS);
+      if (typeof document !== "undefined" && document.hidden) {
+        arm(USER_POLL_MS);
+        return;
+      }
+      for (const fn of Array.from(userPollers)) {
+        try {
+          fn();
+        } catch {
+          /* ignore */
+        }
+      }
+      userPollIntervalMs = Math.min(Math.round(userPollIntervalMs * 1.5), USER_POLL_MAX_MS);
+      arm(userPollIntervalMs);
+    }, ms);
+  };
+  arm(USER_POLL_MS);
 }
 function stopUserPollTickerIfIdle(): void {
   if (userPollers.size === 0 && userPollTicker) {
-    clearInterval(userPollTicker);
+    clearTimeout(userPollTicker);
     userPollTicker = null;
+    userPollIntervalMs = USER_POLL_MS;
   }
 }
 
@@ -1069,10 +1083,9 @@ function onAdminSnapshot(args: unknown[], t: AdminTarget): () => void {
   let poll: ReturnType<typeof setInterval> | null = null;
   if (t.mode === "user") {
     // one shared ticker for all user-mode listeners so their reads land in the same batched request.
-    // While SSE is live, ticks are skipped (pl-udoc-written + 90s fallback); 10s only if the stream is down.
+    // While SSE is live, ticks are skipped (events + catch-up). Fallback poll only if the stream is down.
     userPollers.add(pollTick);
     startUserPollTicker();
-    lastUserPollAt = Date.now();
   } else {
     poll = setInterval(pollTick, ADMIN_POLL_MS);
   }

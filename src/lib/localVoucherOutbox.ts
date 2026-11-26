@@ -600,8 +600,17 @@ export async function enqueueCompanyDocOutbox(
     typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `ob_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-  const json = outboxJsonStringify(payload);
   const now = Date.now();
+  // Field-level merge stamps so a later conflict can merge allocations / files instead of overwriting the voucher.
+  if (isPocketBaseCompanyId(companyId) && (collectionName === "vouchers" || collectionName === "pl_vouchers")) {
+    if (payload.allocations !== undefined && payload.allocationsUpdatedAt == null) {
+      payload = { ...payload, allocationsUpdatedAt: now };
+    }
+    if (payload.fileUrls !== undefined && payload.fileUrlsUpdatedAt == null) {
+      payload = { ...payload, fileUrlsUpdatedAt: now };
+    }
+  }
+  const json = outboxJsonStringify(payload);
   // Anti-spoof / replay-ready metadata — server future: `client_write_id` idempotency + `payload_hash` integrity.
   const clientWriteId =
     typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -624,6 +633,7 @@ export async function enqueueCompanyDocOutbox(
     `INSERT INTO sync_outbox (outbox_id, company_id, collection_name, doc_id, op, payload, created_at, client_write_id, nonce, payload_hash)
      VALUES (?,?,?,?,?,?,?,?,?,?)`
   ).run(outboxId, companyId, collectionName, docId, op, json, now, clientWriteId, nonce, payloadHash);
+  emitOutboxChanged();
   // Offline-first: flush background — embedded offline par band taaki Firestore Write stream + "Saving…" na atke.
   if (shouldAutoFlushOutboxAfterEnqueue()) {
     void flushVoucherOutbox().catch((e) => {
@@ -654,6 +664,18 @@ export async function clearSyncOutboxForCompany(companyId: string): Promise<void
 }
 
 /** After a direct Firestore update: remove matching outbox rows so an old flush cannot overwrite. */
+/** Fired in the browser whenever a row is added to `sync_outbox`. Flush is event-driven. */
+export const PL_OUTBOX_CHANGED_EVENT = "pl-sync-outbox-changed";
+
+function emitOutboxChanged(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(new Event(PL_OUTBOX_CHANGED_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
+
 /** APK online banner: count pending outbox rows in SQLite for the company. */
 export async function countSyncOutboxRowsForCompany(companyId: string): Promise<number> {
   try {
@@ -663,6 +685,24 @@ export async function countSyncOutboxRowsForCompany(companyId: string): Promise<
     if (!db) return 0;
     const row = db.prepare(`SELECT COUNT(1) as c FROM sync_outbox WHERE company_id = ?`).get(cid) as { c?: number };
     return Number(row?.c ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
+/** Count pending rows in every SQLite namespace (for event-driven flush). */
+export async function countAllSyncOutboxRows(): Promise<number> {
+  try {
+    const { getBrowserDbForNamespace } = await import("@/lib/localSqlite");
+    const { SQLITE_STORAGE_NAMESPACES } = await import("@/lib/sqliteStorageNamespace");
+    let total = 0;
+    for (const ns of SQLITE_STORAGE_NAMESPACES) {
+      const db = await getBrowserDbForNamespace(ns);
+      if (!db) continue;
+      const row = db.prepare(`SELECT COUNT(1) as c FROM sync_outbox`).get() as { c?: number };
+      total += Number(row?.c ?? 0);
+    }
+    return total;
   } catch {
     return 0;
   }
@@ -1339,6 +1379,8 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
   let ok = 0;
   let failed = 0;
   /** One SSE pause for every PocketBase row in this flush — per-row drop/reconnect starved voucher POSTs. */
+  /** PocketBase rows collected in this pass, then written in one batch per company. */
+  const pbBatchRows: Array<(typeof rows)[number] & { payloadObj: Record<string, unknown> }> = [];
   let pbPushPaused = false;
   const pausePbForThisFlush = async () => {
     if (pbPushPaused) return;
@@ -1408,39 +1450,12 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
         // Not signed in to the server yet: keep the row for later.
         if (!getValidPocketBaseAuth()) continue;
         if (isPbServerBackedOff()) continue;
-        try {
-          const pbData = data as Record<string, unknown>;
-          if (row.collection_name === "vouchers") {
-            delete pbData[PL_CLIENT_OFFLINE_FIRST_PERSIST_MS];
-            coerceVoucherDocumentDate(pbData);
-          }
-          const { pushOutboxRowToPocketBase } = await import("@/lib/pocketbaseData/pbSync");
-          // Only the writer POST needs the SSE slot — never drop the reader device's live feed.
-          await pausePbForThisFlush();
-          await pushOutboxRowToPocketBase({ ...row, payload: outboxJsonStringify(pbData) });
-          await deleteOutboxRow(row.outbox_id, row.company_id);
-          clearPbOutboxRowBackoff(row.outbox_id);
-          clearPbServerBackoff();
-          ok++;
-        } catch (pbErr) {
-          if (isPocketBaseCompanyMissingError(pbErr)) {
-            // Permanent: block the whole company instead of retrying every row on every tick.
-            await blockPbOutboxCompanyRows(row.company_id, row.outbox_id, pbErr);
-            failed++;
-            continue;
-          }
-          const pbStatus = Number((pbErr as { status?: number })?.status ?? -1);
-          if (pbStatus === 0 || pbStatus >= 500) notePbServerDown();
-          const waitMs = notePbOutboxRowFailure(row.outbox_id);
-          console.warn(
-            "[flushVoucherOutbox] Pocket Ledger Server push failed (next try in " + Math.round(waitMs / 1000) + "s)",
-            row.collection_name,
-            row.doc_id,
-            pbErr
-          );
-          await markOutboxRowAttemptFailed(row.outbox_id, row.company_id, pbErr, "failed");
-          failed++;
+        const pbData = data as Record<string, unknown>;
+        if (row.collection_name === "vouchers") {
+          delete pbData[PL_CLIENT_OFFLINE_FIRST_PERSIST_MS];
+          coerceVoucherDocumentDate(pbData);
         }
+        pbBatchRows.push({ ...row, payloadObj: pbData });
         continue;
       }
       const rowSyncAllowed = await canSyncCompanyCollectionToServer(
@@ -1855,6 +1870,90 @@ async function flushVoucherOutboxImpl(options?: FlushVoucherOutboxOptions): Prom
       failed++;
       // One bad row should not block the entire outbox forever; keep flushing remaining rows.
       continue;
+    }
+  }
+
+  // PocketBase: one `/api/pl/data/batch` transaction per company (payment + bills together).
+  if (pbBatchRows.length) {
+    await pausePbForThisFlush();
+    const { pushOutboxRowsToPocketBase, PocketBaseOutboxRetryError } = await import("@/lib/pocketbaseData/pbSync");
+    const { getValidPocketBaseAuth } = await import("@/lib/pocketbaseData/pbClient");
+    const byCompany = new Map<string, typeof pbBatchRows>();
+    for (const r of pbBatchRows) {
+      const list = byCompany.get(r.company_id) || [];
+      list.push(r);
+      byCompany.set(r.company_id, list);
+    }
+    for (const [, list] of byCompany) {
+      if (typeof navigator !== "undefined" && !navigator.onLine) continue;
+      if (!getValidPocketBaseAuth()) continue;
+      if (isPbServerBackedOff()) continue;
+      try {
+        const slots = await pushOutboxRowsToPocketBase(
+          list.map((row) => ({
+            ...row,
+            payload: outboxJsonStringify(row.payloadObj),
+          }))
+        );
+        let anyOk = false;
+        for (let i = 0; i < list.length; i++) {
+          const row = list[i]!;
+          const slot = slots[i];
+          if (slot === "retry") {
+            await markOutboxRowAttemptFailed(
+              row.outbox_id,
+              row.company_id,
+              new Error("Attachment upload pending — kept in outbox (never sending local: )"),
+              "failed"
+            );
+            failed++;
+            continue;
+          }
+          if (slot && typeof slot === "object" && slot.status === "rejected") {
+            await markOutboxRowAttemptFailed(
+              row.outbox_id,
+              row.company_id,
+              new Error("PocketBase rejected the write after field-merge retry"),
+              "failed"
+            );
+            failed++;
+            continue;
+          }
+          await deleteOutboxRow(row.outbox_id, row.company_id);
+          clearPbOutboxRowBackoff(row.outbox_id);
+          ok++;
+          anyOk = true;
+        }
+        if (anyOk) clearPbServerBackoff();
+      } catch (pbErr) {
+        if ((pbErr instanceof PocketBaseOutboxRetryError) || (pbErr && typeof pbErr === "object" && (pbErr as { name?: string }).name === "PocketBaseOutboxRetryError")) {
+          for (const row of list) {
+            await markOutboxRowAttemptFailed(row.outbox_id, row.company_id, pbErr, "failed");
+            failed++;
+          }
+          continue;
+        }
+        if (isPocketBaseCompanyMissingError(pbErr)) {
+          for (const row of list) {
+            await blockPbOutboxCompanyRows(row.company_id, row.outbox_id, pbErr);
+            failed++;
+          }
+          continue;
+        }
+        const pbStatus = Number((pbErr as { status?: number })?.status ?? -1);
+        if (pbStatus === 0 || pbStatus >= 500) notePbServerDown();
+        for (const row of list) {
+          const waitMs = notePbOutboxRowFailure(row.outbox_id);
+          console.warn(
+            "[flushVoucherOutbox] Pocket Ledger Server batch push failed (next try in " + Math.round(waitMs / 1000) + "s)",
+            row.collection_name,
+            row.doc_id,
+            pbErr
+          );
+          await markOutboxRowAttemptFailed(row.outbox_id, row.company_id, pbErr, "failed");
+          failed++;
+        }
+      }
     }
   }
   } finally {

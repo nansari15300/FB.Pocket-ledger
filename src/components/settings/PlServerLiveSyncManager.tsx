@@ -33,15 +33,15 @@ import { plServerLiveCollectionsForPathname } from "@/lib/plServerVisiblePageLiv
 import type { CompanyBackupCollection } from "@/lib/companyBackupCollections";
 import { readCurrentAppAccountIdentity } from "@/lib/appAccountIdentity";
 
-const LIVE_FOCUS_POLL_MS = 8_000;
+/** SSE down: slow fallback poll (not an idle snapshot while the stream is healthy). */
+const LIVE_FOCUS_POLL_MS = 30_000;
 /**
  * SSE only after at least one real `change` event (not merely EventSource open).
- * WAN tunnels often leave SSE "open" without delivering events — then we keep 8s focus_poll.
- * After events are proven, idle poll slows so we don't re-download whole collections every 8s.
+ * WAN tunnels often leave SSE "open" without delivering events — then we keep the fallback poll.
+ * After events are proven, idle focus_poll and full_check are not scheduled at all.
  */
-const LIVE_FOCUS_POLL_MS_WITH_SSE = 45_000;
-/** Soft ledger health — full voucher re-pull only jab local peeche/empty. */
-const LIVE_FULL_CHECK_MS = 60_000;
+/** Unused while SSE is healthy; kept as the fallback interval cap hint. */
+const LIVE_FULL_CHECK_MS = 3 * 60_000;
 /** Host slow / 1–2 fails — UI local SQLite se chale, network kam dabao. */
 const LIVE_POLL_MS_AFTER_FAILURE = 45_000;
 /** Host down — sirf sparse reopen try; offline SQLite use atakna nahi chahiye. */
@@ -279,26 +279,28 @@ export function PlServerLiveSyncManager() {
     }
 
     function desiredFocusPollMs(): number {
-      if (sseTrustworthyForIdleSkip()) return LIVE_FOCUS_POLL_MS_WITH_SSE;
+      if (sseTrustworthyForIdleSkip()) return 0;
       const health = getPlServerReadSyncHealth(id);
-      if (health.consecutiveFailures >= 3) return LIVE_POLL_MS_HOST_DOWN;
+      if (health.consecutiveFailures >= 3) return Math.max(LIVE_POLL_MS_HOST_DOWN, LIVE_FOCUS_POLL_MS);
       if (health.consecutiveFailures >= 2) return LIVE_POLL_MS_AFTER_FAILURE;
       return LIVE_FOCUS_POLL_MS;
     }
 
     function schedulePoll() {
+      if (pollTimerRef.current) window.clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+      if (fullCheckTimerRef.current) window.clearInterval(fullCheckTimerRef.current);
+      fullCheckTimerRef.current = null;
+      if (sseTrustworthyForIdleSkip()) {
+        pollIntervalMsRef.current = 0;
+        return;
+      }
       const nextMs = desiredFocusPollMs();
       pollIntervalMsRef.current = nextMs;
-      if (pollTimerRef.current) window.clearInterval(pollTimerRef.current);
       pollTimerRef.current = window.setInterval(() => {
         if (document.visibilityState !== "visible") return;
         void runPull("focus_poll");
       }, nextMs);
-      if (fullCheckTimerRef.current) window.clearInterval(fullCheckTimerRef.current);
-      fullCheckTimerRef.current = window.setInterval(() => {
-        if (document.visibilityState !== "visible") return;
-        void runPull("full_check");
-      }, LIVE_FULL_CHECK_MS);
     }
 
     const runPull = async (reason: string) => {
@@ -697,11 +699,22 @@ export function PlServerLiveSyncManager() {
       startServerEvents();
       void runPull("online");
     };
+    let hiddenAt = 0;
+    const HIDDEN_WAKE_MS = 15_000;
     const onFocus = () => {
+      if (sseTrustworthyForIdleSkip()) return;
       void runPull("window_focus");
     };
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") void runPull("visibility_visible");
+      if (document.visibilityState !== "visible") {
+        hiddenAt = Date.now();
+        return;
+      }
+      const hiddenFor = hiddenAt ? Date.now() - hiddenAt : 0;
+      hiddenAt = 0;
+      if (!sseTrustworthyForIdleSkip() || hiddenFor >= HIDDEN_WAKE_MS) {
+        void runPull("visibility_visible");
+      }
     };
     const electronTabBridge = (
       window as unknown as {

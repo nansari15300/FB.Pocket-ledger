@@ -10,6 +10,10 @@
  *   stored, and continues). A change cursor (`updated`) makes later runs fetch only new / changed files.
  * - New files made by other devices are queued after every data pull and realtime event
  *   (`queuePbFilesSync`, debounced), so they arrive without any click.
+ * - After "Clear files cache" the cursor is stamped at now (old files stay cleared) but
+ *   automatic pull of *new* attachments stays on. Exact refs from a voucher event
+ *   (`queuePbExactRefs`) download even if a leftover auto-off flag is set.
+ * - Failed downloads retry with capped exponential backoff; they are never abandoned after 3 tries.
  * - Progress: `usePbFilesPullProgress()` (done / total).
  */
 
@@ -252,18 +256,14 @@ export async function runPbFilesSync(companyId: string, opts?: { full?: boolean;
         );
       }
       // Cursor not advanced: the next run re-reads the manifest and continues from what is on the device.
-      if (autoRetries < 3) {
-        autoRetries++;
-        queuePbFilesSync(cid, { delayMs: 120_000 * autoRetries });
-      }
+      autoRetries++;
+      queuePbFilesSync(cid, { delayMs: Math.min(30_000 * 2 ** Math.min(autoRetries, 6), 5 * 60_000) });
     }
   } catch (e) {
     console.warn("[pbFiles] pull failed", e instanceof Error ? e.message : e);
     setPbFilesPullProgress({ phase: "error", message: "Could not read the server file list; retrying later." }, true);
-    if (autoRetries < 3) {
-      autoRetries++;
-      queuePbFilesSync(cid, { delayMs: 60_000 * autoRetries });
-    }
+    autoRetries++;
+    queuePbFilesSync(cid, { delayMs: Math.min(15_000 * 2 ** Math.min(autoRetries, 6), 5 * 60_000) });
   } finally {
     running.delete(cid);
     if (rerun.delete(cid)) queuePbFilesSync(cid, { delayMs: 1500 });
@@ -301,6 +301,57 @@ export function resumePbFilesSync(): void {
   if (!cid || !getValidPocketBaseAuth()) return;
   autoRetries = 0;
   queuePbFilesSync(cid, { delayMs: 4000 });
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => {
+    autoRetries = 0;
+    const cid = activePocketBaseCompanyId();
+    if (cid && getValidPocketBaseAuth()) queuePbFilesSync(cid, { delayMs: 1500 });
+  });
+}
+
+const exactTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const exactBackoff = new Map<string, number>();
+const MAX_EXACT_BACKOFF_MS = 5 * 60_000;
+
+/**
+ * Download these exact `pbatt:` / https refs (a voucher event just arrived).
+ * Ignores the "auto pull off" flag so a "Clear files cache" cannot block *new* files.
+ * Retries with capped backoff; never gives up after 3 attempts.
+ */
+export function queuePbExactRefs(companyId: string, refs: readonly string[]): void {
+  const cid = String(companyId || "").trim();
+  if (!cid || typeof window === "undefined") return;
+  const unique = [...new Set(refs.map((r) => String(r || "").trim()).filter((r) => r.startsWith("pbatt:") || /^https?:\/\//i.test(r)))];
+  if (!unique.length) return;
+  for (const ref of unique) {
+    const key = cid + "\0" + ref;
+    if (exactTimers.has(key)) continue;
+    const delay = exactBackoff.get(key) ?? 0;
+    exactTimers.set(
+      key,
+      setTimeout(() => {
+        exactTimers.delete(key);
+        void (async () => {
+          try {
+            const res = await downloadPbAttachmentToDevice(ref);
+            if (res === "failed") {
+              const prev = exactBackoff.get(key) ?? 2000;
+              exactBackoff.set(key, Math.min(Math.max(prev, 2000) * 2, MAX_EXACT_BACKOFF_MS));
+              queuePbExactRefs(cid, [ref]);
+            } else {
+              exactBackoff.delete(key);
+            }
+          } catch {
+            const prev = exactBackoff.get(key) ?? 2000;
+            exactBackoff.set(key, Math.min(Math.max(prev, 2000) * 2, MAX_EXACT_BACKOFF_MS));
+            queuePbExactRefs(cid, [ref]);
+          }
+        })();
+      }, delay)
+    );
+  }
 }
 
 /** Stop the running pull (sign-out / switch). */
@@ -344,17 +395,22 @@ export async function getPbFilesDeviceUsage(): Promise<{ count: number; bytes: n
 
 /**
  * "Clear files cache": remove the server files stored on this device (documents / vouchers stay).
- * Files are fetched again one by one when opened; the automatic full pull stays off until the user
- * presses "Download all files".
+ * The incremental cursor is stamped at now so *old* files stay cleared, but automatic pull of
+ * *new* attachments stays on. Exact refs on later voucher events also keep downloading.
  */
 export async function clearPbFilesCache(): Promise<{ count: number; bytes: number }> {
   stopPbFilesSync();
   const { scanOrClearOfflineCachedAttachmentsByPrefix } = await import("@/lib/offlineAttachmentUrlCache");
   const out = await scanOrClearOfflineCachedAttachmentsByPrefix(PB_ATTACHMENT_PREFIX, true);
+  const nowIso = new Date().toISOString();
+  const authUrl = getValidPocketBaseAuth()?.url || "";
   for (const cid of Array.from(new Set([activePocketBaseCompanyId()].filter(Boolean)))) {
-    writeCursor(cid, null);
-    setAutoOff(cid, true);
+    writeCursor(cid, { url: authUrl, maxUpdated: nowIso, total: 0 });
+    setAutoOff(cid, false);
   }
-  resetPbFilesPullProgress({ phase: "idle", autoOff: true, companyId: activePocketBaseCompanyId() });
+  autoRetries = 0;
+  resetPbFilesPullProgress({ phase: "idle", autoOff: false, companyId: activePocketBaseCompanyId() });
+  const cid = activePocketBaseCompanyId();
+  if (cid) queuePbFilesSync(cid, { delayMs: 2500 });
   return out;
 }

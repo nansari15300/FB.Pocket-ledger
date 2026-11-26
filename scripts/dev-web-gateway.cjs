@@ -278,7 +278,7 @@ function proxyHttp(req, res) {
 /**
  * /pb/** -> the one Pocket Ledger Server (PocketBase), prefix stripped.
  * Permanent default is the Server PC, reached at https://np.pocket-ledger.com
- * (Cloudflare tunnel pl-sub on ServerWin10 -> 127.0.0.1:8090). Do not point this
+ * (Cloudflare tunnel pl-sub on ServerWin10 -> the live PocketBase, currently 127.0.0.1:1786). Do not point this
  * at a PocketBase on this laptop. Optional PL_PB_PROXY_TARGET overrides the URL
  * (e.g. start-dev-2000.cmd uses the local TLS forwarder on 127.0.0.1:18090).
  * Streams both ways (SSE /pb/api/realtime included): no buffering, no timeouts.

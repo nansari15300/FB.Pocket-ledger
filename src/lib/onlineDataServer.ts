@@ -36,9 +36,14 @@ export type OnlineDataServerDef = {
   implemented: boolean;
 };
 
-/** Build-time default (hosted web / APK / EXE can set NEXT_PUBLIC_POCKETBASE_URL); else this PC. */
+/**
+ * Build-time default. Prefer `NEXT_PUBLIC_POCKETBASE_URL` when set; otherwise leave empty so
+ * the client uses the same-origin `/pb` proxy (dev gateway or hosted https://np.pocket-ledger.com/pb)
+ * or, in production, the chosen country's live host. Never hardcode 127.0.0.1:8090 — live PocketBase
+ * is not on that port (after the Server PC cutover it listens on 1786, reached through the gateway).
+ */
 export const DEFAULT_POCKETBASE_SERVER_URL =
-  (process.env.NEXT_PUBLIC_POCKETBASE_URL || "").trim() || "http://127.0.0.1:8090";
+  (process.env.NEXT_PUBLIC_POCKETBASE_URL || "").trim();
 
 /** Central registry - add future servers here (and to `OnlineDataServerId`). */
 export const ONLINE_DATA_SERVERS: readonly OnlineDataServerDef[] = [
@@ -106,8 +111,11 @@ export function normalizeOnlineDataServerSettings(raw: unknown): OnlineDataServe
   };
 }
 
-/** This-PC PocketBase address used in local dev (the dev gateway maps it to `/pb` for LAN devices). */
-const LOCAL_DEV_POCKETBASE_URL = "http://127.0.0.1:8090";
+/**
+ * Legacy loopback placeholder (old default port). Treated as "not set".
+ * Local dev talks through the same-origin `/pb` proxy, not this address.
+ */
+const LOCAL_DEV_POCKETBASE_URL = "";
 
 /** Loopback, LAN-private, `.local` or single-label host = a server on this machine / network. */
 function isLocalNetworkHostname(hostRaw: string): boolean {
@@ -159,7 +167,10 @@ export function isLocalDevRuntime(): boolean {
  */
 export function applyLocalDevPocketBaseGuard(settings: OnlineDataServerSettings): OnlineDataServerSettings {
   if (!isNonLocalServerUrl(settings.pocketbaseUrl) || !isLocalDevRuntime()) return settings;
-  const fallback = isNonLocalServerUrl(DEFAULT_POCKETBASE_SERVER_URL) ? LOCAL_DEV_POCKETBASE_URL : DEFAULT_POCKETBASE_SERVER_URL;
+  const fallback =
+    isNonLocalServerUrl(DEFAULT_POCKETBASE_SERVER_URL) && DEFAULT_POCKETBASE_SERVER_URL
+      ? LOCAL_DEV_POCKETBASE_URL
+      : DEFAULT_POCKETBASE_SERVER_URL || LOCAL_DEV_POCKETBASE_URL;
   return { ...settings, pocketbaseUrl: fallback };
 }
 
@@ -175,14 +186,16 @@ function isLoopbackServerUrl(url: string): boolean {
 }
 
 /**
- * Production only: is `url` an address somebody really chose? Empty, the build default / this-PC
- * placeholder (127.0.0.1:8090) and any other loopback address count as "not set". A non-loopback
- * address (https://np.pocket-ledger.com, a LAN host the page itself runs on, ...) is explicit.
+ * Production only: is `url` an address somebody really chose? Empty, the build default, the
+ * old this-PC placeholder (127.0.0.1:8090) and any other loopback address count as "not set".
+ * A non-loopback address (https://np.pocket-ledger.com, a LAN host the page itself runs on, ...) is explicit.
  */
 export function isExplicitPocketBaseUrl(url: unknown): boolean {
   const s = typeof url === "string" ? url.trim().replace(/\/+$/, "") : "";
   if (!s) return false;
-  if (s === DEFAULT_POCKETBASE_SERVER_URL.replace(/\/+$/, "")) return false;
+  if (DEFAULT_POCKETBASE_SERVER_URL && s === DEFAULT_POCKETBASE_SERVER_URL.replace(/\/+$/, "")) return false;
+  // Stale saved default from before the port cutover (PocketBase is no longer on 8090).
+  if (/^https?:\/\/127\.0\.0\.1:8090$/i.test(s) || /^https?:\/\/localhost:8090$/i.test(s)) return false;
   return !isLoopbackServerUrl(s);
 }
 
@@ -206,7 +219,7 @@ export type PocketBaseServerResolution = {
 
 /**
  * Which PocketBase server to talk to.
- *  1. Local dev (`isLocalDevRuntime()`, SSR): the saved/default URL exactly as before (127.0.0.1:8090).
+ *  1. Local dev (`isLocalDevRuntime()`, SSR): the saved URL, else same-origin `/pb` (never a hardcoded :8090).
  *  2. Production (EXE, APK, static/packed builds, hosted web on a non-local host):
  *     a) an explicitly saved `pocketbaseUrl` (admin settings / typed server address, not loopback/placeholder)
  *     b) the chosen country's live host `https://{cc}.pocket-ledger.com`
