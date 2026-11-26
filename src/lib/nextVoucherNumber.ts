@@ -5,9 +5,9 @@
 import { collection, query, where } from "@/lib/pbCompat/firestore";
 import { getDocs } from "@/lib/pocketbaseData/pbReadSeam";
 import { firestore } from "@/lib/plClientSession";
-import { apkEntityWriteUsesLocalSqliteMirror } from "@/lib/apkOnlineFirestoreWritePolicy";
 import { isOfflineCompanyStorage } from "@/lib/companyUnlockGate";
 import { listCompanyDocsFromBrowserDb } from "@/lib/localCompanyDocMirror";
+import { readPendingOutboxPayloadsForCompany } from "@/lib/localVoucherOutbox";
 import {
   formatVoucherNumber,
   formatVoucherNumberWithFy,
@@ -262,9 +262,6 @@ export async function getNextVoucherNumberForCompany(params: GetNextVoucherNumbe
     (Array.isArray(configured) && configured[0] ? configured[0] : "");
   const prefix = resolveVoucherPrefixForKey(prefixKey, rawPrefix || null);
 
-  const readSqlite =
-    apkEntityWriteUsesLocalSqliteMirror(companyDoc as { storageOption?: string }) ||
-    (companyDoc != null && isOfflineCompanyStorage(companyDoc as { storageOption?: string }));
   const pureLocal =
     companyDoc != null && isOfflineCompanyStorage(companyDoc as { storageOption?: string });
 
@@ -283,14 +280,28 @@ export async function getNextVoucherNumberForCompany(params: GetNextVoucherNumbe
     }
   }
 
-  const localRows = readSqlite
-    ? await listCompanyDocsFromBrowserDb(companyId, "vouchers", { forBackupMerge: true })
-    : [];
+  // Always include this device's SQLite rows and unsynced outbox, plus the latest
+  // pulled mirror (getDocs). Other devices' unsynced numbers are confirmed on save
+  // (server reserve) or reconciled on push.
+  let localRows: Array<Record<string, unknown>> = [];
+  try {
+    localRows = await listCompanyDocsFromBrowserDb(companyId, "vouchers", { forBackupMerge: true });
+  } catch {
+    localRows = [];
+  }
+  let outboxRows: Array<Record<string, unknown>> = [];
+  try {
+    const pending = await readPendingOutboxPayloadsForCompany(companyId, "vouchers");
+    for (const [id, payload] of pending) outboxRows.push({ ...payload, id });
+  } catch {
+    outboxRows = [];
+  }
 
   const mergedRows = filterVoucherRowsForSerial(
-    dedupeVoucherRowsById([...fsRows, ...localRows]),
+    dedupeVoucherRowsById([...fsRows, ...localRows, ...outboxRows]),
     voucherLike
   );
+
   const includeFy = autoVoucherIncludesFySegment(companyDoc);
   const fyFormat = resolveVoucherNumberFyFormat(companyDoc);
   const fySegment = includeFy

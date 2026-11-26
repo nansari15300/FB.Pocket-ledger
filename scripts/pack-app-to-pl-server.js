@@ -13,7 +13,7 @@ const root = path.join(__dirname, "..");
 const outDir = path.join(root, "out");
 const pbPublic = process.env.PL_SERVER_PB_PUBLIC
   ? String(process.env.PL_SERVER_PB_PUBLIC)
-  : path.join("C:", "Project Next.js Balgram", "PocketLedger-Server", "sub-server", "pb_public");
+  : path.join("C:", "Project Pocket-ledger_ERP", "Server", "sub-server", "pb_public");
 const destDir = path.join(pbPublic, "app");
 
 function rmDir(dir) {

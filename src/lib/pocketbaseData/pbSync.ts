@@ -657,7 +657,7 @@ export type PbOpResult = {
   coll: string;
   id: string;
   /** ok | merged (older edit merged into newer server doc) | rejected (older set/delete, server doc kept) */
-  status: "ok" | "merged" | "rejected";
+  status: "ok" | "merged" | "rejected" | "renumbered";
   exists: boolean;
   /** stored document (server JSON encoding) */
   data: Record<string, unknown>;
@@ -722,7 +722,7 @@ export async function pbBatchWrite(appCompanyId: string, ops: PbBatchOp[], expec
   noteServerNow(res?.serverNow, sentAt);
   const results = Array.isArray(res?.results) ? res.results : [];
   for (const r of results) {
-    if (r.status !== "ok") console.warn("[pbSync] write conflict:", r.status, r.coll, r.id);
+    if (r.status !== "ok" && r.status !== "renumbered") console.warn("[pbSync] write conflict:", r.status, r.coll, r.id);
   }
   return results;
 }
@@ -813,7 +813,16 @@ type PreparedOutboxWrite = {
 };
 
 function payloadHasLocalRef(data: Record<string, unknown>): boolean {
-  return JSON.stringify(data).includes('"local:"');
+  // Real refs stringify as "local:<uuid>", not the exact value "local:".
+  // The old includes('"local:"') check never matched, so outbox skipped the
+  // upload-first path and wrote leftover local: refs to the server. Other
+  // devices then showed a placeholder icon and could rewrite those rows.
+  try {
+    if (JSON.stringify(data).includes('"local:')) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
 }
 
 async function resolveLeftoverLocalRefs(
@@ -1008,6 +1017,18 @@ export async function pushOutboxRowsToPocketBase(rows: PbOutboxRow[]): Promise<P
     let r = results[j] || null;
     if (r?.status === "rejected" && prep.row.collection_name === "vouchers") {
       r = await retryRejectedWithFieldMerge(prep, r);
+    }
+    if (r && r.status === "renumbered" && prep.row.collection_name === "vouchers") {
+      try {
+        const { applyRenumberedVoucherLocally } = await import("@/lib/voucherNumberReserve");
+        await applyRenumberedVoucherLocally(
+          prep.row.company_id,
+          prep.row.doc_id,
+          (r.data && typeof r.data === "object" ? r.data : {}) as Record<string, unknown>
+        );
+      } catch {
+        /* next pull brings the reserved number */
+      }
     }
     if (prep.conversion && prep.conversion.converted.size && r && r.status !== "rejected") {
       await applyAttachmentLinksLocally(prep.row, prep.conversion);

@@ -572,6 +572,17 @@ function parseDateToMsLoose(raw: unknown): number | null {
   return null;
 }
 
+/** Voucher calendar dates are ms since epoch in the 2000s+. Reject epoch / file-size / unix-seconds-as-ms. */
+const MIN_VOUCHER_DATE_MS = Date.UTC(2000, 0, 1);
+
+function parseVoucherDateToMs(raw: unknown): number | null {
+  const ms = parseDateToMsLoose(raw);
+  if (ms == null) return null;
+  if (ms >= MIN_VOUCHER_DATE_MS) return ms;
+  if (ms > 1_000_000_000 && ms * 1000 >= MIN_VOUCHER_DATE_MS) return Math.trunc(ms * 1000);
+  return null;
+}
+
 /** Best-effort voucher amount: first finite number among `total` / `amount` / `grandTotal` / `netAmount`. */
 function parseAmountLoose(raw: Record<string, unknown>): number | null {
   const keys = ["total", "amount", "grandTotal", "netAmount"];
@@ -590,9 +601,19 @@ function preserveLocalVoucherDateIfIncomingUnparseable(
   incoming: Record<string, unknown>,
   existing: Record<string, unknown>
 ): void {
-  if (parseDateToMsLoose(incoming.date) != null) return;
-  if (parseDateToMsLoose(existing.date) == null) return;
+  if (parseVoucherDateToMs(incoming.date) != null) return;
+  if (parseVoucherDateToMs(existing.date) == null) return;
   incoming.date = existing.date;
+}
+
+function preserveLocalVoucherTypeIfIncomingMissing(
+  incoming: Record<string, unknown>,
+  existing: Record<string, unknown>
+): void {
+  const nextType = typeof incoming.type === "string" ? incoming.type.trim() : "";
+  if (nextType) return;
+  const prevType = typeof existing.type === "string" ? existing.type.trim() : "";
+  if (prevType) incoming.type = existing.type;
 }
 
 /** Maintain a separate projection table so dashboard/recent views avoid parsing full voucher JSON. */
@@ -606,9 +627,9 @@ async function upsertVoucherProjection(
   const db = await getBrowserDbForCompanyId(companyId);
   if (!db) return;
   const docType = typeof data.type === "string" ? data.type : null;
-  let docDateMs = parseDateToMsLoose(data.date);
-  // A rewrite without a parseable `date` must not blank the projection: Daybook joins
-  // on doc_date_ms IS NOT NULL, so a null here makes the voucher vanish after refresh.
+  let docDateMs = parseVoucherDateToMs(data.date);
+  // A rewrite without a parseable voucher `date` must not blank (or move to 1970) the
+  // projection: Daybook joins on doc_date_ms IS NOT NULL and the selected day range.
   if (docDateMs == null) {
     try {
       const prev = db
@@ -846,6 +867,7 @@ export async function performCompanyDocUpsert(
 
   if (collectionName === "vouchers" && existingParsed) {
     preserveLocalVoucherDateIfIncomingUnparseable(stampedData, existingParsed);
+    preserveLocalVoucherTypeIfIncomingMissing(stampedData, existingParsed);
   }
 
   try {
@@ -1537,7 +1559,9 @@ export async function mirrorCollectionDocsToBrowserDbSilent(
           ) {
             skipped += 1;
             if (collectionName === "vouchers") {
-              await upsertVoucherProjection(companyId, collectionName, id, payload);
+              // Projection must follow the document left in SQLite, not a raw
+              // incoming payload (attachment heal may have cloned/broken `date`).
+              await upsertVoucherProjection(companyId, collectionName, id, existing as Record<string, unknown>);
             }
             mirrorMergeSkipLog({
               companyId,

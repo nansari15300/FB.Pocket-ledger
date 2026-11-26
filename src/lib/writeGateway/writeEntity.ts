@@ -201,7 +201,30 @@ export async function writeEntity(req: WriteEntityRequest): Promise<WriteEntityR
       return { ok: true, docId: effectiveDocId };
     }
 
-    const patch = { ...(req.data || {}) } as Record<string, unknown>;
+
+    let writeData = { ...(req.data || {}) } as Record<string, unknown>;
+    if (collectionName === "vouchers") {
+      try {
+        const { confirmVoucherNumberOnSave } = await import("@/lib/voucherNumberReserve");
+        const existing = await getCompanyDocFromBrowserDb(companyId, collectionName, effectiveDocId).catch(() => null);
+        const confirmed = await confirmVoucherNumberOnSave({
+          companyId,
+          voucherId: effectiveDocId,
+          data: { ...(existing || {}), ...writeData, id: effectiveDocId },
+          isNew: req.operation === "create" && !existing,
+        });
+        writeData = confirmed.data;
+        if (confirmed.changed && req.data && typeof req.data === "object") {
+          if (confirmed.data.voucherNumber != null) writeData.voucherNumber = confirmed.data.voucherNumber;
+          if (confirmed.data.voucherNumberOut != null) writeData.voucherNumberOut = confirmed.data.voucherNumberOut;
+          if (confirmed.data.voucherNumberIn != null) writeData.voucherNumberIn = confirmed.data.voucherNumberIn;
+        }
+      } catch {
+        /* numbering confirm is best-effort; local uniqueness still applied on flush */
+      }
+    }
+
+    const patch = { ...writeData } as Record<string, unknown>;
     // create + setDoc merge: local pe bhi existing row ke upar shallow merge (Firestore merge semantics ke kareeb).
     const merged =
       req.operation === "create" && mergeSetDoc === true

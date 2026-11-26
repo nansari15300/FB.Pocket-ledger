@@ -15,6 +15,8 @@ function replaceDeep(value: unknown, map: Map<string, string>): unknown {
   if (Array.isArray(value)) return value.map((x) => replaceDeep(x, map));
   if (value == null || typeof value !== "object") return value;
   if (value instanceof Date) return value;
+  if (typeof (value as { toDate?: unknown }).toDate === "function") return value;
+  if (typeof Blob !== "undefined" && value instanceof Blob) return value;
   const o = value as Record<string, unknown>;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(o)) out[k] = replaceDeep(v, map);

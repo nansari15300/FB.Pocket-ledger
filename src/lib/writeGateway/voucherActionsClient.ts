@@ -1365,7 +1365,7 @@ async function saveVoucherOfflineLocalCreate(
   coerceVoucherDocumentDate(body);
   // Sync‑3: device lineage debug / future merge tuning — Firebase flush me strip (`localVoucherOutbox`)
   body[PL_CLIENT_OFFLINE_FIRST_PERSIST_MS] = Date.now();
-  const payload = { id: newId, ...body };
+  const payload = await confirmVoucherNumberIfPossible(companyId, newId, { id: newId, ...body }, true);
   // Party rule: `/__pl_attachment` pehle, phir SQLite voucher tip.
   await flushPlServerAttachmentsBeforeLocalSave(companyId, payload, { awaitComplete: false });
   await upsertCompanyDocInBrowserDb(companyId, "vouchers", newId, payload);
@@ -1712,6 +1712,22 @@ export type SaveVoucherOptions = {
   preserveApprovalOnInterCompanyEdit?: boolean;
 };
 
+
+async function confirmVoucherNumberIfPossible(
+  companyId: string,
+  voucherId: string,
+  data: Record<string, unknown>,
+  isNew: boolean
+): Promise<Record<string, unknown>> {
+  try {
+    const { confirmVoucherNumberOnSave } = await import("@/lib/voucherNumberReserve");
+    const result = await confirmVoucherNumberOnSave({ companyId, voucherId, data, isNew });
+    return result.data;
+  } catch {
+    return data;
+  }
+}
+
 export async function saveVoucher(
   companyId: string,
   userId: string,
@@ -1931,6 +1947,7 @@ export async function saveVoucher(
         }
       )
     ) as Record<string, unknown>;
+    mergedLocal = await confirmVoucherNumberIfPossible(companyId, voucherId!, mergedLocal, false);
     if (approveAfterSave) {
       const approverName = approveAfterSave.approvedByName ?? approveAfterSave.approvedByUserId;
       mergedLocal.isApproved = true;
