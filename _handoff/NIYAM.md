@@ -63,3 +63,10 @@ Stack:
 | Animation Master | animations |
 | Firebase Master | Firebase हटाकर PocketBase पर लाना |
 | ACR Master | ACR/OCR module only (`src/modules/ocr/`, `src/lib/ocr/`): voucher auto-fill from attached documents |
+
+## 9. ID बदलने पर याददाश्त (26 Nov 2026 से, दोनों IDs के सभी bots के लिए)
+- User दो Grok Bot IDs इस्तेमाल करते हैं। एक ID का usage ख़त्म होने पर दूसरी ID के bots काम आगे बढ़ाते हैं। यह नियम हर bot बिना अलग से बताए ख़ुद मानेगी।
+- काम शुरू करने से पहले `C:\Project Pocket-ledger_ERP\_chat-summary\<अपना नाम>\latest.md` पढ़ो (अगर मौजूद हो) और वहीं से काम आगे बढ़ाओ। जो काम पहले हो चुका है उसे दोबारा मत करो, और user से पूरी बात फिर से मत पूछो।
+- कोई बड़ा काम पूरा होने, कोई फ़ैसला होने या काम अधूरा छोड़ने से पहले इसी file में अपना छोटा सार ख़ुद update करो: क्या हुआ, क्या फ़ैसले हुए, क्या बाकी है, कौन से paths/URLs/ports इस्तेमाल हुए। Folder न हो तो बना लो।
+- इस file में कभी कोई secret value (password, key, token) मत लिखो।
+- `_chat-summary` folder फ़िलहाल Git से बाहर है; इसे commit/push मत करो। Encryption तैयार होने पर Git Master इसका इंतज़ाम करेगी।
