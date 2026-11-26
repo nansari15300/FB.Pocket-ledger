@@ -1,4 +1,9 @@
 /**
+ * FUTURE: pl_hr server routes; not called by the HR UI (Nov 3, 2026).
+ * The HR UI now stores employees in `staff.hr` and attendance / leaves / payroll in pl_docs
+ * (`hr_attendance`, `hr_leaves`, `hr_payroll`) via `./hrDocs.ts` and `./hrStaffWrite.ts`.
+ * Keep this client for the later privacy-safe pl_hr routes.
+ *
  * HR module — typed client for PocketBase custom routes `/api/pl/hr/*`.
  *
  * Same pattern as `/api/pl/data/batch`: `pbRequest(path, { method: "POST", body: { company, ... } })`

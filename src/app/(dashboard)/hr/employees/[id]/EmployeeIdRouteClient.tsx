@@ -1,17 +1,17 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { useParams } from "next/navigation";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { LoadingSpinner } from "@/components/layout/LoadingSpinner";
 
-// EmployeeDetailsPage khud HrGate me wrapped hai.
-const EmployeeDetailsPage = dynamic(
-  () => import("@/modules/hr/pages/EmployeeDetailsPage").then((m) => m.EmployeeDetailsPage),
-  { ssr: false, loading: () => <LoadingSpinner /> }
-);
-
+/**
+ * Old employee detail URL. Employees are edited in the shared Edit Staff form
+ * (double-click a row on /hr/employees), so this route only sends the user back to the list.
+ */
 export function EmployeeIdRouteClient() {
-  const params = useParams();
-  const id = decodeURIComponent(String(params?.id || ""));
-  return <EmployeeDetailsPage employeeId={id} />;
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/hr/employees");
+  }, [router]);
+  return <LoadingSpinner />;
 }

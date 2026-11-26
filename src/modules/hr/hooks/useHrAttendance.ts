@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCompany } from "@/hooks/useCompany";
-import { hrApi, isHrDisabledError } from "../services/hrApi";
-import type { HrAttendance, HrAttendanceStatus, HrUpsertInput } from "../types";
+import { listHrDocs, subscribeHrDocs, writeHrDocs, type HrDocWriteInput } from "../services/hrDocs";
+import type { HrAttendance, HrAttendanceStatus } from "../types";
 import { hrAttendanceAppId, isIsoDate, latestAttendanceByKey } from "../utils/attendance";
 
 export type UseHrAttendanceParams = {
@@ -11,26 +11,26 @@ export type UseHrAttendanceParams = {
   from: string;
   /** YYYY-MM-DD (inclusive) */
   to: string;
-  /** Sirf ek employee (HrEmployee.app_id) */
+  /** Only one employee (HrEmployee.app_id) */
   employee?: string;
-  /** false → fetch nahi (jaise inactive tab). Default true. */
+  /** false = do not load (e.g. inactive tab). Default true. */
   enabled?: boolean;
 };
 
 export type HrAttendanceMark = {
-  /** Existing record ka app_id (purana random id ho to wahi update ho). Na ho to deterministic. */
+  /** Existing record app_id (an old random id is updated in place). Otherwise deterministic. */
   app_id?: string;
   employee: string;
   date: string;
   status: HrAttendanceStatus;
   note?: string;
-  /** Existing record ka extra JSON (preserve). */
+  /** Existing record extra JSON (preserved). */
   data?: Record<string, unknown> | null;
 };
 
 /**
- * Attendance list (date range / employee) + bulk upsert.
- * app_id deterministic (`att_<employee>_<date>`) — re-save update karta hai.
+ * Attendance list (date range / employee) + bulk upsert, stored in pl_docs `hr_attendance`.
+ * app_id is deterministic (`att_<staffId>_<date>`), so saving again updates the same doc.
  */
 export function useHrAttendance({ from, to, employee, enabled = true }: UseHrAttendanceParams) {
   const { companyId } = useCompany();
@@ -38,7 +38,7 @@ export function useHrAttendance({ from, to, employee, enabled = true }: UseHrAtt
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [disabled, setDisabled] = useState(false);
+  const disabled = false;
   const reqRef = useRef(0);
 
   const cid = String(companyId || "").trim();
@@ -54,18 +54,21 @@ export function useHrAttendance({ from, to, employee, enabled = true }: UseHrAtt
     setLoading(true);
     setError(null);
     try {
-      const items = await hrApi.list("attendance", cid, { from, to, employee: employee || undefined });
+      const items = await listHrDocs(cid, "attendance");
       if (req !== reqRef.current) return;
-      setDisabled(false);
-      setRecords(items.filter((r) => r && r.deleted !== true));
+      setRecords(
+        items.filter(
+          (r) =>
+            r &&
+            isIsoDate(r.date) &&
+            r.date >= from &&
+            r.date <= to &&
+            (!employee || r.employee === employee)
+        )
+      );
     } catch (e) {
       if (req !== reqRef.current) return;
-      if (isHrDisabledError(e)) {
-        setDisabled(true);
-        setRecords([]);
-      } else {
-        setError(e instanceof Error ? e.message : String(e));
-      }
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       if (req === reqRef.current) setLoading(false);
     }
@@ -75,18 +78,23 @@ export function useHrAttendance({ from, to, employee, enabled = true }: UseHrAtt
     void reload();
   }, [reload]);
 
+  useEffect(() => {
+    if (!cid || !enabled) return;
+    return subscribeHrDocs(cid, ["attendance"], () => void reload());
+  }, [cid, enabled, reload]);
+
   /** employee|date → latest record */
   const byKey = useMemo(() => latestAttendanceByKey(records), [records]);
 
-  /** Bulk upsert; success par reload. Returns saved count. */
+  /** Bulk upsert, then reload. Returns the saved count. */
   const saveMarks = useCallback(
     async (marks: HrAttendanceMark[]): Promise<number> => {
-      if (!cid) throw new Error("HR: company id missing");
-      const payload: HrUpsertInput<"attendance">[] = marks
+      if (!cid) throw new Error("HR: company id is missing.");
+      const payload: HrDocWriteInput<"attendance">[] = marks
         .filter((m) => m && m.employee && isIsoDate(m.date))
         .map((m) => {
           const note = String(m.note || "").trim();
-          const rec: HrUpsertInput<"attendance"> = {
+          const rec: HrDocWriteInput<"attendance"> = {
             app_id: String(m.app_id || "").trim() || hrAttendanceAppId(m.employee, m.date),
             employee: m.employee,
             date: m.date,
@@ -99,12 +107,9 @@ export function useHrAttendance({ from, to, employee, enabled = true }: UseHrAtt
       if (payload.length === 0) return 0;
       setSaving(true);
       try {
-        await hrApi.upsert("attendance", cid, payload);
+        await writeHrDocs(cid, "attendance", payload);
         await reload();
         return payload.length;
-      } catch (e) {
-        if (isHrDisabledError(e)) setDisabled(true);
-        throw e;
       } finally {
         setSaving(false);
       }

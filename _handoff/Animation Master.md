@@ -1,7 +1,7 @@
 # Animation Master — Pocket Ledger
 
 > यह फ़ाइल handoff के लिए है। कोई भी दूसरा bot (अलग id वाला) इसे पढ़कर Animation का काम वहीं से आगे बढ़ा सकता है।
-> Project root: `C:\Project xxx\Refference apps\Touri + React`
+> Project root: `C:\Project Pocket-ledger_ERP\App`
 > आख़िरी update: 2026-11-02 14:05 (Asia/Kathmandu, NPT)
 
 ---
@@ -100,7 +100,7 @@
 
 ## 4. Backups
 
-- Folder: `C:\Project xxx\Refference apps\Touri + React\.animation-backups\2026-11-01\`
+- Folder: `C:\Project Pocket-ledger_ERP\App\.animation-backups\2026-11-01\`
 - हर फ़ाइल वहीं उसी relative path पर है (hash से verify किया गया)। कुल 15 फ़ाइलें:
   1. `src/hooks/useAnimationSettings.tsx`
   2. `src/app/(dashboard)/layout.tsx`

@@ -1,4 +1,6 @@
 
+import type { StaffHrFields } from "@/modules/hr/types";
+
 export type Staff = {
   id: string;
   name: string;
@@ -23,6 +25,8 @@ export type Staff = {
   isFrozen?: boolean;
   freezeMessage?: string | null;
   anusuchi13ConfirmationByFy?: Record<string, { sent?: boolean; completed?: boolean; statementSent?: boolean }>;
+  /** HR module fields (designation, department, joining date, status, salary). Written only by the HR module. */
+  hr?: StaffHrFields;
 };
 
 export type StaffGroup = {

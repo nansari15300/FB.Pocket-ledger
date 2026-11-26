@@ -1,7 +1,7 @@
 # Theme Master — Handoff (Pocket Ledger / Touri + React)
 
 > आखिरी अपडेट: 1 Nov 2026, 6:35 PM (Asia/Kathmandu, UTC+5:45)
-> Project: `C:\Project xxx\Refference apps\Touri + React`
+> Project: `C:\Project Pocket-ledger_ERP\App`
 > यह file दूसरे bot/agent के लिए है ताकि वह यहीं से काम आगे बढ़ा सके।
 
 ---

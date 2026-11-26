@@ -4,18 +4,33 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeft, Check, Plus, RefreshCw, X } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableBody, TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { useCompany } from "@/hooks/useCompany";
 import { useVouchers } from "@/hooks/useVouchers";
 import { useHrModuleFeature } from "@/hooks/useHrModuleFeature";
 import { cn } from "@/lib/utils";
+import {
+  HR_NARRATION,
+  HR_FILL_COLUMN,
+  HR_SNO_CELL,
+  HR_SNO_HEAD,
+  HR_TABLE_FRAME,
+  HR_TABLE_FRAME_DATA,
+  HR_TABLE_FRAME_FILL,
+  HR_TABLE_ROW,
+  HrTable,
+  HrTableHeader,
+  hrStripe,
+} from "../components/HrTable";
+import { HR_FIELD_SCOPE, HR_PAGE_BODY, HrHeaderCard, HrPill, hrRibbon, type HrPillTone } from "../components/HrChrome";
 import { useHrEmployees } from "../hooks/useHrEmployees";
 import { useHrLeaves } from "../hooks/useHrLeaves";
 import { todayIsoDate } from "../utils/employeeDefaults";
@@ -30,10 +45,10 @@ import {
 } from "../utils/leaves";
 import type { HrLeaveStatus, HrLeaveType } from "../types";
 
-const STATUS_BADGE: Record<HrLeaveStatus, string> = {
-  pending: "border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  approved: "border-emerald-600/60 bg-emerald-600/10 text-emerald-700 dark:text-emerald-400",
-  rejected: "border-red-600/60 bg-red-600/10 text-red-700 dark:text-red-400",
+const STATUS_PILL: Record<HrLeaveStatus, HrPillTone> = {
+  pending: "info",
+  approved: "good",
+  rejected: "bad",
 };
 
 type FormState = {
@@ -49,12 +64,13 @@ function emptyForm(): FormState {
   return { employee: "", from_date: t, to_date: t, leave_type: "casual", reason: "" };
 }
 
-/** Route /hr/leaves isko HrGate me wrap karta hai. */
-export function LeavesPage() {
-  return <LeavesPageBody />;
+/** The /hr/leaves route wraps this in HrGate. */
+/** `embedded`: shown inside the HR home tab panel (no back arrow / title; the tab card is the title). */
+export function LeavesPage({ embedded = false }: { embedded?: boolean } = {}) {
+  return <LeavesPageBody embedded={embedded} />;
 }
 
-function LeavesPageBody() {
+function LeavesPageBody({ embedded }: { embedded: boolean }) {
   const router = useRouter();
   const { company } = useCompany();
   const { processedStaff } = useVouchers();
@@ -73,9 +89,10 @@ function LeavesPageBody() {
     return m;
   }, [processedStaff]);
 
+  /** Employee id = staff id, so any staff name (also former employees) resolves. */
   const empNameById = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const e of emp.employees) m.set(e.app_id, staffNameById.get(e.staff_app_id) || "(staff missing)");
+    const m = new Map<string, string>(staffNameById);
+    for (const e of emp.employees) if (e.name) m.set(e.app_id, e.name);
     return m;
   }, [emp.employees, staffNameById]);
 
@@ -97,9 +114,9 @@ function LeavesPageBody() {
   const days = leaveDayCount(form.from_date, form.to_date);
 
   const validate = (): string | null => {
-    if (!form.employee) return "Employee चुनें।";
-    if (!isIsoDate(form.from_date) || !isIsoDate(form.to_date)) return "From / To date दें।";
-    if (form.to_date < form.from_date) return "To date, From date से पहले नहीं हो सकती।";
+    if (!form.employee) return "Select an employee.";
+    if (!isIsoDate(form.from_date) || !isIsoDate(form.to_date)) return "Enter the From and To dates.";
+    if (form.to_date < form.from_date) return "The To date cannot be before the From date.";
     const clash = lv.all.find(
       (l) =>
         l.employee === form.employee &&
@@ -107,7 +124,7 @@ function LeavesPageBody() {
         rangesOverlap(l.from_date, l.to_date, form.from_date, form.to_date)
     );
     if (clash) {
-      return `इस employee की ${clash.from_date} → ${clash.to_date} की leave पहले से ${HR_LEAVE_STATUS_LABEL[clash.status]} है।`;
+      return `This employee already has a ${String(HR_LEAVE_STATUS_LABEL[clash.status] || clash.status).toLowerCase()} leave for ${clash.from_date} → ${clash.to_date}.`;
     }
     return null;
   };
@@ -124,22 +141,22 @@ function LeavesPageBody() {
         leave_type: form.leave_type,
         reason: form.reason,
       });
-      toast.success(`Leave request बन गई (${days} दिन)।`);
+      toast.success(`Leave request created (${days} day${days === 1 ? "" : "s"}).`);
       setForm(emptyForm());
       setFormOpen(false);
       setTab("pending");
     } catch (e) {
-      toast.error(`Save नहीं हुआ: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
   const decide = async (appId: string, next: "approved" | "rejected") => {
-    if (next === "rejected" && !window.confirm("यह leave request reject करें?")) return;
+    if (next === "rejected" && !window.confirm("Reject this leave request?")) return;
     try {
       await lv.decide(appId, next);
       toast.success(next === "approved" ? "Leave approved." : "Leave rejected.");
     } catch (e) {
-      toast.error(`नहीं हो पाया: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(`Could not update: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -148,20 +165,23 @@ function LeavesPageBody() {
   }
 
   const loading = emp.loading || lv.loading;
-  const disabled = emp.disabled || lv.disabled;
   const error = emp.error || lv.error;
   const showActions = canApproveLeave;
-  const colCount = showActions ? 8 : 7;
+  const colCount = showActions ? 9 : 8;
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="h-full min-h-0 space-y-3 overflow-y-auto p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="ghost" size="icon" onClick={() => router.push("/hr")} aria-label="Back to HR">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <h1 className="text-lg font-semibold">Leaves</h1>
-          {!canCreate && !canApproveLeave ? <Badge variant="secondary">Read-only</Badge> : null}
+    <div data-pl-hr-root="" className={cn("flex h-full min-h-0 flex-col overflow-hidden", HR_FIELD_SCOPE)}>
+      <div className={cn(HR_PAGE_BODY, HR_FILL_COLUMN)}>
+        <HrHeaderCard tone="amber">
+          {!embedded ? (
+            <>
+              <Button type="button" variant="ghost" size="icon" onClick={() => router.push("/hr")} aria-label="Back to HR">
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <h1 className="text-lg font-semibold">Leaves</h1>
+            </>
+          ) : null}
+          {!canCreate && !canApproveLeave ? <HrPill tone="info">Read-only</HrPill> : null}
           <div className="ml-auto flex items-center gap-2">
             <Button
               type="button"
@@ -191,16 +211,19 @@ function LeavesPageBody() {
               </Button>
             ) : null}
           </div>
-        </div>
+        </HrHeaderCard>
 
         {canCreate && formOpen ? (
-          <div className="space-y-3 rounded-xl border bg-card p-4 shadow-sm">
-            <div className="font-medium">New leave request</div>
+          <Card className={hrRibbon("amber")}>
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-base">New leave request</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 p-4 pt-0">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-1 sm:col-span-2">
-                <Label>Employee</Label>
+                <Label htmlFor="hr-leave-employee">Employee</Label>
                 <Select value={form.employee} onValueChange={(v) => setForm((f) => ({ ...f, employee: v }))}>
-                  <SelectTrigger>
+                  <SelectTrigger id="hr-leave-employee" aria-label="Employee">
                     <SelectValue placeholder={activeEmployees.length ? "Select employee" : "No active employees"} />
                   </SelectTrigger>
                   <SelectContent>
@@ -214,12 +237,12 @@ function LeavesPageBody() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>Leave type</Label>
+                <Label htmlFor="hr-leave-type">Leave type</Label>
                 <Select
                   value={form.leave_type}
                   onValueChange={(v) => setForm((f) => ({ ...f, leave_type: v as HrLeaveType }))}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="hr-leave-type" aria-label="Leave type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -235,7 +258,7 @@ function LeavesPageBody() {
                 <Label>Days</Label>
                 <div
                   className={cn(
-                    "flex h-10 items-center rounded-md border px-3 text-sm tabular-nums",
+                    "flex h-10 items-center rounded-md border border-input px-3 text-sm tabular-nums",
                     days === 0 && "text-destructive"
                   )}
                 >
@@ -243,14 +266,15 @@ function LeavesPageBody() {
                 </div>
               </div>
               <div className="space-y-1">
-                <Label>From</Label>
+                <Label htmlFor="hr-leave-from">From</Label>
                 <Input
+                  id="hr-leave-from"
                   type="date"
                   value={form.from_date}
                   onChange={(e) =>
                     setForm((f) => {
                       const from_date = e.target.value;
-                      // To khali / pehle ho to From ke barabar kar do.
+                      // If To is empty or earlier, set it to From.
                       const to_date = !f.to_date || (from_date && f.to_date < from_date) ? from_date : f.to_date;
                       return { ...f, from_date, to_date };
                     })
@@ -258,8 +282,9 @@ function LeavesPageBody() {
                 />
               </div>
               <div className="space-y-1">
-                <Label>To</Label>
+                <Label htmlFor="hr-leave-to">To</Label>
                 <Input
+                  id="hr-leave-to"
                   type="date"
                   value={form.to_date}
                   min={form.from_date || undefined}
@@ -267,8 +292,9 @@ function LeavesPageBody() {
                 />
               </div>
               <div className="space-y-1 sm:col-span-2">
-                <Label>Reason (optional)</Label>
+                <Label htmlFor="hr-leave-reason">Reason (optional)</Label>
                 <Textarea
+                  id="hr-leave-reason"
                   value={form.reason}
                   onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
                   rows={2}
@@ -285,7 +311,8 @@ function LeavesPageBody() {
                 {lv.saving ? "Saving…" : "Submit request"}
               </Button>
             </div>
-          </div>
+            </CardContent>
+          </Card>
         ) : null}
 
         <Tabs value={tab} onValueChange={(v) => setTab(v === "all" ? "all" : "pending")}>
@@ -295,20 +322,18 @@ function LeavesPageBody() {
           </TabsList>
         </Tabs>
 
-        {disabled ? (
-          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            Server: HR आपके plan में उपलब्ध नहीं है (hr_disabled).
-          </p>
-        ) : error ? (
-          <p className="rounded-md border border-destructive/40 p-4 text-sm text-destructive">
-            Leaves load नहीं हो पाईं: {error}
-          </p>
+        {error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Could not load leaves</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         ) : null}
 
-        <div className="rounded-xl border bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
+        <div className={cn(HR_TABLE_FRAME, HR_TABLE_FRAME_FILL)} {...HR_TABLE_FRAME_DATA}>
+          <HrTable stickyHeaderFooter>
+            <HrTableHeader>
+              <TableRow className={HR_TABLE_ROW}>
+                <TableHead className={HR_SNO_HEAD}>S.No.</TableHead>
                 <TableHead>Employee</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>From → To</TableHead>
@@ -318,36 +343,39 @@ function LeavesPageBody() {
                 <TableHead>Decided</TableHead>
                 {showActions ? <TableHead className="text-right">Action</TableHead> : null}
               </TableRow>
-            </TableHeader>
+            </HrTableHeader>
             <TableBody>
               {loading && rows.length === 0 ? (
-                <TableRow>
+                <TableRow className={HR_TABLE_ROW}>
                   <TableCell colSpan={colCount} className="text-center text-sm text-muted-foreground">
                     Loading…
                   </TableCell>
                 </TableRow>
               ) : rows.length === 0 ? (
-                <TableRow>
+                <TableRow className={HR_TABLE_ROW}>
                   <TableCell colSpan={colCount} className="text-center text-sm text-muted-foreground">
-                    {tab === "pending" ? "कोई pending leave नहीं।" : "अभी कोई leave नहीं।"}
+                    {tab === "pending" ? "No pending leave requests." : "No leave requests yet."}
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.map((l) => (
-                  <TableRow key={l.app_id}>
+                rows.map((l, li) => (
+                  <TableRow key={l.app_id} {...hrStripe(li)} className={HR_TABLE_ROW}>
+                    <TableCell className={HR_SNO_CELL}>{li + 1}</TableCell>
                     <TableCell className="font-medium">{empNameById.get(l.employee) || "(employee missing)"}</TableCell>
-                    <TableCell>{HR_LEAVE_TYPE_LABEL[l.leave_type] || l.leave_type}</TableCell>
+                    <TableCell>
+                      <HrPill tone="muted">{HR_LEAVE_TYPE_LABEL[l.leave_type] || l.leave_type}</HrPill>
+                    </TableCell>
                     <TableCell className="whitespace-nowrap">
                       {l.from_date} → {l.to_date}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{leaveDayCount(l.from_date, l.to_date)}</TableCell>
-                    <TableCell className="max-w-[16rem] truncate" title={l.reason || ""}>
+                    <TableCell className={cn("max-w-[16rem] truncate", HR_NARRATION)} title={l.reason || ""}>
                       {l.reason || "—"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={STATUS_BADGE[l.status]}>
+                      <HrPill tone={STATUS_PILL[l.status] || "info"}>
                         {HR_LEAVE_STATUS_LABEL[l.status] || l.status}
-                      </Badge>
+                      </HrPill>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {l.status === "pending" ? (
@@ -366,7 +394,7 @@ function LeavesPageBody() {
                             <Button
                               type="button"
                               size="sm"
-                              className="h-7 bg-emerald-600 px-2 text-xs text-white hover:bg-emerald-600/90"
+                              className="h-7 px-2 text-xs"
                               onClick={() => void decide(l.app_id, "approved")}
                               disabled={lv.deciding !== null}
                             >
@@ -376,8 +404,8 @@ function LeavesPageBody() {
                             <Button
                               type="button"
                               size="sm"
-                              variant="outline"
-                              className="h-7 px-2 text-xs text-red-600"
+                              variant="destructive"
+                              className="h-7 px-2 text-xs"
                               onClick={() => void decide(l.app_id, "rejected")}
                               disabled={lv.deciding !== null}
                             >
@@ -392,7 +420,7 @@ function LeavesPageBody() {
                 ))
               )}
             </TableBody>
-          </Table>
+          </HrTable>
         </div>
       </div>
     </div>

@@ -11,8 +11,8 @@ import { getNextVoucherNumberForCompany } from "@/lib/nextVoucherNumber";
 import { dispatchVoucherLivePatch, voucherAttachmentFieldsForSave } from "@/lib/voucherFormAttachmentSave";
 import { beginVoucherSaveLoadingOrBlock, voucherSaveErrorToast } from "@/lib/voucherSaveUi";
 import { assertCan, assertCanPerformBackdated, PermissionDeniedError } from "@/lib/permissions/enforcePermission";
-import { hrApi, isHrDisabledError } from "../../services/hrApi";
-import type { HrPayroll, HrUpsertInput } from "../../types";
+import { getHrDoc, listHrDocs, subscribeHrDocs, writeHrDocs, type HrDocWriteInput } from "../../services/hrDocs";
+import type { HrPayroll } from "../../types";
 import {
   computeNet,
   hrPayrollAppId,
@@ -29,13 +29,13 @@ import {
 export type UseHrPayrollParams = {
   /** YYYY-MM */
   month: string;
-  /** false → fetch nahi. Default true. */
+  /** false = do not load. Default true. */
   enabled?: boolean;
 };
 
-/** Draft save input (status hamesha "draft"; posted record kabhi overwrite nahi hota). */
+/** Draft save input (status is always "draft"; a posted record is never overwritten). */
 export type HrPayrollDraftInput = {
-  /** Existing record ka app_id (na ho to deterministic `pay_<employee>_<YYYY-MM>`). */
+  /** Existing record app_id (otherwise deterministic `pay_<staffId>_<YYYY-MM>`). */
   app_id?: string;
   employee: string;
   month: string;
@@ -43,22 +43,22 @@ export type HrPayrollDraftInput = {
   present_days: number;
   gross: number;
   deductions: number;
-  /** Extra JSON (addition / counts / notes). Existing data ke upar merge hota hai. */
+  /** Extra JSON (addition / counts / notes). Merged over the existing data. */
   data?: HrPayrollData;
 };
 
 export type HrPayrollPostInput = HrPayrollDraftInput & {
-  /** Existing staff master id (voucher credit side — same as Add Salary). */
+  /** Staff ledger id (voucher credit side, same as Add Salary). */
   staffId: string;
   staffName: string;
-  /** Salary expense account (voucher debit side — same as Add Salary "Debit Account"). */
+  /** Salary expense account (voucher debit side, same as Add Salary "Debit Account"). */
   debitAccountId: string;
   narration?: string;
 };
 
 const ADD_SALARY_DEFAULT_PREFIX = "ADSAL-";
 
-/** Module-level lock: same payroll ek saath do baar post na ho (double click / bulk + row). */
+/** Module-level lock: the same payroll cannot be posted twice at once (double click / bulk + row). */
 const POSTING_LOCK = new Set<string>();
 
 function errMsg(e: unknown): string {
@@ -66,9 +66,9 @@ function errMsg(e: unknown): string {
 }
 
 /**
- * Payroll list (month) + draft upsert + post.
- * Post = existing `saveVoucher` se Add Salary jaisa voucher (type "journal", subType "add_salary"),
- * phir `/api/pl/hr/payroll/post` (voucher_app_id ke saath). Posted record read-only.
+ * Payroll list (month) + draft upsert + post, stored in pl_docs `hr_payroll`.
+ * Post = Add Salary voucher via the existing `saveVoucher` (type "journal", subType "add_salary"),
+ * then the pl_docs record is updated to status "posted" with voucher_app_id + voucher number. Posted = read-only.
  */
 export function useHrPayroll({ month, enabled = true }: UseHrPayrollParams) {
   const { companyId, company } = useCompany();
@@ -80,7 +80,7 @@ export function useHrPayroll({ month, enabled = true }: UseHrPayrollParams) {
   const [saving, setSaving] = useState(false);
   const [posting, setPosting] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [disabled, setDisabled] = useState(false);
+  const disabled = false;
   const reqRef = useRef(0);
 
   const cid = String(companyId || "").trim();
@@ -96,18 +96,12 @@ export function useHrPayroll({ month, enabled = true }: UseHrPayrollParams) {
     setLoading(true);
     setError(null);
     try {
-      const items = await hrApi.list("payroll", cid, { month });
+      const items = await listHrDocs(cid, "payroll");
       if (req !== reqRef.current) return;
-      setDisabled(false);
-      setRecords(items.filter((r) => r && r.deleted !== true && r.month === month));
+      setRecords(items.filter((r) => r && r.month === month));
     } catch (e) {
       if (req !== reqRef.current) return;
-      if (isHrDisabledError(e)) {
-        setDisabled(true);
-        setRecords([]);
-      } else {
-        setError(errMsg(e));
-      }
+      setError(errMsg(e));
     } finally {
       if (req === reqRef.current) setLoading(false);
     }
@@ -117,7 +111,12 @@ export function useHrPayroll({ month, enabled = true }: UseHrPayrollParams) {
     void reload();
   }, [reload]);
 
-  /** employee app_id → latest payroll (is month ka). */
+  useEffect(() => {
+    if (!cid || !enabled) return;
+    return subscribeHrDocs(cid, ["payroll"], () => void reload());
+  }, [cid, enabled, reload]);
+
+  /** employee app_id → latest payroll of this month. */
   const byEmployee = useMemo(() => {
     const m = new Map<string, HrPayroll>();
     for (const r of latestPayrollByKey(records).values()) m.set(r.employee, r);
@@ -125,7 +124,7 @@ export function useHrPayroll({ month, enabled = true }: UseHrPayrollParams) {
   }, [records]);
 
   const buildDraft = useCallback(
-    (input: HrPayrollDraftInput, existing?: HrPayroll): HrUpsertInput<"payroll"> => {
+    (input: HrPayrollDraftInput, existing?: HrPayroll): HrDocWriteInput<"payroll"> => {
       const prevData = payrollData(existing);
       const data: HrPayrollData = { ...prevData, ...(input.data || {}) };
       const gross = round2(input.gross);
@@ -148,21 +147,23 @@ export function useHrPayroll({ month, enabled = true }: UseHrPayrollParams) {
     []
   );
 
-  /** Server se is employee+month ka taza record (double-post check ke liye). */
+  /** Fresh local record for this employee + month (double-post check). */
   const fetchFresh = useCallback(
     async (employee: string, m: string): Promise<HrPayroll | undefined> => {
-      const items = await hrApi.list("payroll", cid, { month: m, employee });
+      const direct = await getHrDoc(cid, "payroll", hrPayrollAppId(employee, m));
+      if (direct && direct.month === m && direct.employee === employee) return direct;
+      const items = await listHrDocs(cid, "payroll");
       const map = latestPayrollByKey(items.filter((r) => r && r.month === m && r.employee === employee));
       return map.get(payrollKey(employee, m));
     },
     [cid]
   );
 
-  /** Drafts bulk upsert. Posted records skip (read-only). Returns saved count. */
+  /** Bulk draft upsert. Posted records are skipped (read-only). Returns the saved count. */
   const saveDrafts = useCallback(
     async (inputs: HrPayrollDraftInput[]): Promise<number> => {
-      if (!cid) throw new Error("HR: company id missing");
-      const payload: HrUpsertInput<"payroll">[] = [];
+      if (!cid) throw new Error("HR: company id is missing.");
+      const payload: HrDocWriteInput<"payroll">[] = [];
       for (const input of inputs) {
         if (!input || !input.employee || !isIsoMonth(input.month)) continue;
         const existing = input.month === month ? byEmployee.get(input.employee) : undefined;
@@ -172,12 +173,9 @@ export function useHrPayroll({ month, enabled = true }: UseHrPayrollParams) {
       if (payload.length === 0) return 0;
       setSaving(true);
       try {
-        await hrApi.upsert("payroll", cid, payload);
+        await writeHrDocs(cid, "payroll", payload);
         await reload();
         return payload.length;
-      } catch (e) {
-        if (isHrDisabledError(e)) setDisabled(true);
-        throw e;
       } finally {
         setSaving(false);
       }
@@ -186,16 +184,16 @@ export function useHrPayroll({ month, enabled = true }: UseHrPayrollParams) {
   );
 
   /**
-   * Ek payroll post: draft save → Add Salary voucher (saveVoucher) → /payroll/post.
-   * Returns voucher id. Already posted → error (kuch nahi banta).
+   * Post one payroll: save draft → Add Salary voucher (saveVoucher) → pl_docs status "posted".
+   * Returns the voucher id. Already posted → error (nothing is created).
    */
   const postOne = useCallback(
     async (input: HrPayrollPostInput): Promise<string> => {
-      if (!cid || !company) throw new Error("HR: company missing");
+      if (!cid || !company) throw new Error("HR: company is missing.");
       if (!user?.uid) throw new Error("Login required.");
       if (!isIsoMonth(input.month)) throw new Error("Invalid month.");
-      if (!String(input.staffId || "").trim()) throw new Error("Employee ka staff ledger missing hai.");
-      if (!String(input.debitAccountId || "").trim()) throw new Error("Salary expense (Debit) account चुनें।");
+      if (!String(input.staffId || "").trim()) throw new Error("This employee has no staff ledger.");
+      if (!String(input.debitAccountId || "").trim()) throw new Error("Select the salary expense (debit) account.");
 
       const lockKey = payrollKey(input.employee, input.month);
       if (POSTING_LOCK.has(lockKey)) throw new Error("Already posting…");
@@ -207,22 +205,22 @@ export function useHrPayroll({ month, enabled = true }: UseHrPayrollParams) {
         assertCan(can, "create_records");
         assertCanPerformBackdated(canPerformBackdatedAction, "create", voucherDate);
 
-        // 1) Taza server state — posted ho to ruk jao.
+        // 1) Fresh local state: stop if already posted.
         const fresh = await fetchFresh(input.employee, input.month);
         if (isPayrollPosted(fresh)) {
-          throw new Error("Ye payroll pehle hi posted hai (read-only).");
+          throw new Error("This payroll is already posted (read-only).");
         }
 
-        // 2) Draft save (current values).
+        // 2) Save draft (current values).
         const draft = buildDraft(input, fresh);
-        if (!(draft.net > 0)) throw new Error("Net salary 0 hai — post nahi kar sakte.");
-        await hrApi.upsert("payroll", cid, [draft]);
+        if (!(draft.net > 0)) throw new Error("Net salary is 0, so it cannot be posted.");
+        await writeHrDocs(cid, "payroll", [draft]);
 
         const draftData = (draft.data || {}) as HrPayrollData;
         let voucherId = String(draftData.pending_voucher_app_id || "").trim();
         let voucherNumber = String(draftData.voucher_number || "").trim();
 
-        // Pichhli koshish me voucher bana tha par post fail hua → wahi reuse (jab tak delete na hua ho).
+        // A previous attempt created the voucher but the post failed → reuse it (unless deleted).
         if (voucherId) {
           const v = (vouchers || []).find((x: { id?: string }) => x?.id === voucherId) as
             | { isDeleted?: boolean }
@@ -234,7 +232,7 @@ export function useHrPayroll({ month, enabled = true }: UseHrPayrollParams) {
         }
 
         if (!voucherId) {
-          // 3) Add Salary voucher — SalaryForm.processAndSave jaisa payload.
+          // 3) Add Salary voucher, same payload as SalaryForm.processAndSave.
           const toastId = await beginVoucherSaveLoadingOrBlock(cid, "Saving salary voucher...");
           if (toastId == null) throw new Error("Cannot save voucher right now.");
           try {
@@ -298,8 +296,8 @@ export function useHrPayroll({ month, enabled = true }: UseHrPayrollParams) {
             throw e;
           }
 
-          // 4) Voucher id draft me yaad rakho (post fail ho to retry bina naya voucher).
-          await hrApi.upsert("payroll", cid, [
+          // 4) Remember the voucher id on the draft (a retry will not create a second voucher).
+          await writeHrDocs(cid, "payroll", [
             {
               ...draft,
               data: { ...draftData, pending_voucher_app_id: voucherId, voucher_number: voucherNumber },
@@ -307,13 +305,25 @@ export function useHrPayroll({ month, enabled = true }: UseHrPayrollParams) {
           ]);
         }
 
-        // 5) Server par post (status → posted, voucher_app_id set).
-        await hrApi.postPayroll(cid, draft.app_id, voucherId);
+        // 5) Mark posted in pl_docs (status, voucher_app_id, voucher number). Cr account = staff id.
+        const postedAt = Date.now();
+        await writeHrDocs(cid, "payroll", [
+          {
+            ...draft,
+            status: "posted",
+            voucher_app_id: voucherId,
+            voucher_number: voucherNumber || null,
+            posted_at: postedAt,
+            data: {
+              ...draftData,
+              pending_voucher_app_id: voucherId,
+              voucher_number: voucherNumber,
+              posted_at: postedAt,
+            },
+          },
+        ]);
         await reload();
         return voucherId;
-      } catch (e) {
-        if (isHrDisabledError(e)) setDisabled(true);
-        throw e;
       } finally {
         POSTING_LOCK.delete(lockKey);
         setPosting((p) => p.filter((k) => k !== lockKey));
@@ -322,7 +332,7 @@ export function useHrPayroll({ month, enabled = true }: UseHrPayrollParams) {
     [cid, company, user?.uid, can, canPerformBackdatedAction, vouchers, fetchFresh, buildDraft, reload]
   );
 
-  /** Bulk post (ek-ek karke, sequential). Returns { ok, failed }. */
+  /** Bulk post (one by one, sequential). Returns { ok, failed }. */
   const postMany = useCallback(
     async (inputs: HrPayrollPostInput[]): Promise<{ ok: number; failed: { employee: string; error: string }[] }> => {
       let ok = 0;

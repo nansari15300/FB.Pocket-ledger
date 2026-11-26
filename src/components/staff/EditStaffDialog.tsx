@@ -107,6 +107,13 @@ import {
 } from "@/lib/nestedLedgerMasterEditPresentation";
 import { refineMasterOpeningBalanceDateRequired } from "@/lib/masterOpeningBalanceDateRequired";
 import { useMasterOpeningBalanceDateRequired } from "@/hooks/useMasterOpeningBalanceDateRequired";
+import {
+  StaffHrDetailsSection,
+  announceStaffHrSaved,
+  staffHrPatchFromDraft,
+  useStaffHrDraft,
+  useStaffHrSection,
+} from "@/modules/hr/components/StaffHrDetailsSection";
 
 /** Form load: legacy ungrouped ids → system branch by account type. */
 function normalizeStaffEditGroupId(
@@ -253,6 +260,12 @@ export function EditStaffDialog({
   const openingBalanceDateMissing = useMasterOpeningBalanceDateRequired(form.control);
 
   const accountType = form.watch("accountType");
+  /** HR details (staff.hr) — only with HR plan + Account Type = Staff. */
+  const hrSection = useStaffHrSection(accountType);
+  const { draft: hrDraft, setDraft: setHrDraft } = useStaffHrDraft(
+    dialogOpen ? `open:${staff.id}` : "closed",
+    staff.hr
+  );
 
   useEffect(() => {
     if (dialogOpen) {
@@ -348,6 +361,8 @@ export function EditStaffDialog({
     const fileSnap = file;
     const docSlotsSnap = docSlots;
     const staffRefSnap = staff;
+    const hrPatchSnap =
+      hrSection.show && hrSection.canEdit ? staffHrPatchFromDraft(hrDraft, staff.hr) : null;
     const attachmentBaselineSnap = captureEntityFormAttachmentBaseline({
       fileUrl: initialFileRef.current,
       documentFileUrls: initialDocUrlsRef.current,
@@ -435,6 +450,7 @@ export function EditStaffDialog({
             openingBalanceNarration: narrationClean,
             groupId: normalizeStaffGroupIdForStorage(values.groupId, values.accountType),
             isLoanAccount: values.accountType === LOAN_LIABILITY_GROUP_ID,
+            ...(hrPatchSnap ? { hr: hrPatchSnap } : {}),
             companyId,
             fileUrl: fileSnap == null ? null : (fileUrl ?? (base.fileUrl as string | null) ?? null),
             documentFileUrls: documentFileUrls.length ? documentFileUrls : [],
@@ -449,6 +465,7 @@ export function EditStaffDialog({
           const persisted =
             (await getCompanyDocFromBrowserDb(companyId, "staff", staffRefSnap.id)) ?? payload;
           await enqueueCompanyDocOutbox(companyId, "staff", "update", staffRefSnap.id, persisted);
+          if (hrPatchSnap) announceStaffHrSaved(companyId, staffRefSnap.id, hrPatchSnap);
           await syncEntityAttachmentsAfterSave(companyId);
 
           await finalizeMasterOpeningBalanceSideEffects({
@@ -466,6 +483,7 @@ export function EditStaffDialog({
           onStaffUpdated({
             id: staffRefSnap.id,
             ...values,
+            ...(hrPatchSnap ? { hr: hrPatchSnap } : {}),
             ...masterOpeningPatchFromPersisted(persisted),
             fileUrl: fileUrl || "",
             documentFileUrls,
@@ -519,9 +537,11 @@ export function EditStaffDialog({
             }),
             groupId: normalizeStaffGroupIdForStorage(values.groupId, values.accountType),
             isLoanAccount: values.accountType === LOAN_LIABILITY_GROUP_ID,
+            ...(hrPatchSnap ? { hr: hrPatchSnap } : {}),
             updatedAt: serverTimestamp(),
           },
         });
+        if (hrPatchSnap) announceStaffHrSaved(companyId, staffRefSnap.id, hrPatchSnap);
         await syncEntityAttachmentsAfterSave(companyId);
 
         await finalizeMasterOpeningBalanceSideEffects({
@@ -538,6 +558,7 @@ export function EditStaffDialog({
         onStaffUpdated({
           id: staffRefSnap.id,
           ...values,
+          ...(hrPatchSnap ? { hr: hrPatchSnap } : {}),
           openingBalance: newOpeningBalance,
           openingBalanceDate: values.openingBalanceDate,
           openingBalanceNarration: narrationClean ?? "",
@@ -994,6 +1015,15 @@ export function EditStaffDialog({
                     </FormItem>
                   )}
                 />
+                {hrSection.show ? (
+                  <div className="md:col-span-2">
+                    <StaffHrDetailsSection
+                      value={hrDraft}
+                      onChange={setHrDraft}
+                      disabled={!hrSection.canEdit}
+                    />
+                  </div>
+                ) : null}
                  <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <MasterOpeningBalanceAmountField control={form.control} />
                     <FormField

@@ -1,6 +1,8 @@
 /**
- * HR module — record types (server spec: /api/pl/hr/*).
- * Har record me common fields: app_id, data (JSON), updatedAtMs, deleted, deviceId.
+ * HR module record types.
+ * Employees = staff ledgers (`staff` collection, HR fields in `staff.hr`).
+ * Attendance / leaves / payroll = PocketBase `pl_docs` collections `hr_attendance`, `hr_leaves`, `hr_payroll`.
+ * Common fields: app_id, data (JSON), updatedAtMs, deleted, deviceId.
  */
 
 export type HrCollection = "employees" | "attendance" | "leaves" | "payroll";
@@ -18,14 +20,35 @@ export type HrRecordBase = {
 export type HrEmployeeStatus = "active" | "left";
 export type HrSalaryType = "monthly" | "daily";
 
+/** HR fields stored on the staff record (`staff.hr`). All optional; defaults applied in useHrEmployees. */
+export type StaffHrFields = {
+  designation?: string;
+  department?: string;
+  /** YYYY-MM-DD */
+  joining_date?: string;
+  status?: HrEmployeeStatus;
+  /** YYYY-MM-DD last working day. Only kept while status is "left" (required then). */
+  left_date?: string;
+  salary_type?: HrSalaryType;
+  base_salary?: number;
+  updatedAtMs?: number;
+};
+
+/** Employee view derived from a staff ledger. app_id === staff_app_id === staff.id */
 export type HrEmployee = HrRecordBase & {
-  /** Existing staff master (`staff` collection) ka id. */
+  /** Staff master (`staff` collection) id. */
   staff_app_id: string;
+  /** Staff name / contact (read-only in HR). */
+  name?: string;
+  phone?: string;
+  email?: string;
   designation: string;
   department: string;
   /** YYYY-MM-DD */
   joining_date: string;
   status: HrEmployeeStatus;
+  /** YYYY-MM-DD last working day when status is "left" ("" when active or not set). */
+  left_date: string;
   salary_type: HrSalaryType;
   base_salary: number;
 };
@@ -67,6 +90,8 @@ export type HrPayroll = HrRecordBase & {
   net: number;
   status: HrPayrollStatus;
   voucher_app_id?: string | null;
+  voucher_number?: string | null;
+  posted_at?: number | null;
 };
 
 export type HrRecordByCollection = {

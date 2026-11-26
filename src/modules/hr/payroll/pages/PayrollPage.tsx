@@ -4,10 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeft, FileText, RefreshCw, Save, Send, Wand2 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TableBody, TableCell, TableFooter, TableHead, TableRow } from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,23 +23,39 @@ import { useCompany } from "@/hooks/useCompany";
 import { useVouchers } from "@/hooks/useVouchers";
 import { useHrModuleFeature } from "@/hooks/useHrModuleFeature";
 import { cn } from "@/lib/utils";
+import {
+  HR_TABLE_FOOTER,
+  HR_FILL_COLUMN,
+  HR_SNO_CELL,
+  HR_SNO_HEAD,
+  HR_TABLE_FRAME,
+  HR_TABLE_FRAME_DATA,
+  HR_TABLE_FRAME_FILL,
+  HR_TABLE_ROW,
+  HrTable,
+  HrTableHeader,
+  hrStripe,
+} from "../../components/HrTable";
+import { HR_FIELD_PILL, HR_FIELD_SCOPE, HR_NARRATION_TEXT, HR_PAGE_BODY, HrHeaderCard, HrPill } from "../../components/HrChrome";
+import { SalarySlipDialog } from "../components/SalarySlipDialog";
 import { useHrEmployees } from "../../hooks/useHrEmployees";
 import { useHrAttendance } from "../../hooks/useHrAttendance";
 import { useHrLeaves } from "../../hooks/useHrLeaves";
 import { currentIsoMonth, isIsoDate, monthRange } from "../../utils/attendance";
+import { employeeLeftDate } from "../../utils/leftDate";
 import type { HrEmployee, HrPayroll } from "../../types";
 import { useHrPayroll, type HrPayrollDraftInput, type HrPayrollPostInput } from "../hooks/useHrPayroll";
 import {
   computeEmployeePayroll,
-  computeNet,
   isPayrollPosted,
   payrollAddition,
   payrollData,
+  payrollFigures,
   round2,
   type PayrollCalcResult,
 } from "../utils/payrollCalc";
 
-/** Row edits (string = input ki raw value). */
+/** Row edits (string = raw input value). */
 type RowEdit = { deductions?: string; addition?: string };
 
 type PayrollRow = {
@@ -53,7 +70,7 @@ type PayrollRow = {
   deductions: number;
   addition: number;
   net: number;
-  /** Draft save karna baaki (edit ya attendance badla). */
+  /** Draft still needs saving (edited, or attendance changed). */
   dirty: boolean;
 };
 
@@ -89,12 +106,13 @@ function writeStoredDebit(cid: string, id: string) {
   }
 }
 
-/** Route /hr/payroll isko HrGate me wrap karta hai. */
-export function PayrollPage() {
-  return <PayrollPageBody />;
+/** The /hr/payroll route wraps this in HrGate. */
+/** `embedded`: shown inside the HR home tab panel (no back arrow / title; the tab card is the title). */
+export function PayrollPage({ embedded = false }: { embedded?: boolean } = {}) {
+  return <PayrollPageBody embedded={embedded} />;
 }
 
-function PayrollPageBody() {
+function PayrollPageBody({ embedded }: { embedded: boolean }) {
   const router = useRouter();
   const { company, companyId } = useCompany();
   const { canPayroll } = useHrModuleFeature();
@@ -107,13 +125,20 @@ function PayrollPageBody() {
   const [debitAccountId, setDebitAccountId] = useState<string>("");
   const [confirm, setConfirm] = useState<{ employees: string[] } | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
+  /** Salary slip popup: last opened record stays mounted so the close animation can run. */
+  const [slipId, setSlipId] = useState<string | null>(null);
+  const [slipOpen, setSlipOpen] = useState(false);
+  const openSlip = (payrollId: string) => {
+    setSlipId(payrollId);
+    setSlipOpen(true);
+  };
 
   const emp = useHrEmployees();
   const att = useHrAttendance({ from: range?.from || "", to: range?.to || "", enabled: !!range });
   const lv = useHrLeaves({ from: range?.from, to: range?.to, status: "approved", enabled: !!range });
   const pay = useHrPayroll({ month, enabled: !!range });
 
-  // Month badalne par unsaved edits hata do.
+  // Changing the month clears unsaved edits.
   useEffect(() => {
     setEdits({});
   }, [month]);
@@ -133,7 +158,7 @@ function PayrollPageBody() {
     [processedExpenseAccounts]
   );
 
-  // Debit (salary expense) account: pehle saved choice, warna naam me "salary".
+  // Debit (salary expense) account: saved choice first, otherwise a name containing "salary".
   useEffect(() => {
     if (!cid || expenseOptions.length === 0) return;
     if (debitAccountId && expenseOptions.some((o) => o.id === debitAccountId)) return;
@@ -142,17 +167,21 @@ function PayrollPageBody() {
       setDebitAccountId(stored);
       return;
     }
-    const guess = expenseOptions.find((o) => /salary|wage|वेतन|तलब/i.test(o.name));
+    const guess = expenseOptions.find((o) => /salary|wage|\u0935\u0947\u0924\u0928|\u0924\u0932\u092c/i.test(o.name));
     if (guess) setDebitAccountId(guess.id);
   }, [cid, expenseOptions, debitAccountId]);
 
   const rows: PayrollRow[] = useMemo(() => {
     if (!range) return [];
+    // Left employees: shown when the left date is in/after this month's start, or they have attendance this month.
+    const withAttendance = new Set(att.records.map((a) => a.employee));
     return emp.employees
       .filter((e) => {
         if (pay.byEmployee.has(e.app_id)) return true;
-        if (e.status !== "active") return false;
-        return !e.joining_date || !isIsoDate(e.joining_date) || e.joining_date <= range.to;
+        if (e.joining_date && isIsoDate(e.joining_date) && e.joining_date > range.to) return false;
+        if (e.status === "active") return true;
+        const left = employeeLeftDate(e);
+        return (!!left && left >= range.from) || withAttendance.has(e.app_id);
       })
       .map((e) => {
         const saved = pay.byEmployee.get(e.app_id);
@@ -160,34 +189,11 @@ function PayrollPageBody() {
         const calc = computeEmployeePayroll(e, month, att.records, lv.approved);
         const edit = edits[e.app_id];
         const name = staffNames.get(e.staff_app_id) || "";
-        if (posted && saved) {
-          const addition = payrollAddition(saved);
-          return {
-            emp: e,
-            name: name || "(staff missing)",
-            staffExists: !!name,
-            saved,
-            posted,
-            calc,
-            payableDays: Number(saved.present_days || 0),
-            gross: Number(saved.gross || 0),
-            deductions: Number(saved.deductions || 0),
-            addition,
-            net: Number(saved.net || 0),
-            dirty: false,
-          };
-        }
-        const gross = calc ? calc.gross : Number(saved?.gross || 0);
-        const payableDays = calc ? calc.payable_days : Number(saved?.present_days || 0);
-        const deductions = parseAmount(edit?.deductions, Number(saved?.deductions || 0));
-        const addition = parseAmount(edit?.addition, payrollAddition(saved));
-        const net = computeNet(gross, deductions, addition);
-        const dirty =
-          !saved ||
-          round2(Number(saved.gross || 0)) !== gross ||
-          round2(Number(saved.present_days || 0)) !== payableDays ||
-          round2(Number(saved.deductions || 0)) !== deductions ||
-          payrollAddition(saved) !== addition;
+        // Same figures as the salary slip (payrollFigures): posted = saved; draft = live calc + edits.
+        const fig = payrollFigures(saved, calc, {
+          deductions: parseAmount(edit?.deductions, Number(saved?.deductions || 0)),
+          addition: parseAmount(edit?.addition, payrollAddition(saved)),
+        });
         return {
           emp: e,
           name: name || "(staff missing)",
@@ -195,16 +201,19 @@ function PayrollPageBody() {
           saved,
           posted,
           calc,
-          payableDays,
-          gross,
-          deductions,
-          addition,
-          net,
-          dirty,
+          payableDays: fig.payable_days,
+          gross: fig.gross,
+          deductions: fig.deductions,
+          addition: fig.addition,
+          net: fig.net,
+          dirty: fig.dirty,
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [range, emp.employees, pay.byEmployee, att.records, lv.approved, edits, staffNames, month]);
+
+  /** Row behind the open slip: its unsaved Deductions / Addition go to the slip so both show the same Net. */
+  const slipRow = slipId ? rows.find((r) => r.saved?.app_id === slipId) : undefined;
 
   const totals = useMemo(() => {
     const t = { gross: 0, addition: 0, deductions: 0, net: 0 };
@@ -255,14 +264,14 @@ function PayrollPageBody() {
   const generateDrafts = async () => {
     if (!editable) return;
     if (newRows.length === 0) {
-      toast.info("Sab employees ke drafts pehle se hain.");
+      toast.info("All employees already have drafts.");
       return;
     }
     try {
       const n = await pay.saveDrafts(newRows.map(toDraftInput));
       toast.success(`${n} draft(s) generated`);
     } catch (e) {
-      toast.error("Drafts save नहीं हुए", { description: e instanceof Error ? e.message : String(e) });
+      toast.error("Could not save drafts", { description: e instanceof Error ? e.message : String(e) });
     }
   };
 
@@ -273,7 +282,7 @@ function PayrollPageBody() {
       setEdits({});
       toast.success(`${n} payroll draft(s) saved`);
     } catch (e) {
-      toast.error("Save नहीं हुआ", { description: e instanceof Error ? e.message : String(e) });
+      toast.error("Could not save", { description: e instanceof Error ? e.message : String(e) });
     }
   };
 
@@ -282,11 +291,11 @@ function PayrollPageBody() {
   const askPost = (employees: string[]) => {
     if (!editable) return;
     if (!debitAccountId) {
-      toast.error("पहले Salary expense (Debit) account चुनें।");
+      toast.error("Select the salary expense (debit) account first.");
       return;
     }
     if (employees.length === 0) {
-      toast.info("Post करने लायक कोई draft नहीं है।");
+      toast.info("There are no drafts ready to post.");
       return;
     }
     setConfirm({ employees });
@@ -310,7 +319,7 @@ function PayrollPageBody() {
       if (res.ok > 0) toast.success(`${res.ok} payroll posted (salary voucher created)`);
       if (res.failed.length > 0) {
         const byId = new Map(rows.map((r) => [r.emp.app_id, r.name]));
-        toast.error(`${res.failed.length} post नहीं हुए`, {
+        toast.error(`${res.failed.length} could not be posted`, {
           description: res.failed.map((f) => `${byId.get(f.employee) || f.employee}: ${f.error}`).join("\n"),
         });
       }
@@ -329,7 +338,6 @@ function PayrollPageBody() {
   };
 
   const loading = emp.loading || att.loading || lv.loading || pay.loading;
-  const disabled = emp.disabled || att.disabled || lv.disabled || pay.disabled;
   const error = emp.error || att.error || lv.error || pay.error;
   const busy = pay.saving || bulkBusy || pay.posting.length > 0;
 
@@ -338,26 +346,32 @@ function PayrollPageBody() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="h-full min-h-0 space-y-3 overflow-y-auto p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="ghost" size="icon" onClick={() => router.push("/hr")} aria-label="Back to HR">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <h1 className="text-lg font-semibold">Payroll</h1>
-          {!editable ? (
-            <Badge variant="secondary" title="hr_payroll permission नहीं है">
-              Read-only
-            </Badge>
-          ) : null}
-        </div>
+    <div data-pl-hr-root="" className={cn("flex h-full min-h-0 flex-col overflow-hidden", HR_FIELD_SCOPE)}>
+      <div className={cn(HR_PAGE_BODY, HR_FILL_COLUMN)}>
+        {!embedded || !editable ? (
+          <HrHeaderCard tone="violet">
+            {!embedded ? (
+              <>
+                <Button type="button" variant="ghost" size="icon" onClick={() => router.push("/hr")} aria-label="Back to HR">
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <h1 className="text-lg font-semibold">Payroll</h1>
+              </>
+            ) : null}
+            {!editable ? (
+              <HrPill tone="info" title="You do not have the hr_payroll permission">
+                Read-only
+              </HrPill>
+            ) : null}
+          </HrHeaderCard>
+        ) : null}
 
-        <div className="flex flex-wrap items-center gap-2">
+        <HrHeaderCard tone="indigo">
           <Input
             type="month"
             value={month}
             onChange={(e) => e.target.value && setMonth(e.target.value)}
-            className="w-auto"
+            className={cn("w-auto", HR_FIELD_PILL)}
             aria-label="Payroll month"
           />
           <Button type="button" variant="outline" size="sm" onClick={() => setMonth(currentIsoMonth())}>
@@ -400,51 +414,55 @@ function PayrollPageBody() {
               </Button>
             </>
           ) : null}
-        </div>
+        </HrHeaderCard>
 
         {editable ? (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <label htmlFor="hr-payroll-debit" className="text-muted-foreground">
-              Salary expense (Debit) account:
+              Salary expense (debit) account:
             </label>
-            <select
-              id="hr-payroll-debit"
+            <Select
               value={debitAccountId}
-              onChange={(e) => {
-                setDebitAccountId(e.target.value);
-                writeStoredDebit(cid, e.target.value);
+              onValueChange={(v) => {
+                setDebitAccountId(v);
+                writeStoredDebit(cid, v);
               }}
-              className="h-9 min-w-[14rem] rounded-md border bg-background px-2 text-sm"
             >
-              <option value="">— चुनें —</option>
-              {expenseOptions.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-            <span className="text-xs text-muted-foreground">
-              Post = Add Salary voucher (Dr expense / Cr staff, amount = Net), date = month का आखिरी दिन।
+              <SelectTrigger
+                id="hr-payroll-debit"
+                className={cn("w-auto min-w-[14rem]", HR_FIELD_PILL)}
+                aria-label="Salary expense account"
+              >
+                <SelectValue placeholder="Select account" />
+              </SelectTrigger>
+              <SelectContent>
+                {expenseOptions.map((o) => (
+                  <SelectItem key={o.id} value={o.id}>
+                    {o.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span data-pl-intro="" className={HR_NARRATION_TEXT}>
+              Post creates an Add Salary voucher (Dr expense, Cr staff, amount = Net) dated the last day of the month.
             </span>
           </div>
         ) : null}
 
         {!range ? (
-          <p className="text-sm text-muted-foreground">Month चुनें (YYYY-MM)।</p>
-        ) : disabled ? (
-          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            Server: HR आपके plan में उपलब्ध नहीं है (hr_disabled).
-          </p>
+          <p className="text-sm text-muted-foreground">Select a month (YYYY-MM).</p>
         ) : error ? (
-          <p className="rounded-md border border-destructive/40 p-4 text-sm text-destructive">
-            Payroll load नहीं हो पाया: {error}
-          </p>
+          <Alert variant="destructive">
+            <AlertTitle>Could not load payroll</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         ) : null}
 
-        <div className="overflow-x-auto rounded-xl border bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
+        <div className={cn(HR_TABLE_FRAME, HR_TABLE_FRAME_FILL)} {...HR_TABLE_FRAME_DATA}>
+          <HrTable stickyHeaderFooter>
+            <HrTableHeader>
+              <TableRow className={HR_TABLE_ROW}>
+                <TableHead className={HR_SNO_HEAD}>S.No.</TableHead>
                 <TableHead className="min-w-[10rem]">Employee</TableHead>
                 <TableHead className="text-center" title="Present">P</TableHead>
                 <TableHead className="text-center" title="Half day">½</TableHead>
@@ -458,29 +476,41 @@ function PayrollPageBody() {
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
-            </TableHeader>
+            </HrTableHeader>
             <TableBody>
               {loading && rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground">
+                <TableRow className={HR_TABLE_ROW}>
+                  <TableCell colSpan={13} className="text-center text-muted-foreground">
                     Loading…
                   </TableCell>
                 </TableRow>
               ) : rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground">
+                <TableRow className={HR_TABLE_ROW}>
+                  <TableCell colSpan={13} className="text-center text-muted-foreground">
                     No employees.
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.map((r) => {
+                rows.map((r, ri) => {
                   const c = r.posted ? payrollData(r.saved).counts || r.calc?.counts : r.calc?.counts;
                   const rowEditable = editable && !r.posted;
                   const postingNow = pay.isPosting(r.emp.app_id);
                   return (
-                    <TableRow key={r.emp.app_id}>
+                    <TableRow key={r.emp.app_id} {...hrStripe(ri)} className={HR_TABLE_ROW}>
+                      <TableCell className={HR_SNO_CELL}>{ri + 1}</TableCell>
                       <TableCell>
-                        <div className="font-medium">{r.name}</div>
+                        <div className="font-medium">
+                          {r.name}
+                          {r.emp.status === "left" ? (
+                            <HrPill
+                              tone="muted"
+                              className="ml-2"
+                              title={r.emp.left_date ? `Left on ${r.emp.left_date}` : "Left"}
+                            >
+                              Left
+                            </HrPill>
+                          ) : null}
+                        </div>
                         <div className="text-xs text-muted-foreground">
                           {[r.emp.designation, r.emp.department].filter(Boolean).join(" · ") || "—"}
                           {" · "}
@@ -538,11 +568,11 @@ function PayrollPageBody() {
                       <TableCell className="text-right font-semibold tabular-nums">{money(r.net)}</TableCell>
                       <TableCell>
                         {r.posted ? (
-                          <Badge className="bg-emerald-600 text-white hover:bg-emerald-600/90">Posted</Badge>
+                          <HrPill tone="good">Posted</HrPill>
                         ) : r.saved ? (
-                          <Badge variant="secondary">Draft{r.dirty ? " *" : ""}</Badge>
+                          <HrPill tone="info">Draft{r.dirty ? " *" : ""}</HrPill>
                         ) : (
-                          <Badge variant="outline">New</Badge>
+                          <HrPill tone="muted">New</HrPill>
                         )}
                         {!r.staffExists ? <div className="mt-1 text-xs text-destructive">Staff ledger missing</div> : null}
                       </TableCell>
@@ -567,10 +597,9 @@ function PayrollPageBody() {
                             variant="ghost"
                             className="h-8"
                             disabled={!r.saved}
-                            title={r.saved ? "Salary slip" : "पहले draft save करें"}
-                            onClick={() =>
-                              r.saved && router.push(`/hr/payroll/slip/${encodeURIComponent(r.saved.app_id)}`)
-                            }
+                            title={r.saved ? "Salary slip" : "Save the draft first"}
+                            aria-label={r.saved ? `Salary slip for ${r.name}` : "Save the draft first"}
+                            onClick={() => r.saved && openSlip(r.saved.app_id)}
                           >
                             <FileText className="mr-1 h-3.5 w-3.5" />
                             Slip
@@ -583,8 +612,9 @@ function PayrollPageBody() {
               )}
             </TableBody>
             {rows.length > 0 ? (
-              <TableFooter>
-                <TableRow>
+              <TableFooter className={HR_TABLE_FOOTER}>
+                <TableRow className={HR_TABLE_ROW}>
+                  <TableCell className={HR_SNO_CELL} />
                   <TableCell colSpan={6} className="font-medium">
                     Total ({rows.length})
                   </TableCell>
@@ -596,29 +626,41 @@ function PayrollPageBody() {
                 </TableRow>
               </TableFooter>
             ) : null}
-          </Table>
+          </HrTable>
         </div>
 
-        <p className="text-xs text-muted-foreground">
+        <p data-pl-intro="" className={HR_NARRATION_TEXT}>
           Payable days = Present + ½×Half day + Holiday + Paid leave (unpaid leave / absent / unmarked = 0). Monthly: Gross =
           Base × Payable ÷ month days; Daily: Gross = Base × Payable. Net = Gross + Addition − Deductions. Posted payroll
-          read-only है।
+          is read-only.
         </p>
       </div>
+
+      {slipId ? (
+        <SalarySlipDialog
+          id={slipId}
+          open={slipOpen}
+          onOpenChange={setSlipOpen}
+          edit={slipRow && !slipRow.posted ? { deductions: slipRow.deductions, addition: slipRow.addition } : undefined}
+        />
+      ) : null}
 
       <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Payroll post करें?</AlertDialogTitle>
+            <AlertDialogTitle>Post payroll?</AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmRows.length} employee(s) के लिए Add Salary voucher बनेगा — total Net{" "}
-              {money(confirmRows.reduce((s, r) => s + r.net, 0))} ({month})। Post के बाद payroll edit नहीं होगा।
+              An Add Salary voucher will be created for {confirmRows.length} employee(s), total Net{" "}
+              {money(confirmRows.reduce((s, r) => s + r.net, 0))} ({month}). Posted payroll cannot be edited.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {confirmRows.length > 0 ? (
-            <div className="max-h-48 overflow-y-auto rounded-md border text-sm">
+            <div className="max-h-48 overflow-y-auto rounded-md border border-border text-sm">
               {confirmRows.map((r) => (
-                <div key={r.emp.app_id} className="flex justify-between border-b px-3 py-1.5 last:border-b-0">
+                <div
+                  key={r.emp.app_id}
+                  className="flex justify-between border-b border-border px-3 py-1.5 last:border-b-0"
+                >
                   <span>{r.name}</span>
                   <span className="tabular-nums">{money(r.net)}</span>
                 </div>

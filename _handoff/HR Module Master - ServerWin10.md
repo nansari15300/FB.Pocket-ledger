@@ -1,3 +1,5 @@
+> **सूचना (2026-11-03 17:34 NPT से, laptop से जोड़ा):** user ने आदेश दिया कि **HR का सारा काम सिर्फ़ laptop (DESKTOP-M4HAJE9, `C:\Project Pocket-ledger_ERP\App\HR`) पर** होगा। **`D:\Touri-HR` को edit नहीं करना है।** यह फ़ाइल अब सिर्फ़ इतिहास है। Payroll / slip का नया data model (`pl_docs` `hr_payroll`, `hrApi.postPayroll` की जगह `pl_docs` update) और ताज़ा स्थिति के लिए `_handoff/HR Module Master.md` देखें।
+
 # HR Module Master — ServerWin10 (Payroll + Salary slip)
 
 > यह फ़ाइल ServerWin10 वाले agent ने बनाई है। Laptop वाली `_handoff/HR Module Master.md` को छुआ नहीं गया।

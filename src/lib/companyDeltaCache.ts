@@ -30,6 +30,10 @@ export const COMPANY_COLLECTION_PATHS = [
   "loan_audit_logs",
   "loan_settings",
   "loan_documents",
+  /** HR module (pl_docs, keyed by company + coll + app_id). */
+  "hr_attendance",
+  "hr_leaves",
+  "hr_payroll",
 ] as const;
 
 export type CompanyCollectionPath = (typeof COMPANY_COLLECTION_PATHS)[number];

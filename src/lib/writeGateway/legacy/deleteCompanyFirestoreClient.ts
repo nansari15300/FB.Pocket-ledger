@@ -36,6 +36,10 @@ const COMPANY_SUBCOLLECTIONS = [
   "loan_audit_logs",
   "loan_settings",
   "loan_documents",
+  /** HR module (pl_docs, keyed by company + coll + app_id). */
+  "hr_attendance",
+  "hr_leaves",
+  "hr_payroll",
 ] as const;
 
 async function deleteAllDocumentsInCollection(collectionPath: string): Promise<void> {

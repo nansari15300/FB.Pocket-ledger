@@ -5,11 +5,12 @@ import Link from "next/link";
 import { Briefcase, Lock } from "lucide-react";
 import { LoadingSpinner } from "@/components/layout/LoadingSpinner";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { useHrModuleFeature } from "@/hooks/useHrModuleFeature";
 
 /**
- * HR pages ka wrapper: plan (hrModuleEnabled) + hr_view permission dono hon tabhi children.
- * Warna friendly "plan me nahi" screen. Loading par spinner.
+ * Wrapper for HR pages: children render only when the plan has HR (hrModuleEnabled) and the
+ * role has hr_view. Otherwise a friendly "not in your plan" / "no access" screen. Spinner while loading.
  */
 export function HrGate({ children }: { children: ReactNode }) {
   const { enabled, loading, planEnabled } = useHrModuleFeature();
@@ -18,12 +19,13 @@ export function HrGate({ children }: { children: ReactNode }) {
   if (enabled) return <>{children}</>;
 
   const reason = planEnabled
-    ? "आपके role में HR देखने की permission (hr_view) नहीं है। Company owner/admin से पूछें।"
-    : "HR आपके plan में उपलब्ध नहीं है। HR (Employees, Attendance, Leaves, Payroll) के लिए plan upgrade करें।";
+    ? "Your role does not have permission to view HR (hr_view). Ask the company owner or an admin."
+    : "HR is not included in your plan. Upgrade your plan to use HR (Employees, Attendance, Leaves, Payroll).";
 
   return (
-    <div className="flex h-full min-h-0 flex-col items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-xl border bg-card p-6 text-center shadow-sm">
+    <div data-pl-hr-root="" className="flex h-full min-h-0 flex-col items-center justify-center p-6">
+      <Card className="w-full max-w-md">
+        <CardContent className="p-6 text-center">
         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
           {planEnabled ? (
             <Lock className="h-6 w-6 text-muted-foreground" />
@@ -32,15 +34,18 @@ export function HrGate({ children }: { children: ReactNode }) {
           )}
         </div>
         <h2 className="text-lg font-semibold">
-          {planEnabled ? "HR access नहीं है" : "HR आपके plan में उपलब्ध नहीं है"}
+          {planEnabled ? "No HR access" : "HR is not in your plan"}
         </h2>
-        <p className="mt-2 text-sm text-muted-foreground">{reason}</p>
+        <p data-pl-intro="" className="mt-2 text-sm text-muted-foreground">
+          {reason}
+        </p>
         {!planEnabled ? (
           <Button asChild className="mt-4" size="sm">
             <Link href="/billing">Billing &amp; Plans</Link>
           </Button>
         ) : null}
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

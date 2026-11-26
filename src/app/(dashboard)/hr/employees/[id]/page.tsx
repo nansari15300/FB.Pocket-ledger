@@ -1,7 +1,7 @@
 import { EmployeeIdRouteClient } from "./EmployeeIdRouteClient";
 
 export async function generateStaticParams() {
-  // "new" = Add Employee (static export me real page); baaki ids loans jaisa placeholder pattern.
+  // Static export ke liye placeholder ids; route ab sirf /hr/employees par redirect karta hai.
   return [{ id: "__placeholder__" }, { id: "new" }];
 }
 

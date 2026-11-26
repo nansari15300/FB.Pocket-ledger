@@ -3,7 +3,7 @@
 अंतिम अपडेट: 2026-11-02 12:30 (Asia/Kathmandu, UTC+5:45)
 
 ## 1) उद्देश्य
-Pocket Ledger app (`C:\Project xxx\Refference apps\Touri + React`) से Firebase (Firestore, Storage, firebase-admin, बचा हुआ Auth code) पूरी तरह हटाना और सब कुछ PocketBase (Pocket Ledger Server) पर चलाना। Firebase Hosting (marketing website) अभी रहेगी।
+Pocket Ledger app (`C:\Project Pocket-ledger_ERP\App`) से Firebase (Firestore, Storage, firebase-admin, बचा हुआ Auth code) पूरी तरह हटाना और सब कुछ PocketBase (Pocket Ledger Server) पर चलाना। Firebase Hosting (marketing website) अभी रहेगी।
 
 ## 2) नियम
 - कोई भी बदलाव करने से पहले plan + user की हाँ ज़रूरी। पहले backup (`C:\PocketLedger-Backups\`)।

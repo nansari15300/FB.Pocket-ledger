@@ -1,6 +1,7 @@
 import type { HrAttendance, HrEmployee, HrLeave, HrPayroll } from "../../types";
 import { attendanceKey, isIsoDate, latestAttendanceByKey, monthRange } from "../../utils/attendance";
 import { approvedLeaveOn } from "../../utils/leaves";
+import { employeeLeftDate } from "../../utils/leftDate";
 
 /** 2 decimal rounding (paisa). */
 export function round2(n: number): number {
@@ -58,6 +59,8 @@ export type PayrollDayCounts = {
   unmarked: number;
   /** Joining se pehle ke din (count nahi). */
   not_joined: number;
+  /** Days after the left date (status Left): not counted, attendance and leaves ignored. */
+  after_left?: number;
 };
 
 export type PayrollCalcResult = {
@@ -72,7 +75,17 @@ export type PayrollCalcResult = {
 };
 
 export function emptyDayCounts(): PayrollDayCounts {
-  return { present: 0, half_day: 0, holiday: 0, paid_leave: 0, unpaid_leave: 0, absent: 0, unmarked: 0, not_joined: 0 };
+  return {
+    present: 0,
+    half_day: 0,
+    holiday: 0,
+    paid_leave: 0,
+    unpaid_leave: 0,
+    absent: 0,
+    unmarked: 0,
+    not_joined: 0,
+    after_left: 0,
+  };
 }
 
 /**
@@ -81,9 +94,11 @@ export function emptyDayCounts(): PayrollDayCounts {
  * - Attendance "leave": us din approved leave_type "unpaid" ho to unpaid, warna paid.
  * - Record nahi par approved leave: unpaid → unpaid, baaki → paid leave.
  * - monthly: gross = base * payable / days_in_month; daily: gross = base * payable. 2 decimal.
+ * - Status Left with a left date: days after the left date are not counted (attendance and leaves ignored).
  */
 export function computeEmployeePayroll(
-  employee: Pick<HrEmployee, "app_id" | "salary_type" | "base_salary" | "joining_date">,
+  employee: Pick<HrEmployee, "app_id" | "salary_type" | "base_salary" | "joining_date"> &
+    Partial<Pick<HrEmployee, "status" | "left_date">>,
   month: string,
   attendance: HrAttendance[],
   approvedLeaves: HrLeave[] = []
@@ -95,8 +110,13 @@ export function computeEmployeePayroll(
   const byKey = latestAttendanceByKey(own);
   const leaves = approvedLeaves.filter((l) => l && l.status === "approved" && l.deleted !== true);
   const joining = employee.joining_date && isIsoDate(employee.joining_date) ? employee.joining_date : "";
+  const left = employeeLeftDate({ status: employee.status ?? "active", left_date: employee.left_date });
 
   for (const d of range.days) {
+    if (left && d > left) {
+      counts.after_left = (counts.after_left || 0) + 1;
+      continue;
+    }
     const rec = byKey.get(attendanceKey(employee.app_id, d));
     if (!rec && joining && d < joining) {
       counts.not_joined += 1;
@@ -191,6 +211,70 @@ export function payrollAddition(rec: Pick<HrPayroll, "data"> | null | undefined)
 
 export function isPayrollPosted(rec: Pick<HrPayroll, "status"> | null | undefined): boolean {
   return rec?.status === "posted";
+}
+
+/** Unsaved table input for a draft row (already parsed numbers). */
+export type PayrollFiguresEdit = { deductions?: number; addition?: number };
+
+export type PayrollFigures = {
+  posted: boolean;
+  payable_days: number;
+  gross: number;
+  deductions: number;
+  addition: number;
+  net: number;
+  days_in_month?: number;
+  counts?: PayrollDayCounts;
+  /** Draft has no saved record yet, or differs from it (needs Save). */
+  dirty: boolean;
+};
+
+/**
+ * One figure set for the Payroll table row AND the salary slip, so both always show the same numbers.
+ * Posted: the saved record exactly as posted. Draft / unsaved: live calc (attendance + approved leaves now) for
+ * payable days, gross and day counts, with deductions / addition from `edit` (unsaved table input) or the saved draft.
+ */
+export function payrollFigures(
+  saved: HrPayroll | null | undefined,
+  calc: PayrollCalcResult | null,
+  edit: PayrollFiguresEdit = {}
+): PayrollFigures {
+  const data = payrollData(saved);
+  if (saved && isPayrollPosted(saved)) {
+    return {
+      posted: true,
+      payable_days: num(saved.present_days),
+      gross: num(saved.gross),
+      deductions: num(saved.deductions),
+      addition: payrollAddition(saved),
+      net: num(saved.net),
+      days_in_month: data.days_in_month ?? calc?.days_in_month,
+      counts: data.counts || calc?.counts,
+      dirty: false,
+    };
+  }
+  const gross = calc ? calc.gross : num(saved?.gross);
+  const payable_days = calc ? calc.payable_days : num(saved?.present_days);
+  const deductions = edit.deductions ?? num(saved?.deductions);
+  const addition = edit.addition ?? payrollAddition(saved);
+  const net = computeNet(gross, deductions, addition);
+  const dirty =
+    !saved ||
+    round2(num(saved.gross)) !== gross ||
+    round2(num(saved.present_days)) !== payable_days ||
+    round2(num(saved.deductions)) !== deductions ||
+    payrollAddition(saved) !== addition;
+  return {
+    posted: false,
+    payable_days,
+    gross,
+    deductions,
+    addition,
+    net,
+    days_in_month: calc?.days_in_month ?? data.days_in_month,
+    counts: calc?.counts ?? data.counts,
+    dirty,
+  };
 }
 
 /** Month ka last date (voucher date) — local midnight. */

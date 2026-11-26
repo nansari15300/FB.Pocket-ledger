@@ -8,7 +8,7 @@
 ## PC और फ़ोल्डर
 | PC | machineId | ऐप फ़ोल्डर | सर्वर फ़ोल्डर |
 |-|-|-|-|
-| DESKTOP-M4HAJE9 (लैपटॉप) | 87099f47-479e-481c-afa5-031d443c15b8 | `C:\Project xxx\Refference apps\Touri + React` | `C:\Project xxx\Refference apps\PocketLedger-Server` |
+| DESKTOP-M4HAJE9 (लैपटॉप) | 87099f47-479e-481c-afa5-031d443c15b8 | `C:\Project Pocket-ledger_ERP\App` | `C:\Project Pocket-ledger_ERP\Server` |
 | ServerWin10 | 8fbef226-7949-44a9-ba98-ad7e2d552e16 | `C:\Project Next.js Balgram\Online Project` | `C:\Project Next.js Balgram\PocketLedger-Server` |
 
 ऐप फ़ोल्डर के नाम अलग हैं और यूज़र ने नाम बदलने से मना किया है। इसलिए **दो अलग repo** हैं, और हर repo का root वही फ़ोल्डर है।

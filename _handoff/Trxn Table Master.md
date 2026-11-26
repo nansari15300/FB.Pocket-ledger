@@ -5,8 +5,8 @@
 ## मेरा काम
 Pocket Ledger के Transaction (trxn) टेबल का ढाँचा मेरी ज़िम्मेदारी है: उसके कॉलम, फ़ील्ड, डेटा टाइप, रिलेशन और इंडेक्स, और यह कि client और server (PocketBase + Go) में यह टेबल कैसे इस्तेमाल होती है। इसके अलावा ledger के TransactionsTable का layout भी मेरे पास है।
 - trxn सिर्फ़ client में UI/route का नाम है। असल डेटा PocketBase की collection `pl_vouchers` में रहता है।
-- Schema: `C:\Project xxx\Refference apps\PocketLedger-Server\sub-server\pb_migrations\1761500000_app_data_collections.js` (लाइन ~160–175)। इसमें 19 कॉलम और 6 इंडेक्स हैं, जिनमें UNIQUE(company, app_id) भी है। इससे जुड़ा logic `pb_hooks` में है।
-- Client: `C:\Project xxx\Refference apps\Touri + React` (laptop DESKTOP-M4HAJE9 पर)।
+- Schema: `C:\Project Pocket-ledger_ERP\Server\sub-server\pb_migrations\1761500000_app_data_collections.js` (लाइन ~160–175)। इसमें 19 कॉलम और 6 इंडेक्स हैं, जिनमें UNIQUE(company, app_id) भी है। इससे जुड़ा logic `pb_hooks` में है।
+- Client: `C:\Project Pocket-ledger_ERP\App` (laptop DESKTOP-M4HAJE9 पर)।
 - Live server: ServerWin10 पर `C:\Project Next.js Balgram\PocketLedger-Server\sub-server`। उसका PocketBase `192.168.1.64:8090` पर और `https://np.pocket-ledger.com` पर मिलता है।
 
 ## नियम
