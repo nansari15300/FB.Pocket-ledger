@@ -820,7 +820,7 @@ async function resolveLeftoverLocalRefs(
   companyId: string,
   data: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
-  const { collectLocalFileRefs, stripLocalFileRefsDeep, isLocalFileRef } = await import("@/lib/sync/voucherFieldMerge");
+  const { collectLocalFileRefs, isLocalFileRef } = await import("@/lib/sync/voucherFieldMerge");
   const leftover = collectLocalFileRefs(data);
   if (!leftover.size) return data;
   const { pbFirst, pbQuote, getValidPocketBaseAuth } = await import("@/lib/pocketbaseData/pbClient");
@@ -858,7 +858,8 @@ async function resolveLeftoverLocalRefs(
     const { replaceRefsDeep } = await import("@/lib/pocketbaseData/pbAttachments");
     next = replaceRefsDeep(data, map);
   }
-  if (collectLocalFileRefs(next).size) next = stripLocalFileRefsDeep(next);
+  // Do not strip leftover local: here. The caller retries the outbox row so the
+  // file is not dropped from the server payload (text-without-pic on other devices).
   return next;
 }
 
@@ -910,26 +911,12 @@ async function prepareOutboxRowForPocketBase(row: PbOutboxRow): Promise<Prepared
     }
 
     if (payloadHasLocalRef(payload)) {
-      const { collectLocalFileRefs } = await import("@/lib/sync/voucherFieldMerge");
-      const refs = collectLocalFileRefs(payload);
-      let hasLocalBytes = false;
-      for (const ref of refs) {
-        try {
-          const pending = await getPendingPayloadForLocalRef(ref);
-          if (pending && pending.blob && Number(pending.blob.size) > 0) {
-            hasLocalBytes = true;
-            break;
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-      if (hasLocalBytes) {
-        throw new PocketBaseOutboxRetryError(
-          "Attachment upload pending — voucher kept in outbox (never sending local: to server)"
-        );
-      }
       payload = await resolveLeftoverLocalRefs(row.company_id, payload);
+    }
+    if (payloadHasLocalRef(payload)) {
+      throw new PocketBaseOutboxRetryError(
+        "Attachment upload pending — voucher kept in outbox (never sending local: to server)"
+      );
     }
   }
 

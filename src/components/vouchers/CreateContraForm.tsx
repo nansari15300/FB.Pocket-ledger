@@ -114,6 +114,7 @@ import {
 import {
   formatContraVoucherNumbersFromSerial,
   getNextVoucherNumberForCompany,
+  parseContraVoucherSerial,
 } from "@/lib/nextVoucherNumber";
 import { syncAutoVoucherNumberToDate } from "@/lib/syncAutoVoucherNumberToDate";
 import { sendTransactionAlert, isAmountOverOneLakh, getChangedFieldLabels } from "@/lib/transactionAlerts";
@@ -1060,25 +1061,40 @@ const { isDirty: _isFormFieldsDirty } = form.formState;
         company?.voucherPrefixes?.contra ||
         [getVoucherPrefix(company.voucherPrefixes as Record<string, string[]> | undefined)];
       const VOUCHER_PREFIX = prefixes[0];
+      const cur = form.getValues();
+      // Daybook shows "CNTR Out - 028" (voucherNumberOut). The main voucherNumber may be
+      // empty or a different shape; parsing only the main no used to fall back to 001
+      // and overwrite the stored Out/In when opening Edit.
+      const serialFromStored =
+        parseContraVoucherSerial(String(cur.voucherNumberOut || ""), VOUCHER_PREFIX) ||
+        parseContraVoucherSerial(String(cur.voucherNumberIn || ""), VOUCHER_PREFIX) ||
+        parseVoucherSerial(
+          String(cur.voucherNumber || ""),
+          VOUCHER_PREFIX,
+          parseFySegmentFromVoucherNumber(String(cur.voucherNumber || ""), VOUCHER_PREFIX)
+        ) ||
+        parseVoucherNumberPart(String(cur.voucherNumber || ""), VOUCHER_PREFIX) ||
+        parseVoucherNumberPart(String(cur.voucherNumber || ""), normalizePrefix(VOUCHER_PREFIX));
+      if (!Number.isFinite(serialFromStored) || serialFromStored < 1) return;
       const main = syncAutoVoucherNumberToDate({
         companyDoc: company as Record<string, unknown>,
         prefix: VOUCHER_PREFIX,
-        currentVoucherNumber: String(form.getValues("voucherNumber") || ""),
+        currentVoucherNumber: String(cur.voucherNumber || "").trim() || String(cur.voucherNumberOut || ""),
         voucherDate: watchedContraDate,
       });
       const fySeg = parseFySegmentFromVoucherNumber(main, VOUCHER_PREFIX);
       const parsed =
         parseVoucherSerial(main, VOUCHER_PREFIX, fySeg) ||
         parseVoucherNumberPart(main, VOUCHER_PREFIX) ||
-        parseVoucherNumberPart(main, normalizePrefix(VOUCHER_PREFIX));
-      const nextNum = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+        parseVoucherNumberPart(main, normalizePrefix(VOUCHER_PREFIX)) ||
+        serialFromStored;
+      if (!Number.isFinite(parsed) || parsed < 1) return;
       const nums = formatContraVoucherNumbersFromSerial(
         company.voucherPrefixes as Record<string, string[] | undefined>,
         VOUCHER_PREFIX,
-        nextNum,
+        parsed,
         fySeg
       );
-      const cur = form.getValues();
       if (
         cur.voucherNumber === nums.voucherNumber &&
         cur.voucherNumberOut === nums.voucherNumberOut &&

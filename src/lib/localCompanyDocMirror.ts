@@ -582,6 +582,19 @@ function parseAmountLoose(raw: Record<string, unknown>): number | null {
   return null;
 }
 
+/**
+ * Pull / heal / file-link rewrites must not drop a voucher off Daybook because the incoming
+ * payload had a missing or unparseable `date`. Keep the local date in that case.
+ */
+function preserveLocalVoucherDateIfIncomingUnparseable(
+  incoming: Record<string, unknown>,
+  existing: Record<string, unknown>
+): void {
+  if (parseDateToMsLoose(incoming.date) != null) return;
+  if (parseDateToMsLoose(existing.date) == null) return;
+  incoming.date = existing.date;
+}
+
 /** Maintain a separate projection table so dashboard/recent views avoid parsing full voucher JSON. */
 async function upsertVoucherProjection(
   companyId: string,
@@ -593,7 +606,23 @@ async function upsertVoucherProjection(
   const db = await getBrowserDbForCompanyId(companyId);
   if (!db) return;
   const docType = typeof data.type === "string" ? data.type : null;
-  const docDateMs = parseDateToMsLoose(data.date);
+  let docDateMs = parseDateToMsLoose(data.date);
+  // A rewrite without a parseable `date` must not blank the projection: Daybook joins
+  // on doc_date_ms IS NOT NULL, so a null here makes the voucher vanish after refresh.
+  if (docDateMs == null) {
+    try {
+      const prev = db
+        .prepare(
+          `SELECT doc_date_ms FROM company_docs_projection WHERE company_id = ? AND collection = ? AND id = ?`
+        )
+        .get(companyId, collectionName, docId) as { doc_date_ms?: number | null } | undefined;
+      if (typeof prev?.doc_date_ms === "number" && Number.isFinite(prev.doc_date_ms)) {
+        docDateMs = prev.doc_date_ms;
+      }
+    } catch {
+      /* keep null */
+    }
+  }
   const amountValue = parseAmountLoose(data);
   const now = Date.now();
   db.prepare(
@@ -813,6 +842,10 @@ export async function performCompanyDocUpsert(
     }
   } catch {
     /* compare optional */
+  }
+
+  if (collectionName === "vouchers" && existingParsed) {
+    preserveLocalVoucherDateIfIncomingUnparseable(stampedData, existingParsed);
   }
 
   try {
@@ -1636,6 +1669,15 @@ async function reconcileAuthoritativeCollectionSnapshot(
       if (!id || incomingIds.has(id)) continue;
       if (mirrorDocDeletedFlag(row as Record<string, unknown>)) continue;
       if (isPlServerDeltaDocPushPending(companyId, collectionName, id)) continue;
+      // Unsynced local work (including a file still uploading) must never be pruned
+      // just because this snapshot did not include the id.
+      try {
+        const { readPendingOutboxPayloadsForCompany } = await import("@/lib/localVoucherOutbox");
+        const pending = await readPendingOutboxPayloadsForCompany(companyId, collectionName);
+        if (pending.has(id)) continue;
+      } catch {
+        /* keep going */
+      }
       await deleteCompanyDocFromBrowserDb(companyId, collectionName, id, { force: true, notify: false });
       changed = true;
     }

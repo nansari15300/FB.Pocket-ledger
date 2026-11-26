@@ -158,7 +158,7 @@ function filterVoucherRowsForSerial(
   });
 }
 
-function parseContraVoucherSerial(voucherNo: string, prefix: string): number {
+export function parseContraVoucherSerial(voucherNo: string, prefix: string): number {
   const trimmed = (voucherNo || "").trim();
   if (!trimmed) return NaN;
   const base = normalizePrefix(prefix);
