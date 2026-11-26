@@ -28,6 +28,13 @@ import {
 } from "@/lib/billingRegionalPricing";
 import { convertWithFxRates, roundMoneyForCurrency } from "@/lib/liveFxRates";
 import { getBillingApiUrl } from "@/lib/billingApiOrigin";
+import { usePlServerLicenseCaps } from "@/hooks/usePlServerLicenseCaps";
+import {
+    clampToServerLicense,
+    licenseCapForCompanies,
+    licenseCapForUsers,
+    planValueExceedsLicense,
+} from "@/lib/plServerLicenseCaps";
 
 /** Online column caps — "Allow online" off par sab 0. */
 interface PlanDetailsProps {
@@ -94,6 +101,9 @@ const entitlementLabels: Partial<Record<EntitlementKey, string>> = {
 export function PlanDetails({ plan, onSave }: PlanDetailsProps) {
     const [isUpdating, setIsUpdating] = useState(false);
     const { toast } = useToast();
+    const { caps: serverLicense } = usePlServerLicenseCaps();
+    const userLicenseCap = licenseCapForUsers(serverLicense);
+    const companyLicenseCap = licenseCapForCompanies(serverLicense);
     const [editablePlan, setEditablePlan] = useState<Plan>(plan);
     const { baseCountry, symbol: catalogSymbol, currencyCode: catalogCurrency } =
         useBillingCatalogBase();
@@ -182,7 +192,41 @@ export function PlanDetails({ plan, onSave }: PlanDetailsProps) {
         };
     }, [editablePlan.entitlements]);
 
+    const overServerLicense = useMemo(() => {
+        const e = editablePlan.entitlements;
+        return (
+            planValueExceedsLicense(e.maxUsers, userLicenseCap) ||
+            planValueExceedsLicense(e.maxUsersLocal, userLicenseCap) ||
+            planValueExceedsLicense(e.maxCompanies, companyLicenseCap) ||
+            planValueExceedsLicense(e.maxCompaniesLocal, companyLicenseCap)
+        );
+    }, [editablePlan.entitlements, userLicenseCap, companyLicenseCap]);
+
     const handleSave = async () => {
+        const e = editablePlan.entitlements;
+        const overUsers =
+            planValueExceedsLicense(e.maxUsers, userLicenseCap) ||
+            planValueExceedsLicense(e.maxUsersLocal, userLicenseCap);
+        const overCompanies =
+            planValueExceedsLicense(e.maxCompanies, companyLicenseCap) ||
+            planValueExceedsLicense(e.maxCompaniesLocal, companyLicenseCap);
+        if (overUsers || overCompanies) {
+            toast({
+                variant: "destructive",
+                title: "Over this server license",
+                description: [
+                    overCompanies && companyLicenseCap != null
+                        ? `Max companies on this sub-server is ${companyLicenseCap} in total. This plan cannot promise more (or unlimited).`
+                        : null,
+                    overUsers && userLicenseCap != null
+                        ? `Max users on this sub-server is ${userLicenseCap} in total (shared by every company). This plan cannot promise more (or unlimited).`
+                        : null,
+                ]
+                    .filter(Boolean)
+                    .join(" "),
+            });
+            return;
+        }
         if (compressKbRangeValidation.invalid) {
             toast({
                 variant: "destructive",
@@ -211,11 +255,19 @@ export function PlanDetails({ plan, onSave }: PlanDetailsProps) {
     }
 
     const handleEntitlementChange = (key: EntitlementKey, value: string | number | boolean) => {
+        let next: string | number | boolean = value === '' ? 0 : value;
+        if (typeof next === "number") {
+            if (key === "maxUsers" || key === "maxUsersLocal") {
+                next = clampToServerLicense(next, userLicenseCap);
+            } else if (key === "maxCompanies" || key === "maxCompaniesLocal") {
+                next = clampToServerLicense(next, companyLicenseCap);
+            }
+        }
         setEditablePlan(prev => ({
             ...prev,
             entitlements: {
                 ...prev.entitlements,
-                [key]: value === '' ? 0 : value
+                [key]: next
             }
         }));
     };
@@ -350,13 +402,17 @@ export function PlanDetails({ plan, onSave }: PlanDetailsProps) {
         online: "maxUsers",
         local: "maxUsersLocal",
         label: "Max users",
-        tip: "0 = no users for that bucket; -1 = unlimited. Online = cloud company; Local = device/SQLite company.",
+        tip: userLicenseCap != null
+          ? `This sub-server license allows ${userLicenseCap} users in total (shared). Each app plan can grant at most ${userLicenseCap} — not more, and not −1 unlimited. 0 = none for that bucket.`
+          : "0 = no users for that bucket; -1 = unlimited. Online = cloud company; Local = device/SQLite company.",
       },
       {
         online: "maxCompanies",
         local: "maxCompaniesLocal",
         label: "Max companies",
-        tip: "0 = no companies for that bucket; -1 = unlimited. Does not change max online-upload slots separately.",
+        tip: companyLicenseCap != null
+          ? `This sub-server license allows ${companyLicenseCap} companies in total. Split them across plans yourself (e.g. Advance 5, Pro 5, Pro+ 10). A plan cannot grant more than ${companyLicenseCap}, and −1 unlimited is not allowed.`
+          : "0 = no companies for that bucket; -1 = unlimited. Does not change max online-upload slots separately.",
       },
       {
         online: "maxAttachmentsGB",
@@ -437,7 +493,7 @@ export function PlanDetails({ plan, onSave }: PlanDetailsProps) {
                     </div>
                     <Button
                         onClick={handleSave}
-                        disabled={isUpdating || compressKbRangeValidation.invalid}
+                        disabled={isUpdating || compressKbRangeValidation.invalid || overServerLicense}
                         className="self-end"
                     >
                         <Save className="mr-2 h-4 w-4" /> Save Changes
@@ -610,6 +666,25 @@ export function PlanDetails({ plan, onSave }: PlanDetailsProps) {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {serverLicense && (userLicenseCap != null || companyLicenseCap != null) ? (
+                    <div className="md:col-span-2 lg:col-span-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50/90 px-3 py-2 text-xs text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
+                        <Info
+                            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600"
+                            strokeWidth={2.5}
+                            aria-hidden
+                        />
+                        <p>
+                            <span className="font-medium">Server license from Main:</span>{" "}
+                            {companyLicenseCap != null ? `${companyLicenseCap} companies` : "unlimited companies"}
+                            {" · "}
+                            {userLicenseCap != null ? `${userLicenseCap} users (shared pool)` : "unlimited users"}
+                            {". "}
+                            Used {serverLicense.usedCompanies}/{companyLicenseCap ?? "∞"} companies, {serverLicense.usedUsers}/{userLicenseCap ?? "∞"} users.
+                            {" "}Each catalog plan (Advance / Pro / Pro+) may grant at most this max — split it yourself (example: 5 / 5 / 10 companies).
+                            {" "}It is not companies × users. −1 unlimited is not allowed here. The next company or login above the license is blocked for the whole sub-server.
+                        </p>
+                    </div>
+                    ) : null}
                     <div className="md:col-span-2 lg:col-span-3 flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50/80 px-3 py-2 text-xs text-sky-900 dark:border-sky-900/50 dark:bg-sky-950/30 dark:text-sky-100">
                         <Info
                             data-pl-plan-rule-info=""
@@ -620,7 +695,11 @@ export function PlanDetails({ plan, onSave }: PlanDetailsProps) {
                         <p>
                             <span className="font-medium">Rule:</span> for number caps,{" "}
                             <span className="font-semibold">0 = none / not allowed</span>,{" "}
-                            <span className="font-semibold">-1 = unlimited</span>, positive = hard cap
+                            <span className="font-semibold">-1 = unlimited</span>
+                            {userLicenseCap != null || companyLicenseCap != null
+                              ? " (users/companies cannot be −1 on this licensed sub-server)"
+                              : ""}
+                            , positive = hard cap
                             (unless the field is off with its switch).
                             Click any blue (i) for the field-specific rule. Online = cloud company; Local = device/SQLite.
                         </p>
@@ -788,13 +867,31 @@ export function PlanDetails({ plan, onSave }: PlanDetailsProps) {
                                             <Input
                                                 id={`${plan.id}-${online}`}
                                                 type="number"
+                                                max={
+                                                    online === "maxUsers" && userLicenseCap != null
+                                                        ? userLicenseCap
+                                                        : online === "maxCompanies" && companyLicenseCap != null
+                                                          ? companyLicenseCap
+                                                          : undefined
+                                                }
                                                 value={String(Number.isFinite(onlineNum) ? onlineNum : 0)}
                                                 onChange={(e) => {
                                                     const raw = e.target.value;
                                                     handleEntitlementChange(online, raw === "" ? 0 : Number(raw));
                                                 }}
-                                                placeholder="-1 = unlimited"
+                                                placeholder={
+                                                    (online === "maxUsers" && userLicenseCap != null) ||
+                                                    (online === "maxCompanies" && companyLicenseCap != null)
+                                                        ? `max ${online === "maxUsers" ? userLicenseCap : companyLicenseCap}`
+                                                        : "-1 = unlimited"
+                                                }
                                                 disabled={onlineDisabled}
+                                                className={
+                                                    (online === "maxUsers" && planValueExceedsLicense(onlineNum, userLicenseCap)) ||
+                                                    (online === "maxCompanies" && planValueExceedsLicense(onlineNum, companyLicenseCap))
+                                                        ? "border-destructive"
+                                                        : undefined
+                                                }
                                             />
                                         </div>
                                         <div className="space-y-1">
@@ -802,13 +899,31 @@ export function PlanDetails({ plan, onSave }: PlanDetailsProps) {
                                             <Input
                                                 id={`${plan.id}-${local}`}
                                                 type="number"
+                                                max={
+                                                    local === "maxUsersLocal" && userLicenseCap != null
+                                                        ? userLicenseCap
+                                                        : local === "maxCompaniesLocal" && companyLicenseCap != null
+                                                          ? companyLicenseCap
+                                                          : undefined
+                                                }
                                                 value={String(Number.isFinite(localNum) ? localNum : 0)}
                                                 onChange={(e) => {
                                                     const raw = e.target.value;
                                                     handleEntitlementChange(local, raw === "" ? 0 : Number(raw));
                                                 }}
-                                                placeholder="-1 = unlimited"
+                                                placeholder={
+                                                    (local === "maxUsersLocal" && userLicenseCap != null) ||
+                                                    (local === "maxCompaniesLocal" && companyLicenseCap != null)
+                                                        ? `max ${local === "maxUsersLocal" ? userLicenseCap : companyLicenseCap}`
+                                                        : "-1 = unlimited"
+                                                }
                                                 disabled={pairDisabled}
+                                                className={
+                                                    (local === "maxUsersLocal" && planValueExceedsLicense(localNum, userLicenseCap)) ||
+                                                    (local === "maxCompaniesLocal" && planValueExceedsLicense(localNum, companyLicenseCap))
+                                                        ? "border-destructive"
+                                                        : undefined
+                                                }
                                             />
                                         </div>
                                     </div>

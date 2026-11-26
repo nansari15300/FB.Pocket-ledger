@@ -82,33 +82,17 @@ function pushGroupByType(group: GroupWithType, buckets: {
   }
 }
 
-export function PartyGroupList({
-  groups,
-  searchTerm,
-  selectedGroup,
-  onSelectGroup,
-  collapsible = true,
-  pendingApprovalByGroupId = {},
-  getItemHref,
-  quickFilter: quickFilterProp,
-  onQuickFilterChange,
-  hideQuickFilterBar = false,
-  /** Mobile party page: category headers footer me — scroll me sirf cards */
-  hideCategoryHeaders = false,
-  icPeerCompanyRows = [],
-  selectedIcPeerCompanyId = null,
-  selectedIcMemberAccountId = null,
-  onSelectIcCompanyGroup,
-  pendingApprovalByPartyId = {},
-  groupMembersByGroupId = {},
-  selectedGroupMemberFilterId = null,
-  moveAccountsEnabled = false,
-  onMoveAccountToGroup,
-  canMoveMember,
-  onMoveGroupToGroup,
-  canMoveGroup,
-  allGroupsForMove,
-}: {
+export function PartyGroupList(props: PartyGroupListInnerProps) {
+  return <PartyGroupListInner {...props} collapsible={props.collapsible ?? true} />;
+}
+
+/** Module-level constants — component default `= {}` / `= []` har render par naya object deta hai
+ *  aur `useMemo` deps me daalne par infinite render loop bana deta hai. */
+const EMPTY_PARTY_MEMBERS_BY_GROUP: Record<string, Party[]> = {};
+const EMPTY_PENDING_BY_ID: Record<string, number> = {};
+const EMPTY_PARTY_ROWS: Party[] = [];
+
+type PartyGroupListInnerProps = {
   groups: Group[];
   searchTerm: string;
   selectedGroup: Group | null;
@@ -120,10 +104,9 @@ export function PartyGroupList({
   /** When provided, use Link for navigation (mobile/Capacitor) – ensures details page opens reliably */
   getItemHref?: (group: Group) => string | undefined;
   quickFilter?: EntityListQuickFilter;
-  onQuickFilterChange?: (next: EntityListQuickFilter) => void;
+  onQuickFilterChange?: (filter: EntityListQuickFilter) => void;
   hideQuickFilterBar?: boolean;
   hideCategoryHeaders?: boolean;
-  /** Groups tab — IC Company 3-level tree (level 2 peer companies). */
   icPeerCompanyRows?: Party[];
   selectedIcPeerCompanyId?: string | null;
   selectedIcMemberAccountId?: string | null;
@@ -138,7 +121,33 @@ export function PartyGroupList({
   onMoveGroupToGroup?: (sourceGroupId: string, targetGroupId: string) => void | Promise<void>;
   canMoveGroup?: (group: Group) => boolean;
   allGroupsForMove?: Group[];
-}) {
+};
+
+function PartyGroupListInner(props: PartyGroupListInnerProps) {
+  const groups = props.groups;
+  const searchTerm = props.searchTerm;
+  const selectedGroup = props.selectedGroup;
+  const onSelectGroup = props.onSelectGroup;
+  const collapsible = props.collapsible;
+  const pendingApprovalByGroupId = props.pendingApprovalByGroupId ?? EMPTY_PENDING_BY_ID;
+  const getItemHref = props.getItemHref;
+  const quickFilterProp = props.quickFilter;
+  const onQuickFilterChange = props.onQuickFilterChange;
+  const hideQuickFilterBar = props.hideQuickFilterBar ?? false;
+  const hideCategoryHeaders = props.hideCategoryHeaders ?? false;
+  const icPeerCompanyRows = props.icPeerCompanyRows ?? EMPTY_PARTY_ROWS;
+  const selectedIcPeerCompanyId = props.selectedIcPeerCompanyId ?? null;
+  const selectedIcMemberAccountId = props.selectedIcMemberAccountId ?? null;
+  const onSelectIcCompanyGroup = props.onSelectIcCompanyGroup;
+  const pendingApprovalByPartyId = props.pendingApprovalByPartyId ?? EMPTY_PENDING_BY_ID;
+  const groupMembersByGroupId = props.groupMembersByGroupId ?? EMPTY_PARTY_MEMBERS_BY_GROUP;
+  const selectedGroupMemberFilterId = props.selectedGroupMemberFilterId ?? null;
+  const moveAccountsEnabled = props.moveAccountsEnabled ?? false;
+  const onMoveAccountToGroup = props.onMoveAccountToGroup;
+  const canMoveMember = props.canMoveMember;
+  const onMoveGroupToGroup = props.onMoveGroupToGroup;
+  const canMoveGroup = props.canMoveGroup;
+  const allGroupsForMove = props.allGroupsForMove;
   const { formatCurrency } = useDate();
   const lastVoucherMsById = useLastVoucherMsByEntityId();
   const { hideSettled, setHideSettled } = useEntityListHideSettled();

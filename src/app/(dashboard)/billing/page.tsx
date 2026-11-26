@@ -93,6 +93,8 @@ import {
   type SubscriptionTermKey,
 } from "@/lib/subscriptionPlanMath";
 import { getBillingApiUrl, getLocalDevAwareBillingApiUrl } from "@/lib/billingApiOrigin";
+import type { CountryWalletPublic } from "@/lib/countryWallets";
+import { plWalletPayUrl } from "@/lib/plWalletPayUrl";
 
 /** Dev localhost: plan-change must hit local Next API (stackOnExpiry fix). Hosted still has old zero-net. */
 function planChangeCheckoutApiUrl(): string {
@@ -298,18 +300,28 @@ function PaidPlanBasicColumnLockedNotice() {
 }
 
 /** `/api/payments/gateway-status` — null = abhi load; tab tak radios enable (flash avoid). */
-type BillingGatewayAvailability = { stripe: boolean; khalti: boolean; esewa: boolean };
+type BillingGatewayAvailability = {
+  stripe: boolean;
+  khalti: boolean;
+  esewa: boolean;
+  wallets: CountryWalletPublic[];
+};
 
 function firstAvailableBillingGateway(
   ga: BillingGatewayAvailability | null,
-  preferred: "stripe" | "khalti" | "esewa"
-): "stripe" | "khalti" | "esewa" {
+  preferred: string
+): string {
   if (!ga) return preferred;
-  if (ga[preferred]) return preferred;
+  if (preferred === "stripe" || preferred === "khalti" || preferred === "esewa") {
+    if (ga[preferred]) return preferred;
+  } else if (ga.wallets?.some((w) => w.id === preferred)) {
+    return preferred;
+  }
   for (const g of ["stripe", "khalti", "esewa"] as const) {
     if (ga[g]) return g;
   }
-  return "stripe";
+  const w = ga.wallets?.[0];
+  return w?.id || "stripe";
 }
 
 type CheckoutFormProps = {
@@ -511,7 +523,8 @@ function CheckoutForm({
   networkOnline = true,
   gatewayAvailability = null,
 }: CheckoutFormProps) {
-  const [gateway, setGateway] = useState<"stripe" | "khalti" | "esewa">("stripe");
+  const [gateway, setGateway] = useState("stripe");
+  const extraWallets = gatewayAvailability?.wallets ?? [];
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   useEffect(() => {
@@ -560,6 +573,48 @@ function CheckoutForm({
     }
     setIsLoading(true);
     try {
+      const extra = extraWallets.find((w) => w.id === gateway);
+      if (extra) {
+        const res = await fetch(plWalletPayUrl("checkout"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(await getServerLoginBillingAuthHeader()) },
+          body: JSON.stringify({
+            walletId: extra.id,
+            planId: plan.id,
+            companyId: companyId.trim(),
+            billingRegion,
+            subscriptionTermKey: termKey,
+          }),
+        });
+        const data = (await res.json()) as {
+          error?: string;
+          pendingId?: string;
+          instructions?: string;
+          merchant?: string;
+          amount?: number;
+          currency?: string;
+          autoConfirm?: boolean;
+          webhookUrl?: string;
+          walletName?: string;
+        };
+        if (!res.ok) throw new Error(data.error || "Wallet checkout failed.");
+        toast({
+          title: extra.engine === "webhook" ? "Pay, then it confirms itself" : "Pay, then wait for confirm",
+          description: [
+            data.walletName || extra.name,
+            data.merchant ? `Pay to ${data.merchant}` : null,
+            data.amount != null ? `${data.currency || ""} ${data.amount}`.trim() : null,
+            data.instructions,
+            `Ref: ${data.pendingId}`,
+            extra.engine === "webhook"
+              ? "This wallet auto-confirms when the gateway calls the webhook with this Ref and the secret."
+              : "After you pay, the server admin confirms this Ref in Payments.",
+          ]
+            .filter(Boolean)
+            .join(" — "),
+        });
+        return;
+      }
       // Online-only: server route JSON; optional NEXT_PUBLIC_BILLING_API_ORIGIN for static shell → hosted API
       const res = await fetch(getBillingApiUrl("/api/payments/initiate"), {
         method: "POST",
@@ -649,20 +704,23 @@ function CheckoutForm({
     }
   }
 
+  const extraSelected = extraWallets.find((w) => w.id === gateway);
   const gatewayBlocked =
     gatewayAvailability != null &&
-    !(gateway === "stripe"
-      ? gatewayAvailability.stripe
-      : gateway === "khalti"
-        ? gatewayAvailability.khalti
-        : gatewayAvailability.esewa);
+    !(extraSelected
+      ? true
+      : gateway === "stripe"
+        ? gatewayAvailability.stripe
+        : gateway === "khalti"
+          ? gatewayAvailability.khalti
+          : gatewayAvailability.esewa);
 
-  const payLabel = `pay with ${gateway}`;
+  const payLabel = extraSelected ? `pay with ${extraSelected.name}` : `pay with ${gateway}`;
 
   return (
     <div className="mt-8 border-t pt-8">
       <h3 className="text-xl font-semibold mb-4">Select Payment Method</h3>
-      <RadioGroup value={gateway} onValueChange={(val) => setGateway(val as "stripe" | "khalti" | "esewa")} className="flex flex-wrap items-center gap-4 mb-6">
+      <RadioGroup value={gateway} onValueChange={(val) => setGateway(val)} className="flex flex-wrap items-center gap-4 mb-6">
         <Label
           htmlFor="stripe"
           className={cn(
@@ -696,6 +754,22 @@ function CheckoutForm({
           <RadioGroupItem value="esewa" id="esewa" disabled={!esewaOk} />
           eSewa
         </Label>
+        {extraWallets.map((w) => (
+          <Label
+            key={w.id}
+            htmlFor={`wallet-${w.id}`}
+            className={cn(
+              "flex items-center gap-2 border rounded-lg p-3 cursor-pointer",
+              gateway === w.id && "border-primary"
+            )}
+          >
+            <RadioGroupItem value={w.id} id={`wallet-${w.id}`} />
+            {w.name}
+            {w.country && w.country !== "All" ? (
+              <span className="text-[11px] text-muted-foreground">({w.country})</span>
+            ) : null}
+          </Label>
+        ))}
       </RadioGroup>
       {!networkOnline ? (
         <p className="mb-3 text-sm text-muted-foreground">Back online to subscribe or complete checkout.</p>
@@ -843,7 +917,7 @@ function BillingPageInner() {
   const [mobilePlanIndex, setMobilePlanIndex] = useState(0);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   /** Gateway for paid-plan renew (proration): matches Basic checkout — admin/history get separate rows per gateway. */
-  const [prorationGateway, setProrationGateway] = useState<"stripe" | "khalti" | "esewa">("stripe");
+  const [prorationGateway, setProrationGateway] = useState<string>("stripe");
   /** Must tick Terms before renew/upgrade gateway pay. */
   const [billingPayTermsAccepted, setBillingPayTermsAccepted] = useState(false);
   /** Bank Settings + env merge — kaunse gateway initiate / plan-change chala sakte hain. */
@@ -1030,7 +1104,8 @@ function BillingPageInner() {
       const stripe = data.stripe === true;
       const khalti = data.khalti === true;
       const esewa = data.esewa === true;
-      setGatewayAvailability({ stripe, khalti, esewa });
+      const wallets = Array.isArray(data.wallets) ? (data.wallets as CountryWalletPublic[]) : [];
+      setGatewayAvailability({ stripe, khalti, esewa, wallets });
     } catch {
       /* offline: null = purana behaviour */
     }
