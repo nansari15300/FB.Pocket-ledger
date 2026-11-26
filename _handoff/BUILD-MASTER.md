@@ -1,6 +1,6 @@
 # Build Master — handoff
 
-अंतिम अपडेट: 2026-11-03 23:05 (Asia/Kathmandu, UTC+5:45)
+अंतिम अपडेट: 2026-11-26 10:10 (Asia/Kathmandu, UTC+5:45)
 
 > पहले `_handoff\NIYAM.md` और `TAURI-MIGRATION.md` पढ़ें। यह file सिर्फ़ paths और variable NAMES रखती है — कोई password, key, token या `.env` value यहाँ कभी नहीं लिखनी।
 
@@ -111,3 +111,19 @@ Parameters (default नहीं, ज़रूरी): `-EncryptedKeystorePath`,
 ## अगला कदम
 - Key Manager से encrypted keystore path + cipher; keystore alias/store/key password का source; Firebase key files पर user का फ़ैसला।
 - user की हाँ के बाद पहले `-DryRun`, फिर असली build; fingerprint यहाँ दर्ज करना।
+
+## Main catalog auto-deploy (2026-11-26)
+
+Ansari Ji की हाँ (26 Nov 09:41, "ok"): `release` branch पर auto-deploy अब sub-server के `pb_public\app` में copy नहीं करता। Web pack Main server के release catalog में publish होता है, और sub-server के Hosting → Update Status पर दिखता है। Live `/app` folders इस script से नहीं बदलते।
+
+- **Script:** `D:\PocketLedger-Sync\release-deploy.ps1` (swap/cleanup `.cjs` files अपनी जगह हैं, अब call नहीं होतीं)
+- **Rollback copy:** `D:\PocketLedger-Sync\pre-master-20261126\`
+- **Build worktree:** `D:\PocketLedger-ReleaseBuild` (local branch `release`, tracks `origin/release`)
+- **Gates:** पहले जैसे — fetch/ff, secret scan (names only), `tsc --noEmit`, `node scripts/build-static.js --fast` (`PL_SERVER_PACK`, `STATIC_BUILD`, `NEXT_PUBLIC_STATIC_BUILD`, `NEXT_PUBLIC_PL_SERVER_PACK`, `WEB_APP_BASE_PATH=/app`), `out\index.html` + `/app/_next/` verify
+- **Publish:** `out\` का zip (`index.html` zip root पर) → `POST http://127.0.0.1:8786/api/releases/upload` (`platform=web`, version `src\config\releaseVersion.ts`, note = commit short sha, `published=true`). Header name: `X-PL-Main-Token`. Token file path: `C:\Project Pocket-ledger_ERP\Server\main-server\data\main-token.txt` (value कभी log/status/handoff में नहीं)
+- **Flags:** `-DryRun` = build+zip, upload नहीं; `-Force` = पहले deploy/fail हुए commit पर भी चलाना
+- **पहला watched upload (26 Nov 10:05 Nepal):** commit `fa790cb5`, file `web-1.1.86-fa790cb5.zip`, 14,587,765 bytes, published. `GET /api/public/updates` पर दिखा। np.pocket-ledger.com/app और admin.pocket-ledger.com/app पहले जैसे रहे (`packedAt` 2026-11-22T05:57:57.643Z, version 1.1.86)
+- **Task:** `\PocketLedger Release Deploy` काम के दौरान Disabled थी, success के बाद फिर Enabled
+- **नोट:** `origin/release` पर `package-lock.json` और `package.json` sync में नहीं हैं (`enhanced-resolve` / `tapable`). Script `npm ci` fail होने पर `npm install --no-audit --no-fund --no-package-lock` चलाती है, ताकि worktree dirty न हो। Lock file git में नहीं बदली गई
+- **इस कदम में नहीं:** EXE/APK/Tauri/server pack/subweb upload; Main `/app` को अपना folder देना; `/app` को सिर्फ़ My Company से खोलना; sub-server का apply/self-update — ये Server Master / अलग हाँ के काम हैं
+- **Bot-data copy:** `C:\Project Pocket-ledger_ERP\_bot-data\Build Master\2026-11-26\`
