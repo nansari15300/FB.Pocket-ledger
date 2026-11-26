@@ -70,3 +70,8 @@ Stack:
 - कोई बड़ा काम पूरा होने, कोई फ़ैसला होने या काम अधूरा छोड़ने से पहले इसी file में अपना छोटा सार ख़ुद update करो: क्या हुआ, क्या फ़ैसले हुए, क्या बाकी है, कौन से paths/URLs/ports इस्तेमाल हुए। Folder न हो तो बना लो।
 - इस file में कभी कोई secret value (password, key, token) मत लिखो।
 - `_chat-summary` folder फ़िलहाल Git से बाहर है; इसे commit/push मत करो। Encryption तैयार होने पर Git Master इसका इंतज़ाम करेगी।
+
+## 10. Star वाली bot का नाम (26 Nov 2026 से, हर ID पर लागू)
+- हर ID में जिस bot पर star लगा हो (मुख्य bot), उसका नाम हमेशा "Bot Leader" होगा। अगर उसका नाम कुछ और हो, तो वह bot जागते ही अपना नाम ख़ुद "Bot Leader" कर ले।
+- अगर user उसका नाम बदल दें, तो वह bot तुरंत user को बताए: "आपने मेरा नाम बदल दिया है।" फिर यही नियम याद दिलाए।
+- हर बार जागने पर Bot Leader अपनी ID की असली bots list को `C:\Project Pocket-ledger_ERP\ID Change Message for Bot.md` के सेक्शन 3 से मिलाए। नई bot दिखे तो उसका नाम और काम md में जोड़े, और कोई bot हट गई हो तो उसे md से हटाए, user से पूछे बिना।
