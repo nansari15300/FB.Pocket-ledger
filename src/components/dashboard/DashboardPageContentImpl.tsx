@@ -2729,7 +2729,6 @@ export function DashboardPageContentImpl() {
         >
           <DaybookReport
             isPanelVisible={visibleCard === "daybook"}
-            welcomeRibbonDateNav={!isMobile}
             dashboardEmbedded
             footerPortalTarget={daybookFooterSlot}
             onFullScreenToggle={() => setDaybookWindowExpanded((expanded) => !expanded)}
@@ -2973,7 +2972,6 @@ export function DashboardPageContentImpl() {
           <DashboardWelcomeFooterBanner
             embedded
             lineSections
-            showDaybookDateNav={visibleCard === "daybook"}
             greeting={greeting}
             displayName={welcomeDisplayName}
             newYearInfo={newYearInfo}

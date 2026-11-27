@@ -889,6 +889,12 @@ export function DaybookReport({
                     >
                         <div className="flex min-h-9 flex-wrap items-center gap-2">
                             {/* Daybook only: single date system – show either BS or AD calendar, not both. Date select par calendar auto-close. */}
+                            {/* PC: ‹ [date] › [Today]; mobile par arrows hide */}
+                            {!isMobile && !welcomeRibbonDateNav && (
+                                <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="Previous day" title="Previous day" onClick={() => shiftDaybookDateBy(-1)}>
+                                    <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                            )}
                             {dateSystem === 'BS' && (
                                 <BsDatePicker
                                   valueAD={daybookDate}
@@ -924,16 +930,10 @@ export function DaybookReport({
                                     </PopoverContent>
                                 </Popover>
                             )}
-                            {/* PC: date ↔ Today ke beech prev/next din; mobile par hide */}
                             {!isMobile && !welcomeRibbonDateNav && (
-                                <>
-                                    <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="Previous day" onClick={() => shiftDaybookDateBy(-1)}>
-                                        <ChevronLeft className="h-4 w-4" />
-                                    </Button>
-                                    <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="Next day" onClick={() => shiftDaybookDateBy(1)}>
-                                        <ChevronRight className="h-4 w-4" />
-                                    </Button>
-                                </>
+                                <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="Next day" title="Next day" disabled={!daybookDate || startOfDay(daybookDate).getTime() >= startOfDay(new Date()).getTime()} onClick={() => shiftDaybookDateBy(1)}>
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
                             )}
                             <Button
                               variant="outline"
