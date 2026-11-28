@@ -1377,6 +1377,21 @@ function maybeAdvanceNarrationMonth(rawNarration: unknown, targetMonth: number):
   return replaced ? out : base;
 }
 
+function recurringIncreaseTopic(rawNarration: unknown): string {
+  const source = stripRecurringNarrationSearchSuffix(String(rawNarration || "")).trim();
+  const firstPart = source.split(/[|,;:.\n]|\s+[-–—]\s+/)[0]?.trim() || source;
+  const topic = firstPart.split(/\s+(?:for|from|in|on|at)\s+/i)[0]?.trim() || firstPart;
+  return topic.split(/\s+/).filter(Boolean).slice(0, 3).join(" ") || "Amount";
+}
+
+function recurringIncreaseDateLabel(date: Date, calendar: RecurringScheduleCalendar): string {
+  if (calendar === "AD") {
+    return `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}/${date.getFullYear()}`;
+  }
+  const bs = adToBs(atNoonLocal(date));
+  return `${bs.d}-${NEPALI_MONTHS[bs.m - 1] || "Baisakh"}-${bs.y}`;
+}
+
 /** Template se effective-from parse; invalid => null (bump hamesha). */
 function parseRateAdjustEffectiveFrom(iso: unknown): Date | null {
   if (iso == null || typeof iso !== "string" || !String(iso).trim()) return null;
@@ -1573,20 +1588,25 @@ export function applyRecurringRateAdjustment(
 
   const out = { ...voucher };
   const numKeys = ["total", "amount", "subTotal", "tax", "discount", "credit", "debit"] as const;
+  const adjStored = (value: unknown, skipZero = false): unknown => {
+    if (typeof value === "number" && Number.isFinite(value)) return skipZero && value === 0 ? value : adj(value);
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value.replace(/,/g, "").trim());
+      if (Number.isFinite(parsed)) return skipZero && parsed === 0 ? value : adj(parsed);
+    }
+    return value;
+  };
   for (const k of numKeys) {
     const x = out[k];
-    if (typeof x === "number" && Number.isFinite(x)) (out as any)[k] = adj(x);
+    const next = adjStored(x);
+    if (next !== x) (out as any)[k] = next;
   }
 
   const entries = out.entries;
   if (Array.isArray(entries)) {
     (out as any).entries = entries.map((e: Record<string, unknown>) => {
       // Fixed: 0 wali side pe +amount mat lagao — journal Dr/Cr unbalance ho jata tha.
-      const adjSide = (n: unknown) => {
-        if (typeof n !== "number" || !Number.isFinite(n)) return n;
-        if (m === "fixed" && n === 0) return n;
-        return adj(n);
-      };
+      const adjSide = (n: unknown) => m === "fixed" ? adjStored(n, true) : adjStored(n);
       return { ...e, debit: adjSide(e.debit), credit: adjSide(e.credit) };
     });
   }
@@ -1597,13 +1617,70 @@ export function applyRecurringRateAdjustment(
       const next = { ...li };
       for (const lk of ["amount", "rate", "quantity", "tax", "discount"]) {
         const val = next[lk];
-        if (typeof val === "number" && Number.isFinite(val)) (next as any)[lk] = adj(val);
+        const adjusted = adjStored(val);
+        if (adjusted !== val) (next as any)[lk] = adjusted;
       }
       return next;
     });
   }
 
   return out;
+}
+
+/** Existing generated vouchers for one selected Auto Monthly template, on/after a new apply-from date. */
+export async function listRecurringVouchersAffectedByRateStart(
+  companyId: string,
+  templateDocId: string,
+  effectiveFrom: Date,
+): Promise<Array<{ id: string; voucherNumber: string; date: Date; total: number }>> {
+  if (!companyId?.trim() || !templateDocId?.trim() || Number.isNaN(effectiveFrom.getTime())) return [];
+  const rows = new Map<string, Record<string, unknown>>();
+  try {
+    for (const raw of await listCompanyDocsFromBrowserDb(companyId, "vouchers")) {
+      const row = raw as Record<string, unknown>;
+      const id = String(row?.id || "").trim();
+      if (id) rows.set(id, row);
+    }
+  } catch { /* cloud fallback below */ }
+  try {
+    const snap = await getDocs(query(
+      collection(firestore, `companies/${companyId}/vouchers`),
+      where("recurringMeta.templateId", "==", templateDocId),
+      limit(400),
+    ));
+    for (const d of snap.docs) rows.set(d.id, { ...d.data(), id: d.id });
+  } catch { /* local results are still useful offline */ }
+  const min = localDayStartMs(effectiveFrom);
+  return [...rows.entries()].flatMap(([id, row]) => {
+    const meta = row.recurringMeta as Record<string, unknown> | undefined;
+    if (row.isDeleted === true || meta?.templateId !== templateDocId || !meta?.periodKey) return [];
+    const date = parseFirestoreDateFieldToJsDate(row.date);
+    if (!date || localDayStartMs(date) < min) return [];
+    return [{ id, voucherNumber: String(row.voucherNumber || id), date, total: primaryMonetaryTotalFromVoucher(row) }];
+  }).sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+/** Add only the difference between old and new fixed Auto Monthly settings to an existing voucher. */
+export async function setGeneratedRecurringVoucherFixedAmount(
+  companyId: string,
+  voucherId: string,
+  amountToAdd: number,
+  fallbackSourceVoucherId?: string,
+): Promise<void> {
+  if (!Number.isFinite(amountToAdd)) return;
+  const row = await getVoucherRecordForRecurring(companyId, voucherId);
+  if (!row) throw new Error(`Voucher ${voucherId} could not be loaded.`);
+  const meta = row.recurringMeta as Record<string, unknown> | undefined;
+  const sourceVoucherId = String(meta?.sourceVoucherId || fallbackSourceVoucherId || "").trim();
+  const source = sourceVoucherId ? await getVoucherRecordForRecurring(companyId, sourceVoucherId) : null;
+  if (!source) throw new Error(`Source voucher for ${String(row.voucherNumber || voucherId)} could not be loaded.`);
+  const target = applyRecurringRateAdjustment(source, "fixed", amountToAdd);
+  const patch: Record<string, unknown> = {};
+  for (const key of ["total", "amount", "subTotal", "tax", "discount", "credit", "debit", "entries", "lineItems"]) {
+    if (Object.prototype.hasOwnProperty.call(target, key)) patch[key] = target[key];
+  }
+  const { patchVoucherFields } = await import("./voucherActionsClient");
+  await patchVoucherFields(companyId, voucherId, patch);
 }
 
 /** Journal lines se Dr jod — saved (`debit`) + draft (`type`+`amount`); accrual / projected amount yahi. */
@@ -2473,10 +2550,18 @@ async function createOneRecurringVoucherFromTemplate(
     }
   }
   const narrCore = stripRecurringNarrationSearchSuffix(cleanedNarration || `Auto voucher for ${dueMonthName}`);
+  const isAnnualIncreaseVoucher =
+    applyBump &&
+    (template.rateAdjustCadence === "every_bs_year" ||
+      ((template.rateAdjustCadence ?? "every_bs_month") === "every_bs_month" && effectiveRateAdjustEveryN(template) >= 12));
+  const increaseNarrationSuffix = isAnnualIncreaseVoucher && eff
+    ? `${recurringIncreaseTopic(sourceVoucher.narration)} Increased from ${recurringIncreaseDateLabel(eff, template.scheduleCalendar || "BS")}`
+    : null;
+  const narrWithIncrease = increaseNarrationSuffix ? `${narrCore} ${increaseNarrationSuffix}`.trim() : narrCore;
   // Type tail narration me (jrnl / sale …); clone body + template dono se type fallback.
   const narrType = String(sourceVoucher.type || template.sourceVoucherType || "journal").trim();
   const narrSuffix = formatRecurringNarrationSearchSuffix(chainKey, srcTagVoucherNo, narrType, nextVoucherNumber);
-  const narrationFinal = narrCore + (narrSuffix || "");
+  const narrationFinal = narrWithIncrease + (narrSuffix || "");
   const generatedVoucherId =
     String(opts?.voucherIdOverride || "").trim() ||
     `voucher_${Date.now().toString(36)}_${clientRandomUUID().slice(0, 12)}`;
@@ -2498,6 +2583,7 @@ async function createOneRecurringVoucherFromTemplate(
       generationKind: "recurring_bs_monthly",
       chainKey,
       sourceVoucherNumber: srcTagVoucherNo,
+      ...(increaseNarrationSuffix ? { increaseNarrationSuffix } : {}),
     },
   };
 

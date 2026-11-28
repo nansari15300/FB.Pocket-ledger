@@ -137,6 +137,9 @@ import { resolvePlanIdForActiveCompany } from "@/lib/accountPlanForOwner";
 import { useLivePlans, getPlanFromPlans } from "@/hooks/useLivePlans";
 import { useNavigatorOnline } from "@/hooks/useNavigatorOnline";
 import { useDate } from "@/hooks/useDate";
+import { usePlI18nOptional } from "@/contexts/PlI18nContext";
+import { pickIntroCopy } from "@/lib/i18n/introCopy";
+import { lookupServerLang } from "@/lib/i18n/serverLangLookup";
 import { recurringAutoVoucherLabels } from "@/lib/calendarDisplayLabels";
 import { chromeProPillCn } from "@/lib/chromePillButton";
 import { armDashboardRedirectGuard } from "@/lib/protectFromUnwantedDashboardRedirect";
@@ -153,7 +156,7 @@ import {
   getRecurringTemplateDocIdForVoucher,
   getRecurringTemplateForVoucher,
   listRecurringVouchersAffectedByRateStart,
-  adjustGeneratedRecurringVoucherFixedAmount,
+  setGeneratedRecurringVoucherFixedAmount,
   debugMissingRecurringPeriodScan,
   listMissingRecurringPeriodSlotsAscending,
   projectNextRecurringMonetaryTotal,
@@ -187,6 +190,13 @@ function recurringRatePayload(mode: RecurringRateAdjustMode, raw: string): numbe
   const n = parseFloat(String(raw).trim());
   if (!Number.isFinite(n)) return null;
   return n;
+}
+
+/** UI labels follow UI language; informational copy uses `pickIntroCopy` separately. */
+function recurringUiCopy(uiLang: string, copies: { en: string; hi: string; ne: string }): string {
+  if (uiLang === "hi") return copies.hi;
+  if (uiLang === "ne") return copies.ne;
+  return lookupServerLang(uiLang, copies.en) || copies.en;
 }
 
 /** % / fixed bump: kaun BS din se lagu ho — Firestore ISO; none ya date khaali => null. */
@@ -1703,6 +1713,8 @@ function writeStoredDialogBounds(storageKey: string, bounds: DialogBounds) {
 const DESKTOP_DIALOG_RESIZE_HANDLE_CN =
   "pointer-events-auto z-[35] hover:bg-primary/25 transition-colors";
 export function AddVoucherDialog(props: any) {
+  const plI18n = usePlI18nOptional();
+  const introLang = plI18n?.intro || "en";
   const isAttachmentProcessing = useVoucherAttachmentProcessing();
   /** Compare-before-sync jaisi jagah nested stack: `false` se parent non-modal Compare band hone par saath na band ho. */
   const {
@@ -1833,7 +1845,7 @@ export function AddVoucherDialog(props: any) {
   ), [companyId, galleryRunnerControl.active, galleryRunnerControl.available, galleryRunnerControl.enabled, galleryRunnerControl.held, galleryRunnerControl.mode]);
   /** Company Display settings se AD/BS/Both — recurring dialog labels + apply-from picker. */
   const { dateSystem, formatDate, formatDateBS, formatCurrencyForPrint } = useDate();
-  const calLab = useMemo(() => recurringAutoVoucherLabels(dateSystem), [dateSystem]);
+  const calLab = useMemo(() => recurringAutoVoucherLabels(dateSystem, introLang), [dateSystem, introLang]);
   const router = useRouter();
   const pathname = usePathname();
   const { can, canEditRecord, canDeleteVoucher } = usePermissions();
@@ -1970,7 +1982,7 @@ export function AddVoucherDialog(props: any) {
   const [autoMonthlyYearlyBaseAnchorAd, setAutoMonthlyYearlyBaseAnchorAd] = useState<Date | undefined>(undefined);
   const [recurringSettingsOpen, setRecurringSettingsOpen] = useState(false);
   const [savingRecurringSettings, setSavingRecurringSettings] = useState(false);
-  const [affectedRecurringVouchers, setAffectedRecurringVouchers] = useState<Array<{ id: string; voucherNumber: string; date: Date; total: number; delta: number }> | null>(null);
+  const [affectedRecurringVouchers, setAffectedRecurringVouchers] = useState<Array<{ id: string; voucherNumber: string; date: Date; total: number; targetValue: number }> | null>(null);
   const [generatingRecurringNow, setGeneratingRecurringNow] = useState(false);
   /** Generate / Settings save / main Save: 2+ missing months — tick wale batch; koi tick nahi = sirf latest due ek. */
   const [recurringGeneratePicker, setRecurringGeneratePicker] = useState<{
@@ -4418,16 +4430,16 @@ export function AddVoucherDialog(props: any) {
 
   const commitRecurringSettingsSave = useCallback(async (updateExistingAmounts: boolean) => {
     const items = affectedRecurringVouchers || [];
-    if (updateExistingAmounts && companyId?.trim()) {
-      for (const item of items) await adjustGeneratedRecurringVoucherFixedAmount(companyId, item.id, item.delta);
-    }
     const ok = await persistRecurringScheduleRateOnly();
     if (ok) {
+      if (updateExistingAmounts && companyId?.trim()) {
+        for (const item of items) await setGeneratedRecurringVoucherFixedAmount(companyId, item.id, item.targetValue, String(voucher?.id || "").trim());
+      }
       const vid = String(voucher?.id || "").trim();
       if (committedAutoMonthlyEnabled === true && companyId?.trim() && vid) {
-        toast.success("Auto Monthly settings saved.");
+        toast.success(updateExistingAmounts ? "Auto Monthly settings saved and existing voucher amounts updated." : "Auto Monthly settings saved.");
         void refreshRecurringTemplateMeta(companyId, vid);
-        if (!apkOfflineViewOnly && user?.uid && canGenerateRecurringOnVoucher && company) {
+        if (!updateExistingAmounts && !apkOfflineViewOnly && user?.uid && canGenerateRecurringOnVoucher && company) {
           try {
             const tpl = await getRecurringTemplateForVoucher(companyId, vid);
             const activeLine = String(tpl?.cloneSourceVoucherId || tpl?.sourceVoucherId || "").trim();
@@ -4436,11 +4448,14 @@ export function AddVoucherDialog(props: any) {
         }
       } else toast.success("Schedule saved. Save the voucher to apply Auto Monthly.");
       setRecurringSettingsOpen(false);
+      if (updateExistingAmounts) {
+        setDialogOpen(false);
+      }
     }
     setAffectedRecurringVouchers(null);
   }, [affectedRecurringVouchers, companyId, persistRecurringScheduleRateOnly,
     voucher?.id, committedAutoMonthlyEnabled, refreshRecurringTemplateMeta, apkOfflineViewOnly, user?.uid,
-    canGenerateRecurringOnVoucher, company, handlePostSaveMissingRecurringSlots]);
+    canGenerateRecurringOnVoucher, company, handlePostSaveMissingRecurringSlots, setDialogOpen]);
 
   const handleSaveRecurringSettingsClick = useCallback(async () => {
     if (!canEditRecurringOnVoucher || !showVoucherAutoRecurringUi) return;
@@ -4451,14 +4466,8 @@ export function AddVoucherDialog(props: any) {
         const templateId = await getRecurringTemplateDocIdForVoucher(companyId, vid);
         const affected = await listRecurringVouchersAffectedByRateStart(companyId, templateId, autoMonthlyRateEffectiveFromAd);
         if (affected.length) {
-          const oldTemplate = await getRecurringTemplateForVoucher(companyId, vid);
-          const oldAmount = oldTemplate?.rateAdjustMode === "fixed" ? Number(oldTemplate.rateAdjustValue || 0) : 0;
-          const oldEffective = oldTemplate?.rateAdjustEffectiveFrom ? new Date(oldTemplate.rateAdjustEffectiveFrom) : null;
           const nextAmount = recurringRatePayload(autoMonthlyRateMode, autoMonthlyRateValue) || 0;
-          setAffectedRecurringVouchers(affected.map((item) => ({
-            ...item,
-            delta: nextAmount - (oldEffective && !Number.isNaN(oldEffective.getTime()) && item.date >= oldEffective ? oldAmount : 0),
-          })));
+          setAffectedRecurringVouchers(affected.map((item) => ({ ...item, targetValue: nextAmount })));
           return;
         }
       }
@@ -5844,12 +5853,19 @@ export function AddVoucherDialog(props: any) {
       <AlertDialog open={affectedRecurringVouchers !== null} onOpenChange={(open) => {
         if (!open && affectedRecurringVouchers !== null) setAffectedRecurringVouchers(null);
       }}>
-        <AlertDialogContent className="z-[145] max-w-lg">
+        <AlertDialogContent className="z-[145] max-w-lg" overlayClassName="z-[140] bg-black/25 backdrop-blur-sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>पहले से बने Auto Monthly वाउचर मिले</AlertDialogTitle>
+            <AlertDialogTitle>{recurringUiCopy(plI18n?.ui || "en", {
+              en: "Existing Auto Monthly vouchers found",
+              hi: "पहले से बने Auto Monthly वाउचर मिले",
+              ne: "पहिले नै बनेका Auto Monthly भौचरहरू भेटिए",
+            })}</AlertDialogTitle>
             <AlertDialogDescription>
-              चुने हुए अकाउंट के {affectedRecurringVouchers?.length || 0} वाउचर Apply increase from तारीख़ पर या उसके बाद बने हैं।
-              क्या इन वाउचर की राशि नई Amount to add के अनुसार बदलनी है?
+              {pickIntroCopy(introLang, {
+                en: `${affectedRecurringVouchers?.length || 0} voucher(s) for this account were created on or after the Apply increase from date. Do you want to update their amounts using the new Amount to add?`,
+                hi: `चुने हुए अकाउंट के ${affectedRecurringVouchers?.length || 0} वाउचर Apply increase from तारीख़ पर या उसके बाद बने हैं। क्या इन वाउचर की राशि नई Amount to add के अनुसार बदलनी है?`,
+                ne: `छानिएको खाताका ${affectedRecurringVouchers?.length || 0} वटा भौचर Apply increase from मिति वा त्यसपछि बनेका छन्। के यी भौचरको रकम नयाँ Amount to add अनुसार बदल्ने?`,
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="max-h-48 overflow-y-auto rounded-md border p-2 text-sm">
@@ -5861,16 +5877,19 @@ export function AddVoucherDialog(props: any) {
             ))}
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={savingRecurringSettings} onClick={(event) => {
+            <AlertDialogCancel disabled={savingRecurringSettings}>
+              {recurringUiCopy(plI18n?.ui || "en", { en: "Cancel", hi: "रद्द करें", ne: "रद्द गर्नुहोस्" })}
+            </AlertDialogCancel>
+            <AlertDialogAction disabled={savingRecurringSettings} onClick={(event) => {
               event.preventDefault();
               setSavingRecurringSettings(true);
               void commitRecurringSettingsSave(false).catch((e) => toast.error(e instanceof Error ? e.message : "Save failed.")).finally(() => setSavingRecurringSettings(false));
-            }}>No, केवल सेटिंग सेव करें</AlertDialogCancel>
+            }}>{recurringUiCopy(plI18n?.ui || "en", { en: "No, save settings only", hi: "नहीं, केवल सेटिंग सेव करें", ne: "होइन, सेटिङ मात्र सेभ गर्नुहोस्" })}</AlertDialogAction>
             <AlertDialogAction disabled={savingRecurringSettings} onClick={(event) => {
               event.preventDefault();
               setSavingRecurringSettings(true);
               void commitRecurringSettingsSave(true).catch((e) => toast.error(e instanceof Error ? e.message : "Save failed.")).finally(() => setSavingRecurringSettings(false));
-            }}>Yes, राशि बदलें</AlertDialogAction>
+            }}>{recurringUiCopy(plI18n?.ui || "en", { en: "Yes, update amounts", hi: "हाँ, राशि बदलें", ne: "हो, रकम बदल्नुहोस्" })}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
