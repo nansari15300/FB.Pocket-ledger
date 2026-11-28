@@ -3034,6 +3034,8 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
       // (pl_companies the user owns or is a member of). No Firestore listeners.
       let disposed = false;
       let inFlight = false;
+      /** Server answered (or failed) once: from then on `handleSnapshotUpdate` owns the list. */
+      let serverAnswered = false;
       setLoading(true);
       ownedSnapRef.current = null;
       ownedLegacySnapRef.current = null;
@@ -3102,8 +3104,38 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
           }
         } finally {
           inFlight = false;
+          serverAnswered = true;
         }
         if (!disposed) triggerPbUpdate();
+      };
+      // Local-first paint (web reopen): show this device's SQLite company rows and the pinned company
+      // right away; the server pull (`refreshFromServer`) then merges in the background. Display only:
+      // no pruning / revoke / SQLite writes here (that stays in `handleSnapshotUpdate` after the server answered).
+      const hydrateLocalFirst = async () => {
+        try {
+          const rows = (await listLocalCompanies())
+            .filter((c: any) => isCompanyVisibleInMainApp(c))
+            .filter((c) => isLocalCompanyVisibleToAppAccount(c, user))
+            .filter((c) => !isFirebaseCloudRowHiddenInServerSession(c))
+            .filter((c) => !isPocketBaseCompanyPruned(c.id))
+            .map((c) => normalizeLocalCompany(c as unknown as Company));
+          if (disposed || serverAnswered || rows.length === 0) return;
+          latestLocalNormalizedCompaniesRef.current = rows;
+          setAllCompaniesRegistry(rows);
+          setAllCompanies(
+            filterSharedOnlyCompaniesForSuperAdminInMainApp(rows, user, isSuperAdminUser, pathnameRef.current)
+          );
+          const liveId = companyIdLiveRef.current;
+          if (liveId) {
+            const sel = rows.find((c) => c.id === liveId);
+            if (sel) {
+              setCompanyFrom("pbLocalFirst:keepRef", (prev) => keepCompanyRefIfLedgerUnchanged(prev, sel));
+            }
+          }
+          setLoading(false);
+        } catch {
+          /* server pull below still settles the list */
+        }
       };
       const onRootUpdated = () => void refreshFromServer();
       window.addEventListener("pl-pb-company-root-updated", onRootUpdated);
@@ -3118,6 +3150,7 @@ export const CompanyProvider = ({ children }: { children: ReactNode }) => {
       document.addEventListener("visibilitychange", onRegistryVisible);
       window.addEventListener("focus", onRegistryVisible);
       triggerRegistryUpdateRef.current = () => void refreshFromServer();
+      void hydrateLocalFirst();
       void refreshFromServer();
       return () => {
         disposed = true;

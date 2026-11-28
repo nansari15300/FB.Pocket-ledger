@@ -110,7 +110,7 @@ const serwist = new Serwist({
         Boolean(sameOrigin && url.pathname.includes("/_next/static/chunks/")),
       handler: new NetworkFirst({
         cacheName: "pl-next-chunks",
-        networkTimeoutSeconds: 10,
+        networkTimeoutSeconds: 3, // hashed chunks: do not wait 10s on a slow network when a cached copy exists
         plugins: [
           new ExpirationPlugin({
             maxEntries: 128,
