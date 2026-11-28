@@ -89,6 +89,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import BsDatePicker from "@/components/ui/BsDatePicker";
 import { NEPALI_MONTHS, adToBs, bsToAd, getBSMonthDays } from "@/lib/bs-date";
 import { Switch, SWITCH_TRACK_HEIGHT_PX } from "@/components/ui/switch";
@@ -150,6 +152,8 @@ import {
   getPastDueRecurringGapIfAny,
   getRecurringTemplateDocIdForVoucher,
   getRecurringTemplateForVoucher,
+  listRecurringVouchersAffectedByRateStart,
+  adjustGeneratedRecurringVoucherFixedAmount,
   debugMissingRecurringPeriodScan,
   listMissingRecurringPeriodSlotsAscending,
   projectNextRecurringMonetaryTotal,
@@ -242,6 +246,52 @@ function parseAdDateInput(s: string): Date | undefined {
   const [y, m, d] = t.split("-").map((x) => parseInt(x, 10));
   if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return undefined;
   return new Date(y, m - 1, d, 12, 0, 0, 0);
+}
+
+/** Auto Monthly AD field: app ka existing calendar chrome, browser ka native calendar nahi. */
+function AutoMonthlyAdDatePicker({
+  value,
+  onChange,
+  disabled = false,
+  className,
+}: {
+  value?: Date;
+  onChange: (date?: Date) => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const { formatDate } = useDate();
+
+  return (
+    <Popover modal open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={disabled}
+          className={cn("w-full justify-start gap-1.5 font-normal", className)}
+          onClick={() => setOpen(true)}
+          data-theme-detail="date-range"
+        >
+          <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0 truncate">{value ? formatDate(value) : "Pick an AD date"}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="!z-[126] w-auto p-0">
+        <Calendar
+          mode="single"
+          selected={value}
+          onSelect={(date) => {
+            if (date) date.setHours(12, 0, 0, 0);
+            onChange(date);
+            setOpen(false);
+          }}
+          initialFocus
+        />
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 /** Yearly bump month/day = “Apply increase from” calendar date (BS). */
@@ -1884,7 +1934,28 @@ export function AddVoucherDialog(props: any) {
   const [autoMonthlyScheduleBsDay, setAutoMonthlyScheduleBsDay] = useState(32);
   const [autoMonthlyScheduleAdDay, setAutoMonthlyScheduleAdDay] = useState(32);
   const [autoMonthlyScheduleCalendar, setAutoMonthlyScheduleCalendar] = useState<"AD" | "BS">("BS");
+  const [autoMonthlyScheduleConfigured, setAutoMonthlyScheduleConfigured] = useState(false);
   const [scheduleCalendarSwitchTo, setScheduleCalendarSwitchTo] = useState<"AD" | "BS" | null>(null);
+  const [pendingScheduleDay, setPendingScheduleDay] = useState<number | null>(null);
+  const updateScheduleDayFromCalendar = useCallback((calendar: "AD" | "BS", rawDay: number) => {
+    const today = new Date();
+    const bsToday = adToBs(today);
+    if (calendar === "BS") {
+      const bsDay = Math.max(1, Math.min(32, Math.floor(rawDay)));
+      const bsDim = getBSMonthDays(bsToday.y)[bsToday.m - 1] || 30;
+      const adDate = bsToAd({ y: bsToday.y, m: bsToday.m, d: bsDay >= 32 ? bsDim : Math.min(bsDay, bsDim) });
+      setAutoMonthlyScheduleBsDay(bsDay);
+      setAutoMonthlyScheduleAdDay(adDate.getDate());
+    } else {
+      const adDim = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      const adDay = Math.max(1, Math.min(32, Math.floor(rawDay)));
+      const adDate = new Date(today.getFullYear(), today.getMonth(), adDay >= 32 ? adDim : Math.min(adDay, adDim), 12);
+      const bs = adToBs(adDate);
+      const bsDim = getBSMonthDays(bs.y)[bs.m - 1] || 30;
+      setAutoMonthlyScheduleAdDay(adDay);
+      setAutoMonthlyScheduleBsDay(bs.d === bsDim ? 32 : bs.d);
+    }
+  }, []);
   const [autoMonthlyRateMode, setAutoMonthlyRateMode] = useState<RecurringRateAdjustMode>("none");
   const [autoMonthlyRateValue, setAutoMonthlyRateValue] = useState("");
   /** Fixed amount: is BS date se pehle due wale period par bump skip (`rateAdjustEffectiveFrom`). */
@@ -1899,6 +1970,7 @@ export function AddVoucherDialog(props: any) {
   const [autoMonthlyYearlyBaseAnchorAd, setAutoMonthlyYearlyBaseAnchorAd] = useState<Date | undefined>(undefined);
   const [recurringSettingsOpen, setRecurringSettingsOpen] = useState(false);
   const [savingRecurringSettings, setSavingRecurringSettings] = useState(false);
+  const [affectedRecurringVouchers, setAffectedRecurringVouchers] = useState<Array<{ id: string; voucherNumber: string; date: Date; total: number; delta: number }> | null>(null);
   const [generatingRecurringNow, setGeneratingRecurringNow] = useState(false);
   /** Generate / Settings save / main Save: 2+ missing months — tick wale batch; koi tick nahi = sirf latest due ek. */
   const [recurringGeneratePicker, setRecurringGeneratePicker] = useState<{
@@ -2203,6 +2275,7 @@ export function AddVoucherDialog(props: any) {
           setAutoMonthlyScheduleBsDay(32);
           setAutoMonthlyScheduleAdDay(32);
           setAutoMonthlyScheduleCalendar("BS");
+          setAutoMonthlyScheduleConfigured(false);
           setAutoMonthlyRateMode("none");
           setAutoMonthlyRateValue("");
           setAutoMonthlyRateEffectiveFromAd(undefined);
@@ -2229,6 +2302,7 @@ export function AddVoucherDialog(props: any) {
             : 32,
         );
         setAutoMonthlyScheduleCalendar(tpl?.scheduleCalendar === "AD" ? "AD" : "BS");
+        setAutoMonthlyScheduleConfigured(true);
         setAutoMonthlyRateMode((tpl?.rateAdjustMode as RecurringRateAdjustMode) || "none");
         const rv = tpl?.rateAdjustValue;
         if (rv != null && typeof rv === "number" && Number.isFinite(rv) && rv !== 0) {
@@ -4342,58 +4416,60 @@ export function AddVoucherDialog(props: any) {
     canEditRecurringOnVoucher,
   ]);
 
+  const commitRecurringSettingsSave = useCallback(async (updateExistingAmounts: boolean) => {
+    const items = affectedRecurringVouchers || [];
+    if (updateExistingAmounts && companyId?.trim()) {
+      for (const item of items) await adjustGeneratedRecurringVoucherFixedAmount(companyId, item.id, item.delta);
+    }
+    const ok = await persistRecurringScheduleRateOnly();
+    if (ok) {
+      const vid = String(voucher?.id || "").trim();
+      if (committedAutoMonthlyEnabled === true && companyId?.trim() && vid) {
+        toast.success("Auto Monthly settings saved.");
+        void refreshRecurringTemplateMeta(companyId, vid);
+        if (!apkOfflineViewOnly && user?.uid && canGenerateRecurringOnVoucher && company) {
+          try {
+            const tpl = await getRecurringTemplateForVoucher(companyId, vid);
+            const activeLine = String(tpl?.cloneSourceVoucherId || tpl?.sourceVoucherId || "").trim();
+            if (tpl?.enabled && (!activeLine || activeLine === vid)) await handlePostSaveMissingRecurringSlots(companyId, vid, tpl, false);
+          } catch { /* optional backfill */ }
+        }
+      } else toast.success("Schedule saved. Save the voucher to apply Auto Monthly.");
+      setRecurringSettingsOpen(false);
+    }
+    setAffectedRecurringVouchers(null);
+  }, [affectedRecurringVouchers, companyId, persistRecurringScheduleRateOnly,
+    voucher?.id, committedAutoMonthlyEnabled, refreshRecurringTemplateMeta, apkOfflineViewOnly, user?.uid,
+    canGenerateRecurringOnVoucher, company, handlePostSaveMissingRecurringSlots]);
+
   const handleSaveRecurringSettingsClick = useCallback(async () => {
-    if (!canEditRecurringOnVoucher) return;
-    if (!showVoucherAutoRecurringUi) return;
+    if (!canEditRecurringOnVoucher || !showVoucherAutoRecurringUi) return;
     setSavingRecurringSettings(true);
     try {
-      const ok = await persistRecurringScheduleRateOnly();
-      if (ok) {
-        const vid = String(voucher?.id || "").trim();
-        if (committedAutoMonthlyEnabled === true && companyId?.trim() && vid) {
-          toast.success("Auto Monthly settings saved.");
-          void refreshRecurringTemplateMeta(companyId, vid);
-          // Missing months: pehle sirf 2+ pe picker — 1 overdue (Asar) Save pe bilkul skip ho jata tha.
-          // Ab Generate now jaisa: 1 = seedha create; 2+ = tick list.
-          if (!apkOfflineViewOnly && user?.uid && canGenerateRecurringOnVoucher && company) {
-            try {
-              const tpl = await getRecurringTemplateForVoucher(companyId, vid);
-              const activeLine = String(tpl?.cloneSourceVoucherId || tpl?.sourceVoucherId || "").trim();
-              // Sirf jis voucher par switch ON hai — warna Generate / backfill “another line” error.
-              if (tpl?.enabled && (!activeLine || activeLine === vid)) {
-                await handlePostSaveMissingRecurringSlots(companyId, vid, tpl, false);
-              }
-            } catch {
-              /* optional backfill — ignore */
-            }
-          }
-        } else {
-          toast.success("Schedule saved. Save the voucher to apply Auto Monthly.");
+      const vid = String(voucher?.id || "").trim();
+      if (committedAutoMonthlyEnabled === true && companyId?.trim() && vid && autoMonthlyRateMode === "fixed" && autoMonthlyRateEffectiveFromAd) {
+        const templateId = await getRecurringTemplateDocIdForVoucher(companyId, vid);
+        const affected = await listRecurringVouchersAffectedByRateStart(companyId, templateId, autoMonthlyRateEffectiveFromAd);
+        if (affected.length) {
+          const oldTemplate = await getRecurringTemplateForVoucher(companyId, vid);
+          const oldAmount = oldTemplate?.rateAdjustMode === "fixed" ? Number(oldTemplate.rateAdjustValue || 0) : 0;
+          const oldEffective = oldTemplate?.rateAdjustEffectiveFrom ? new Date(oldTemplate.rateAdjustEffectiveFrom) : null;
+          const nextAmount = recurringRatePayload(autoMonthlyRateMode, autoMonthlyRateValue) || 0;
+          setAffectedRecurringVouchers(affected.map((item) => ({
+            ...item,
+            delta: nextAmount - (oldEffective && !Number.isNaN(oldEffective.getTime()) && item.date >= oldEffective ? oldAmount : 0),
+          })));
+          return;
         }
-        setRecurringSettingsOpen(false);
       }
+      await commitRecurringSettingsSave(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Save failed.");
     } finally {
       setSavingRecurringSettings(false);
     }
-  }, [
-    canEditRecurringOnVoucher,
-    canGenerateRecurringOnVoucher,
-    showVoucherAutoRecurringUi,
-    persistRecurringScheduleRateOnly,
-    committedAutoMonthlyEnabled,
-    companyId,
-    company,
-    voucher?.id,
-    refreshRecurringTemplateMeta,
-    handlePostSaveMissingRecurringSlots,
-    apkOfflineViewOnly,
-    user?.uid,
-    user?.email,
-    user?.displayName,
-    customUser?.displayName,
-  ]);
+  }, [canEditRecurringOnVoucher, showVoucherAutoRecurringUi, companyId, voucher?.id, committedAutoMonthlyEnabled,
+    autoMonthlyRateMode, autoMonthlyRateEffectiveFromAd, autoMonthlyRateValue, commitRecurringSettingsSave]);
 
   /** Generate now: 1 missing = seedha create; 2+ = tick list popup (hover tooltip nahi). */
   const handleGenerateRecurringNowClick = useCallback(async () => {
@@ -5422,24 +5498,66 @@ export function AddVoucherDialog(props: any) {
           </DialogHeader>
           <div className="flex flex-col gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-green-950 dark:text-green-50">{calLab.scheduleMonthDayLabel}</Label>
-              <Select
-                value={String(autoMonthlyScheduleBsDay)}
-                onValueChange={(v) => setAutoMonthlyScheduleBsDay(parseInt(v, 10) || 32)}
-                disabled={autoMonthlyHydrating}
-              >
-                <SelectTrigger className={autoMonthlyPillFieldCn}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="max-h-[min(50vh,280px)]">
-                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-                    <SelectItem key={d} value={String(d)}>
-                      Day {d}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="32">{calLab.lastDayOfScheduledMonth}</SelectItem>
-                </SelectContent>
-              </Select>
+              {dateSystem === "Both" ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {(["BS", "AD"] as const).map((calendar) => {
+                    const selectedDay = calendar === "BS" ? autoMonthlyScheduleBsDay : autoMonthlyScheduleAdDay;
+                    const active = autoMonthlyScheduleCalendar === calendar;
+                    return (
+                      <div key={calendar} className="min-w-0 space-y-1">
+                        <Label className="text-[11px] font-medium text-green-950 dark:text-green-50">{calendar} month day</Label>
+                        <Select
+                          value={String(selectedDay)}
+                          onValueChange={(v) => {
+                            const nextDay = parseInt(v, 10) || 32;
+                            if (!autoMonthlyScheduleConfigured || active) {
+                              updateScheduleDayFromCalendar(calendar, nextDay);
+                              setAutoMonthlyScheduleCalendar(calendar);
+                              setAutoMonthlyScheduleConfigured(true);
+                            } else {
+                              setScheduleCalendarSwitchTo(calendar);
+                              setPendingScheduleDay(nextDay);
+                            }
+                          }}
+                          disabled={autoMonthlyHydrating}
+                        >
+                          <SelectTrigger className={autoMonthlyPillFieldCn}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[min(50vh,280px)]">
+                            {Array.from({ length: calendar === "BS" ? 32 : 31 }, (_, i) => i + 1).map((d) => (
+                              <SelectItem key={d} value={String(d)}>Day {d}</SelectItem>
+                            ))}
+                            <SelectItem value="32">Last day of {calendar} month</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-green-950 dark:text-green-50">{calLab.scheduleMonthDayLabel}</Label>
+                  <Select
+                    value={String(dateSystem === "AD" ? autoMonthlyScheduleAdDay : autoMonthlyScheduleBsDay)}
+                    onValueChange={(v) => {
+                      const day = parseInt(v, 10) || 32;
+                      updateScheduleDayFromCalendar(dateSystem, day);
+                      setAutoMonthlyScheduleCalendar(dateSystem);
+                      setAutoMonthlyScheduleConfigured(true);
+                    }}
+                    disabled={autoMonthlyHydrating}
+                  >
+                    <SelectTrigger className={autoMonthlyPillFieldCn}><SelectValue /></SelectTrigger>
+                    <SelectContent className="max-h-[min(50vh,280px)]">
+                      {Array.from({ length: dateSystem === "AD" ? 31 : 32 }, (_, i) => i + 1).map((d) => (
+                        <SelectItem key={d} value={String(d)}>Day {d}</SelectItem>
+                      ))}
+                      <SelectItem value="32">{calLab.lastDayOfScheduledMonth}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -5548,17 +5666,17 @@ export function AddVoucherDialog(props: any) {
                             onChangeAD={(d) => setAutoMonthlyRateEffectiveFromAd(d)}
                             disabled={autoMonthlyHydrating}
                             numberOfMonths={1}
+                            popoverContentClassName="!z-[126]"
                             className={cn(autoMonthlyPillFieldCn, "w-full font-normal")}
                           />
                         </div>
                         <div className="flex min-w-0 flex-1 flex-col gap-1 sm:min-w-[10rem]">
                           <Label className="text-[11px] font-medium text-green-950 dark:text-green-50">Apply increase from (AD)</Label>
-                          <Input
-                            type="date"
-                            className={autoMonthlyPillFieldCn}
-                            value={adDateInputValue(autoMonthlyRateEffectiveFromAd)}
-                            onChange={(e) => setAutoMonthlyRateEffectiveFromAd(parseAdDateInput(e.target.value))}
+                          <AutoMonthlyAdDatePicker
+                            value={autoMonthlyRateEffectiveFromAd}
+                            onChange={setAutoMonthlyRateEffectiveFromAd}
                             disabled={autoMonthlyHydrating}
+                            className={autoMonthlyPillFieldCn}
                           />
                         </div>
                       </>
@@ -5566,12 +5684,11 @@ export function AddVoucherDialog(props: any) {
                       <div className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:min-w-[11rem]">
                         <Label className="text-[11px] font-medium text-green-950 dark:text-green-50">{calLab.applyIncreaseFromLabel}</Label>
                         {dateSystem === "AD" ? (
-                          <Input
-                            type="date"
-                            className={autoMonthlyPillFieldCn}
-                            value={adDateInputValue(autoMonthlyRateEffectiveFromAd)}
-                            onChange={(e) => setAutoMonthlyRateEffectiveFromAd(parseAdDateInput(e.target.value))}
+                          <AutoMonthlyAdDatePicker
+                            value={autoMonthlyRateEffectiveFromAd}
+                            onChange={setAutoMonthlyRateEffectiveFromAd}
                             disabled={autoMonthlyHydrating}
+                            className={autoMonthlyPillFieldCn}
                           />
                         ) : (
                           <BsDatePicker
@@ -5580,6 +5697,7 @@ export function AddVoucherDialog(props: any) {
                             onChangeAD={(d) => setAutoMonthlyRateEffectiveFromAd(d)}
                             disabled={autoMonthlyHydrating}
                             numberOfMonths={1}
+                            popoverContentClassName="!z-[126]"
                             className={cn(autoMonthlyPillFieldCn, "w-full font-normal sm:w-[11rem]")}
                           />
                         )}
@@ -5603,23 +5721,22 @@ export function AddVoucherDialog(props: any) {
                             }}
                             disabled={autoMonthlyHydrating}
                             numberOfMonths={1}
+                            popoverContentClassName="!z-[126]"
                             className={cn(autoMonthlyPillFieldCn, "w-full font-normal")}
                           />
                         </div>
                         <div className="flex min-w-0 flex-1 flex-col gap-1 sm:min-w-[10rem]">
                           <Label className="text-[11px] font-medium text-green-950 dark:text-green-50">Apply increase from (AD)</Label>
-                          <Input
-                            type="date"
-                            className={autoMonthlyPillFieldCn}
-                            value={adDateInputValue(autoMonthlyRateEffectiveFromAd)}
-                            onChange={(e) => {
-                              const next = parseAdDateInput(e.target.value);
+                          <AutoMonthlyAdDatePicker
+                            value={autoMonthlyRateEffectiveFromAd}
+                            onChange={(next) => {
                               setAutoMonthlyRateEffectiveFromAd(next);
                               const { month, day } = yearlyBumpMonthDayFromApplyFrom(next);
                               setAutoMonthlyYearlyBsMonth(month);
                               setAutoMonthlyYearlyBsDay(day);
                             }}
                             disabled={autoMonthlyHydrating}
+                            className={autoMonthlyPillFieldCn}
                           />
                         </div>
                       </>
@@ -5627,18 +5744,16 @@ export function AddVoucherDialog(props: any) {
                       <div className="flex min-w-0 flex-1 flex-col gap-1">
                         <Label className="text-[11px] font-medium text-green-950 dark:text-green-50">{calLab.applyIncreaseFromLabel}</Label>
                         {dateSystem === "AD" ? (
-                          <Input
-                            type="date"
-                            className={autoMonthlyPillFieldCn}
-                            value={adDateInputValue(autoMonthlyRateEffectiveFromAd)}
-                            onChange={(e) => {
-                              const next = parseAdDateInput(e.target.value);
+                          <AutoMonthlyAdDatePicker
+                            value={autoMonthlyRateEffectiveFromAd}
+                            onChange={(next) => {
                               setAutoMonthlyRateEffectiveFromAd(next);
                               const { month, day } = yearlyBumpMonthDayFromApplyFrom(next);
                               setAutoMonthlyYearlyBsMonth(month);
                               setAutoMonthlyYearlyBsDay(day);
                             }}
                             disabled={autoMonthlyHydrating}
+                            className={autoMonthlyPillFieldCn}
                           />
                         ) : (
                           <BsDatePicker
@@ -5652,6 +5767,7 @@ export function AddVoucherDialog(props: any) {
                             }}
                             disabled={autoMonthlyHydrating}
                             numberOfMonths={1}
+                            popoverContentClassName="!z-[126]"
                             className={cn(autoMonthlyPillFieldCn, "w-full font-normal")}
                           />
                         )}
@@ -5725,6 +5841,73 @@ export function AddVoucherDialog(props: any) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <AlertDialog open={affectedRecurringVouchers !== null} onOpenChange={(open) => {
+        if (!open && affectedRecurringVouchers !== null) setAffectedRecurringVouchers(null);
+      }}>
+        <AlertDialogContent className="z-[145] max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>पहले से बने Auto Monthly वाउचर मिले</AlertDialogTitle>
+            <AlertDialogDescription>
+              चुने हुए अकाउंट के {affectedRecurringVouchers?.length || 0} वाउचर Apply increase from तारीख़ पर या उसके बाद बने हैं।
+              क्या इन वाउचर की राशि नई Amount to add के अनुसार बदलनी है?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="max-h-48 overflow-y-auto rounded-md border p-2 text-sm">
+            {affectedRecurringVouchers?.map((item) => (
+              <div key={item.id} className="flex justify-between gap-3 border-b py-1 last:border-0">
+                <span>{item.voucherNumber} · {item.date.toLocaleDateString()}</span>
+                <span className="tabular-nums">{item.total.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={savingRecurringSettings} onClick={(event) => {
+              event.preventDefault();
+              setSavingRecurringSettings(true);
+              void commitRecurringSettingsSave(false).catch((e) => toast.error(e instanceof Error ? e.message : "Save failed.")).finally(() => setSavingRecurringSettings(false));
+            }}>No, केवल सेटिंग सेव करें</AlertDialogCancel>
+            <AlertDialogAction disabled={savingRecurringSettings} onClick={(event) => {
+              event.preventDefault();
+              setSavingRecurringSettings(true);
+              void commitRecurringSettingsSave(true).catch((e) => toast.error(e instanceof Error ? e.message : "Save failed.")).finally(() => setSavingRecurringSettings(false));
+            }}>Yes, राशि बदलें</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={scheduleCalendarSwitchTo !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setScheduleCalendarSwitchTo(null);
+            setPendingScheduleDay(null);
+          }
+        }}
+      >
+        <AlertDialogContent className="z-[140] max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Change Auto Monthly calendar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Both calendars are visible, but only one schedule can be active. You selected {scheduleCalendarSwitchTo};
+              the previous {autoMonthlyScheduleCalendar} schedule will be deactivated. Do you want to continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setScheduleCalendarSwitchTo(null);
+              setPendingScheduleDay(null);
+            }}>No</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (scheduleCalendarSwitchTo && pendingScheduleDay !== null) {
+                updateScheduleDayFromCalendar(scheduleCalendarSwitchTo, pendingScheduleDay);
+                setAutoMonthlyScheduleCalendar(scheduleCalendarSwitchTo);
+                setAutoMonthlyScheduleConfigured(true);
+              }
+              setScheduleCalendarSwitchTo(null);
+              setPendingScheduleDay(null);
+            }}>Yes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Dialog
         open={recurringGeneratePicker?.open === true}
         onOpenChange={(open) => {
