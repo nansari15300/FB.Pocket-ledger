@@ -146,8 +146,10 @@ export function EntityListQuickFilterBar({
         onPointerCancel={endDrag}
         onClickCapture={onClickCapture}
       >
-        <div className="pl-mlc-quick-filter-inner flex min-w-full w-max items-center gap-[5px] [&&&&]:!gap-[5px]"
-          style={{ width: "max-content", minWidth: "100%" }}>
+        <div
+          className="pl-mlc-quick-filter-inner flex min-w-full w-max items-center gap-[5px] [&&&&]:!gap-[5px]"
+          style={{ width: "max-content", minWidth: "100%" }}
+        >
           {filters.map((f) => {
             if (f.key === "settled" && hideSettled) return null;
             const amountActive = f.key === "amount" && isAmountFilter(active);
@@ -164,8 +166,13 @@ export function EntityListQuickFilterBar({
                   type="button"
                   size="sm"
                   variant={selected ? "default" : "outline"}
-                  className="pl-mlc-quick-filter-pill h-7 shrink-0 min-w-max w-max max-w-none px-2 text-[11px] whitespace-nowrap text-center justify-center"
-                  style={{ flex: "0 0 auto", width: "max-content", minWidth: "max-content", maxWidth: "none" }}
+                  className="pl-mlc-quick-filter-pill h-7 w-max shrink-0 min-w-max max-w-none px-2 text-[11px] whitespace-nowrap text-center justify-center"
+                  style={{
+                    flex: "0 0 auto",
+                    width: "max-content",
+                    minWidth: "max-content",
+                    maxWidth: "none",
+                  }}
                   onClick={() => {
                     if (f.key === "amount") {
                       onChange(active === "amount" ? "amount_asc" : "amount");
@@ -181,8 +188,13 @@ export function EntityListQuickFilterBar({
                     type="button"
                     size="sm"
                     variant={hideSettled ? "default" : "outline"}
-                    className="pl-mlc-quick-filter-pill h-7 shrink-0 min-w-max w-max max-w-none px-2 text-[11px] whitespace-nowrap text-center justify-center"
-                  style={{ flex: "0 0 auto", width: "max-content", minWidth: "max-content", maxWidth: "none" }}
+                    className="pl-mlc-quick-filter-pill h-7 w-max shrink-0 min-w-max max-w-none px-2 text-[11px] whitespace-nowrap text-center justify-center"
+                    style={{
+                      flex: "0 0 auto",
+                      width: "max-content",
+                      minWidth: "max-content",
+                      maxWidth: "none",
+                    }}
                     onClick={() => setHideSettled(!hideSettled)}
                   >
                     {hideSettled ? "Show Settled" : "Hide Settled"}
