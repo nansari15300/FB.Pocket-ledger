@@ -61,6 +61,7 @@ export type RecurringAutoRunScopeFilter = {
 };
 /** BS calendar day 1–31, or 32 = last day of that BS month */
 export type RecurringScheduleBsDay = number;
+export type RecurringScheduleCalendar = "AD" | "BS";
 export type RecurringRateAdjustMode = "none" | "percent" | "fixed";
 /** Fixed bump kab lagu: har BS mahine vs ek BS saal me ek baar (anchor month/day). */
 export type RecurringRateAdjustCadence = "every_bs_month" | "every_bs_year";
@@ -84,6 +85,8 @@ export type RecurringVoucherTemplate = {
   scheduleType?: "month_end" | "month_day";
   /** Day of BS month to generate (1–31), or 32 = last day */
   scheduleBsDay?: RecurringScheduleBsDay | null;
+  scheduleCalendar?: RecurringScheduleCalendar | null;
+  scheduleAdDay?: number | null;
   narrationMode: RecurringNarrationMode;
   rateAdjustMode?: RecurringRateAdjustMode | null;
   /** Percent (e.g. 10 = +10%) or fixed amount added to base totals */
@@ -1778,6 +1781,8 @@ export async function setRecurringTemplateForVoucher(
     actorUserId?: string;
     actorName?: string;
     scheduleBsDay?: number;
+    scheduleCalendar?: RecurringScheduleCalendar | null;
+    scheduleAdDay?: number | null;
     rateAdjustMode?: RecurringRateAdjustMode;
     rateAdjustValue?: number | null;
     /** ISO string ya null — fixed/% bump schedule ke hisaab se */
@@ -1883,6 +1888,18 @@ export async function setRecurringTemplateForVoucher(
     typeof payload.scheduleBsDay === "number" && Number.isFinite(payload.scheduleBsDay)
       ? Math.max(1, Math.min(32, Math.floor(payload.scheduleBsDay)))
       : existingData.scheduleBsDay ?? (existingData.scheduleType === "month_end" ? 32 : 32);
+  const scheduleAdDay =
+    typeof payload.scheduleAdDay === "number" && Number.isFinite(payload.scheduleAdDay)
+      ? Math.max(1, Math.min(32, Math.floor(payload.scheduleAdDay)))
+      : typeof existingData.scheduleAdDay === "number" && Number.isFinite(existingData.scheduleAdDay)
+        ? Math.max(1, Math.min(32, Math.floor(existingData.scheduleAdDay)))
+        : 32;
+  const scheduleCalendar: RecurringScheduleCalendar =
+    payload.scheduleCalendar === "AD" || payload.scheduleCalendar === "BS"
+      ? payload.scheduleCalendar
+      : existingData.scheduleCalendar === "AD"
+        ? "AD"
+        : "BS";
   // Pehla jis voucher par user ne Auto ON kiya — narration Src/Id yahi; naya auto-save isko overwrite na kare jab tak series clear na ho.
   const existingManualOn = String(existingData.manualOnSourceVoucherNumber || "").trim() || null;
   const manualOnSourceVoucherNumber =
@@ -1917,6 +1934,8 @@ export async function setRecurringTemplateForVoucher(
     enabled: true,
     scheduleType: scheduleBsDay >= 32 ? "month_end" : "month_day",
     scheduleBsDay,
+    scheduleCalendar,
+    scheduleAdDay,
     narrationMode: payload.narrationMode || "advance_bs_month",
     rateAdjustMode: resolvedMode,
     rateAdjustValue:

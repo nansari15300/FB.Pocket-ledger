@@ -21,6 +21,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { CalendarDays, Loader2, RotateCcw, Settings, X } from "lucide-react";
@@ -1872,6 +1882,9 @@ export function AddVoucherDialog(props: any) {
   const [autoMonthlyHydrating, setAutoMonthlyHydrating] = useState(false);
   // BS month day 1–31 ya 32 = us mahine ka aakhiri din; rate adjust template save ke saath jata hai.
   const [autoMonthlyScheduleBsDay, setAutoMonthlyScheduleBsDay] = useState(32);
+  const [autoMonthlyScheduleAdDay, setAutoMonthlyScheduleAdDay] = useState(32);
+  const [autoMonthlyScheduleCalendar, setAutoMonthlyScheduleCalendar] = useState<"AD" | "BS">("BS");
+  const [scheduleCalendarSwitchTo, setScheduleCalendarSwitchTo] = useState<"AD" | "BS" | null>(null);
   const [autoMonthlyRateMode, setAutoMonthlyRateMode] = useState<RecurringRateAdjustMode>("none");
   const [autoMonthlyRateValue, setAutoMonthlyRateValue] = useState("");
   /** Fixed amount: is BS date se pehle due wale period par bump skip (`rateAdjustEffectiveFrom`). */
@@ -2188,6 +2201,8 @@ export function AddVoucherDialog(props: any) {
         setAutoMonthlyEnabled(ownsRecurringTemplate);
         if (!ownsRecurringTemplate) {
           setAutoMonthlyScheduleBsDay(32);
+          setAutoMonthlyScheduleAdDay(32);
+          setAutoMonthlyScheduleCalendar("BS");
           setAutoMonthlyRateMode("none");
           setAutoMonthlyRateValue("");
           setAutoMonthlyRateEffectiveFromAd(undefined);
@@ -2208,6 +2223,12 @@ export function AddVoucherDialog(props: any) {
             ? Math.max(1, Math.min(32, Math.floor(tpl.scheduleBsDay)))
             : 32;
         setAutoMonthlyScheduleBsDay(d);
+        setAutoMonthlyScheduleAdDay(
+          typeof tpl?.scheduleAdDay === "number" && Number.isFinite(tpl.scheduleAdDay)
+            ? Math.max(1, Math.min(32, Math.floor(tpl.scheduleAdDay)))
+            : 32,
+        );
+        setAutoMonthlyScheduleCalendar(tpl?.scheduleCalendar === "AD" ? "AD" : "BS");
         setAutoMonthlyRateMode((tpl?.rateAdjustMode as RecurringRateAdjustMode) || "none");
         const rv = tpl?.rateAdjustValue;
         if (rv != null && typeof rv === "number" && Number.isFinite(rv) && rv !== 0) {
@@ -3881,6 +3902,8 @@ export function AddVoucherDialog(props: any) {
     return {
       ...recurringTemplateSnapshot,
       scheduleBsDay: autoMonthlyScheduleBsDay,
+      scheduleCalendar: autoMonthlyScheduleCalendar,
+      scheduleAdDay: autoMonthlyScheduleAdDay,
       rateAdjustMode: autoMonthlyRateMode,
       rateAdjustValue: recurringRatePayload(autoMonthlyRateMode, autoMonthlyRateValue),
       rateAdjustEffectiveFrom: recurringRateEffectiveFromForSave(autoMonthlyRateMode, autoMonthlyRateEffectiveFromAd),
@@ -4145,6 +4168,8 @@ export function AddVoucherDialog(props: any) {
                 actorUserId: user?.uid,
                 actorName: customUser?.displayName || user?.displayName || user?.email || null,
                 scheduleBsDay: autoMonthlyScheduleBsDay,
+                scheduleCalendar: autoMonthlyScheduleCalendar,
+                scheduleAdDay: autoMonthlyScheduleAdDay,
                 rateAdjustMode: autoMonthlyRateMode,
                 rateAdjustValue: recurringRatePayload(autoMonthlyRateMode, autoMonthlyRateValue),
                 rateAdjustEffectiveFrom: recurringRateEffectiveFromForSave(
@@ -4284,6 +4309,8 @@ export function AddVoucherDialog(props: any) {
       actorUserId: user?.uid,
       actorName: customUser?.displayName || user?.displayName || user?.email || null,
       scheduleBsDay: autoMonthlyScheduleBsDay,
+      scheduleCalendar: autoMonthlyScheduleCalendar,
+      scheduleAdDay: autoMonthlyScheduleAdDay,
       rateAdjustMode: autoMonthlyRateMode,
       rateAdjustValue: recurringRatePayload(autoMonthlyRateMode, autoMonthlyRateValue),
       rateAdjustEffectiveFrom: recurringRateEffectiveFromForSave(autoMonthlyRateMode, autoMonthlyRateEffectiveFromAd),
