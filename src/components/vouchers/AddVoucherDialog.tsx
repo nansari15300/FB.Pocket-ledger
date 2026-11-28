@@ -5379,6 +5379,9 @@ export function AddVoucherDialog(props: any) {
           data-pl-auto-monthly-settings=""
           aria-describedby="recurring-settings-desc"
         >
+          <div className="absolute right-[4.5rem] top-3 z-10">
+            <VoucherDialogDateSystemSwitcher className="h-8" />
+          </div>
           <DialogHeader>
             <DialogTitle className="text-base font-semibold text-green-950 dark:text-green-50">
               Auto Monthly settings
@@ -5493,8 +5496,8 @@ export function AddVoucherDialog(props: any) {
                 </div>
 
                 {autoMonthlyRateCadence === "every_bs_month" ? (
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                    <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+                    <div className={cn("min-w-0 flex-1 space-y-1", dateSystem === "Both" && "sm:basis-full")}>
                       <Label className="text-[11px] font-medium text-green-950 dark:text-green-50">{calLab.everyNMonthsLabel}</Label>
                       <Input
                         type="number"
@@ -5508,63 +5511,126 @@ export function AddVoucherDialog(props: any) {
                         disabled={autoMonthlyHydrating}
                       />
                     </div>
-                    <div className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:min-w-[11rem]">
-                      <Label className="text-[11px] font-medium text-green-950 dark:text-green-50">{calLab.applyIncreaseFromLabel}</Label>
-                      {dateSystem === "AD" ? (
-                        <Input
-                          type="date"
-                          className={autoMonthlyPillFieldCn}
-                          value={adDateInputValue(autoMonthlyRateEffectiveFromAd)}
-                          onChange={(e) => setAutoMonthlyRateEffectiveFromAd(parseAdDateInput(e.target.value))}
-                          disabled={autoMonthlyHydrating}
-                        />
-                      ) : (
-                        <BsDatePicker
-                          isRange={false}
-                          valueAD={autoMonthlyRateEffectiveFromAd}
-                          onChangeAD={(d) => setAutoMonthlyRateEffectiveFromAd(d)}
-                          disabled={autoMonthlyHydrating}
-                          numberOfMonths={1}
-                          className={cn(autoMonthlyPillFieldCn, "w-full font-normal sm:w-[11rem]")}
-                        />
-                      )}
-                    </div>
+                    {dateSystem === "Both" ? (
+                      <>
+                        <div className="flex min-w-0 flex-1 flex-col gap-1 sm:min-w-[10rem]">
+                          <Label className="text-[11px] font-medium text-green-950 dark:text-green-50">Apply increase from (BS)</Label>
+                          <BsDatePicker
+                            isRange={false}
+                            valueAD={autoMonthlyRateEffectiveFromAd}
+                            onChangeAD={(d) => setAutoMonthlyRateEffectiveFromAd(d)}
+                            disabled={autoMonthlyHydrating}
+                            numberOfMonths={1}
+                            className={cn(autoMonthlyPillFieldCn, "w-full font-normal")}
+                          />
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-col gap-1 sm:min-w-[10rem]">
+                          <Label className="text-[11px] font-medium text-green-950 dark:text-green-50">Apply increase from (AD)</Label>
+                          <Input
+                            type="date"
+                            className={autoMonthlyPillFieldCn}
+                            value={adDateInputValue(autoMonthlyRateEffectiveFromAd)}
+                            onChange={(e) => setAutoMonthlyRateEffectiveFromAd(parseAdDateInput(e.target.value))}
+                            disabled={autoMonthlyHydrating}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:min-w-[11rem]">
+                        <Label className="text-[11px] font-medium text-green-950 dark:text-green-50">{calLab.applyIncreaseFromLabel}</Label>
+                        {dateSystem === "AD" ? (
+                          <Input
+                            type="date"
+                            className={autoMonthlyPillFieldCn}
+                            value={adDateInputValue(autoMonthlyRateEffectiveFromAd)}
+                            onChange={(e) => setAutoMonthlyRateEffectiveFromAd(parseAdDateInput(e.target.value))}
+                            disabled={autoMonthlyHydrating}
+                          />
+                        ) : (
+                          <BsDatePicker
+                            isRange={false}
+                            valueAD={autoMonthlyRateEffectiveFromAd}
+                            onChangeAD={(d) => setAutoMonthlyRateEffectiveFromAd(d)}
+                            disabled={autoMonthlyHydrating}
+                            numberOfMonths={1}
+                            className={cn(autoMonthlyPillFieldCn, "w-full font-normal sm:w-[11rem]")}
+                          />
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                    <div className="flex min-w-0 flex-1 flex-col gap-1">
-                      <Label className="text-[11px] font-medium text-green-950 dark:text-green-50">{calLab.applyIncreaseFromLabel}</Label>
-                      {dateSystem === "AD" ? (
-                        <Input
-                          type="date"
-                          className={autoMonthlyPillFieldCn}
-                          value={adDateInputValue(autoMonthlyRateEffectiveFromAd)}
-                          onChange={(e) => {
-                            const next = parseAdDateInput(e.target.value);
-                            setAutoMonthlyRateEffectiveFromAd(next);
-                            const { month, day } = yearlyBumpMonthDayFromApplyFrom(next);
-                            setAutoMonthlyYearlyBsMonth(month);
-                            setAutoMonthlyYearlyBsDay(day);
-                          }}
-                          disabled={autoMonthlyHydrating}
-                        />
-                      ) : (
-                        <BsDatePicker
-                          isRange={false}
-                          valueAD={autoMonthlyRateEffectiveFromAd}
-                          onChangeAD={(d) => {
-                            setAutoMonthlyRateEffectiveFromAd(d);
-                            const { month, day } = yearlyBumpMonthDayFromApplyFrom(d);
-                            setAutoMonthlyYearlyBsMonth(month);
-                            setAutoMonthlyYearlyBsDay(day);
-                          }}
-                          disabled={autoMonthlyHydrating}
-                          numberOfMonths={1}
-                          className={cn(autoMonthlyPillFieldCn, "w-full font-normal")}
-                        />
-                      )}
-                    </div>
-                    <div className="min-w-0 space-y-1 sm:w-[7.5rem]">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+                    {dateSystem === "Both" ? (
+                      <>
+                        <div className="flex min-w-0 flex-1 flex-col gap-1 sm:min-w-[10rem]">
+                          <Label className="text-[11px] font-medium text-green-950 dark:text-green-50">Apply increase from (BS)</Label>
+                          <BsDatePicker
+                            isRange={false}
+                            valueAD={autoMonthlyRateEffectiveFromAd}
+                            onChangeAD={(d) => {
+                              setAutoMonthlyRateEffectiveFromAd(d);
+                              const { month, day } = yearlyBumpMonthDayFromApplyFrom(d);
+                              setAutoMonthlyYearlyBsMonth(month);
+                              setAutoMonthlyYearlyBsDay(day);
+                            }}
+                            disabled={autoMonthlyHydrating}
+                            numberOfMonths={1}
+                            className={cn(autoMonthlyPillFieldCn, "w-full font-normal")}
+                          />
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-col gap-1 sm:min-w-[10rem]">
+                          <Label className="text-[11px] font-medium text-green-950 dark:text-green-50">Apply increase from (AD)</Label>
+                          <Input
+                            type="date"
+                            className={autoMonthlyPillFieldCn}
+                            value={adDateInputValue(autoMonthlyRateEffectiveFromAd)}
+                            onChange={(e) => {
+                              const next = parseAdDateInput(e.target.value);
+                              setAutoMonthlyRateEffectiveFromAd(next);
+                              const { month, day } = yearlyBumpMonthDayFromApplyFrom(next);
+                              setAutoMonthlyYearlyBsMonth(month);
+                              setAutoMonthlyYearlyBsDay(day);
+                            }}
+                            disabled={autoMonthlyHydrating}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <Label className="text-[11px] font-medium text-green-950 dark:text-green-50">{calLab.applyIncreaseFromLabel}</Label>
+                        {dateSystem === "AD" ? (
+                          <Input
+                            type="date"
+                            className={autoMonthlyPillFieldCn}
+                            value={adDateInputValue(autoMonthlyRateEffectiveFromAd)}
+                            onChange={(e) => {
+                              const next = parseAdDateInput(e.target.value);
+                              setAutoMonthlyRateEffectiveFromAd(next);
+                              const { month, day } = yearlyBumpMonthDayFromApplyFrom(next);
+                              setAutoMonthlyYearlyBsMonth(month);
+                              setAutoMonthlyYearlyBsDay(day);
+                            }}
+                            disabled={autoMonthlyHydrating}
+                          />
+                        ) : (
+                          <BsDatePicker
+                            isRange={false}
+                            valueAD={autoMonthlyRateEffectiveFromAd}
+                            onChangeAD={(d) => {
+                              setAutoMonthlyRateEffectiveFromAd(d);
+                              const { month, day } = yearlyBumpMonthDayFromApplyFrom(d);
+                              setAutoMonthlyYearlyBsMonth(month);
+                              setAutoMonthlyYearlyBsDay(day);
+                            }}
+                            disabled={autoMonthlyHydrating}
+                            numberOfMonths={1}
+                            className={cn(autoMonthlyPillFieldCn, "w-full font-normal")}
+                          />
+                        )}
+                      </div>
+                    )}
+                    <div className={cn("min-w-0 space-y-1 sm:w-[7.5rem]", dateSystem === "Both" && "sm:basis-full")}>
                       <Label className="text-[11px] font-medium text-green-950 dark:text-green-50">{calLab.everyNYearsLabel}</Label>
                       <Input
                         type="number"

@@ -17,12 +17,12 @@ export function recurringAutoVoucherLabels(mode: CalendarDisplayMode) {
         "Journal: same debit/credit account lines share one template — Auto on/off on any month’s voucher applies to the whole series.",
       scheduleMonthDayLabel: "BS month day (generate on)",
       lastDayOfScheduledMonth: "Last day of BS month",
-      everyMonthOption: "Every month (each scheduled voucher)",
-      oncePerYearOption: "Once per year",
-      everyNMonthsLabel: "Every (months)",
+      everyMonthOption: "Every AD month",
+      oncePerYearOption: "Once per AD year",
+      everyNMonthsLabel: "Every (AD months)",
       bumpWhenMonthLabel: "Month when bump applies (BS month names)",
       bumpDayLabel: "Day of month",
-      everyNYearsLabel: "Every (years)",
+      everyNYearsLabel: "Every (AD years)",
       applyIncreaseFromLabel: "Apply increase from (AD)",
     };
   }
@@ -38,12 +38,12 @@ export function recurringAutoVoucherLabels(mode: CalendarDisplayMode) {
         "Journal: same debit/credit account lines share one template — Auto on/off on any month’s voucher applies to the whole series.",
       scheduleMonthDayLabel: "BS month day (generate on)",
       lastDayOfScheduledMonth: "Last day of BS month",
-      everyMonthOption: "Every BS month (each scheduled voucher)",
-      oncePerYearOption: "Once per BS year",
-      everyNMonthsLabel: "Every (BS months)",
+      everyMonthOption: "Every AD / BS month",
+      oncePerYearOption: "Once per AD / BS year",
+      everyNMonthsLabel: "Every (AD / BS months)",
       bumpWhenMonthLabel: "BS month (when bump applies)",
       bumpDayLabel: "BS day",
-      everyNYearsLabel: "Every (BS years)",
+      everyNYearsLabel: "Every (AD / BS years)",
       applyIncreaseFromLabel: "Apply increase from (BS / AD)",
     };
   }
