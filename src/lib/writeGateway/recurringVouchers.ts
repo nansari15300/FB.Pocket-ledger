@@ -62,6 +62,7 @@ export type RecurringAutoRunScopeFilter = {
 /** BS calendar day 1–31, or 32 = last day of that BS month */
 export type RecurringScheduleBsDay = number;
 export type RecurringScheduleCalendar = "AD" | "BS";
+export type RecurringRateAdjustCalendar = "AD" | "BS" | "Both";
 export type RecurringRateAdjustMode = "none" | "percent" | "fixed";
 /** Fixed bump kab lagu: har BS mahine vs ek BS saal me ek baar (anchor month/day). */
 export type RecurringRateAdjustCadence = "every_bs_month" | "every_bs_year";
@@ -91,6 +92,8 @@ export type RecurringVoucherTemplate = {
   rateAdjustMode?: RecurringRateAdjustMode | null;
   /** Percent (e.g. 10 = +10%) or fixed amount added to base totals */
   rateAdjustValue?: number | null;
+  /** System date display mode captured when Auto Monthly settings were saved. */
+  rateAdjustCalendar?: RecurringRateAdjustCalendar | null;
   /** AD date ISO — fixed/% bump tabhi jab generated voucher ki due date >= is din (local day); null = hamesha apply */
   rateAdjustEffectiveFrom?: string | null;
   /** % / fixed bump cadence; none par template me null */
@@ -1380,16 +1383,20 @@ function maybeAdvanceNarrationMonth(rawNarration: unknown, targetMonth: number):
 function recurringIncreaseTopic(rawNarration: unknown): string {
   const source = stripRecurringNarrationSearchSuffix(String(rawNarration || "")).trim();
   const firstPart = source.split(/[|,;:.\n]|\s+[-–—]\s+/)[0]?.trim() || source;
-  const topic = firstPart.split(/\s+(?:for|from|in|on|at)\s+/i)[0]?.trim() || firstPart;
+  const topic = firstPart.split(/\s+(?:for|from|in|on|at|of)\s+/i)[0]?.trim() || firstPart;
   return topic.split(/\s+/).filter(Boolean).slice(0, 3).join(" ") || "Amount";
 }
 
-function recurringIncreaseDateLabel(date: Date, calendar: RecurringScheduleCalendar): string {
-  if (calendar === "AD") {
-    return `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}/${date.getFullYear()}`;
-  }
+function recurringIncreaseDateLabel(date: Date, calendar: RecurringRateAdjustCalendar): string {
   const bs = adToBs(atNoonLocal(date));
-  return `${bs.d}-${NEPALI_MONTHS[bs.m - 1] || "Baisakh"}-${bs.y}`;
+  const bsFirstAd = bsToAd({ y: bs.y, m: bs.m, d: 1 });
+  const bsLabel = `${bs.y}-${String(bs.m).padStart(2, "0")}-1 ${NEPALI_MONTHS[bs.m - 1] || "Baisakh"}`;
+  const adMonthName = new Date(date.getFullYear(), date.getMonth(), 1).toLocaleString("en-US", { month: "long" });
+  const adLabel = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-1 ${adMonthName}`;
+  const bsFirstAdLabel = `${bsFirstAd.getFullYear()}-${String(bsFirstAd.getMonth() + 1).padStart(2, "0")}-${String(bsFirstAd.getDate()).padStart(2, "0")}`;
+  if (calendar === "AD") return adLabel;
+  if (calendar === "Both") return `${bsLabel} (${bsFirstAdLabel})`;
+  return bsLabel;
 }
 
 /** Template se effective-from parse; invalid => null (bump hamesha). */
@@ -1632,8 +1639,16 @@ export async function listRecurringVouchersAffectedByRateStart(
   companyId: string,
   templateDocId: string,
   effectiveFrom: Date,
-): Promise<Array<{ id: string; voucherNumber: string; date: Date; total: number }>> {
-  if (!companyId?.trim() || !templateDocId?.trim() || Number.isNaN(effectiveFrom.getTime())) return [];
+  rateMode: RecurringRateAdjustMode,
+  amountToAdd: number,
+): Promise<{
+  pending: Array<{ id: string; voucherNumber: string; date: Date; total: number; targetTotal: number; baselineVoucherId: string; targetValue: number }>;
+  alreadyAppliedCount: number;
+}> {
+  if (!companyId?.trim() || !templateDocId?.trim() || Number.isNaN(effectiveFrom.getTime()) ||
+      (rateMode !== "fixed" && rateMode !== "percent") || !Number.isFinite(amountToAdd) || amountToAdd === 0) {
+    return { pending: [], alreadyAppliedCount: 0 };
+  }
   const rows = new Map<string, Record<string, unknown>>();
   try {
     for (const raw of await listCompanyDocsFromBrowserDb(companyId, "vouchers")) {
@@ -1651,33 +1666,97 @@ export async function listRecurringVouchersAffectedByRateStart(
     for (const d of snap.docs) rows.set(d.id, { ...d.data(), id: d.id });
   } catch { /* local results are still useful offline */ }
   const min = localDayStartMs(effectiveFrom);
-  return [...rows.entries()].flatMap(([id, row]) => {
+  const datedRows = [...rows.entries()].flatMap(([id, row]) => {
     const meta = row.recurringMeta as Record<string, unknown> | undefined;
-    if (row.isDeleted === true || meta?.templateId !== templateDocId || !meta?.periodKey) return [];
+    if (row.isDeleted === true || meta?.templateId !== templateDocId) return [];
     const date = parseFirestoreDateFieldToJsDate(row.date);
-    if (!date || localDayStartMs(date) < min) return [];
-    return [{ id, voucherNumber: String(row.voucherNumber || id), date, total: primaryMonetaryTotalFromVoucher(row) }];
+    if (!date) return [];
+    return [{ id, row, meta, voucherNumber: String(row.voucherNumber || id), date, total: primaryMonetaryTotalFromVoucher(row) }];
   }).sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  let baseline = datedRows.filter((item) => localDayStartMs(item.date) < min).at(-1) || null;
+  if (!baseline) {
+    const template = await getRecurringTemplateRecord(companyId, templateDocId).catch(() => null);
+    const sourceId = String(template?.sourceVoucherId || template?.cloneSourceVoucherId || "").trim();
+    const source = sourceId ? await getVoucherRecordForRecurring(companyId, sourceId).catch(() => null) : null;
+    if (source) {
+      const sourceDate = parseFirestoreDateFieldToJsDate(source.date);
+      if (sourceDate && localDayStartMs(sourceDate) < min) {
+        baseline = { id: sourceId, row: source, meta: (source.recurringMeta || {}) as Record<string, unknown>, voucherNumber: String(source.voucherNumber || sourceId), date: sourceDate, total: primaryMonetaryTotalFromVoucher(source) };
+      }
+    }
+  }
+  if (!baseline) return { pending: [], alreadyAppliedCount: 0 };
+  const expected = applyRecurringRateAdjustment(baseline.row, rateMode, amountToAdd);
+  const targetTotal = primaryMonetaryTotalFromVoucher(expected);
+  const epsilon = 0.01;
+  let alreadyAppliedCount = 0;
+  const pending = datedRows.flatMap((item) => {
+    if (localDayStartMs(item.date) < min || !item.meta.periodKey) return [];
+    const alreadyApplied = rateMode === "fixed" || rateMode === "percent"
+      ? amountToAdd > 0 ? item.total >= targetTotal - epsilon : item.total <= targetTotal + epsilon
+      : true;
+    if (alreadyApplied) {
+      alreadyAppliedCount += 1;
+      return [];
+    }
+    return [{
+      id: item.id,
+      voucherNumber: item.voucherNumber,
+      date: item.date,
+      total: item.total,
+      targetTotal,
+      baselineVoucherId: baseline.id,
+      targetValue: amountToAdd,
+    }];
+  });
+  return { pending, alreadyAppliedCount };
 }
 
 /** Add only the difference between old and new fixed Auto Monthly settings to an existing voucher. */
-export async function setGeneratedRecurringVoucherFixedAmount(
+export async function setGeneratedRecurringVoucherRate(
   companyId: string,
   voucherId: string,
+  rateMode: RecurringRateAdjustMode,
   amountToAdd: number,
+  baselineVoucherId?: string,
   fallbackSourceVoucherId?: string,
+  increaseCalendar?: RecurringRateAdjustCalendar | null,
+  increaseEffectiveFrom?: Date | null,
 ): Promise<void> {
-  if (!Number.isFinite(amountToAdd)) return;
+  if ((rateMode !== "fixed" && rateMode !== "percent") || !Number.isFinite(amountToAdd) || amountToAdd === 0) return;
   const row = await getVoucherRecordForRecurring(companyId, voucherId);
   if (!row) throw new Error(`Voucher ${voucherId} could not be loaded.`);
   const meta = row.recurringMeta as Record<string, unknown> | undefined;
-  const sourceVoucherId = String(meta?.sourceVoucherId || fallbackSourceVoucherId || "").trim();
-  const source = sourceVoucherId ? await getVoucherRecordForRecurring(companyId, sourceVoucherId) : null;
-  if (!source) throw new Error(`Source voucher for ${String(row.voucherNumber || voucherId)} could not be loaded.`);
-  const target = applyRecurringRateAdjustment(source, "fixed", amountToAdd);
+  const sourceVoucherId = String(baselineVoucherId || meta?.sourceVoucherId || fallbackSourceVoucherId || "").trim();
+  const baseline = sourceVoucherId ? await getVoucherRecordForRecurring(companyId, sourceVoucherId) : null;
+  if (!baseline) throw new Error(`Previous voucher before increase date for ${String(row.voucherNumber || voucherId)} could not be loaded.`);
+  const target = applyRecurringRateAdjustment(baseline, rateMode, amountToAdd);
   const patch: Record<string, unknown> = {};
   for (const key of ["total", "amount", "subTotal", "tax", "discount", "credit", "debit", "entries", "lineItems"]) {
     if (Object.prototype.hasOwnProperty.call(target, key)) patch[key] = target[key];
+  }
+  if (increaseCalendar) {
+    const voucherDate = parseFirestoreDateFieldToJsDate(row.date);
+    if (voucherDate) {
+      const increaseNarrationTopic = recurringIncreaseTopic(baseline.narration);
+      const increaseNarrationSuffix = `${increaseNarrationTopic} Increased from ${recurringIncreaseDateLabel(voucherDate, increaseCalendar)}`;
+      const rawNarration = String(row.narration || "");
+      const cleanNarration = stripRecurringNarrationSearchSuffix(rawNarration);
+      const searchTail = rawNarration.slice(cleanNarration.length);
+      const previousSuffix = String(meta?.increaseNarrationSuffix || "").trim();
+      let core = cleanNarration.trimEnd();
+      if (previousSuffix && core.endsWith(previousSuffix)) core = core.slice(0, -previousSuffix.length).trimEnd();
+      patch.narration = `${core} ${increaseNarrationSuffix}${searchTail}`.trim();
+      patch.recurringMeta = {
+        ...(meta || {}),
+        increaseNarrationSuffix,
+        increaseNarrationTopic,
+        ...(increaseEffectiveFrom && !Number.isNaN(increaseEffectiveFrom.getTime())
+          ? { increaseNarrationEffectiveFrom: increaseEffectiveFrom.toISOString() }
+          : {}),
+      };
+    }
   }
   const { patchVoucherFields } = await import("./voucherActionsClient");
   await patchVoucherFields(companyId, voucherId, patch);
@@ -1860,6 +1939,7 @@ export async function setRecurringTemplateForVoucher(
     scheduleBsDay?: number;
     scheduleCalendar?: RecurringScheduleCalendar | null;
     scheduleAdDay?: number | null;
+    rateAdjustCalendar?: RecurringRateAdjustCalendar | null;
     rateAdjustMode?: RecurringRateAdjustMode;
     rateAdjustValue?: number | null;
     /** ISO string ya null — fixed/% bump schedule ke hisaab se */
@@ -2017,6 +2097,10 @@ export async function setRecurringTemplateForVoucher(
     rateAdjustMode: resolvedMode,
     rateAdjustValue:
       payload.rateAdjustValue !== undefined ? payload.rateAdjustValue : existingData.rateAdjustValue ?? null,
+    rateAdjustCalendar:
+      payload.rateAdjustCalendar === "AD" || payload.rateAdjustCalendar === "BS" || payload.rateAdjustCalendar === "Both"
+        ? payload.rateAdjustCalendar
+        : existingData.rateAdjustCalendar ?? scheduleCalendar,
     rateAdjustEffectiveFrom: effectiveFromMerged,
     rateAdjustCadence:
       payload.rateAdjustCadence !== undefined ? payload.rateAdjustCadence : existingData.rateAdjustCadence ?? null,
@@ -2554,8 +2638,9 @@ async function createOneRecurringVoucherFromTemplate(
     applyBump &&
     (template.rateAdjustCadence === "every_bs_year" ||
       ((template.rateAdjustCadence ?? "every_bs_month") === "every_bs_month" && effectiveRateAdjustEveryN(template) >= 12));
-  const increaseNarrationSuffix = isAnnualIncreaseVoucher && eff
-    ? `${recurringIncreaseTopic(sourceVoucher.narration)} Increased from ${recurringIncreaseDateLabel(eff, template.scheduleCalendar || "BS")}`
+  const increaseNarrationTopic = isAnnualIncreaseVoucher && eff ? recurringIncreaseTopic(sourceVoucher.narration) : null;
+  const increaseNarrationSuffix = increaseNarrationTopic && eff
+    ? `${increaseNarrationTopic} Increased from ${recurringIncreaseDateLabel(voucherAdDate, template.rateAdjustCalendar || template.scheduleCalendar || "BS")}`
     : null;
   const narrWithIncrease = increaseNarrationSuffix ? `${narrCore} ${increaseNarrationSuffix}`.trim() : narrCore;
   // Type tail narration me (jrnl / sale …); clone body + template dono se type fallback.
@@ -2583,7 +2668,11 @@ async function createOneRecurringVoucherFromTemplate(
       generationKind: "recurring_bs_monthly",
       chainKey,
       sourceVoucherNumber: srcTagVoucherNo,
-      ...(increaseNarrationSuffix ? { increaseNarrationSuffix } : {}),
+      ...(increaseNarrationSuffix ? {
+        increaseNarrationSuffix,
+        increaseNarrationTopic,
+        increaseNarrationEffectiveFrom: eff?.toISOString(),
+      } : {}),
     },
   };
 

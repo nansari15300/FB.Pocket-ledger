@@ -121,6 +121,7 @@ import { openAttachmentInApp } from "@/lib/openAttachmentInApp";
 import { companyRequiresLocalAttachmentUrlsOnly } from "@/lib/staticAttachmentDisplayUrl";
 import { getVoucherAttachmentUrlsForUi, voucherAttachmentUiOptionsForCompany } from "@/lib/voucherAttachmentNormalize";
 import { formatVoucherEntryTimeLocal, parseFirestoreDateFieldToJsDate } from "@/lib/voucherDateNormalize";
+import { recurringIncreaseNarrationParts } from "@/lib/recurringIncreaseNarration";
 import { getJournalVoucherLegs } from "@/lib/journalLedgerAmounts";
 import { highlightQueryInText } from "@/lib/highlightQueryInText";
 import { drCrChipKey, drCrOppositeKey, tdsBadgeHighlightQuery } from "@/lib/transactionColumnHeaderFilter";
@@ -2887,6 +2888,13 @@ export const TransactionRow = React.memo(
     const narrationText =
       transaction.type === "note" ? transaction.title : transaction.narration;
     const narrationLabel = transaction.type === "note" ? "Title" : "Narration";
+    const narrationValue = String(narrationText || "");
+    const increaseNarration = recurringIncreaseNarrationParts(
+      narrationValue,
+      (transaction as any)?.recurringMeta,
+      parseFirestoreDateFieldToJsDate(transaction.date),
+      dateSystem,
+    );
     const dateCols = dateSystem === "Both" ? 2 : 1;
     const colsThroughCredit =
       visibleColumns == null
@@ -3166,7 +3174,10 @@ export const TransactionRow = React.memo(
         >
           {narrationText ? (
             <span className="block min-w-0 overflow-hidden break-words font-normal" style={{ overflowWrap: "anywhere" }}>
-              <span className="not-italic">{narrationLabel}:</span> {hl(String(narrationText))}
+              <span className="not-italic">{narrationLabel}:</span>{" "}
+              {increaseNarration ? (
+                <>{hl(`${increaseNarration.before}${increaseNarration.after}`.trim())}{" "}<strong className="not-italic font-bold">{hl(increaseNarration.label)}</strong></>
+              ) : hl(String(narrationText))}
             </span>
           ) : null}
         </TableCell>

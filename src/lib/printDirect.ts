@@ -43,6 +43,7 @@ import {
   getFyPartitionRowBackground,
   readFyPartitionRowColor,
 } from "@/lib/fyPartitionRowColor";
+import { recurringIncreaseNarrationParts } from "@/lib/recurringIncreaseNarration";
 
 function resolvePrintFiscalMergePartitions(
   payload: {
@@ -3136,7 +3137,19 @@ const buildTableRow = (row: any, nextRow: any | undefined, p: PrintPayload, form
       const narrationParts: Array<string | { text: string; bold?: boolean; fontSize?: number; color?: string; italics?: boolean }> = [];
       if (p.showNarration && narration) {
         narrationParts.push({ text: 'Narration: ', bold: true, fontSize: 7, color: 'black' });
-        narrationParts.push({ text: String(narration), color: 'black', fontSize: 7, italics: true });
+        const increaseParts = recurringIncreaseNarrationParts(
+          String(narration),
+          row.recurringMeta,
+          d instanceof Date && !Number.isNaN(d.getTime()) ? d : null,
+          p.dateSystem,
+        );
+        if (increaseParts) {
+          const ordinaryText = `${increaseParts.before}${increaseParts.after}`.trim();
+          if (ordinaryText) narrationParts.push({ text: ordinaryText + " ", color: 'black', fontSize: 7, italics: true });
+          narrationParts.push({ text: increaseParts.label, bold: true, color: 'black', fontSize: 7, italics: true });
+        } else {
+          narrationParts.push({ text: String(narration), color: 'black', fontSize: 7, italics: true });
+        }
       }
       const statusParts: Array<string | { text: string | any[]; bold?: boolean; fontSize?: number; color?: string; italics?: boolean }> = [];
       if (p.showNarration && statusDetailText) {

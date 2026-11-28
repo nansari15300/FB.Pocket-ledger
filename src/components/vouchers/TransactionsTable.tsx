@@ -86,6 +86,7 @@ import {
   parseFirestoreDateFieldToJsDate,
   parseOpeningBalanceDateToLocalNoon,
 } from "@/lib/voucherDateNormalize";
+import { recurringIncreaseNarrationParts } from "@/lib/recurringIncreaseNarration";
 import { flushVoucherOutbox, listPendingOutboxDocIdsForCompany } from "@/lib/localVoucherOutbox";
 import { mirrorVoucherDocToBrowserDb } from "@/lib/localCompanyDocMirror";
 import {
@@ -4218,6 +4219,12 @@ export function TransactionsTable({
         t.type === "note"
           ? (String(t.title || "").trim() || String(t.narration || "").trim() || "—")
           : (String(t.narration || "").trim() || "—");
+      const mobileIncreaseNarration = recurringIncreaseNarrationParts(
+        mobileNarrationValue,
+        (t as any)?.recurringMeta,
+        parseFirestoreDateFieldToJsDate(t.date),
+        dateSystem,
+      );
       const icRowLinked = !!String((t as any)?.interCompanyLink?.linkId || "").trim();
       const icViewOnly =
         isInterCompanyVoucherEditDeleteBlocked(t as Record<string, unknown>) ||
@@ -4306,7 +4313,9 @@ export function TransactionsTable({
               </div>
               <p className="text-xs text-muted-foreground break-words whitespace-normal line-clamp-none min-w-0">
                 <span className="font-semibold">{mobileNarrationLabel} : </span>
-                {hl(mobileNarrationValue)}
+                {mobileIncreaseNarration ? (
+                  <>{hl(`${mobileIncreaseNarration.before}${mobileIncreaseNarration.after}`.trim())}{" "}<strong className="font-bold">{hl(mobileIncreaseNarration.label)}</strong></>
+                ) : hl(mobileNarrationValue)}
               </p>
             </div>
             <div

@@ -156,7 +156,7 @@ import {
   getRecurringTemplateDocIdForVoucher,
   getRecurringTemplateForVoucher,
   listRecurringVouchersAffectedByRateStart,
-  setGeneratedRecurringVoucherFixedAmount,
+  setGeneratedRecurringVoucherRate,
   debugMissingRecurringPeriodScan,
   listMissingRecurringPeriodSlotsAscending,
   projectNextRecurringMonetaryTotal,
@@ -1982,7 +1982,7 @@ export function AddVoucherDialog(props: any) {
   const [autoMonthlyYearlyBaseAnchorAd, setAutoMonthlyYearlyBaseAnchorAd] = useState<Date | undefined>(undefined);
   const [recurringSettingsOpen, setRecurringSettingsOpen] = useState(false);
   const [savingRecurringSettings, setSavingRecurringSettings] = useState(false);
-  const [affectedRecurringVouchers, setAffectedRecurringVouchers] = useState<Array<{ id: string; voucherNumber: string; date: Date; total: number; targetValue: number }> | null>(null);
+  const [affectedRecurringVouchers, setAffectedRecurringVouchers] = useState<Array<{ id: string; voucherNumber: string; date: Date; total: number; targetTotal: number; baselineVoucherId: string; targetValue: number; increaseCalendar: "AD" | "BS" | "Both" | null }> | null>(null);
   const [generatingRecurringNow, setGeneratingRecurringNow] = useState(false);
   /** Generate / Settings save / main Save: 2+ missing months — tick wale batch; koi tick nahi = sirf latest due ek. */
   const [recurringGeneratePicker, setRecurringGeneratePicker] = useState<{
@@ -3934,6 +3934,7 @@ export function AddVoucherDialog(props: any) {
     autoMonthlyHydrating,
     recurringTemplateSnapshot,
     autoMonthlyScheduleBsDay,
+    autoMonthlyScheduleCalendar,
     recurringTemplateLastPeriodKey,
     recurringTemplateSuppressedKeys,
   ]);
@@ -4005,6 +4006,7 @@ export function AddVoucherDialog(props: any) {
     autoMonthlyRateEffectiveFromAd,
     autoMonthlyRateCadence,
     autoMonthlyRateEveryN,
+    dateSystem,
   ]);
 
   const recurringAccrualPeriodStartMs = useMemo(() => {
@@ -4256,6 +4258,7 @@ export function AddVoucherDialog(props: any) {
                 scheduleBsDay: autoMonthlyScheduleBsDay,
                 scheduleCalendar: autoMonthlyScheduleCalendar,
                 scheduleAdDay: autoMonthlyScheduleAdDay,
+                rateAdjustCalendar: dateSystem,
                 rateAdjustMode: autoMonthlyRateMode,
                 rateAdjustValue: recurringRatePayload(autoMonthlyRateMode, autoMonthlyRateValue),
                 rateAdjustEffectiveFrom: recurringRateEffectiveFromForSave(
@@ -4322,11 +4325,13 @@ export function AddVoucherDialog(props: any) {
     can,
     autoMonthlyEnabled,
     autoMonthlyScheduleBsDay,
+    autoMonthlyScheduleCalendar,
     autoMonthlyRateMode,
     autoMonthlyRateValue,
     autoMonthlyRateEffectiveFromAd,
     autoMonthlyRateCadence,
     autoMonthlyRateEveryN,
+    dateSystem,
     user?.uid,
     user?.displayName,
     user?.email,
@@ -4397,6 +4402,7 @@ export function AddVoucherDialog(props: any) {
       scheduleBsDay: autoMonthlyScheduleBsDay,
       scheduleCalendar: autoMonthlyScheduleCalendar,
       scheduleAdDay: autoMonthlyScheduleAdDay,
+      rateAdjustCalendar: dateSystem,
       rateAdjustMode: autoMonthlyRateMode,
       rateAdjustValue: recurringRatePayload(autoMonthlyRateMode, autoMonthlyRateValue),
       rateAdjustEffectiveFrom: recurringRateEffectiveFromForSave(autoMonthlyRateMode, autoMonthlyRateEffectiveFromAd),
@@ -4416,6 +4422,7 @@ export function AddVoucherDialog(props: any) {
     defaultVoucherData?.type,
     committedAutoMonthlyEnabled,
     autoMonthlyScheduleBsDay,
+    autoMonthlyScheduleCalendar,
     autoMonthlyRateMode,
     autoMonthlyRateValue,
     autoMonthlyRateEffectiveFromAd,
@@ -4426,20 +4433,32 @@ export function AddVoucherDialog(props: any) {
     user?.email,
     customUser?.displayName,
     canEditRecurringOnVoucher,
+    dateSystem,
   ]);
 
-  const commitRecurringSettingsSave = useCallback(async (updateExistingAmounts: boolean) => {
+  const commitRecurringSettingsSave = useCallback(async (updateExistingAmounts: boolean, skipAutomaticBackfill = false) => {
     const items = affectedRecurringVouchers || [];
     const ok = await persistRecurringScheduleRateOnly();
     if (ok) {
       if (updateExistingAmounts && companyId?.trim()) {
-        for (const item of items) await setGeneratedRecurringVoucherFixedAmount(companyId, item.id, item.targetValue, String(voucher?.id || "").trim());
+        for (const item of items) {
+          await setGeneratedRecurringVoucherRate(
+            companyId,
+            item.id,
+            autoMonthlyRateMode,
+            item.targetValue,
+            item.baselineVoucherId,
+            String(voucher?.id || "").trim(),
+            item.increaseCalendar,
+            autoMonthlyRateEffectiveFromAd,
+          );
+        }
       }
       const vid = String(voucher?.id || "").trim();
       if (committedAutoMonthlyEnabled === true && companyId?.trim() && vid) {
         toast.success(updateExistingAmounts ? "Auto Monthly settings saved and existing voucher amounts updated." : "Auto Monthly settings saved.");
         void refreshRecurringTemplateMeta(companyId, vid);
-        if (!updateExistingAmounts && !apkOfflineViewOnly && user?.uid && canGenerateRecurringOnVoucher && company) {
+        if (!updateExistingAmounts && !skipAutomaticBackfill && !apkOfflineViewOnly && user?.uid && canGenerateRecurringOnVoucher && company) {
           try {
             const tpl = await getRecurringTemplateForVoucher(companyId, vid);
             const activeLine = String(tpl?.cloneSourceVoucherId || tpl?.sourceVoucherId || "").trim();
@@ -4455,21 +4474,41 @@ export function AddVoucherDialog(props: any) {
     setAffectedRecurringVouchers(null);
   }, [affectedRecurringVouchers, companyId, persistRecurringScheduleRateOnly,
     voucher?.id, committedAutoMonthlyEnabled, refreshRecurringTemplateMeta, apkOfflineViewOnly, user?.uid,
-    canGenerateRecurringOnVoucher, company, handlePostSaveMissingRecurringSlots, setDialogOpen]);
+    canGenerateRecurringOnVoucher, company, handlePostSaveMissingRecurringSlots, setDialogOpen, autoMonthlyRateMode,
+    autoMonthlyRateEffectiveFromAd]);
 
   const handleSaveRecurringSettingsClick = useCallback(async () => {
     if (!canEditRecurringOnVoucher || !showVoucherAutoRecurringUi) return;
     setSavingRecurringSettings(true);
     try {
       const vid = String(voucher?.id || "").trim();
-      if (committedAutoMonthlyEnabled === true && companyId?.trim() && vid && autoMonthlyRateMode === "fixed" && autoMonthlyRateEffectiveFromAd) {
+      if (committedAutoMonthlyEnabled === true && companyId?.trim() && vid &&
+          (autoMonthlyRateMode === "fixed" || autoMonthlyRateMode === "percent") && autoMonthlyRateEffectiveFromAd) {
         const templateId = await getRecurringTemplateDocIdForVoucher(companyId, vid);
-        const affected = await listRecurringVouchersAffectedByRateStart(companyId, templateId, autoMonthlyRateEffectiveFromAd);
+        const nextAmount = recurringRatePayload(autoMonthlyRateMode, autoMonthlyRateValue) || 0;
+        const increaseCheck = await listRecurringVouchersAffectedByRateStart(
+          companyId,
+          templateId,
+          autoMonthlyRateEffectiveFromAd,
+          autoMonthlyRateMode,
+          nextAmount,
+        );
+        const affected = increaseCheck.pending;
         if (affected.length) {
-          const nextAmount = recurringRatePayload(autoMonthlyRateMode, autoMonthlyRateValue) || 0;
-          setAffectedRecurringVouchers(affected.map((item) => ({ ...item, targetValue: nextAmount })));
+          const everyN = Math.max(1, Number.parseInt(autoMonthlyRateEveryN || "1", 10) || 1);
+          const yearlyIncrease = autoMonthlyRateCadence === "every_bs_year" || everyN >= 12;
+          const seenYear = new Set<number>();
+          setAffectedRecurringVouchers(affected.map((item) => {
+            const bs = adToBs(item.date);
+            const year = dateSystem === "AD" ? item.date.getFullYear() : bs.y;
+            const annotate = yearlyIncrease && !seenYear.has(year);
+            seenYear.add(year);
+            return { ...item, targetValue: nextAmount, increaseCalendar: annotate ? dateSystem : null };
+          }));
           return;
         }
+        await commitRecurringSettingsSave(false, increaseCheck.alreadyAppliedCount > 0);
+        return;
       }
       await commitRecurringSettingsSave(false);
     } catch (e) {
@@ -4478,7 +4517,8 @@ export function AddVoucherDialog(props: any) {
       setSavingRecurringSettings(false);
     }
   }, [canEditRecurringOnVoucher, showVoucherAutoRecurringUi, companyId, voucher?.id, committedAutoMonthlyEnabled,
-    autoMonthlyRateMode, autoMonthlyRateEffectiveFromAd, autoMonthlyRateValue, commitRecurringSettingsSave]);
+    autoMonthlyRateMode, autoMonthlyRateEffectiveFromAd, autoMonthlyRateValue, autoMonthlyRateEveryN,
+    autoMonthlyRateCadence, dateSystem, commitRecurringSettingsSave]);
 
   /** Generate now: 1 missing = seedha create; 2+ = tick list popup (hover tooltip nahi). */
   const handleGenerateRecurringNowClick = useCallback(async () => {
@@ -5872,7 +5912,7 @@ export function AddVoucherDialog(props: any) {
             {affectedRecurringVouchers?.map((item) => (
               <div key={item.id} className="flex justify-between gap-3 border-b py-1 last:border-0">
                 <span>{item.voucherNumber} · {item.date.toLocaleDateString()}</span>
-                <span className="tabular-nums">{item.total.toLocaleString()}</span>
+                <span className="tabular-nums">{item.total.toLocaleString()} → {item.targetTotal.toLocaleString()}</span>
               </div>
             ))}
           </div>
